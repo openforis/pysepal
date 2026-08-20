@@ -296,7 +296,11 @@ def AoiView(
             return
 
         for layer in list(map_.layers):
-            if hasattr(layer, "name") and layer.name in ["aoi", WMS_PREVIEW_LAYER_NAME]:
+            # Match on `key`, not `name`. add_layer(..., key="aoi") keeps the layer's
+            # own name — the file stem for vector AOIs — so a name-based match left
+            # every SHAPE/POINTS/DRAW geometry on the map after a clear.
+            identity = getattr(layer, "key", None) or getattr(layer, "name", None)
+            if identity in ["aoi", WMS_PREVIEW_LAYER_NAME]:
                 try:
                     map_.remove_layer(layer)
                 except Exception:

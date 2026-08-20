@@ -34,6 +34,15 @@ DEMOS = [
         "authenticates against SEPAL, so it needs credentials in `.env`.",
     ),
     (
+        "solara_aoi_app",
+        "aoi-app",
+        "AOI Save & Restore",
+        "Persisting an area of interest and getting it back. `AoiView` carries the "
+        "computed `AoiResult` on `value` and the small JSON `AoiSpec` on `spec`; the "
+        "demo saves only the spec, and rebuilds the geometry on load. No Earth "
+        "Engine and no credentials -- admin boundaries come from FAO's WFS service.",
+    ),
+    (
         "solara_raster_app",
         "raster-app",
         "Raster App",
