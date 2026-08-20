@@ -33,6 +33,7 @@ from pysepal.solara.components.aoi.admin import (
     process_admin,
 )
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import ADMIN_METHODS, AoiSpec
 from pysepal.solara.components.aoi.asset import process_asset
 from pysepal.solara.components.aoi.draw import process_draw
 from pysepal.solara.components.aoi.points import process_points
@@ -68,6 +69,53 @@ METHODS: Dict[str, Dict[str, str]] = {
 }
 
 
+def resolve_methods(
+    methods: Union[str, List[str]] = "ALL",
+    gee: bool = True,
+    map_: Optional[sm.SepalMap] = None,
+) -> Dict[str, Dict[str, str]]:
+    """Return the methods a picker with these settings offers.
+
+    Args:
+        methods: 'ALL', 'ADMIN', 'CUSTOM', or a list of names to keep or, when each
+            is prefixed with '-', to drop.
+        gee: Whether Earth Engine is enabled. ASSET needs it.
+        map_: The linked map. DRAW needs one.
+
+    Returns:
+        The enabled subset of :data:`METHODS`, keyed by method name.
+
+    Raises:
+        ValueError: If ``methods`` mixes added and removed names, or is not a
+            recognised value.
+    """
+    if methods == "ALL":
+        method_dict = METHODS.copy()
+    elif methods == "ADMIN":
+        method_dict = {k: v for k, v in METHODS.items() if v["type"] == ADMIN}
+    elif methods == "CUSTOM":
+        method_dict = {k: v for k, v in METHODS.items() if v["type"] == CUSTOM}
+    elif isinstance(methods, list):
+        if any(m[0] == "-" for m in methods) and not all(m[0] == "-" for m in methods):
+            raise ValueError("Cannot mix adding and removing methods")
+
+        if methods[0][0] == "-":
+            to_remove = [method[1:] for method in methods]
+            method_dict = {k: v for k, v in METHODS.items() if k not in to_remove}
+        else:
+            method_dict = {k: METHODS[k] for k in methods if k in METHODS}
+    else:
+        raise ValueError("Invalid methods parameter")
+
+    # Clean the list from things we can't use
+    if not gee:
+        method_dict.pop("ASSET", None)
+    if map_ is None:
+        method_dict.pop("DRAW", None)
+
+    return method_dict
+
+
 @solara.component
 def MethodSelect(
     methods: Union[str, List[str]] = "ALL",
@@ -95,30 +143,7 @@ def MethodSelect(
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
 
-    # Create the method list based on input
-    if methods == "ALL":
-        method_dict = METHODS.copy()
-    elif methods == "ADMIN":
-        method_dict = {k: v for k, v in METHODS.items() if v["type"] == ADMIN}
-    elif methods == "CUSTOM":
-        method_dict = {k: v for k, v in METHODS.items() if v["type"] == CUSTOM}
-    elif isinstance(methods, list):
-        if any(m[0] == "-" for m in methods) and not all(m[0] == "-" for m in methods):
-            raise ValueError("Cannot mix adding and removing methods")
-
-        if methods[0][0] == "-":
-            to_remove = [method[1:] for method in methods]
-            method_dict = {k: v for k, v in METHODS.items() if k not in to_remove}
-        else:
-            method_dict = {k: METHODS[k] for k in methods if k in METHODS}
-    else:
-        raise ValueError("Invalid methods parameter")
-
-    # Clean the list from things we can't use
-    if not gee:
-        method_dict.pop("ASSET", None)
-    if map_ is None:
-        method_dict.pop("DRAW", None)
+    method_dict = resolve_methods(methods, gee, map_)
 
     # Build the item list with headers
     prev_type = None
@@ -155,6 +180,9 @@ def AoiView(
     map_style: Optional[dict] = None,
     file_initial_folder: str = "",
     clear_ref: Optional[Any] = None,
+    spec: Union[AoiSpec, solara.Reactive[Optional[AoiSpec]], None] = None,
+    on_spec: Optional[Callable[[Optional[AoiSpec]], None]] = None,
+    autoselect: bool = True,
 ):
     """Solara-native component for AOI (Area of Interest) selection.
 
@@ -174,6 +202,20 @@ def AoiView(
         clear_ref: Optional ref that receives a clear callback for external reset.
             The clear callback preserves the currently selected method so the
             user can retry without reselecting it.
+        spec: The serializable record of a selection. This is the two-way state
+            channel: set it to restore a picker, and read ``on_spec`` to persist
+            what the user picked. Changing it restores again — no remount needed.
+            Clearing the AOI publishes ``None`` here, so an app that persists this
+            channel records the clear instead of resurrecting the old selection on
+            the next load. Setting it to ``None`` from outside is a no-op rather
+            than a clear — an empty spec and an untouched picker look the same, and
+            ``clear_ref`` is the way to reset a picker that already holds one. A
+            spec naming a method this picker does not offer (an ASSET spec with
+            ``gee=False``, a DRAW spec with no map) is refused with a warning.
+        on_spec: Callback when a selection succeeds, carrying its ``AoiSpec``.
+        autoselect: Whether a restored spec is processed immediately, so ``value``
+            holds a usable ``AoiResult`` and the map shows the AOI. Set False to
+            fill the form and leave the run to the user.
 
     Example:
         ```python
@@ -194,7 +236,10 @@ def AoiView(
     # Normalize value/loading to reactive
     reactive_value = solara.use_reactive(value, on_value)
     reactive_loading = solara.use_reactive(loading, on_loading)
-    del value, on_value, loading, on_loading
+    reactive_spec = solara.use_reactive(spec, on_spec)
+    del value, on_value, loading, on_loading, spec, on_spec
+
+    enabled_methods = resolve_methods(methods, gee, map_)
 
     # Validate GEE consistency between map and AoiView
     if map_ is not None and hasattr(map_, "gee"):
@@ -216,12 +261,28 @@ def AoiView(
     aoi_dc = map_.dc if map_ else None
 
     selected_method = solara.use_reactive("")
+    admin_codes = solara.use_reactive(())
     admin_code = solara.use_reactive(None)
     draw_name = solara.use_reactive("")
     shape_data = solara.use_reactive(None)
     points_data = solara.use_reactive(None)
     asset_data = solara.use_reactive(None)
     asset_loading = solara.use_reactive(False)
+
+    # The last spec this picker applied or published. An incoming spec that differs
+    # came from the app, so it is hydrated; one that matches is our own echo. The
+    # comparison also makes the effect idempotent under reacton's double effect-run.
+    applied_spec = solara.use_ref(None)
+
+    # The method the clear-on-change effect last saw. Hydration updates it before it
+    # moves the select, so restoring does not trip the clear.
+    last_method = solara.use_ref("")
+
+    # False once this picker unmounts. A use_task coroutine suspended at an await
+    # survives unmount and resumes afterwards — solara only discards the task's own
+    # result, not what its body writes — so a late run would otherwise draw on a map
+    # the app has moved on from, or re-populate the value we stopped clearing.
+    alive = solara.use_ref(True)
 
     # Notification system (replaces embedded alert). When no
     # NotificationProvider is mounted, `notifications` is a NoopNotifier
@@ -280,6 +341,11 @@ def AoiView(
 
         if clear_value:
             reactive_value.set(None)
+            # Retract the published spec too, or an app persisting through on_spec
+            # still holds the cleared AOI and resurrects it on the next load.
+            applied_spec.current = None
+            reactive_spec.set(None)
+        admin_codes.set(())
         admin_code.set(None)
         draw_name.set("")
         shape_data.set(None)
@@ -337,6 +403,7 @@ def AoiView(
                     admin_code=admin_code.value,
                     gee=gee,
                     gee_interface=gee_interface,
+                    admin_codes=admin_codes.value,
                 )
 
             elif method == "DRAW":
@@ -384,7 +451,7 @@ def AoiView(
                 raise ValueError("Please select a method")
 
             # Update the map if available
-            if map_ and result:
+            if alive.current and map_ and result:
                 tracker.step("Updating map...")
 
                 _clear_map_layers()
@@ -413,8 +480,15 @@ def AoiView(
                     map_.add_layer(geojson_layer, key="aoi")
                     map_.zoom_bounds(result.gdf.total_bounds)
 
-            # Update reactive value
+            if not alive.current:
+                tracker.complete()
+                return ""  # falsy: no success toast for a run nobody is watching
+
+            # Recording applied_spec first is what stops this publish from
+            # re-entering _apply_spec.
+            applied_spec.current = result.spec
             reactive_value.set(result)
+            reactive_spec.set(result.spec)
 
             tracker.complete()
             return ms.aoi_sel.complete
@@ -476,8 +550,59 @@ def AoiView(
         fallback_level.set("info")
         task()
 
+    def _seed_draw_control(geo_json):
+        # Best effort: refill the editable draw control so a restored DRAW AOI stays
+        # editable. The geometry is drawn from the result regardless.
+        if not (map_ and aoi_dc) or not geo_json:
+            return
+        try:
+            aoi_dc.data = geo_json.get("features", [])
+            if aoi_dc not in map_.controls:
+                map_.add_control(aoi_dc)
+        except Exception:
+            pass
+
+    def _apply_spec():
+        incoming = reactive_spec.value
+        if incoming is None or incoming == applied_spec.current:
+            return
+        if incoming.method not in enabled_methods:
+            notifications.warning(
+                f"Cannot restore a {incoming.method} AOI here: this picker does not "
+                f"offer that method."
+            )
+            return
+        applied_spec.current = incoming
+        last_method.current = incoming.method
+
+        selected_method.set(incoming.method)
+        if incoming.method in ADMIN_METHODS:
+            admin_codes.set(incoming.admin_codes)
+            # Also set the leaf directly. The selector derives admin_code from the
+            # cascade in an effect, and with autoselect on the task starts in this
+            # same pass — waiting on that effect would make the run depend on
+            # scheduling order rather than on anything guaranteed.
+            admin_code.set(incoming.admin_codes[-1] if incoming.admin_codes else None)
+        elif incoming.method == "SHAPE":
+            shape_data.set(incoming.shape_data())
+        elif incoming.method == "POINTS":
+            points_data.set(incoming.points_data())
+        elif incoming.method == "ASSET":
+            asset_data.set(incoming.asset_data())
+        elif incoming.method == "DRAW":
+            draw_name.set(incoming.name or "")
+            _seed_draw_control(incoming.geo_json)
+
+        if autoselect:
+            start_process()
+
+    solara.use_effect(_apply_spec, [reactive_spec.value])
+
     # Handle method changes
     def on_method_change():
+        if selected_method.value == last_method.current:
+            return
+        last_method.current = selected_method.value
         if selected_method.value:
             _clear_current_aoi(active_method=selected_method.value)
 
@@ -485,7 +610,15 @@ def AoiView(
 
     # Cleanup on unmount
     def _cleanup():
+        # Re-arm on every run. The effect's dep is the map identity, so a map swap
+        # runs the previous cleanup — which sets this False — and then re-runs this
+        # body. Without re-arming, one map change would silently mute every later
+        # publish and leave the picker looking dead.
+        alive.current = True
+
         def cleanup():
+            alive.current = False
+
             # Note: We don't cancel the task here because task.cancel() raises
             # _CancelledErrorInOurTask which propagates up. The task will be
             # garbage collected when the component unmounts.
@@ -521,6 +654,7 @@ def AoiView(
                 method=selected_method.value,
                 gee=gee,
                 value=admin_code,
+                codes=admin_codes,
             )
 
         elif selected_method.value == "SHAPE":
