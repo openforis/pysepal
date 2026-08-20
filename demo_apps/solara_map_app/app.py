@@ -29,6 +29,7 @@ pysepal$ ./run_solara.sh demo_apps/solara_map_app/app.py --port 8901
 import solara
 from component.message import use_translator
 from component.parameter import DUMMY_DATA_DIR
+from component.scripts import load_spec, save_spec
 from component.tile import ExportPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
 
@@ -77,6 +78,11 @@ def MapAppDemo():
     use_aoi_scoped_layers(aoi_data, sepal_map, outputs, layer_legends)
     layer_tools = use_layer_tools(sepal_map, layer_legends, outputs)
 
+    # Read this user's saved selection once, at mount. AoiView seeds the picker
+    # from it, reruns the selection and redraws the AOI — so the module reopens
+    # where its user left off, including a filtered Earth Engine asset.
+    restored_aoi = solara.use_memo(load_spec, [])
+
     aoi_view = AoiView(
         value=aoi_data,
         loading=aoi_loading,
@@ -84,6 +90,8 @@ def MapAppDemo():
         map_=sepal_map,
         gee=True,
         file_initial_folder=str(DUMMY_DATA_DIR),
+        spec=restored_aoi,
+        on_spec=save_spec,
     )
 
     right_panel_config = {
