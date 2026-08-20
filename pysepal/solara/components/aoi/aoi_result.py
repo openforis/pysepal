@@ -9,6 +9,8 @@ from typing import Any, Optional
 import geopandas as gpd
 from deprecated.sphinx import versionadded
 
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
+
 
 @dataclass(frozen=True)
 @versionadded(version="3.1", reason="Pure Solara AOI result dataclass")
@@ -28,6 +30,9 @@ class AoiResult:
         feature_collection: ee.ComputedObject for GEE workflows (FeatureCollection, Image, etc.; None otherwise)
         admin: Admin code for admin methods (None for other methods)
         gee: Whether this result was created with GEE binding
+        spec: The serializable record of the inputs that produced this result.
+            Persist ``spec.to_dict()`` and pass the rebuilt spec back to
+            ``AoiView(spec=...)`` to restore the selection.
 
     Example:
         ```python
@@ -47,6 +52,7 @@ class AoiResult:
     feature_collection: Optional[Any] = field(default=None, repr=False)  # ee.ComputedObject
     admin: Optional[str] = None
     gee: bool = False
+    spec: Optional[AoiSpec] = None
 
     async def get_gdf_async(self) -> Optional[gpd.GeoDataFrame]:
         """Fetch the GeoDataFrame asynchronously.

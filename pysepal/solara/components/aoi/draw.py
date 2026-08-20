@@ -11,6 +11,7 @@ import geopandas as gpd
 from pysepal.message import ms
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
 
 def process_draw(
@@ -78,4 +79,5 @@ def process_draw(
         feature_collection=feature_collection,
         admin=None,
         gee=gee,
+        spec=AoiSpec(method="DRAW", name=name, geo_json=cleaned_geojson),
     )

@@ -119,3 +119,55 @@ def test_spec_is_hashable_and_compares_by_content():
 
     assert a == b
     assert {a, b} == {a}
+
+
+def test_process_shape_attaches_a_restorable_spec():
+    import asyncio
+    from pathlib import Path
+
+    from pysepal.solara.components.aoi.shape import process_shape
+
+    data = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_polygons.geojson"
+    result = asyncio.run(process_shape(str(data), gee=False))
+
+    assert result.spec.method == "SHAPE"
+    assert result.spec.pathname == str(data)
+    assert result.spec.shape_data()["column"] == "ALL"
+
+
+def test_process_draw_attaches_the_raw_geojson():
+    from pysepal.solara.components.aoi.draw import process_draw
+
+    geo_json = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"style": {"color": "red"}},
+                "geometry": {"type": "Point", "coordinates": [0.0, 0.0]},
+            }
+        ],
+    }
+
+    result = process_draw(geo_json, name="plot_a", gee=False)
+
+    assert result.spec.method == "DRAW"
+    assert result.spec.name == "plot_a"
+    assert result.spec.geo_json["features"][0]["geometry"]["coordinates"] == [0.0, 0.0]
+
+
+def test_process_admin_derives_the_chain_from_a_bare_leaf():
+    """A spec built outside AoiView must still restore: derive the parents."""
+    import asyncio
+
+    from pysepal.solara.components.aoi.admin import process_admin
+
+    result = asyncio.run(process_admin("ADMIN2", "100001", gee=False))
+
+    assert result.spec.admin_codes == ("101", "1001", "100001")
+
+
+def test_aoi_result_spec_defaults_to_none():
+    from pysepal.solara.components.aoi import AoiResult
+
+    assert AoiResult(method="DRAW", name="x").spec is None
