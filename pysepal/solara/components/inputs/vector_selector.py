@@ -83,6 +83,29 @@ def VectorSelectorComponent(
     loading_columns = solara.use_reactive(False)
     loading_values = solara.use_reactive(False)
 
+    # `published` suppresses the echo of our own output; `pending_seed` holds the
+    # caller's selection until the column cascade consumes it. They must stay
+    # separate — the cascade publishes column="ALL" on its way through, which would
+    # otherwise erase the filter we are restoring before we read it.
+    published = solara.use_ref(None)
+    pending_seed = solara.use_ref(None)
+
+    def _seed_from_value():
+        incoming = reactive_value.value
+        if not incoming or incoming == published.current:
+            return
+        published.current = incoming
+        pending_seed.current = incoming
+        if (incoming.get("pathname") or "") == file_path.value:
+            # Same file, different filter: writing the same path back is a no-op,
+            # so on_file_change never re-runs. Apply the filter directly.
+            selected_column.set(incoming.get("column") or "ALL")
+            selected_value.set(incoming.get("value"))
+            return
+        file_path.set(incoming.get("pathname") or "")
+
+    solara.use_effect(_seed_from_value, [reactive_value.value])
+
     # --- File change: read columns in a background task ---
 
     async def _load_columns(path: str):
@@ -115,7 +138,14 @@ def VectorSelectorComponent(
         loading_columns.set(column_task.pending)
         if column_task.finished and column_task.value is not None:
             column_items.set(COLUMN_ALL_ITEMS + column_task.value)
-            reactive_value.set({"pathname": file_path.value, "column": "ALL", "value": None})
+            seeded = pending_seed.current or {}
+            if seeded.get("pathname") == file_path.value and seeded.get("column", "ALL") != "ALL":
+                selected_column.set(seeded["column"])
+                if seeded.get("value") is not None:
+                    selected_value.set(seeded["value"])
+                return
+            published.current = {"pathname": file_path.value, "column": "ALL", "value": None}
+            reactive_value.set(published.current)
         elif column_task.error:
             column_items.set([])
             reactive_value.set(None)
@@ -141,12 +171,22 @@ def VectorSelectorComponent(
 
     def on_column_change():
         col = selected_column.value
-        selected_value.set(None)
+        seeded = pending_seed.current or {}
+        # Restoring a filter writes the column and then the value, but this reaction
+        # runs in between and would null the value straight back out.
+        restoring_this_column = (
+            seeded.get("pathname") == file_path.value
+            and seeded.get("column") == col
+            and seeded.get("value") is not None
+        )
+        if not restoring_this_column:
+            selected_value.set(None)
         value_items.set([])
 
         if not file_path.value or not col or col == "ALL":
             if file_path.value:
-                reactive_value.set({"pathname": file_path.value, "column": col, "value": None})
+                published.current = {"pathname": file_path.value, "column": col, "value": None}
+                reactive_value.set(published.current)
             return
 
         value_task(file_path.value, col)
@@ -168,13 +208,12 @@ def VectorSelectorComponent(
 
     def on_value_change():
         if file_path.value and selected_column.value:
-            reactive_value.set(
-                {
-                    "pathname": file_path.value,
-                    "column": selected_column.value,
-                    "value": selected_value.value,
-                }
-            )
+            published.current = {
+                "pathname": file_path.value,
+                "column": selected_column.value,
+                "value": selected_value.value,
+            }
+            reactive_value.set(published.current)
 
     solara.use_effect(on_value_change, [selected_value.value])
 
