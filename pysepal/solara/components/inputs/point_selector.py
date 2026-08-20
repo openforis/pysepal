@@ -75,15 +75,35 @@ def PointsSelectorComponent(
     lat_column = solara.use_reactive(None)
     lng_column = solara.use_reactive(None)
 
+    published = solara.use_ref(None)
+    pending_seed = solara.use_ref(None)
+
+    def _seed_from_value():
+        incoming = reactive_value.value
+        if not incoming or incoming == published.current:
+            return
+        published.current = incoming
+        pending_seed.current = incoming
+        if (incoming.get("pathname") or "") == file_path.value:
+            # Same CSV, different column roles: on_file_change will not re-run, so
+            # apply them directly.
+            id_column.set(incoming.get("id_column"))
+            lat_column.set(incoming.get("lat_column"))
+            lng_column.set(incoming.get("lng_column"))
+            return
+        file_path.set(incoming.get("pathname") or "")
+
+    solara.use_effect(_seed_from_value, [reactive_value.value])
+
     def on_file_change():
         path = file_path.value
         column_items.set([])
         id_column.set(None)
         lat_column.set(None)
         lng_column.set(None)
-        reactive_value.set(None)
 
         if not path:
+            reactive_value.set(None)
             return
 
         try:
@@ -96,13 +116,17 @@ def PointsSelectorComponent(
 
             column_items.set(cols)
 
-            detected = _auto_detect_columns(cols)
-            if detected["id_column"]:
-                id_column.set(detected["id_column"])
-            if detected["lat_column"]:
-                lat_column.set(detected["lat_column"])
-            if detected["lng_column"]:
-                lng_column.set(detected["lng_column"])
+            seeded = pending_seed.current or {}
+            if seeded.get("pathname") == path and seeded.get("id_column"):
+                chosen = seeded
+            else:
+                chosen = _auto_detect_columns(cols)
+            if chosen.get("id_column"):
+                id_column.set(chosen["id_column"])
+            if chosen.get("lat_column"):
+                lat_column.set(chosen["lat_column"])
+            if chosen.get("lng_column"):
+                lng_column.set(chosen["lng_column"])
 
         except Exception as e:
             notifications.error(f"Error reading file: {e}")
@@ -111,14 +135,13 @@ def PointsSelectorComponent(
 
     def update_output():
         if file_path.value and id_column.value and lat_column.value and lng_column.value:
-            reactive_value.set(
-                {
-                    "pathname": file_path.value,
-                    "id_column": id_column.value,
-                    "lat_column": lat_column.value,
-                    "lng_column": lng_column.value,
-                }
-            )
+            published.current = {
+                "pathname": file_path.value,
+                "id_column": id_column.value,
+                "lat_column": lat_column.value,
+                "lng_column": lng_column.value,
+            }
+            reactive_value.set(published.current)
         elif file_path.value:
             reactive_value.set(None)
         else:

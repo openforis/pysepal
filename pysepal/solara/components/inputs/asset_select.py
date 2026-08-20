@@ -73,6 +73,35 @@ def AssetSelectComponent(
     loading_values = solara.use_reactive(False)
     validation_msg = solara.use_reactive("")
 
+    # What this component last published. An incoming value that differs came from
+    # outside, so the widgets are seeded from it. Comparing rather than flagging keeps
+    # the effect idempotent under reacton's double effect-run.
+    published = solara.use_ref(None)
+
+    # The caller's selection, held until the asset-change cascade consumes it. Kept
+    # apart from `published` on purpose: that ref is overwritten by our own
+    # intermediate publishes (the cascade emits column="ALL" on its way through),
+    # which would erase the filter we are trying to restore before we read it.
+    pending_seed = solara.use_ref(None)
+
+    def _seed_from_value():
+        incoming = reactive_value.value
+        if not incoming or incoming == published.current:
+            return
+        published.current = incoming
+        pending_seed.current = incoming
+        if incoming.get("asset_id") == asset_id.value:
+            # Same asset, different filter. Writing the same id back is a store
+            # no-op, so on_asset_change never re-runs and the widgets would keep
+            # showing the old filter — apply it here instead.
+            selected_column.set(incoming.get("column") or "ALL")
+            selected_value.set(incoming.get("value"))
+            return
+        asset_id.set(incoming.get("asset_id"))
+        asset_type.set(incoming.get("type"))
+
+    solara.use_effect(_seed_from_value, [reactive_value.value])
+
     def _sync_loading():
         reactive_loading.set(loading_assets.value or loading_columns.value or loading_values.value)
 
@@ -156,14 +185,21 @@ def AssetSelectComponent(
                 )
                 column_items.set(COLUMN_ALL_ITEMS + cols)
 
-            reactive_value.set(
-                {
-                    "asset_id": aid,
-                    "type": asset_info["type"],
-                    "column": "ALL",
-                    "value": None,
-                }
-            )
+            seeded = pending_seed.current or {}
+            column = seeded.get("column", "ALL") if seeded.get("asset_id") == aid else "ALL"
+            filter_value = seeded.get("value") if column != "ALL" else None
+            if column != "ALL":
+                selected_column.set(column)
+            if filter_value is not None:
+                selected_value.set(filter_value)
+
+            published.current = {
+                "asset_id": aid,
+                "type": asset_info["type"],
+                "column": column,
+                "value": filter_value,
+            }
+            reactive_value.set(published.current)
         except ValueError as e:
             validation_msg.set(str(e))
             reactive_value.set(None)
@@ -182,20 +218,30 @@ def AssetSelectComponent(
 
     async def on_column_change():
         col = selected_column.value
-        selected_value.set(None)
+        seeded = pending_seed.current or {}
+        # Restoring a filter writes the column and then the value, but this reaction
+        # runs in between and would null the value straight back out — reactive
+        # writes made inside an effect do not flush nested effects until the pass
+        # ends. Skip the reset for the column we are restoring.
+        restoring_this_column = (
+            seeded.get("asset_id") == asset_id.value
+            and seeded.get("column") == col
+            and seeded.get("value") is not None
+        )
+        if not restoring_this_column:
+            selected_value.set(None)
         value_items.set([])
 
         aid = asset_id.value
         if not aid or not col or col == "ALL" or asset_type.value != "TABLE":
             if aid:
-                reactive_value.set(
-                    {
-                        "asset_id": aid,
-                        "type": asset_type.value,
-                        "column": col,
-                        "value": None,
-                    }
-                )
+                published.current = {
+                    "asset_id": aid,
+                    "type": asset_type.value,
+                    "column": col,
+                    "value": None,
+                }
+                reactive_value.set(published.current)
             return
 
         loading_values.set(True)
@@ -203,6 +249,8 @@ def AssetSelectComponent(
             fc = ee.FeatureCollection(aid)
             vals = await gee_interface.get_info_async(fc.distinct(col).aggregate_array(col))
             value_items.set(sorted(set(vals)))
+            if restoring_this_column:
+                selected_value.set(seeded["value"])
         except Exception as e:
             notifications.error(f"Error loading column values: {e}")
             value_items.set([])
@@ -219,14 +267,13 @@ def AssetSelectComponent(
     def on_value_change():
         aid = asset_id.value
         if aid and selected_column.value:
-            reactive_value.set(
-                {
-                    "asset_id": aid,
-                    "type": asset_type.value,
-                    "column": selected_column.value,
-                    "value": selected_value.value,
-                }
-            )
+            published.current = {
+                "asset_id": aid,
+                "type": asset_type.value,
+                "column": selected_column.value,
+                "value": selected_value.value,
+            }
+            reactive_value.set(published.current)
 
     solara.use_effect(on_value_change, [selected_value.value])
 
