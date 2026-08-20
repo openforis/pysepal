@@ -262,11 +262,24 @@ def AoiView(
         reset_method: bool = False,
         active_method: Optional[str] = None,
         reset_loading: bool = False,
+        clear_value: bool = True,
     ):
+        """Drop the current selection and everything it put on the map.
+
+        Args:
+            reset_method: Whether to also clear the selected method.
+            active_method: The method to sync the draw control to, if not the
+                currently selected one.
+            reset_loading: Whether to lower the loading flag.
+            clear_value: Whether to also reset ``value`` to None. ``value`` may be a
+                reactive owned by the host app, which ``use_reactive`` passes straight
+                through. Only user-driven clears may null it; teardown must not.
+        """
         if reset_loading:
             reactive_loading.set(False)
 
-        reactive_value.set(None)
+        if clear_value:
+            reactive_value.set(None)
         admin_code.set(None)
         draw_name.set("")
         shape_data.set(None)
@@ -477,7 +490,10 @@ def AoiView(
             # _CancelledErrorInOurTask which propagates up. The task will be
             # garbage collected when the component unmounts.
 
-            _clear_current_aoi(active_method="", reset_loading=True)
+            # Release only what this picker owns. `value` belongs to the caller —
+            # use_reactive passes a host-owned reactive straight through — and
+            # unmounting the widget is not the user dropping their AOI.
+            _clear_current_aoi(active_method="", reset_loading=True, clear_value=False)
 
             # Note: We intentionally do NOT reset map center/zoom on unmount
             # to avoid surprising side effects for host apps that own the map state
