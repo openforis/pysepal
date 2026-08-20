@@ -63,6 +63,18 @@ def PointsSelectorComponent(
         initial_folder: Initial folder shown by the local file picker.
         value: Dict with {pathname, id_column, lat_column, lng_column} or None.
         on_value: Callback when selection changes.
+
+    Note:
+        A restore uses two refs. ``published`` holds what this component last
+        emitted: an incoming ``value`` that differs came from the app and seeds the
+        widgets, while one that matches is this component's own echo. Comparing
+        rather than flagging keeps the effect idempotent under reacton's double
+        effect-run.
+
+        ``pending_seed`` holds the caller's selection until the column-role cascade
+        consumes it. It has to stay separate from ``published``, which this
+        component's own intermediate publishes overwrite -- that would erase
+        the selection being restored before anything reads it.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
@@ -75,6 +87,7 @@ def PointsSelectorComponent(
     lat_column = solara.use_reactive(None)
     lng_column = solara.use_reactive(None)
 
+    # Restore bookkeeping; see Note in the docstring.
     published = solara.use_ref(None)
     pending_seed = solara.use_ref(None)
 

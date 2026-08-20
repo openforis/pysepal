@@ -53,6 +53,18 @@ def AssetSelectComponent(
         loading: Whether the component is busy (loading assets, validating, etc.).
         on_loading: Callback when loading state changes.
         gee_interface: Optional GEEInterface instance. Falls back to session default.
+
+    Note:
+        A restore uses two refs. ``published`` holds what this component last
+        emitted: an incoming ``value`` that differs came from the app and seeds the
+        widgets, while one that matches is this component's own echo. Comparing
+        rather than flagging keeps the effect idempotent under reacton's double
+        effect-run.
+
+        ``pending_seed`` holds the caller's selection until the asset-change cascade
+        consumes it. It has to stay separate from ``published``, which this
+        component's own intermediate publishes overwrite (it emits ``column="ALL"`` on its way through) — that would erase
+        the selection being restored before anything reads it.
     """
     reactive_value = solara.use_reactive(value, on_value)
     reactive_loading = solara.use_reactive(loading, on_loading)
@@ -73,15 +85,8 @@ def AssetSelectComponent(
     loading_values = solara.use_reactive(False)
     validation_msg = solara.use_reactive("")
 
-    # What this component last published. An incoming value that differs came from
-    # outside, so the widgets are seeded from it. Comparing rather than flagging keeps
-    # the effect idempotent under reacton's double effect-run.
+    # Restore bookkeeping; see Note in the docstring.
     published = solara.use_ref(None)
-
-    # The caller's selection, held until the asset-change cascade consumes it. Kept
-    # apart from `published` on purpose: that ref is overwritten by our own
-    # intermediate publishes (the cascade emits column="ALL" on its way through),
-    # which would erase the filter we are trying to restore before we read it.
     pending_seed = solara.use_ref(None)
 
     def _seed_from_value():

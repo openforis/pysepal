@@ -69,6 +69,18 @@ def VectorSelectorComponent(
         initial_folder: Initial folder shown by the local file picker.
         value: Dict with {pathname, column, value} or None.
         on_value: Callback when selection changes.
+
+    Note:
+        A restore uses two refs. ``published`` holds what this component last
+        emitted: an incoming ``value`` that differs came from the app and seeds the
+        widgets, while one that matches is this component's own echo. Comparing
+        rather than flagging keeps the effect idempotent under reacton's double
+        effect-run.
+
+        ``pending_seed`` holds the caller's selection until the column cascade
+        consumes it. It has to stay separate from ``published``, which this
+        component's own intermediate publishes overwrite (it emits ``column="ALL"`` on its way through) -- that would erase
+        the selection being restored before anything reads it.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
@@ -83,10 +95,7 @@ def VectorSelectorComponent(
     loading_columns = solara.use_reactive(False)
     loading_values = solara.use_reactive(False)
 
-    # `published` suppresses the echo of our own output; `pending_seed` holds the
-    # caller's selection until the column cascade consumes it. They must stay
-    # separate — the cascade publishes column="ALL" on its way through, which would
-    # otherwise erase the filter we are restoring before we read it.
+    # Restore bookkeeping; see Note in the docstring.
     published = solara.use_ref(None)
     pending_seed = solara.use_ref(None)
 

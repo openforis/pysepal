@@ -454,6 +454,46 @@ class MyModel(Model):
 | `AppState` + `solara.reactive()` | New apps, pure Solara components                     |
 | traitlets `Model`                | Existing apps, ipyvuetify widgets, need `.observe()` |
 
+### Persist and restore an AOI
+
+`AoiView` has two channels. `value`/`on_value` carries the `AoiResult` — the
+GeoDataFrame and the Earth Engine object — which is not serializable. `spec`/`on_spec`
+carries the `AoiSpec`, the small JSON-safe record of what the user picked. Persist the
+spec; the result is rebuilt from it.
+
+```python
+from pysepal.solara.components.aoi import AoiSpec, AoiView
+
+@solara.component
+def Page():
+    aoi = solara.use_reactive(None)
+    spec = solara.use_memo(load_saved_spec, [])  # AoiSpec | None
+
+    AoiView(value=aoi, spec=spec, on_spec=save_spec, map_=my_map)
+```
+
+`save_spec` receives an `AoiSpec`; store `spec.to_dict()` and rebuild it with
+`AoiSpec.from_dict(...)`. Setting `spec` to a different value restores again — the
+component does not need a remount.
+
+By default a restored spec is processed straight away, so `aoi.value` holds a usable
+result and the map shows the AOI. Pass `autoselect=False` to fill the form and leave
+the run to the user.
+
+Clearing the AOI publishes `None` on this channel, so `save_spec(None)` records the
+clear and the next load starts empty rather than resurrecting what the user threw away.
+Setting `spec` to `None` from outside is a no-op, not a reset — use `clear_ref` for that.
+
+A spec naming a method the picker does not offer is refused with a warning, so an ASSET
+spec cannot be restored into a `gee=False` view.
+
+**Deployment note.** SHAPE and POINTS specs carry a file path on the machine that ran
+the picker. Those two methods are not safe in multi-user container apps (see
+"AOI Method Restrictions" in `solara-gee-patterns.md`), so a persisted path is only
+meaningful for local and Voila deployments.
+
+`demo_apps/solara_aoi_app/` is a runnable version of exactly this.
+
 ## 5. Map Integration
 
 ```python
