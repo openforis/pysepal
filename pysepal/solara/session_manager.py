@@ -26,6 +26,7 @@ from pysepal.solara._topology import (
     SessionSource,
     current_session_plan,
     is_sepal_sandbox,
+    is_serving_connections,
     plan_reads_sepal_headers,
 )
 from pysepal.solara.dev_auth import prime_dev_auth
@@ -147,12 +148,15 @@ def _is_scoped_per_connection(plan: SessionPlan) -> bool:
     across reloads that should have taken them down. The developer *login* stays
     process-cached in :func:`prime_dev_auth`; only the session is per scope.
 
-    ``DEV_AUTH`` only scopes per connection where a connection exists. Armed in a
-    notebook, a script or pytest there is no kernel to key on --
-    :func:`resolve_scope_id` answers ``PROCESS_SCOPE``, which a per-connection
-    session must refuse -- so those runtimes keep the process session they have
-    always had. ``PER_CONNECTION`` never degrades: it has no second source to
-    fall back to.
+    ``DEV_AUTH`` only scopes per connection where connections exist. Armed in a
+    notebook, a script or pytest there is no kernel to key a session on, so those
+    runtimes keep the process session they have always had.
+    ``PER_CONNECTION`` never degrades: it has no second source to fall back to.
+
+    The test is :func:`is_serving_connections`, not ``resolve_scope_id()``. The
+    latter reaches into IPython and creates an event loop as a side effect even
+    when it fails, and one reader of this predicate is the ``GEEInterface``
+    guard, whose whole purpose is to refuse before a loop exists.
 
     Args:
         plan: The resolved credential plan.
@@ -162,12 +166,7 @@ def _is_scoped_per_connection(plan: SessionPlan) -> bool:
     """
     if plan.source is SessionSource.PER_CONNECTION:
         return True
-    if plan.source is not SessionSource.DEV_AUTH:
-        return False
-    try:
-        return resolve_scope_id() != PROCESS_SCOPE
-    except UnsupportedSolaraRuntimeError:
-        return False
+    return plan.source is SessionSource.DEV_AUTH and is_serving_connections()
 
 
 def _current_plan() -> SessionPlan:

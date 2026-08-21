@@ -204,8 +204,24 @@ def test_dev_auth_serving_a_connection_refuses_a_session_less_interface():
     credentials stay correct, which the parametrized test above pins.
     """
     with _topology(DEV_AUTH) as stubs:
-        with patch.object(session_manager_module, "resolve_scope_id", lambda: "kernel-a"):
+        with patch.object(session_manager_module, "is_serving_connections", lambda: True):
             with pytest.raises(SepalSessionError, match="platform service account"):
                 GEEInterface()
 
     assert stubs.new_event_loop.call_count == 0
+
+
+def test_the_guard_creates_no_event_loop_deciding_about_dev_auth():
+    """Deciding must stay free of side effects, whichever way it goes.
+
+    The guard exists to refuse *before* the loop is built. An earlier version
+    asked ``resolve_scope_id()``, which reaches into IPython and creates an
+    event loop even when it fails -- so merely deciding leaked exactly what the
+    guard is there to prevent.
+    """
+    with _topology(DEV_AUTH) as stubs:
+        with patch.object(gee_interface_module.EESession, "from_default", return_value=MagicMock()):
+            GEEInterface()
+
+    # One loop, built by the interface itself -- none from the decision.
+    assert stubs.new_event_loop.call_count == 1

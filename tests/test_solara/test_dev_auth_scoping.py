@@ -58,9 +58,9 @@ def _dev_stack(scope_id, headers=None):
         patch.object(sm, "prime_dev_auth", prime),
         patch.object(sm, "_RESULTS_DIR_EXECUTOR", SimpleNamespace(submit=lambda fn: fn())),
         patch.object(sm.SessionManager, "get_scope_id", lambda _self: scope_id),
-        # _is_scoped_per_connection asks this directly: under pytest the real one
-        # answers PROCESS_SCOPE, which would send dev-auth down the process path.
-        patch.object(sm, "resolve_scope_id", lambda: scope_id),
+        # Dev-auth scopes per connection only when a solara server is serving
+        # them; under pytest the real predicate is False.
+        patch.object(sm, "is_serving_connections", lambda: scope_id != sm.PROCESS_SCOPE),
     ):
         yield SimpleNamespace(gee=gee_factory, prime=prime, sepal=sepal_factory)
 
