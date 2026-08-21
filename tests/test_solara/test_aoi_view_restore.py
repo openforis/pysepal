@@ -217,3 +217,27 @@ def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
     clear_ref.current()
 
     assert not _has_aoi_layer()
+
+
+def test_autoselect_false_leaves_the_map_untouched(monkeypatch):
+    """The demo's toggle turns this off, so nothing may reach the map either."""
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+    from pysepal import mapping as sm
+
+    sepal_map = sm.SepalMap(gee=False)
+
+    @solara.component
+    def _Harness():
+        AoiView(
+            spec=AoiSpec(method="SHAPE", pathname=str(DATA)),
+            map_=sepal_map,
+            gee=False,
+            autoselect=False,
+        )
+
+    def _has_aoi_layer(*_):
+        return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
+
+    render_and_drain(_Harness, _has_aoi_layer, timeout=0.5)
+
+    assert not _has_aoi_layer()

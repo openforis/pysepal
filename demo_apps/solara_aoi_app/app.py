@@ -34,6 +34,7 @@ pysepal$ ./run_solara.sh demo_apps/solara_aoi_app/app.py --port 8901
 import json
 from typing import Optional
 
+import reacton.ipyvuetify as rv
 import solara
 
 from pysepal import mapping as sm
@@ -103,6 +104,12 @@ def AoiAppDemo():
     aoi = solara.use_reactive(None)
     clear_ref = solara.use_ref(None)
 
+    # The switch below drives AoiView's `autoselect`. Flipping it re-keys the
+    # picker so the restore runs again under the new setting -- otherwise the
+    # change would only show on the next page load, since a spec is applied
+    # once. Remounting is a demo affordance, not how restore normally works.
+    autoselect = solara.use_reactive(True)
+
     def persist(spec: Optional[AoiSpec]) -> None:
         save_spec(spec)
         if spec is None:
@@ -129,6 +136,17 @@ def AoiAppDemo():
                 "title": "Select",
                 "icon": "mdi-map-search-outline",
                 "content": [
+                    rv.Switch(
+                        label="Process a restored AOI automatically",
+                        v_model=autoselect.value,
+                        on_v_model=autoselect.set,
+                        dense=True,
+                        hint=(
+                            "On: the saved AOI is drawn on load. "
+                            "Off: the form is filled and you press Select AOI."
+                        ),
+                        persistent_hint=True,
+                    ),
                     AoiView(
                         value=aoi,
                         spec=restored,
@@ -136,7 +154,8 @@ def AoiAppDemo():
                         map_=sepal_map,
                         gee=False,
                         clear_ref=clear_ref,
-                    ),
+                        autoselect=autoselect.value,
+                    ).key(f"aoi-autoselect-{autoselect.value}"),
                 ],
                 "description": (
                     f"Saved to {SAVED_AOI}. Clearing the AOI deletes that file, so "
