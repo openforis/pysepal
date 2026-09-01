@@ -254,6 +254,7 @@ def test_clear_output(test_model: aoi.AoiModel, aoi_model_outputs: List[str]) ->
         test_model: a aoi_model set on vatican city
         aoi_model_outputs: the name of the output members of the aoi_model object
     """
+
     # create functions for readability
     def is_not_none(member):
         return getattr(test_model, member) is not None
@@ -555,3 +556,34 @@ def aoi_model_outputs() -> List[str]:
         "selected_feature",
         "dst_asset_id",
     ]
+
+
+def test_methods_hold_keys_not_labels() -> None:
+    """METHODS must carry catalogue keys, so a label can follow the locale."""
+    from pysepal.i18n import set_locale
+    from pysepal.message import msg
+
+    for name, entry in aoi.AoiModel.METHODS.items():
+        assert set(entry) == {"label_key", "type"}, name
+        assert msg(entry["label_key"]), name
+
+    for code, key in aoi.AoiModel.TYPE_LABEL_KEYS.items():
+        assert msg(key), code
+
+    # a type is a code, not a word: it must not move when the locale does
+    set_locale("fr")
+    try:
+        assert aoi.AoiModel.METHODS["ADMIN0"]["type"] == aoi.AoiModel.ADMIN
+        assert msg(aoi.AoiModel.METHODS["ADMIN0"]["label_key"]) == "Pays/Province"
+    finally:
+        set_locale("en")
+
+
+def test_solara_methods_match_the_model() -> None:
+    """The Solara copy is duplicated on purpose; it must not drift."""
+    from pysepal.solara.components.aoi import aoi_view
+
+    assert aoi_view.METHODS == aoi.AoiModel.METHODS
+    assert aoi_view.TYPE_LABEL_KEYS == aoi.AoiModel.TYPE_LABEL_KEYS
+    assert aoi_view.ADMIN == aoi.AoiModel.ADMIN
+    assert aoi_view.CUSTOM == aoi.AoiModel.CUSTOM

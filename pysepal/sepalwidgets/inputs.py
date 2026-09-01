@@ -31,7 +31,7 @@ from traitlets import link, observe
 from typing_extensions import Self
 
 from pysepal.frontend import styles as ss
-from pysepal.message import ms, msg
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
@@ -649,14 +649,14 @@ class LoadTableField(v.Col, SepalWidget):
 
 class AssetSelect(v.Combobox, SepalWidget):
     TYPES: dict = {
-        "IMAGE": ms.widgets.asset_select.types[0],
-        "TABLE": ms.widgets.asset_select.types[1],
-        "IMAGE_COLLECTION": ms.widgets.asset_select.types[2],
-        "ALGORITHM": ms.widgets.asset_select.types[3],
-        "FOLDER": ms.widgets.asset_select.types[4],
+        "IMAGE": "widgets.asset_select.types.0",
+        "TABLE": "widgets.asset_select.types.1",
+        "IMAGE_COLLECTION": "widgets.asset_select.types.2",
+        "ALGORITHM": "widgets.asset_select.types.3",
+        "FOLDER": "widgets.asset_select.types.4",
         # UNKNOWN type is ignored
     }
-    "Valid types of asset"
+    "Catalogue key of each valid asset type, keyed by the type code"
 
     folder: str = ""
     "the folder of the user assets, mainly for debug"
@@ -944,7 +944,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             if len(assets[k]):
                 items += [
                     {"divider": True},
-                    {"header": self.TYPES[k]},
+                    {"header": msg(self.TYPES[k])},
                     *assets[k],
                 ]
 
@@ -1085,11 +1085,13 @@ class VectorField(v.Col, SepalWidget):
     )
     "The json saved v_model shaped as {'pathname': xx, 'column': xx, 'value': xx}"
 
-    column_base_items: list = [
-        {"text": ms.widgets.vector.all, "value": "ALL"},
-        {"divider": True},
-    ]
-    "the column compulsory selector (ALL)"
+    @property
+    def column_base_items(self) -> list:
+        """The compulsory ALL entry heading the column selector.
+
+        A property, not a constant: the label follows the locale.
+        """
+        return [{"text": msg("widgets.vector.all"), "value": "ALL"}, {"divider": True}]
 
     feature_collection: Optional[ee.FeatureCollection] = None
     "ee.FeatureCollection: the selected featureCollection"

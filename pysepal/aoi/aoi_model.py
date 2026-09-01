@@ -16,7 +16,7 @@ from typing_extensions import Self
 
 from pysepal import color
 from pysepal.frontend import styles as ss
-from pysepal.message import ms, msg
+from pysepal.message import msg
 from pysepal.model import Model
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
@@ -40,22 +40,30 @@ class AoiModel(Model):
     # ###                             const methods                           ###
     # ###########################################################################
 
-    CUSTOM: str = ms.aoi_sel.custom
-    "The word displayed for custom method in the relevant lang"
+    CUSTOM: str = "custom"
+    "Identifier of the custom-geometry method group"
 
-    ADMIN: str = ms.aoi_sel.administrative
-    "The word displayed for admin method in the relevant lang"
+    ADMIN: str = "admin"
+    "Identifier of the administrative method group"
 
     METHODS: Dict[str, Dict[str, str]] = {
-        "ADMIN0": {"name": ms.aoi_sel.adm[0], "type": ADMIN},
-        "ADMIN1": {"name": ms.aoi_sel.adm[1], "type": ADMIN},
-        "ADMIN2": {"name": ms.aoi_sel.adm[2], "type": ADMIN},
-        "SHAPE": {"name": ms.aoi_sel.vector, "type": CUSTOM},
-        "DRAW": {"name": ms.aoi_sel.draw, "type": CUSTOM},
-        "POINTS": {"name": ms.aoi_sel.points, "type": CUSTOM},
-        "ASSET": {"name": ms.aoi_sel.asset, "type": CUSTOM},
+        "ADMIN0": {"label_key": "aoi_sel.adm.0", "type": ADMIN},
+        "ADMIN1": {"label_key": "aoi_sel.adm.1", "type": ADMIN},
+        "ADMIN2": {"label_key": "aoi_sel.adm.2", "type": ADMIN},
+        "SHAPE": {"label_key": "aoi_sel.vector", "type": CUSTOM},
+        "DRAW": {"label_key": "aoi_sel.draw", "type": CUSTOM},
+        "POINTS": {"label_key": "aoi_sel.points", "type": CUSTOM},
+        "ASSET": {"label_key": "aoi_sel.asset", "type": CUSTOM},
     }
-    "The word displayed for all selection methods in the relevant lang"
+    """Every selection method, as stable identifiers.
+
+    ``label_key`` is a catalogue key, not a label: the caller renders it with
+    ``msg()`` so the text follows the locale. ``type`` groups the methods and
+    is compared in code, which is why it is a code and not a translated word.
+    """
+
+    TYPE_LABEL_KEYS: Dict[str, str] = {ADMIN: "aoi_sel.administrative", CUSTOM: "aoi_sel.custom"}
+    "Catalogue key for each group heading"
 
     # ###########################################################################
     # ###                      widget related traitlets                       ###

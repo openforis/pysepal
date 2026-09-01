@@ -10,16 +10,17 @@ import ee
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal.message import ms, msg
+from pysepal.message import msg
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.utils import get_current_gee_interface
 
+# Catalogue key of each asset type, rendered with msg() where it is shown.
 ASSET_TYPES = {
-    "IMAGE": ms.widgets.asset_select.types[0],
-    "TABLE": ms.widgets.asset_select.types[1],
-    "IMAGE_COLLECTION": ms.widgets.asset_select.types[2],
-    "ALGORITHM": ms.widgets.asset_select.types[3],
-    "FOLDER": ms.widgets.asset_select.types[4],
+    "IMAGE": "widgets.asset_select.types.0",
+    "TABLE": "widgets.asset_select.types.1",
+    "IMAGE_COLLECTION": "widgets.asset_select.types.2",
+    "ALGORITHM": "widgets.asset_select.types.3",
+    "FOLDER": "widgets.asset_select.types.4",
 }
 
 COLUMN_ALL_ITEMS = [
@@ -94,7 +95,7 @@ def AssetSelectComponent(
                 if assets[k]:
                     items += [
                         {"divider": True},
-                        {"header": ASSET_TYPES.get(k, k)},
+                        {"header": msg(ASSET_TYPES[k]) if k in ASSET_TYPES else k},
                         *assets[k],
                     ]
 

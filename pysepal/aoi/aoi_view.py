@@ -83,10 +83,10 @@ class MethodSelect(sw.Select):
             current_type = m["type"]
 
             if prev_type != current_type:
-                items.append({"header": current_type})
+                items.append({"header": msg(AoiModel.TYPE_LABEL_KEYS[current_type])})
             prev_type = current_type
 
-            items.append({"text": m["name"], "value": k})
+            items.append({"text": msg(m["label_key"]), "value": k})
 
         # create the input
         super().__init__(label=msg("aoi_sel.method"), items=items, v_model="", dense=True)

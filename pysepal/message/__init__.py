@@ -1,14 +1,15 @@
 """pysepal's own message catalogue.
 
-Two accessors read the same JSON files during the migration:
-
 .. code-block::
 
-    from pysepal.message import ms    # legacy Translator, frozen at import
-    from pysepal.message import msg   # follows the connection's locale
+    from pysepal.message import msg
 
-``msg`` is the one to use. ``ms`` stays until every internal site has moved,
-because consumer modules and the remaining widgets still read it.
+    msg("aoi_sel.custom")
+
+``msg`` returns one message in the locale of the current runtime scope.
+
+``ms`` is the legacy ``Translator`` over the same files. pysepal itself no
+longer reads it; it stays because consumer modules still import it.
 """
 
 from pathlib import Path

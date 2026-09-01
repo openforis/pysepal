@@ -389,7 +389,7 @@ class Banner(v.Snackbar, SepalWidget):
         Args:
             nb_banner: the number of banners in the queue
         """
-        # do not wrap ms.widget.banner. If you do it won't be recognized by the key-checker of the Translator
+        # do not wrap this key: the Translator key-checker cannot see through a variable
         if nb_banner == 0:
             txt = msg("widgets.banner.close")
         else:
