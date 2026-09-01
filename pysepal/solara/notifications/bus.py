@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 import solara
 
-from pysepal.solara.scope_registry import ScopeRegistry
+from pysepal._scope_registry import ScopeRegistry
 
 from .state import Toast, ToastType, TrackedTask
 
@@ -129,7 +129,7 @@ def get_current_bus() -> Optional[NotificationBus]:
 
     No ``try``/``except`` on purpose. Every *runtime* shape this can meet --
     including a kernel with no usable connection file -- is absorbed by
-    :func:`~pysepal.solara.runtime_context.resolve_scope_id` and resolves to
+    :func:`~pysepal._runtime_context.resolve_scope_id` and resolves to
     the process scope, so anything still raising here is a genuine bug and
     must not be hidden behind a ``None`` return.
 

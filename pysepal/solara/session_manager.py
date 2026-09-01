@@ -19,6 +19,13 @@ from pysepal_api import SepalClient
 from pysepal_api.errors import PysepalError
 from solara.lab.utils.headers import headers
 
+from pysepal._runtime_context import (
+    PROCESS_SCOPE,
+    UnsupportedSolaraRuntimeError,
+    resolve_scope_id,
+)
+from pysepal._scope_registry import ScopeRegistry
+from pysepal._ui_state import clear_scoped_state
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara._topology import (
@@ -36,14 +43,7 @@ from pysepal.solara.errors import (
     SepalSessionError,
     SessionScopeClosedError,
 )
-from pysepal.solara.runtime_context import (
-    PROCESS_SCOPE,
-    UnsupportedSolaraRuntimeError,
-    resolve_scope_id,
-)
-from pysepal.solara.scope_registry import ScopeRegistry
 from pysepal.solara.session_info import SessionInfo, SessionsOverview
-from pysepal.solara.ui_state import clear_scoped_state
 
 logger = logging.getLogger("sepalui.session_manager")
 
