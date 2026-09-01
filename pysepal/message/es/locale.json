@@ -42,7 +42,7 @@
       "custom": "Personalizado",
       "no_access": "Parece que no tienes acceso al asset seleccionado o este no existe.",
       "wrong_type": "El tipo del asset seleccionado: ({asset_type}), no coincide con ninguno de los tipos permitidos por el widget: ({allowed}).",
-      "placeholder": "projects/{project}/assets/asset_name",
+      "placeholder": "projects/{{project}}/assets/asset_name",
       "no_assets": "No se encontraron assets en: '{folder}'"
     },
     "load_table": {

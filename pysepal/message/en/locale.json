@@ -42,7 +42,7 @@
       "custom": "Custom",
       "no_access": "It seems like you do not have access to the input asset or it does not exist.",
       "wrong_type": "The type of the selected asset ({asset_type}) does not match authorized asset type ({allowed}).",
-      "placeholder": "projects/{project}/assets/asset_name",
+      "placeholder": "projects/{{project}}/assets/asset_name",
       "no_assets": "No user assets found in: '{folder}'"
     },
     "load_table": {
