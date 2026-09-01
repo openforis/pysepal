@@ -7,34 +7,8 @@ from typing import Dict, Iterable, List, Optional
 import solara
 from traitlets import HasTraits, Unicode
 
+from pysepal._locale import match_offered_locale
 from pysepal._ui_state import get_scoped_state
-
-
-def match_offered_locale(candidate: str, offered: Iterable[str]) -> str:
-    """Return the code from ``offered`` that best matches ``candidate``.
-
-    Order: exact match, bare primary subtag if offered, then the first offered
-    variant sharing the primary subtag. ``navigator.language`` reports
-    ``es-CL`` where an app ships ``es``, and a catalog may ship ``pt-BR``
-    where the browser reports ``pt``; both must resolve rather than fall
-    through to English.
-
-    Args:
-        candidate: The code to match, in IETF BCP 47.
-        offered: The codes to match against, in preference order.
-
-    Returns:
-        The matching code, or ``""`` so callers can try their next source.
-    """
-    if not candidate:
-        return ""
-    offered = list(offered)
-    if candidate in offered:
-        return candidate
-    primary = candidate.split("-")[0]
-    if primary in offered:
-        return primary
-    return next((code for code in offered if code.split("-")[0] == primary), "")
 
 
 def describe_offered_locales(
