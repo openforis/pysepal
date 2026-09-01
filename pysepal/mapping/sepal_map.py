@@ -59,7 +59,7 @@ from pysepal.mapping.layer_state_control import LayerStateControl
 from pysepal.mapping.layers_control import LayersControl
 from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.zoom_control import ZoomControl
-from pysepal.message import ms, msg
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 
@@ -1057,7 +1057,7 @@ class SepalMap(ipl.Map):
 
     def add_legend(
         self,
-        title: str = ms.mapping.legend,
+        title: Optional[str] = None,
         legend_dict: dict = {},
         position: str = "bottomright",
         vertical: bool = True,
@@ -1070,6 +1070,8 @@ class SepalMap(ipl.Map):
             position: the position (corners) of the legend on the map
             vertical: vertical or horizoal position of the legend
         """
+        title = msg("mapping.legend") if title is None else title
+
         # Define as class member so it can be accessed from outside.
         self.legend = LegendControl(legend_dict, title=title, vertical=vertical, position=position)
 

@@ -7,7 +7,7 @@ import re
 import string
 import warnings
 from pathlib import Path
-from typing import Any, Sequence, Tuple, Union
+from typing import Any, Optional, Sequence, Tuple, Union
 from urllib.parse import urlparse
 
 import ee
@@ -18,7 +18,9 @@ from anyascii import anyascii
 from deprecated.sphinx import deprecated, versionadded
 
 import pysepal
-from pysepal.message import ms
+
+# check_input takes a `msg` parameter, which shadows the lookup.
+from pysepal.message import msg as _msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts.gee import init_ee  # noqa: F401 - backward compatibility
 from pysepal.scripts.warning import SepalWarning
@@ -276,7 +278,7 @@ def geojson_to_ee(
     return
 
 
-def check_input(input_: Any, msg: str = ms.utils.check_input.error) -> bool:
+def check_input(input_: Any, msg: Optional[str] = None) -> bool:
     r"""Check if the inpupt value is initialized.
 
     If not raise an error, else return True.
@@ -288,6 +290,8 @@ def check_input(input_: Any, msg: str = ms.utils.check_input.error) -> bool:
     Return:
         check if the value is initialized
     """
+    msg = _msg("utils.check_input.error") if msg is None else msg
+
     # by the default the variable is considered valid
     init = True
 

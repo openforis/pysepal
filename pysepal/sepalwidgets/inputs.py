@@ -225,7 +225,7 @@ class FileInput(v.Flex, SepalWidget):
         self,
         extensions: List[str] = [],
         folder: Union[str, Path] = Path.home(),
-        label: str = ms.widgets.fileinput.label,
+        label: Optional[str] = None,
         v_model: str = "",
         clearable: bool = False,
         root: Union[str, Path] = "",
@@ -243,6 +243,8 @@ class FileInput(v.Flex, SepalWidget):
             root: the root folder from which you cannot go higher in the tree.
             kwargs: any parameter from a v.Flex abject. If set, 'children' will be overwritten.
         """
+        label = msg("widgets.fileinput.label") if label is None else label
+
         self.extensions = extensions
         self.initial_folder = folder
         self.folder = Path(folder)
@@ -515,7 +517,7 @@ class LoadTableField(v.Col, SepalWidget):
     }
     "The default v_model structure {'pathname': xx, 'id_column': xx, 'lat_column': xx, 'lng_column': xx}"
 
-    def __init__(self, label: str = ms.widgets.table.label, **kwargs) -> None:
+    def __init__(self, label: Optional[str] = None, **kwargs) -> None:
         """A custom input widget to load points data.
 
         The user will provide a csv or txt file containing labeled dataset.
@@ -526,6 +528,7 @@ class LoadTableField(v.Col, SepalWidget):
             label: the label of the widget
             kwargs: any parameter from a v.Col. If set, 'children' and 'v_model' will be overwritten.
         """
+        label = msg("widgets.table.label") if label is None else label
         self.fileInput = FileInput([".csv", ".txt"], label=label)
 
         self.IdSelect = v.Select(
@@ -1093,7 +1096,7 @@ class VectorField(v.Col, SepalWidget):
 
     def __init__(
         self,
-        label: str = ms.widgets.vector.label,
+        label: Optional[str] = None,
         gee: bool = False,
         gee_session: Optional[EESession] = None,
         gee_interface: Optional[GEEInterface] = None,
@@ -1118,6 +1121,8 @@ class VectorField(v.Col, SepalWidget):
         .. versionadded:: 3.0.0
             Added gee_interface parameter for sharing GEEInterface instances across components.
         """
+        label = msg("widgets.vector.label") if label is None else label
+
         # Validate input parameters
         if gee_session and gee_interface:
             raise ValueError(
