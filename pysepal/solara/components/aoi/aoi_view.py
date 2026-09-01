@@ -26,7 +26,7 @@ from deprecated.sphinx import versionadded
 
 from pysepal import mapping as sm
 from pysepal.mapping import get_ipygeojson
-from pysepal.message import ms
+from pysepal.message import ms, msg
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.admin import (
     fetch_admin_bounds_async,
@@ -133,7 +133,7 @@ def MethodSelect(
         items.append({"text": m["name"], "value": k})
 
     with rv.Select(
-        label=ms.aoi_sel.method,
+        label=msg("aoi_sel.method"),
         items=items,
         v_model=reactive_value.value,
         dense=True,
@@ -404,7 +404,7 @@ def AoiView(
             reactive_value.set(result)
 
             tracker.complete()
-            return ms.aoi_sel.complete
+            return msg("aoi_sel.complete")
 
         except BaseException:
             tracker.__exit__(*__import__("sys").exc_info())

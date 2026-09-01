@@ -36,7 +36,7 @@ from traitlets import (
 )
 from typing_extensions import Self
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.model import Model
 from pysepal.scripts import utils as su
 from pysepal.sepalwidgets.alert import Banner
@@ -436,17 +436,17 @@ class NavDrawer(v.NavigationDrawer, SepalWidget):
         code_link = []
         if code:
             item_code = DrawerItem(
-                ms.widgets.navdrawer.code, icon="fa-regular fa-file-code", href=code
+                msg("widgets.navdrawer.code"), icon="fa-regular fa-file-code", href=code
             )
             code_link.append(item_code)
 
         if wiki:
             item_wiki = DrawerItem(
-                ms.widgets.navdrawer.wiki, icon="fa-solid fa-book-open", href=wiki
+                msg("widgets.navdrawer.wiki"), icon="fa-solid fa-book-open", href=wiki
             )
             code_link.append(item_wiki)
         if issue:
-            item_bug = DrawerItem(ms.widgets.navdrawer.bug, icon="fa-solid fa-bug", href=issue)
+            item_bug = DrawerItem(msg("widgets.navdrawer.bug"), icon="fa-solid fa-bug", href=issue)
             code_link.append(item_bug)
 
         version_card = VersionCard(repo_folder=repo_folder)
@@ -608,10 +608,10 @@ class App(v.App, SepalWidget):
         # display a warning if the set language cannot be reached
         if translator is not None:
             if translator._match is False:
-                msg = ms.locale.fallback.format(
-                    requested=translator._targeted, used=translator._target
+                text = msg(
+                    "locale.fallback", requested=translator._targeted, used=translator._target
                 )
-                self.add_banner(msg, type_="error")
+                self.add_banner(text, type_="error")
 
         # add js event
         self.appBar.locale.observe(self._locale_info, "value")
@@ -690,8 +690,8 @@ class App(v.App, SepalWidget):
     def _locale_info(self, change: dict) -> None:
         """Display information about the locale change."""
         if change["new"] != "":
-            msg = ms.locale.change.format(locale=change["new"])
-            self.add_banner(msg)
+            text = msg("locale.change", locale=change["new"])
+            self.add_banner(text)
 
         return
 
@@ -745,7 +745,7 @@ def VersionCard(repo_folder: str = Path.cwd()) -> Optional[v.Card]:
 
     btn_close = v.Btn(
         color="primary",
-        children=[ms.widgets.navdrawer.changelog.close_btn],
+        children=[msg("widgets.navdrawer.changelog.close_btn")],
         on_event=[
             (
                 "click",
@@ -762,7 +762,7 @@ def VersionCard(repo_folder: str = Path.cwd()) -> Optional[v.Card]:
                 children=[
                     v.CardTitle(
                         class_="headline",
-                        children=[ms.widgets.navdrawer.changelog.title],
+                        children=[msg("widgets.navdrawer.changelog.title")],
                     ),
                     v.CardText(children=content),
                     v.CardActions(children=[v.Spacer(), btn_close]),
@@ -779,7 +779,7 @@ def VersionCard(repo_folder: str = Path.cwd()) -> Optional[v.Card]:
         children=[
             v.CardText(
                 children=[
-                    ms.widgets.navdrawer.changelog.version.format(version=app_version),
+                    msg("widgets.navdrawer.changelog.version", version=app_version),
                     w_changelog,
                 ],
             ),

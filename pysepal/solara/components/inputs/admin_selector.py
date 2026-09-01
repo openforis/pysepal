@@ -6,7 +6,7 @@ import reacton.ipyvuetify as rv
 import solara
 from deprecated.sphinx import versionadded
 
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 @solara.component
@@ -133,7 +133,7 @@ def AdminLevelSelector(
 
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         with rv.Select(
-            label=ms.aoi_sel.adm[0],
+            label=msg("aoi_sel.adm.0"),
             items=items_0.value,
             v_model=level_0.value,
             clearable=True,
@@ -145,7 +145,7 @@ def AdminLevelSelector(
 
         if target_level >= 1:
             with rv.Select(
-                label=ms.aoi_sel.adm[1],
+                label=msg("aoi_sel.adm.1"),
                 items=items_1.value,
                 v_model=level_1.value,
                 clearable=True,
@@ -158,7 +158,7 @@ def AdminLevelSelector(
 
         if target_level >= 2:
             with rv.Select(
-                label=ms.aoi_sel.adm[2],
+                label=msg("aoi_sel.adm.2"),
                 items=items_2.value,
                 v_model=level_2.value,
                 clearable=True,

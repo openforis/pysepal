@@ -10,7 +10,7 @@ import ee
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal.message import ms
+from pysepal.message import ms, msg
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.utils import get_current_gee_interface
 
@@ -102,8 +102,8 @@ def AssetSelectComponent(
                 asset_items.set(
                     [
                         {
-                            "text": ms.widgets.asset_select.no_assets.format(
-                                folder=folder_path or "root"
+                            "text": msg(
+                                "widgets.asset_select.no_assets", folder=folder_path or "root"
                             ),
                             "disabled": True,
                         }
@@ -144,8 +144,10 @@ def AssetSelectComponent(
 
             if asset_info["type"] not in types:
                 validation_msg.set(
-                    ms.widgets.asset_select.wrong_type.format(
-                        asset_type=asset_info["type"], allowed=",".join(types)
+                    msg(
+                        "widgets.asset_select.wrong_type",
+                        asset_type=asset_info["type"],
+                        allowed=",".join(types),
                     )
                 )
                 reactive_value.set(None)
@@ -172,7 +174,7 @@ def AssetSelectComponent(
             validation_msg.set(str(e))
             reactive_value.set(None)
         except Exception:
-            notifications.error(ms.widgets.asset_select.no_access)
+            notifications.error(msg("widgets.asset_select.no_access"))
             reactive_value.set(None)
         finally:
             loading_columns.set(False)
@@ -236,14 +238,14 @@ def AssetSelectComponent(
 
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         with rv.Combobox(
-            label=ms.widgets.asset_select.label,
+            label=msg("widgets.asset_select.label"),
             items=asset_items.value,
             v_model=asset_id.value,
             on_v_model=asset_id.set,
             clearable=True,
             dense=True,
             loading=loading_assets.value or loading_columns.value,
-            placeholder=ms.widgets.asset_select.placeholder,
+            placeholder=msg("widgets.asset_select.placeholder"),
             prepend_icon="mdi-sync",
             error=bool(validation_msg.value),
             error_messages=validation_msg.value or None,

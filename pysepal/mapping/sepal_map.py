@@ -59,7 +59,7 @@ from pysepal.mapping.layer_state_control import LayerStateControl
 from pysepal.mapping.layers_control import LayersControl
 from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.zoom_control import ZoomControl
-from pysepal.message import ms
+from pysepal.message import ms, msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 
@@ -517,7 +517,7 @@ class SepalMap(ipl.Map):
         image = Path(image)
 
         if not image.is_file():
-            raise Exception(ms.mapping.no_image)
+            raise Exception(msg("mapping.no_image"))
 
         source = image
         if class_colors and _needs_dense_codes(class_colors):

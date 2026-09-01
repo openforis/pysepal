@@ -31,7 +31,7 @@ from traitlets import link, observe
 from typing_extensions import Self
 
 from pysepal.frontend import styles as ss
-from pysepal.message import ms
+from pysepal.message import ms, msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
@@ -251,7 +251,7 @@ class FileInput(v.Flex, SepalWidget):
 
         self.selected_file = v.TextField(
             readonly=True,
-            label=ms.widgets.fileinput.placeholder,
+            label=msg("widgets.fileinput.placeholder"),
             class_="ml-5 mt-5",
             v_model="",
         )
@@ -531,19 +531,19 @@ class LoadTableField(v.Col, SepalWidget):
         self.IdSelect = v.Select(
             _metadata={"name": "id_column"},
             items=[],
-            label=ms.widgets.table.column.id,
+            label=msg("widgets.table.column.id"),
             v_model=None,
         )
         self.LngSelect = v.Select(
             _metadata={"name": "lng_column"},
             items=[],
-            label=ms.widgets.table.column.lng,
+            label=msg("widgets.table.column.lng"),
             v_model=None,
         )
         self.LatSelect = v.Select(
             _metadata={"name": "lat_column"},
             items=[],
-            label=ms.widgets.table.column.lat,
+            label=msg("widgets.table.column.lat"),
             v_model=None,
         )
 
@@ -594,7 +594,7 @@ class LoadTableField(v.Col, SepalWidget):
 
         if len(df.columns) < 3:
             self._set_v_model("pathname", None)
-            self.fileInput.selected_file.error_messages = ms.widgets.load_table.too_small
+            self.fileInput.selected_file.error_messages = msg("widgets.load_table.too_small")
             return self
 
         # set the items
@@ -740,8 +740,8 @@ class AssetSelect(v.Combobox, SepalWidget):
         kwargs.setdefault("dense", True)
         kwargs.setdefault("prepend_icon", "mdi-sync")
         kwargs.setdefault("class_", "my-5")
-        kwargs.setdefault("placeholder", ms.widgets.asset_select.placeholder)
-        kwargs.setdefault("label", ms.widgets.asset_select.label)
+        kwargs.setdefault("placeholder", msg("widgets.asset_select.placeholder"))
+        kwargs.setdefault("label", msg("widgets.asset_select.label"))
 
         # create the widget
         super().__init__(**kwargs)
@@ -816,7 +816,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             self.v_model = None
             self.items = [
                 {
-                    "text": ms.widgets.asset_select.no_assets.format(folder=self.folder),
+                    "text": msg("widgets.asset_select.no_assets", folder=self.folder),
                     "disabled": True,
                 }
             ]
@@ -854,12 +854,14 @@ class AssetSelect(v.Combobox, SepalWidget):
 
             # Check that the asset has the correct type
             if self.asset_info["type"] not in self.types:
-                self.error_messages = ms.widgets.asset_select.wrong_type.format(
-                    asset_type=self.asset_info["type"], allowed=",".join(self.types)
+                self.error_messages = msg(
+                    "widgets.asset_select.wrong_type",
+                    asset_type=self.asset_info["type"],
+                    allowed=",".join(self.types),
                 )
 
         except Exception:
-            self.error_messages = ms.widgets.asset_select.no_access
+            self.error_messages = msg("widgets.asset_select.no_access")
             self.asset_info = {}
 
         # Update validation state
@@ -870,7 +872,7 @@ class AssetSelect(v.Combobox, SepalWidget):
 
     def _on_validation_error(self, error: Exception) -> None:
         """Handle validation errors."""
-        self.error_messages = ms.widgets.asset_select.no_access
+        self.error_messages = msg("widgets.asset_select.no_access")
         self.valid = False
         self.error = True
         self.asset_info = {}
@@ -917,7 +919,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             if filtered_defaults:
                 self.v_model = filtered_defaults[0]
 
-                header = ms.widgets.asset_select.custom
+                header = msg("widgets.asset_select.custom")
                 items += [{"divider": True}, {"header": header}]
                 items += filtered_defaults
         log.debug(
@@ -978,7 +980,7 @@ class PasswordField(v.TextField, SepalWidget):
             kwargs: any parameter from a v.TextField. If set, 'type' will be overwritten.
         """
         # default behavior
-        kwargs.setdefault("label", ms.password_field.label)
+        kwargs.setdefault("label", msg("password_field.label"))
         kwargs.setdefault("class_", "mr-2")
         kwargs.setdefault("v_model", "")
         kwargs["type"] = "password"
@@ -1147,13 +1149,13 @@ class VectorField(v.Col, SepalWidget):
         self.w_column = v.Select(
             _metadata={"name": "column"},
             items=self.column_base_items,
-            label=ms.widgets.vector.column,
+            label=msg("widgets.vector.column"),
             v_model="ALL",
         )
         self.w_value = v.Select(
             _metadata={"name": "value"},
             items=[],
-            label=ms.widgets.vector.value,
+            label=msg("widgets.vector.value"),
             v_model=None,
         )
         su.hide_component(self.w_value)

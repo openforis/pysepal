@@ -24,7 +24,10 @@ from typing_extensions import Self
 
 from pysepal import color
 from pysepal.frontend.styles import TYPES
-from pysepal.message import ms
+from pysepal.message import msg
+
+# Two methods below take a `msg` parameter, which shadows the lookup.
+from pysepal.message import msg as _msg
 from pysepal.scripts import utils as su
 from pysepal.scripts.utils import set_type
 from pysepal.sepalwidgets.sepalwidget import SepalWidget
@@ -244,7 +247,7 @@ class Alert(v.Alert, SepalWidget):
         Returns:
             check if the value is initialized
         """
-        msg = msg or ms.utils.check_input.error
+        msg = msg or _msg("utils.check_input.error")
 
         return su.check_input(input_, msg)
 
@@ -336,7 +339,7 @@ class Banner(v.Snackbar, SepalWidget):
         type_ = set_type(type_)
 
         # create the closing btn
-        self.btn_close = v.Btn(small=True, text=True, children=[ms.widgets.banner.close])
+        self.btn_close = v.Btn(small=True, text=True, children=[_msg("widgets.banner.close")])
 
         # compute timeout based on the persistent and timeout parameter
         computed_timeout = 0 if persistent is True else self.get_timeout(msg)
@@ -388,9 +391,9 @@ class Banner(v.Snackbar, SepalWidget):
         """
         # do not wrap ms.widget.banner. If you do it won't be recognized by the key-checker of the Translator
         if nb_banner == 0:
-            txt = ms.widgets.banner.close
+            txt = msg("widgets.banner.close")
         else:
-            txt = ms.widgets.banner.next.format(count=nb_banner)
+            txt = msg("widgets.banner.next", count=nb_banner)
         self.btn_close.children = [txt]
 
         return

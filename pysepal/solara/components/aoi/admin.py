@@ -13,7 +13,7 @@ import httpx
 import pandas as pd
 import pygaul
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.components.aoi.aoi_result import AoiResult
@@ -226,7 +226,7 @@ async def process_admin(
         ```
     """
     if not admin_code:
-        raise ValueError(ms.aoi_sel.exception.no_admlyr)
+        raise ValueError(msg("aoi_sel.exception.no_admlyr"))
 
     if method not in ["ADMIN0", "ADMIN1", "ADMIN2"]:
         raise ValueError(f"Invalid admin method: {method}")
