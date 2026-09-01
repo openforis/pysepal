@@ -8,7 +8,7 @@
   },
   "section": {
     "title": "Rasters locaux",
-    "description": "Affichage de {}. Une rampe continue étirée sur des codes de classe épars les rend presque noirs ; class_colors dessine chacun avec sa couleur exacte. Définissez {} pour utiliser de vrais produits."
+    "description": "Affichage de {source}. Une rampe continue étirée sur des codes de classe épars les rend presque noirs ; class_colors dessine chacun avec sa couleur exacte. Définissez {env_var} pour utiliser de vrais produits."
   },
   "source": {
     "synthetic": "substituts générés",
@@ -34,7 +34,7 @@
   },
   "toasts": {
     "continuous": "Rampe continue ajoutée",
-    "classes": "{} classes ajoutées",
+    "classes": "{count} classes ajoutées",
     "large": "Raster volumineux ajouté"
   }
 }

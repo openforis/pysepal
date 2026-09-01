@@ -25,6 +25,7 @@ from pysepal.i18n.loading import (
     load_locale,
     overlay,
 )
+from pysepal.i18n.locale_store import current_locale
 from pysepal.i18n.problems import CatalogProblem, compare_locale
 
 logger = logging.getLogger("sepalui.i18n")
@@ -97,6 +98,34 @@ class BoundCatalog:
         self._english = _parsed(folder, ENGLISH)
         self._warned: Set[Tuple[str, str]] = set()
         self._unreadable: Set[str] = set()
+
+    def msg(self, key: str, /, **values: Any) -> str:
+        """Return one message, rendered in this runtime scope's locale.
+
+        This is the only lookup. Reading the locale subscribes when a render is
+        in progress, so a component that calls this -- directly, or through an
+        ordinary helper on the same call stack -- re-renders when the language
+        changes. Outside a render it is a plain read, which is what lets an
+        event handler or a worker thread call it too.
+
+        ``key`` is positional-only, so a message may carry a ``{key}``
+        placeholder passed as ``key=...``.
+
+        Args:
+            key: The dotted message key. May be computed, e.g. from a registry
+                table that holds keys as data.
+            **values: Placeholder values. ``count`` also selects a plural form
+                when ``key`` names a plural node in English.
+
+        Returns:
+            The formatted message.
+
+        Raises:
+            MissingMessageError: A strict catalogue does not define ``key``.
+            MessageFormatError: A placeholder value was not supplied, ``count``
+                was omitted for a plural key, or the template cannot render.
+        """
+        return self._resolve(current_locale(), key, **values)
 
     def available_locales(self) -> Tuple[str, ...]:
         """Return the codes this directory ships, English first.

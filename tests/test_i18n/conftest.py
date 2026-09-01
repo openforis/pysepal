@@ -34,3 +34,20 @@ def _clear_catalog_caches():
     yield
     for cache in (binding._PARSED, binding._COMPOSITE, binding._FACADES):
         cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_locale():
+    """Clear every scope, not just the one the test happens to be in.
+
+    ``set_locale("en")`` is not enough: a test that monkeypatches
+    ``current_scope_id`` leaves that named scope holding its locale, and
+    monkeypatch tears down before this fixture's teardown runs, so by then the
+    scope is unreachable. ``tests/test_solara/conftest.py`` clears the registry
+    for the same reason.
+    """
+    from pysepal._ui_state import _registry
+
+    _registry.clear()
+    yield
+    _registry.clear()

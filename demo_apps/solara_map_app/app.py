@@ -9,7 +9,7 @@ This module is only the shell: it opens the session, holds the reactives the
 sections share and lays them out. The pieces live under ``component/``:
 
 - ``component/parameter`` -- layer ids, vis params, class breaks, sample paths
-- ``component/message`` -- the locale-following translator
+- ``component/message`` -- the message catalogue, read through ``msg``
 - ``component/model`` -- the app model and the dataclasses carried in reactives
 - ``component/scripts`` -- Earth Engine work, legend numbers, export sources (no UI)
 - ``component/tile`` -- the right-panel sections
@@ -27,7 +27,7 @@ pysepal$ ./run_solara.sh demo_apps/solara_map_app/app.py --port 8901
 """
 
 import solara
-from component.message import use_translator
+from component.message import messages, msg
 from component.parameter import DUMMY_DATA_DIR
 from component.tile import ExportPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
@@ -63,10 +63,6 @@ def MapAppDemo():
     drive_interface = get_current_drive_interface()
     theme_state = get_current_theme_state()
 
-    # Rebuilt whenever the app-bar picker resolves a new locale, so a language
-    # change re-renders in place -- no page reload, and no ~/.sepal-ui-config.
-    cm = use_translator()
-
     # State shared between the sections; each section owns whatever is private to it.
     aoi_data = solara.use_reactive(None)
     aoi_loading = solara.use_reactive(False)
@@ -87,20 +83,20 @@ def MapAppDemo():
     )
 
     right_panel_config = {
-        "title": cm.panel.title,
+        "title": msg("panel.title"),
         "icon": "mdi-map-marker-check",
         "width": 400,
-        "description": cm.panel.description,
+        "description": msg("panel.description"),
     }
 
     right_panel_content = [
         {
-            "title": cm.section.aoi.title,
+            "title": msg("section.aoi.title"),
             "icon": "mdi-map-marker-check",
             "content": [aoi_view],
         },
         {
-            "title": cm.section.process.title,
+            "title": msg("section.process.title"),
             "icon": "mdi-cog-outline",
             "content": [
                 ProcessPanel(
@@ -111,17 +107,17 @@ def MapAppDemo():
                     gee_interface=gee_interface,
                 )
             ],
-            "description": cm.section.process.description,
+            "description": msg("section.process.description"),
         },
         {
-            "title": cm.section.layers.title,
+            "title": msg("section.layers.title"),
             "icon": "mdi-layers",
             "content": layer_tools,
-            "description": cm.section.layers.description,
+            "description": msg("section.layers.description"),
             "divider": True,
         },
         {
-            "title": cm.section.export.title,
+            "title": msg("section.export.title"),
             "icon": "mdi-export-variant",
             "content": [
                 ExportPanel(
@@ -131,7 +127,7 @@ def MapAppDemo():
                     drive_interface=drive_interface,
                 )
             ],
-            "description": cm.section.export.description,
+            "description": msg("section.export.description"),
         },
     ]
 
@@ -141,7 +137,7 @@ def MapAppDemo():
     MapLegend(layer_legends)
 
     MapApp.element(
-        app_title=cm.app.title,
+        app_title=msg("app.title"),
         app_icon="mdi-earth",
         main_map=[sepal_map],
         steps_data=[],
@@ -149,9 +145,9 @@ def MapAppDemo():
         right_panel_content=right_panel_content,
         right_panel_open=True,
         theme_state=theme_state,
-        # The picker offers these catalogs and writes the pick to the
-        # connection's LocaleState -- the same one use_translator reads.
-        locales=cm.available_locales(),
+        # The picker offers these catalogs and writes the pick to the scope's
+        # locale, which msg reads.
+        locales=messages.available_locales(),
         dialog_width=750,
     )
 
