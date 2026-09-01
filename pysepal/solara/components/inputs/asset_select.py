@@ -102,7 +102,9 @@ def AssetSelectComponent(
                 asset_items.set(
                     [
                         {
-                            "text": ms.widgets.asset_select.no_assets.format(folder_path or "root"),
+                            "text": ms.widgets.asset_select.no_assets.format(
+                                folder=folder_path or "root"
+                            ),
                             "disabled": True,
                         }
                     ]
@@ -142,7 +144,9 @@ def AssetSelectComponent(
 
             if asset_info["type"] not in types:
                 validation_msg.set(
-                    ms.widgets.asset_select.wrong_type.format(asset_info["type"], ",".join(types))
+                    ms.widgets.asset_select.wrong_type.format(
+                        asset_type=asset_info["type"], allowed=",".join(types)
+                    )
                 )
                 reactive_value.set(None)
                 return

@@ -6,8 +6,8 @@
       "header": "info",
       "text": "les données ne peuvent pas encore être lue"
     },
-    "band": "bande {}",
-    "coords": "Coordonnées (lng, lat) à {} m/px",
+    "band": "bande {index}",
+    "coords": "Coordonnées (lng, lat) à {scale} m/px",
     "layers": "Couches"
   }
 }

@@ -36,7 +36,7 @@ class LayerStateControl(WidgetControl):
         self.m = m
 
         # create a statebar
-        msg = ms.layer_state.complete.format(self.nb_layer)
+        msg = ms.layer_state.complete.format(count=self.nb_layer)
         self.w_state = sw.StateBar(loading=False, msg=msg)
 
         # overwrite the widget set in the kwargs (if any)
@@ -92,9 +92,9 @@ class LayerStateControl(WidgetControl):
 
         # update the message
         if self.loading is True:
-            msg = ms.layer_state.loading.format(self.nb_loading_layer, self.nb_layer)
+            msg = ms.layer_state.loading.format(loading=self.nb_loading_layer, total=self.nb_layer)
         else:
-            msg = ms.layer_state.complete.format(self.nb_layer)
+            msg = ms.layer_state.complete.format(count=self.nb_layer)
 
         self.w_state.msg = msg
 

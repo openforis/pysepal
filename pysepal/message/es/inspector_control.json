@@ -6,8 +6,8 @@
       "header": "info",
       "text": "este metodo de lectura de datos aun no esta disponible"
     },
-    "band": "banda {}",
-    "coords": "Coordenadas (lon, lat) a {} m/px",
+    "band": "banda {index}",
+    "coords": "Coordenadas (lon, lat) a {scale} m/px",
     "layers": "Capas"
   }
 }

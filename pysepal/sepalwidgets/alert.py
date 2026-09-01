@@ -390,7 +390,7 @@ class Banner(v.Snackbar, SepalWidget):
         if nb_banner == 0:
             txt = ms.widgets.banner.close
         else:
-            txt = ms.widgets.banner.next.format(nb_banner)
+            txt = ms.widgets.banner.next.format(count=nb_banner)
         self.btn_close.children = [txt]
 
         return

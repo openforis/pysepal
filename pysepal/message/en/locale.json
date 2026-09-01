@@ -1,6 +1,6 @@
 {
   "test_key": "Test key",
-  "status": "Status: {}",
+  "status": "Status: {status}",
   "widgets": {
     "fileinput": {
       "label": "search file",
@@ -25,7 +25,7 @@
       "wiki": "Wiki",
       "bug": "Bug report",
       "changelog": {
-        "version": "Version: {}",
+        "version": "Version: {version}",
         "title": "Changelog",
         "close_btn": "Close"
       }
@@ -41,16 +41,16 @@
       "label": "Select an asset",
       "custom": "Custom",
       "no_access": "It seems like you do not have access to the input asset or it does not exist.",
-      "wrong_type": "The type of the selected asset ({}) does not match authorized asset type ({}).",
+      "wrong_type": "The type of the selected asset ({asset_type}) does not match authorized asset type ({allowed}).",
       "placeholder": "projects/{project}/assets/asset_name",
-      "no_assets": "No user assets found in: '{}'"
+      "no_assets": "No user assets found in: '{folder}'"
     },
     "load_table": {
       "too_small": "The provided file have less than 3 columns. Please provide a complete point file with at least ID, lattitude and longitude columns."
     },
     "banner": {
       "close": "close",
-      "next": "next ({} more)"
+      "next": "next ({count} more)"
     }
   },
   "aoi_sel": {
@@ -167,7 +167,7 @@
           }
         },
         "title": "save classifcation table",
-        "info": "The table will be stored in {}"
+        "info": "The table will be stored in {folder}"
       }
     },
     "rec": {
@@ -195,12 +195,12 @@
       "btn": "Reclassify",
       "export": {
         "0": {
-          "0": "The Vector has been created and added to your SEPAL Folder: {}",
-          "1": "The Image has been created and added to your SEPAL folder: {}"
+          "0": "The Vector has been created and added to your SEPAL Folder: {path}",
+          "1": "The Image has been created and added to your SEPAL folder: {path}"
         },
         "1": {
-          "0": "The FeatureCollection has been exported to GEE as {}. Use the code editor interface to follow the exportation process",
-          "1": "The Image has been exported to GEE as {}. Use the code editor interface to follow the exportation process"
+          "0": "The FeatureCollection has been exported to GEE as {asset}. Use the code editor interface to follow the exportation process",
+          "1": "The Image has been exported to GEE as {asset}. Use the code editor interface to follow the exportation process"
         }
       }
     },
@@ -209,11 +209,11 @@
     }
   },
   "locale": {
-    "change": "The locale \"{0}\" will now be used as default language in SEPAL apps. Please restart the current application to take this change into account. Note that if \"{0}\" is not avalaible in another application, SEPAL will fallback to the closest possible language",
-    "fallback": "The \"{0}\" locale is not available for this application. We will be using \"{1}\" instead. Please report to the maintainer if you want to add \"{0}\" to the suported languages."
+    "change": "The locale \"{locale}\" will now be used as default language in SEPAL apps. Please restart the current application to take this change into account. Note that if \"{locale}\" is not avalaible in another application, SEPAL will fallback to the closest possible language",
+    "fallback": "The \"{requested}\" locale is not available for this application. We will be using \"{used}\" instead. Please report to the maintainer if you want to add \"{requested}\" to the suported languages."
   },
   "theme": {
-    "change": "The theme \"{0}\" will be used as default theme in SEPAL apps. Please restart the current application to take this change into account."
+    "change": "The theme \"{theme}\" will be used as default theme in SEPAL apps. Please restart the current application to take this change into account."
   },
   "disclaimer": {
     "p": {

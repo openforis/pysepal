@@ -1,6 +1,6 @@
 {
   "test_key": "clave de prueba",
-  "status": "Estado: {}",
+  "status": "Estado: {status}",
   "widgets": {
     "fileinput": {
       "label": "buscar archivos",
@@ -25,7 +25,7 @@
       "wiki": "Wiki",
       "bug": "Reportar error",
       "changelog": {
-        "version": "Versión: {}",
+        "version": "Versión: {version}",
         "title": "Registro de cambios",
         "close_btn": "Cerrar"
       }
@@ -41,16 +41,16 @@
       "label": "Selecciona un Asset",
       "custom": "Personalizado",
       "no_access": "Parece que no tienes acceso al asset seleccionado o este no existe.",
-      "wrong_type": "El tipo del asset seleccionado: ({}), no coincide con ninguno de los tipos permitidos por el widget: ({}).",
+      "wrong_type": "El tipo del asset seleccionado: ({asset_type}), no coincide con ninguno de los tipos permitidos por el widget: ({allowed}).",
       "placeholder": "projects/{project}/assets/asset_name",
-      "no_assets": "No se encontraron assets en: '{}'"
+      "no_assets": "No se encontraron assets en: '{folder}'"
     },
     "load_table": {
       "too_small": "El archivo ingresado contiene menos de 3 columnas. Por favor, selecciona un archivo de puntos completo con al menos las columnas de ID, latitud y longitud."
     },
     "banner": {
       "close": "cerrar",
-      "next": "siguiente ({} más)"
+      "next": "siguiente ({count} más)"
     }
   },
   "aoi_sel": {
@@ -167,7 +167,7 @@
           }
         },
         "title": "guardar tabla de clasificación",
-        "info": "La tabla se almacenará en {}"
+        "info": "La tabla se almacenará en {folder}"
       }
     },
     "rec": {
@@ -195,12 +195,12 @@
       "btn": "Reclasificar",
       "export": {
         "0": {
-          "0": "El vector ha sido creado y añadido a tu cuenta de SEPAL: {}",
-          "1": "La imagen ha sido creada y añadida a tu cuenta de SEPAL: {}"
+          "0": "El vector ha sido creado y añadido a tu cuenta de SEPAL: {path}",
+          "1": "La imagen ha sido creada y añadida a tu cuenta de SEPAL: {path}"
         },
         "1": {
-          "0": "El FeatureCollection ha sido exportado a GEE como {}. Utiliza la interfaz del editor de código para seguir el proceso de exportación.",
-          "1": "La imagen ha sido exportada a GEE como {}. Utiliza la interfaz del editor de código para seguir el proceso de exportación."
+          "0": "El FeatureCollection ha sido exportado a GEE como {asset}. Utiliza la interfaz del editor de código para seguir el proceso de exportación.",
+          "1": "La imagen ha sido exportada a GEE como {asset}. Utiliza la interfaz del editor de código para seguir el proceso de exportación."
         }
       }
     },
@@ -209,11 +209,11 @@
     }
   },
   "locale": {
-    "change": "La configuración regional \"{0}\" será usada como idioma predeterminado en las aplicaciones de SEPAL. Por favor, reinicia la aplicación actual para aplicar los cambios. Ten en cuenta que si \"{0}\" no está disponible en otra aplicación, SEPAL usará el idioma más cercano posible.",
-    "fallback": "La configuración regional \"{0}\" no está disponible para esta aplicación. En su lugar usaremos \"{1}\". Por favor, informa al mantenedor de la aplicación si deseas añadir \"{0}\" a los idiomas soportados."
+    "change": "La configuración regional \"{locale}\" será usada como idioma predeterminado en las aplicaciones de SEPAL. Por favor, reinicia la aplicación actual para aplicar los cambios. Ten en cuenta que si \"{locale}\" no está disponible en otra aplicación, SEPAL usará el idioma más cercano posible.",
+    "fallback": "La configuración regional \"{requested}\" no está disponible para esta aplicación. En su lugar usaremos \"{used}\". Por favor, informa al mantenedor de la aplicación si deseas añadir \"{requested}\" a los idiomas soportados."
   },
   "theme": {
-    "change": "El tema \"{0}\" se utilizará como tema predeterminado en las aplicaciones SEPAL. Por favor, reinicia la aplicación actual para aplicar los cambios."
+    "change": "El tema \"{theme}\" se utilizará como tema predeterminado en las aplicaciones SEPAL. Por favor, reinicia la aplicación actual para aplicar los cambios."
   },
   "disclaimer": {
     "p": {

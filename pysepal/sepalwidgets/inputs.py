@@ -816,7 +816,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             self.v_model = None
             self.items = [
                 {
-                    "text": ms.widgets.asset_select.no_assets.format(self.folder),
+                    "text": ms.widgets.asset_select.no_assets.format(folder=self.folder),
                     "disabled": True,
                 }
             ]
@@ -855,7 +855,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             # Check that the asset has the correct type
             if self.asset_info["type"] not in self.types:
                 self.error_messages = ms.widgets.asset_select.wrong_type.format(
-                    self.asset_info["type"], ",".join(self.types)
+                    asset_type=self.asset_info["type"], allowed=",".join(self.types)
                 )
 
         except Exception:

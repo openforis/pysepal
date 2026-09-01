@@ -608,7 +608,9 @@ class App(v.App, SepalWidget):
         # display a warning if the set language cannot be reached
         if translator is not None:
             if translator._match is False:
-                msg = ms.locale.fallback.format(translator._targeted, translator._target)
+                msg = ms.locale.fallback.format(
+                    requested=translator._targeted, used=translator._target
+                )
                 self.add_banner(msg, type_="error")
 
         # add js event
@@ -688,7 +690,7 @@ class App(v.App, SepalWidget):
     def _locale_info(self, change: dict) -> None:
         """Display information about the locale change."""
         if change["new"] != "":
-            msg = ms.locale.change.format(change["new"])
+            msg = ms.locale.change.format(locale=change["new"])
             self.add_banner(msg)
 
         return
@@ -777,7 +779,7 @@ def VersionCard(repo_folder: str = Path.cwd()) -> Optional[v.Card]:
         children=[
             v.CardText(
                 children=[
-                    ms.widgets.navdrawer.changelog.version.format(app_version),
+                    ms.widgets.navdrawer.changelog.version.format(version=app_version),
                     w_changelog,
                 ],
             ),

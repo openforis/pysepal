@@ -118,7 +118,7 @@ class InspectorControl(MenuControl):
         lng, lat = coords = [c for c in reversed(kwargs.get("coordinates"))]
 
         # write the coordinates and the scale
-        txt = ms.inspector_control.coords.format(round(self.m.get_scale()))
+        txt = ms.inspector_control.coords.format(scale=round(self.m.get_scale()))
         children.append(sw.Html(tag="h4", children=[txt]))
         children.append(sw.Html(tag="p", children=[f"[{lng:.3f}, {lat:.3f}]"]))
 
@@ -276,12 +276,14 @@ class InspectorControl(MenuControl):
             window = rio.windows.from_bounds(*bounds, transform=da.rio.transform())
             da_filtered = da.rio.isel_window(window)
             means = da_filtered.mean(axis=(1, 2)).to_numpy()
-            pixel_values = {ms.inspector_control.band.format(i + 1): v for i, v in enumerate(means)}
+            pixel_values = {
+                ms.inspector_control.band.format(index=i + 1): v for i, v in enumerate(means)
+            }
 
         # if the point is out of the image display None
         else:
             pixel_values = {
-                ms.inspector_control.band.format(i + 1): None for i in range(da.rio.count)
+                ms.inspector_control.band.format(index=i + 1): None for i in range(da.rio.count)
             }
 
         return pixel_values
