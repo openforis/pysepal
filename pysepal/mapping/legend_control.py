@@ -8,7 +8,7 @@ from ipywidgets import HTML
 from traitlets import observe
 
 import pysepal.sepalwidgets as sw
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import utils as su
 
 
@@ -32,7 +32,7 @@ class LegendControl(WidgetControl):
     def __init__(
         self,
         legend_dict: dict = {},
-        title: str = ms.mapping.legend,
+        title: Optional[str] = None,
         vertical: bool = True,
         **kwargs,
     ) -> None:
@@ -47,6 +47,8 @@ class LegendControl(WidgetControl):
             title: title of the legend, if not set a default value in the current language will be used
             vertical: the orientation of the legend. default to True
         """
+        title = msg("mapping.legend") if title is None else title
+
         # init traits
         self.title = title
         self.legend_dict = legend_dict

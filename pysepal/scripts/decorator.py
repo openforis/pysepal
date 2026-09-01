@@ -17,7 +17,7 @@ from warnings import warn
 import ipyvuetify as v
 from deprecated.sphinx import versionadded
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts.gee import init_ee, need_ee  # noqa: F401 - backward compatibility
 from pysepal.scripts.warning import SepalWarning
 
@@ -43,7 +43,7 @@ def catch_errors(alert: Optional[v.Alert] = None, debug: Optional[bool] = None) 
         def wrapper_alert_error(self, *args, **kwargs):
             # Change name of variable to assign it again in this scope
             # check if alert exist in the parent object if alert is not set manually
-            assert hasattr(self, "alert") or alert, ms.decorator.no_alert
+            assert hasattr(self, "alert") or alert, msg("decorator.no_alert")
             alert_ = self.alert if not alert else alert
             alert_.reset()
 
@@ -113,8 +113,8 @@ def loading_button(
             # set btn and alert
             # Change name of variable to assign it again in this scope
             # check if they exist in the parent object if alert is not set manually
-            assert hasattr(self, "alert") or alert, ms.decorator.no_alert
-            assert hasattr(self, "btn") or button, ms.decorator.no_button
+            assert hasattr(self, "alert") or alert, msg("decorator.no_alert")
+            assert hasattr(self, "btn") or button, msg("decorator.no_button")
             button_ = self.btn if not button else button
             alert_ = self.alert if not alert else alert
 

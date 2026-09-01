@@ -14,7 +14,7 @@ from traitlets import Bool
 from pysepal import sepalwidgets as sw
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.menu_control import MenuControl
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts.gee_interface import GEEInterface
 
@@ -62,8 +62,8 @@ class InspectorControl(MenuControl):
         )
 
         # set up the content
-        title = sw.CardTitle(children=[ms.inspector_control.title])
-        self.text = sw.CardText(children=[ms.inspector_control.landing])
+        title = sw.CardTitle(children=[msg("inspector_control.title")])
+        self.text = sw.CardText(children=[msg("inspector_control.landing")])
 
         # create the menu widget
         super().__init__("fa-solid fa-crosshairs", self.text, title, **kwargs)
@@ -118,13 +118,13 @@ class InspectorControl(MenuControl):
         lng, lat = coords = [c for c in reversed(kwargs.get("coordinates"))]
 
         # write the coordinates and the scale
-        txt = ms.inspector_control.coords.format(round(self.m.get_scale()))
+        txt = msg("inspector_control.coords", scale=round(self.m.get_scale()))
         children.append(sw.Html(tag="h4", children=[txt]))
         children.append(sw.Html(tag="p", children=[f"[{lng:.3f}, {lat:.3f}]"]))
 
         # wrap layer data in a treeview widget
         tree_view = sw.Treeview(hoverable=True, dense=True, open_on_click=True)
-        children.append(sw.Html(tag="h4", children=[ms.inspector_control.layers]))
+        children.append(sw.Html(tag="h4", children=[msg("inspector_control.layers")]))
         children.append(tree_view)
 
         # write the layers data
@@ -140,7 +140,7 @@ class InspectorControl(MenuControl):
             elif isinstance(lyr, Marker):
                 continue
             else:
-                data = {ms.inspector_control.info.header: ms.inspector_control.info.text}
+                data = {msg("inspector_control.info.header"): msg("inspector_control.info.text")}
 
             items.append(
                 {
@@ -276,12 +276,14 @@ class InspectorControl(MenuControl):
             window = rio.windows.from_bounds(*bounds, transform=da.rio.transform())
             da_filtered = da.rio.isel_window(window)
             means = da_filtered.mean(axis=(1, 2)).to_numpy()
-            pixel_values = {ms.inspector_control.band.format(i + 1): v for i, v in enumerate(means)}
+            pixel_values = {
+                msg("inspector_control.band", index=i + 1): v for i, v in enumerate(means)
+            }
 
         # if the point is out of the image display None
         else:
             pixel_values = {
-                ms.inspector_control.band.format(i + 1): None for i in range(da.rio.count)
+                msg("inspector_control.band", index=i + 1): None for i in range(da.rio.count)
             }
 
         return pixel_values

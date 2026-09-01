@@ -16,7 +16,7 @@ from typing_extensions import Self
 
 from pysepal import color
 from pysepal.frontend import styles as ss
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.model import Model
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
@@ -40,22 +40,30 @@ class AoiModel(Model):
     # ###                             const methods                           ###
     # ###########################################################################
 
-    CUSTOM: str = ms.aoi_sel.custom
-    "The word displayed for custom method in the relevant lang"
+    CUSTOM: str = "custom"
+    "Identifier of the custom-geometry method group"
 
-    ADMIN: str = ms.aoi_sel.administrative
-    "The word displayed for admin method in the relevant lang"
+    ADMIN: str = "admin"
+    "Identifier of the administrative method group"
 
     METHODS: Dict[str, Dict[str, str]] = {
-        "ADMIN0": {"name": ms.aoi_sel.adm[0], "type": ADMIN},
-        "ADMIN1": {"name": ms.aoi_sel.adm[1], "type": ADMIN},
-        "ADMIN2": {"name": ms.aoi_sel.adm[2], "type": ADMIN},
-        "SHAPE": {"name": ms.aoi_sel.vector, "type": CUSTOM},
-        "DRAW": {"name": ms.aoi_sel.draw, "type": CUSTOM},
-        "POINTS": {"name": ms.aoi_sel.points, "type": CUSTOM},
-        "ASSET": {"name": ms.aoi_sel.asset, "type": CUSTOM},
+        "ADMIN0": {"label_key": "aoi_sel.adm.0", "type": ADMIN},
+        "ADMIN1": {"label_key": "aoi_sel.adm.1", "type": ADMIN},
+        "ADMIN2": {"label_key": "aoi_sel.adm.2", "type": ADMIN},
+        "SHAPE": {"label_key": "aoi_sel.vector", "type": CUSTOM},
+        "DRAW": {"label_key": "aoi_sel.draw", "type": CUSTOM},
+        "POINTS": {"label_key": "aoi_sel.points", "type": CUSTOM},
+        "ASSET": {"label_key": "aoi_sel.asset", "type": CUSTOM},
     }
-    "The word displayed for all selection methods in the relevant lang"
+    """Every selection method, as stable identifiers.
+
+    ``label_key`` is a catalogue key, not a label: the caller renders it with
+    ``msg()`` so the text follows the locale. ``type`` groups the methods and
+    is compared in code, which is why it is a code and not a translated word.
+    """
+
+    TYPE_LABEL_KEYS: Dict[str, str] = {ADMIN: "aoi_sel.administrative", CUSTOM: "aoi_sel.custom"}
+    "Catalogue key for each group heading"
 
     # ###########################################################################
     # ###                      widget related traitlets                       ###
@@ -247,7 +255,7 @@ class AoiModel(Model):
         elif self.method == "ASSET":
             self._from_asset(self.asset_json)
         else:
-            raise Exception(ms.aoi_sel.exception.no_inputs)
+            raise Exception(msg("aoi_sel.exception.no_inputs"))
 
         self.object_set += 1
 
@@ -256,11 +264,11 @@ class AoiModel(Model):
     def _from_asset(self, asset_json: dict) -> Self:
         """Set the ee.FeatureCollection output from an existing asset."""
         if not (asset_json["pathname"]):
-            raise Exception(ms.aoi_sel.exception.no_asset)
+            raise Exception(msg("aoi_sel.exception.no_asset"))
 
         if asset_json["column"] != "ALL":
             if asset_json["value"] is None:
-                raise Exception(ms.aoi_sel.exception.no_value)
+                raise Exception(msg("aoi_sel.exception.no_value"))
 
         # set the name
         self.name = Path(asset_json["pathname"]).stem.replace(self.ASSET_SUFFIX, "")
@@ -286,7 +294,7 @@ class AoiModel(Model):
             point_json: the geo_interface description of the points
         """
         if not all(point_json.values()):
-            raise Exception(ms.aoi_sel.exception.incomplete)
+            raise Exception(msg("aoi_sel.exception.incomplete"))
 
         # cast the pathname to pathlib Path
         point_file = Path(point_json["pathname"])
@@ -294,7 +302,7 @@ class AoiModel(Model):
         # check that the columns are well set
         values = [v for v in point_json.values()]
         if not len(values) == len(set(values)):
-            raise Exception(ms.aoi_sel.exception.duplicate_key)
+            raise Exception(msg("aoi_sel.exception.duplicate_key"))
 
         # create the gdf
         df = pd.read_csv(point_file, sep=None, engine="python")
@@ -323,11 +331,11 @@ class AoiModel(Model):
             vector_json: the dict describing the vector file, and column filter
         """
         if not (vector_json["pathname"]):
-            raise Exception(ms.aoi_sel.exception.no_file)
+            raise Exception(msg("aoi_sel.exception.no_file"))
 
         if vector_json["column"] != "ALL":
             if vector_json["value"] is None:
-                raise Exception(ms.aoi_sel.exception.no_value)
+                raise Exception(msg("aoi_sel.exception.no_value"))
 
         # cast the pathname to pathlib Path
         vector_file = Path(vector_json["pathname"])
@@ -359,7 +367,7 @@ class AoiModel(Model):
             geo_json: the __geo_interface__ dict of a geometry drawn on the map
         """
         if not geo_json:
-            raise Exception(ms.aoi_sel.exception.no_draw)
+            raise Exception(msg("aoi_sel.exception.no_draw"))
 
         # remove the style property from geojson as it's not recognize by geopandas and gee
         for feat in geo_json["features"]:
@@ -395,7 +403,7 @@ class AoiModel(Model):
             admin: the admin code corresponding to FAO GAUL (if gee) or GADM
         """
         if not admin:
-            raise Exception(ms.aoi_sel.exception.no_admlyr)
+            raise Exception(msg("aoi_sel.exception.no_admlyr"))
 
         # get the data from either the pygaul or the pygadm libs
         if self.gee:
@@ -472,7 +480,7 @@ class AoiModel(Model):
             sorted list of column names
         """
         if self._gdf is None and not self.feature_collection:
-            raise Exception(ms.aoi_sel.exception.no_gdf)
+            raise Exception(msg("aoi_sel.exception.no_gdf"))
 
         if self.gee:
             aoi_ee = ee.Feature(self.feature_collection.first())
@@ -494,7 +502,7 @@ class AoiModel(Model):
 
         """
         if self._gdf is None and not self.feature_collection:
-            raise Exception(ms.aoi_sel.exception.no_gdf)
+            raise Exception(msg("aoi_sel.exception.no_gdf"))
 
         if self.gee:
             fields = self.feature_collection.distinct(column).aggregate_array(column)
@@ -515,7 +523,7 @@ class AoiModel(Model):
             The Feature associated with the query
         """
         if self._gdf is None and not self.feature_collection:
-            raise Exception(ms.aoi_sel.exception.no_gdf)
+            raise Exception(msg("aoi_sel.exception.no_gdf"))
 
         if self.gee:
             selected_feature = self.feature_collection.filterMetadata(column, "equals", field)
@@ -532,7 +540,7 @@ class AoiModel(Model):
         """
         # use _gdf to evaluate the condition to avoid accessing the gdf property
         if self._gdf is None and not self.feature_collection:
-            raise ValueError(ms.aoi_sel.exception.no_gdf)
+            raise ValueError(msg("aoi_sel.exception.no_gdf"))
 
         if self.gee:
             bounds = list(self.gee_interface.get_bounds(self.feature_collection))
@@ -603,7 +611,7 @@ class AoiModel(Model):
         # This function aims to work in the same way in both gee and non-gee mode
         # It's why we use the gdf property to evaluate the condition
         if self.gdf is None:
-            raise Exception(ms.aoi_sel.exception.no_gdf)
+            raise Exception(msg("aoi_sel.exception.no_gdf"))
 
         # read the data from geojson and add the name as a property of the shape
         # useful when handler are added from ipyleaflet

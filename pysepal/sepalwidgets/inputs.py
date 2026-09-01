@@ -31,7 +31,7 @@ from traitlets import link, observe
 from typing_extensions import Self
 
 from pysepal.frontend import styles as ss
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
@@ -225,7 +225,7 @@ class FileInput(v.Flex, SepalWidget):
         self,
         extensions: List[str] = [],
         folder: Union[str, Path] = Path.home(),
-        label: str = ms.widgets.fileinput.label,
+        label: Optional[str] = None,
         v_model: str = "",
         clearable: bool = False,
         root: Union[str, Path] = "",
@@ -243,6 +243,8 @@ class FileInput(v.Flex, SepalWidget):
             root: the root folder from which you cannot go higher in the tree.
             kwargs: any parameter from a v.Flex abject. If set, 'children' will be overwritten.
         """
+        label = msg("widgets.fileinput.label") if label is None else label
+
         self.extensions = extensions
         self.initial_folder = folder
         self.folder = Path(folder)
@@ -251,7 +253,7 @@ class FileInput(v.Flex, SepalWidget):
 
         self.selected_file = v.TextField(
             readonly=True,
-            label=ms.widgets.fileinput.placeholder,
+            label=msg("widgets.fileinput.placeholder"),
             class_="ml-5 mt-5",
             v_model="",
         )
@@ -515,7 +517,7 @@ class LoadTableField(v.Col, SepalWidget):
     }
     "The default v_model structure {'pathname': xx, 'id_column': xx, 'lat_column': xx, 'lng_column': xx}"
 
-    def __init__(self, label: str = ms.widgets.table.label, **kwargs) -> None:
+    def __init__(self, label: Optional[str] = None, **kwargs) -> None:
         """A custom input widget to load points data.
 
         The user will provide a csv or txt file containing labeled dataset.
@@ -526,24 +528,25 @@ class LoadTableField(v.Col, SepalWidget):
             label: the label of the widget
             kwargs: any parameter from a v.Col. If set, 'children' and 'v_model' will be overwritten.
         """
+        label = msg("widgets.table.label") if label is None else label
         self.fileInput = FileInput([".csv", ".txt"], label=label)
 
         self.IdSelect = v.Select(
             _metadata={"name": "id_column"},
             items=[],
-            label=ms.widgets.table.column.id,
+            label=msg("widgets.table.column.id"),
             v_model=None,
         )
         self.LngSelect = v.Select(
             _metadata={"name": "lng_column"},
             items=[],
-            label=ms.widgets.table.column.lng,
+            label=msg("widgets.table.column.lng"),
             v_model=None,
         )
         self.LatSelect = v.Select(
             _metadata={"name": "lat_column"},
             items=[],
-            label=ms.widgets.table.column.lat,
+            label=msg("widgets.table.column.lat"),
             v_model=None,
         )
 
@@ -594,7 +597,7 @@ class LoadTableField(v.Col, SepalWidget):
 
         if len(df.columns) < 3:
             self._set_v_model("pathname", None)
-            self.fileInput.selected_file.error_messages = ms.widgets.load_table.too_small
+            self.fileInput.selected_file.error_messages = msg("widgets.load_table.too_small")
             return self
 
         # set the items
@@ -646,14 +649,14 @@ class LoadTableField(v.Col, SepalWidget):
 
 class AssetSelect(v.Combobox, SepalWidget):
     TYPES: dict = {
-        "IMAGE": ms.widgets.asset_select.types[0],
-        "TABLE": ms.widgets.asset_select.types[1],
-        "IMAGE_COLLECTION": ms.widgets.asset_select.types[2],
-        "ALGORITHM": ms.widgets.asset_select.types[3],
-        "FOLDER": ms.widgets.asset_select.types[4],
+        "IMAGE": "widgets.asset_select.types.0",
+        "TABLE": "widgets.asset_select.types.1",
+        "IMAGE_COLLECTION": "widgets.asset_select.types.2",
+        "ALGORITHM": "widgets.asset_select.types.3",
+        "FOLDER": "widgets.asset_select.types.4",
         # UNKNOWN type is ignored
     }
-    "Valid types of asset"
+    "Catalogue key of each valid asset type, keyed by the type code"
 
     folder: str = ""
     "the folder of the user assets, mainly for debug"
@@ -740,8 +743,8 @@ class AssetSelect(v.Combobox, SepalWidget):
         kwargs.setdefault("dense", True)
         kwargs.setdefault("prepend_icon", "mdi-sync")
         kwargs.setdefault("class_", "my-5")
-        kwargs.setdefault("placeholder", ms.widgets.asset_select.placeholder)
-        kwargs.setdefault("label", ms.widgets.asset_select.label)
+        kwargs.setdefault("placeholder", msg("widgets.asset_select.placeholder"))
+        kwargs.setdefault("label", msg("widgets.asset_select.label"))
 
         # create the widget
         super().__init__(**kwargs)
@@ -816,7 +819,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             self.v_model = None
             self.items = [
                 {
-                    "text": ms.widgets.asset_select.no_assets.format(self.folder),
+                    "text": msg("widgets.asset_select.no_assets", folder=self.folder),
                     "disabled": True,
                 }
             ]
@@ -854,12 +857,14 @@ class AssetSelect(v.Combobox, SepalWidget):
 
             # Check that the asset has the correct type
             if self.asset_info["type"] not in self.types:
-                self.error_messages = ms.widgets.asset_select.wrong_type.format(
-                    self.asset_info["type"], ",".join(self.types)
+                self.error_messages = msg(
+                    "widgets.asset_select.wrong_type",
+                    asset_type=self.asset_info["type"],
+                    allowed=",".join(self.types),
                 )
 
         except Exception:
-            self.error_messages = ms.widgets.asset_select.no_access
+            self.error_messages = msg("widgets.asset_select.no_access")
             self.asset_info = {}
 
         # Update validation state
@@ -870,7 +875,7 @@ class AssetSelect(v.Combobox, SepalWidget):
 
     def _on_validation_error(self, error: Exception) -> None:
         """Handle validation errors."""
-        self.error_messages = ms.widgets.asset_select.no_access
+        self.error_messages = msg("widgets.asset_select.no_access")
         self.valid = False
         self.error = True
         self.asset_info = {}
@@ -917,7 +922,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             if filtered_defaults:
                 self.v_model = filtered_defaults[0]
 
-                header = ms.widgets.asset_select.custom
+                header = msg("widgets.asset_select.custom")
                 items += [{"divider": True}, {"header": header}]
                 items += filtered_defaults
         log.debug(
@@ -939,7 +944,7 @@ class AssetSelect(v.Combobox, SepalWidget):
             if len(assets[k]):
                 items += [
                     {"divider": True},
-                    {"header": self.TYPES[k]},
+                    {"header": msg(self.TYPES[k])},
                     *assets[k],
                 ]
 
@@ -978,7 +983,7 @@ class PasswordField(v.TextField, SepalWidget):
             kwargs: any parameter from a v.TextField. If set, 'type' will be overwritten.
         """
         # default behavior
-        kwargs.setdefault("label", ms.password_field.label)
+        kwargs.setdefault("label", msg("password_field.label"))
         kwargs.setdefault("class_", "mr-2")
         kwargs.setdefault("v_model", "")
         kwargs["type"] = "password"
@@ -1080,18 +1085,20 @@ class VectorField(v.Col, SepalWidget):
     )
     "The json saved v_model shaped as {'pathname': xx, 'column': xx, 'value': xx}"
 
-    column_base_items: list = [
-        {"text": ms.widgets.vector.all, "value": "ALL"},
-        {"divider": True},
-    ]
-    "the column compulsory selector (ALL)"
+    @property
+    def column_base_items(self) -> list:
+        """The compulsory ALL entry heading the column selector.
+
+        A property, not a constant: the label follows the locale.
+        """
+        return [{"text": msg("widgets.vector.all"), "value": "ALL"}, {"divider": True}]
 
     feature_collection: Optional[ee.FeatureCollection] = None
     "ee.FeatureCollection: the selected featureCollection"
 
     def __init__(
         self,
-        label: str = ms.widgets.vector.label,
+        label: Optional[str] = None,
         gee: bool = False,
         gee_session: Optional[EESession] = None,
         gee_interface: Optional[GEEInterface] = None,
@@ -1116,6 +1123,8 @@ class VectorField(v.Col, SepalWidget):
         .. versionadded:: 3.0.0
             Added gee_interface parameter for sharing GEEInterface instances across components.
         """
+        label = msg("widgets.vector.label") if label is None else label
+
         # Validate input parameters
         if gee_session and gee_interface:
             raise ValueError(
@@ -1147,13 +1156,13 @@ class VectorField(v.Col, SepalWidget):
         self.w_column = v.Select(
             _metadata={"name": "column"},
             items=self.column_base_items,
-            label=ms.widgets.vector.column,
+            label=msg("widgets.vector.column"),
             v_model="ALL",
         )
         self.w_value = v.Select(
             _metadata={"name": "value"},
             items=[],
-            label=ms.widgets.vector.value,
+            label=msg("widgets.vector.value"),
             v_model=None,
         )
         su.hide_component(self.w_value)

@@ -8,7 +8,7 @@ from typing import Dict
 
 import geopandas as gpd
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 
@@ -43,7 +43,7 @@ def process_draw(
         ```
     """
     if not geo_json or not geo_json.get("features"):
-        raise ValueError(ms.aoi_sel.exception.no_draw)
+        raise ValueError(msg("aoi_sel.exception.no_draw"))
 
     # Clean style properties from features
     cleaned_features = []

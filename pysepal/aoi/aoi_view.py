@@ -15,7 +15,7 @@ from typing_extensions import Self
 import pysepal.sepalwidgets as sw
 from pysepal import mapping as sm
 from pysepal.aoi.aoi_model import AoiModel
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 
@@ -83,13 +83,13 @@ class MethodSelect(sw.Select):
             current_type = m["type"]
 
             if prev_type != current_type:
-                items.append({"header": current_type})
+                items.append({"header": msg(AoiModel.TYPE_LABEL_KEYS[current_type])})
             prev_type = current_type
 
-            items.append({"text": m["name"], "value": k})
+            items.append({"text": msg(m["label_key"]), "value": k})
 
         # create the input
-        super().__init__(label=ms.aoi_sel.method, items=items, v_model="", dense=True)
+        super().__init__(label=msg("aoi_sel.method"), items=items, v_model="", dense=True)
 
 
 class AdminField(sw.Select):
@@ -120,7 +120,7 @@ class AdminField(sw.Select):
         self.parent = parent
 
         # init an empty widget
-        super().__init__(v_model=None, items=[], clearable=True, label=ms.aoi_sel.adm[level])
+        super().__init__(v_model=None, items=[], clearable=True, label=msg(f"aoi_sel.adm.{level}"))
 
         # add js behaviour
         self.parent is None or self.parent.observe(self._update, "v_model")
@@ -296,9 +296,9 @@ class AoiView(sw.Card):
         self.w_admin_1 = AdminField(1, self.w_admin_0, gee=gee)
         self.w_admin_2 = AdminField(2, self.w_admin_1, gee=gee)
         self.w_vector = sw.VectorField(
-            label=ms.aoi_sel.vector, gee_session=gee_session, gee_interface=gee_interface
+            label=msg("aoi_sel.vector"), gee_session=gee_session, gee_interface=gee_interface
         )
-        self.w_points = sw.LoadTableField(label=ms.aoi_sel.points)
+        self.w_points = sw.LoadTableField(label=msg("aoi_sel.points"))
 
         # group them together with the same key as the select_method object
         self.components = {
@@ -330,7 +330,7 @@ class AoiView(sw.Card):
         # will crash if the user didn't authenticate
         if self.gee:
             self.w_asset = sw.VectorField(
-                label=ms.aoi_sel.asset,
+                label=msg("aoi_sel.asset"),
                 gee=True,
                 folder=self.folder,
                 types=["TABLE"],
@@ -343,14 +343,14 @@ class AoiView(sw.Card):
 
         # define DRAW option separately as it will only work if the map is set
         if self.map_:
-            self.w_draw = sw.TextField(label=ms.aoi_sel.aoi_name).hide()
+            self.w_draw = sw.TextField(label=msg("aoi_sel.aoi_name")).hide()
             self.components["DRAW"] = self.w_draw
             self.model.bind(self.w_draw, "name")
             self.aoi_dc = sm.DrawControl(self.map_)
             self.aoi_dc.hide()
 
         # add a validation btn
-        self.btn = sw.Btn(msg=ms.aoi_sel.btn)
+        self.btn = sw.Btn(msg=msg("aoi_sel.btn"))
 
         # create the widget
         self.children = [self.w_method] + [*self.components.values()] + [self.btn, self.alert]
@@ -373,7 +373,7 @@ class AoiView(sw.Card):
 
         # update the model
         self.model.set_object()
-        self.alert.add_msg(ms.aoi_sel.complete, "success")
+        self.alert.add_msg(msg("aoi_sel.complete"), "success")
 
         # update the map
         if self.map_:

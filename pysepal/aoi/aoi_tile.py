@@ -9,7 +9,7 @@ from eeclient.client import EESession
 from pysepal import mapping as sm
 from pysepal import sepalwidgets as sw
 from pysepal.aoi.aoi_view import AoiView
-from pysepal.message import ms
+from pysepal.message import msg
 
 __all__ = ["AoiTile"]
 
@@ -75,4 +75,4 @@ class AoiTile(sw.Tile):
         )
 
         # create the tile
-        super().__init__("aoi_tile", ms.aoi_sel.title, inputs=[layout], **kwargs)
+        super().__init__("aoi_tile", msg("aoi_sel.title"), inputs=[layout], **kwargs)

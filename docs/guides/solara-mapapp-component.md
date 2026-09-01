@@ -2,9 +2,10 @@
 
 `MapAppComponent` is a first-class Solara component that replaces the
 legacy `MapApp(v.VuetifyTemplate)`. It is usable with `with` syntax,
-exposes typed dataclass props, auto-wires `ThemeState` / `LocaleState`,
-and preserves the visual design of the original `MapApp.vue`
-(drawer, narrow-mode bottom sheet, dialog steps, right panel).
+exposes typed dataclass props, auto-wires `ThemeState` and the scope
+locale that `pysepal.i18n.current_locale` reads, and preserves the visual
+design of the original `MapApp.vue` (drawer, narrow-mode bottom sheet,
+dialog steps, right panel).
 
 ```{important}
 **Availability — not yet shipped.** As of pysepal 3.7.0, `MapAppComponent` and

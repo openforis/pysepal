@@ -17,7 +17,7 @@ from typing import List, Optional, Union
 import ipyvuetify as v
 from typing_extensions import Self
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.sepalwidgets.sepalwidget import SepalWidget
 from pysepal.sepalwidgets.vue_app import ThemeToggle
@@ -214,7 +214,8 @@ class TileDisclaimer(Tile):
     def set_disclaimer(self, change) -> List[Markdown]:
         """Rebuild the disclaimer element when the theme changes."""
         # create the tile content on the fly
-        disclaimer = "  \n".join(ms.disclaimer.p)
+        # disclaimer.p is a three-paragraph block in every shipped locale
+        disclaimer = "  \n".join(msg(f"disclaimer.p.{i}") for i in range(3))
         disclaimer += "  \n"
         disclaimer += '<div style="inline-block">'
 

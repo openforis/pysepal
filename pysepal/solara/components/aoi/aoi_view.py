@@ -26,7 +26,7 @@ from deprecated.sphinx import versionadded
 
 from pysepal import mapping as sm
 from pysepal.mapping import get_ipygeojson
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.admin import (
     fetch_admin_bounds_async,
@@ -52,20 +52,24 @@ from pysepal.solara.utils import get_current_gee_interface
 
 __all__ = ["AoiView", "MethodSelect", "AoiResult"]
 
-# Method type constants
-CUSTOM: str = ms.aoi_sel.custom
-ADMIN: str = ms.aoi_sel.administrative
+# Method group identifiers. Codes, not words: they are compared in code below,
+# so a translated value would break the comparison as soon as a user picks a
+# language. Kept in step with AoiModel by tests/test_aoi/test_AoiModel.py.
+CUSTOM: str = "custom"
+ADMIN: str = "admin"
 
-# Available selection methods
+# Available selection methods. label_key is a catalogue key the caller renders
+# with msg(), so the text follows the locale.
 METHODS: Dict[str, Dict[str, str]] = {
-    "ADMIN0": {"name": ms.aoi_sel.adm[0], "type": ADMIN},
-    "ADMIN1": {"name": ms.aoi_sel.adm[1], "type": ADMIN},
-    "ADMIN2": {"name": ms.aoi_sel.adm[2], "type": ADMIN},
-    "SHAPE": {"name": ms.aoi_sel.vector, "type": CUSTOM},
-    "DRAW": {"name": ms.aoi_sel.draw, "type": CUSTOM},
-    "POINTS": {"name": ms.aoi_sel.points, "type": CUSTOM},
-    "ASSET": {"name": ms.aoi_sel.asset, "type": CUSTOM},
+    "ADMIN0": {"label_key": "aoi_sel.adm.0", "type": ADMIN},
+    "ADMIN1": {"label_key": "aoi_sel.adm.1", "type": ADMIN},
+    "ADMIN2": {"label_key": "aoi_sel.adm.2", "type": ADMIN},
+    "SHAPE": {"label_key": "aoi_sel.vector", "type": CUSTOM},
+    "DRAW": {"label_key": "aoi_sel.draw", "type": CUSTOM},
+    "POINTS": {"label_key": "aoi_sel.points", "type": CUSTOM},
+    "ASSET": {"label_key": "aoi_sel.asset", "type": CUSTOM},
 }
+TYPE_LABEL_KEYS: Dict[str, str] = {ADMIN: "aoi_sel.administrative", CUSTOM: "aoi_sel.custom"}
 
 
 @solara.component
@@ -127,13 +131,13 @@ def MethodSelect(
         current_type = m["type"]
 
         if prev_type != current_type:
-            items.append({"header": current_type})
+            items.append({"header": msg(TYPE_LABEL_KEYS[current_type])})
         prev_type = current_type
 
-        items.append({"text": m["name"], "value": k})
+        items.append({"text": msg(m["label_key"]), "value": k})
 
     with rv.Select(
-        label=ms.aoi_sel.method,
+        label=msg("aoi_sel.method"),
         items=items,
         v_model=reactive_value.value,
         dense=True,
@@ -404,7 +408,7 @@ def AoiView(
             reactive_value.set(result)
 
             tracker.complete()
-            return ms.aoi_sel.complete
+            return msg("aoi_sel.complete")
 
         except BaseException:
             tracker.__exit__(*__import__("sys").exc_info())

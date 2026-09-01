@@ -331,26 +331,67 @@ ms = Translator(json_folder)
 ms = Translator(json_folder, target=user_locale)
 ```
 
-Where `user_locale` comes from is the other half. `LocaleSelect` resolves it in
-the browser — `localStorage[":sepalUi:locale"]`, then `navigator.language`, then
-English, each candidate matched against the catalogs the app actually ships —
-and pushes the result into a scope-keyed `LocaleState`. Build the translator
-from that and a language change re-renders in place, with no reload:
+Where the locale comes from at all is the other half. `LocaleSelect` resolves
+it in the browser — `localStorage[":sepalUi:locale"]`, then
+`navigator.language`, then English, each candidate matched against the
+catalogs the app actually ships — and writes it into the runtime scope's
+locale, which `pysepal.i18n` reads and writes through `current_locale()` and
+`set_locale()`:
 
 ```python
-from pysepal.solara import use_locale
+from pysepal.i18n import current_locale, set_locale
 
-@solara.component
-def Page():
-    locale = use_locale()
-    ms = solara.use_memo(lambda: Translator(json_folder, target=locale), [locale])
-
-    MapApp.element(app_title=ms.app.title, locales=ms.available_locales())
+current_locale()  # "en" until something sets one
+set_locale("fr")  # any IETF BCP 47 code, in any casing
 ```
 
+`set_locale` cannot seed a startup default: a `LocaleSelect`'s first mount in a
+browser tab always overwrites it with the browser's own resolution, so only a
+call made after that first mount — from a settings dialog, say — sticks.
+
+**The locale state that came before `current_locale()` / `set_locale()` is gone too:**
+
+| removed                                                    | replacement                                    |
+| ---------------------------------------------------------- | ---------------------------------------------- |
+| `use_locale()`                                             | `pysepal.i18n.current_locale()`                |
+| `LocaleState`                                              | nothing — the locale is scope state            |
+| `get_current_locale_state()`                               | `current_locale()` / `set_locale()`            |
+| `resolve_locale_state()`                                   | `current_locale()` / `set_locale()`            |
+| `locale_state=` on `MapApp` / `LocaleSelect`               | nothing — the selector writes the scope locale |
+| `LocaleSelect.bind_locale_state()` / `.get_locale_state()` | nothing                                        |
+
+Building your own app's message catalog looks different from the `Translator`
+call above, though: bind it once, at import, with no target at all — this is
+what both demo apps do:
+
+```python
+# component/message/__init__.py
+from pathlib import Path
+
+from pysepal.i18n import catalog
+
+messages = catalog(Path(__file__).parent)
+msg = messages.msg
+```
+
+Then call `msg("app.title")` anywhere — a component, a helper on the same call
+stack, an event handler, a worker thread — with no per-render rebuild to write,
+because there is nothing to rebuild: `msg` reads `current_locale()` itself on
+every call, subscribing to it when a render is in progress and doing a plain
+read otherwise, so a language change re-renders in place with no reload:
+
+```python
+@solara.component
+def Page():
+    MapApp.element(app_title=msg("app.title"), locales=messages.available_locales())
+```
+
+`count` is not always a plural selector: it only becomes one when `key` names a
+plural node in English, and is an ordinary placeholder on any other key — the
+raster demo's `msg("toasts.classes", count=len(classes))` just fills in a number.
+
 `MapApp` takes locale _codes_ rather than a `Translator` because `Translator`
-subclasses `dict`, which reacton flattens on the way to `.element()`. Outside a
-Solara render, `get_current_locale_state()` returns the same state directly.
+subclasses `dict`, which reacton flattens on the way to `.element()`.
 
 A 3.x locale saved in `~/.sepal-ui-config` is not migrated: the file is read
 nowhere in 4.0, so the first load falls to `navigator.language`.
@@ -359,6 +400,48 @@ The picker now offers every catalog the app ships. Previously the offered list
 was intersected with `pysepal/data/locale.parquet`, which has `es-ES` but no
 bare `es` — so pysepal's own bundled `message/es/` and `message/ru-RU/` could
 never be selected. The parquet now supplies only display names and flags.
+
+**pysepal's own widgets follow the locale now.** They used to read their text
+once, when the module was imported, so every app showed English whatever the
+user picked. Two kinds of site changed, and both are breaking.
+
+A widget renders in the locale that is active when it is built. An ipywidget
+already on screen does not re-translate itself when the language changes.
+
+_Constants that held a translated word now hold a catalogue key:_
+
+| before                                   | after                                   |
+| ---------------------------------------- | --------------------------------------- |
+| `AoiModel.METHODS[k]["name"]`            | `msg(AoiModel.METHODS[k]["label_key"])` |
+| `AoiModel.CUSTOM` == "Custom geometries" | `AoiModel.CUSTOM` == `"custom"`         |
+| `AoiModel.ADMIN` == "Administrative …"   | `AoiModel.ADMIN` == `"admin"`           |
+| `AssetSelect.TYPES[k]` (a word)          | `msg(AssetSelect.TYPES[k])`             |
+| `VectorField.column_base_items` (a list) | same name, now a read-only property     |
+
+`METHODS` mixed a code the program compares with a word the user reads. The
+`type` field held a translated sentence, and code compared against it — which
+only worked because every string was frozen English. Identity and label are
+separate now, so `msg()` can move the label without breaking the comparison.
+`AoiModel.TYPE_LABEL_KEYS` gives the catalogue key for each group heading.
+
+_Translated default arguments are `None`:_
+
+```python
+# 3.x — the label froze in English at import
+def __init__(self, label: str = ms.widgets.fileinput.label): ...
+
+# 4.0 — resolved when the widget is built
+def __init__(self, label: Optional[str] = None):
+    label = msg("widgets.fileinput.label") if label is None else label
+```
+
+This affects `LegendControl(title=)`, `SepalMap.add_legend(title=)`,
+`FileInput(label=)`, `LoadTableField(label=)`, `VectorField(label=)` and
+`scripts.utils.check_input(msg=)`. `None`, not an empty string, is the
+sentinel, so you can still ask for a deliberately empty label.
+
+`pysepal.message.ms` still exists for modules that read it, and nothing inside
+pysepal uses it any more. New code should call `msg`.
 
 **CLI**: the `module_theme` and `module_l10n` entry points are removed — both
 existed only to edit that file. The remaining console scripts are
@@ -553,8 +636,14 @@ Rename the key. For the same reason `MapApp` takes `locales=` rather than a
       four legacy verbs with `client.files.*`.
 - [ ] Create the results directory yourself before writing into `results_path`;
       `SepalClient.create()` no longer does it, and nothing fails until the write.
-- [ ] Remove every `~/.sepal-ui-config` reader/writer; build the `Translator`
-      from `use_locale()` and use `get_current_theme_state()` for theme.
+- [ ] Remove every `~/.sepal-ui-config` reader/writer; bind your app's message
+      directory with `catalog()`, look up strings with `msg()`, and read/write
+      the runtime locale with `current_locale()` / `set_locale()`; use
+      `get_current_theme_state()` for theme.
+- [ ] Replace `use_locale()`, `LocaleState`, `get_current_locale_state()` and
+      `resolve_locale_state()` with `current_locale()` / `set_locale()`; drop
+      `locale_state=` from `MapApp` / `LocaleSelect` and any
+      `bind_locale_state()` / `get_locale_state()` call.
 - [ ] Replace any "refresh to apply the language" instruction in your UI;
       switching is live, and picks no longer survive as a machine-global file.
 - [ ] Drop `module_theme` / `module_l10n` from scripts and CI.

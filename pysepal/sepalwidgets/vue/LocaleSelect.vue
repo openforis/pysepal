@@ -58,8 +58,8 @@
 // silently dropped when this widget is a root widget -- which is why picks
 // did not survive a refresh before pysepal 4.
 //
-// matchOffered is a transcription of pysepal.solara.locale.match_offered_locale
-// (the tested Python reference implementation) -- keep both in sync.
+// matchOffered transcribes pysepal._locale.match_offered_locale. The two are
+// held in parity by tests/fixtures/locale_matching.json, which both run.
 //
 // The storage key is written out at each use rather than hoisted into a const:
 // ipyvue evaluates the object below, not this file as a module, so a binding
@@ -132,12 +132,38 @@ export default {
     offeredCodes() {
       return (this.available_locales || []).map((locale) => locale.code);
     },
+    normalizeLocale(code) {
+      if (!code) return "";
+      const [primary, ...rest] = String(code).replace(/_/g, "-").split("-");
+      const canonical = [primary.toLowerCase()];
+      for (const subtag of rest) {
+        if (/^[A-Za-z]{4}$/.test(subtag)) {
+          canonical.push(
+            subtag[0].toUpperCase() + subtag.slice(1).toLowerCase()
+          );
+        } else if (/^[A-Za-z]{2}$/.test(subtag)) {
+          canonical.push(subtag.toUpperCase());
+        } else {
+          canonical.push(subtag.toLowerCase());
+        }
+      }
+      return canonical.join("-");
+    },
     matchOffered(candidate, offered) {
-      if (!candidate) return "";
-      if (offered.includes(candidate)) return candidate;
-      const primary = candidate.split("-")[0];
-      if (offered.includes(primary)) return primary;
-      return offered.find((code) => code.split("-")[0] === primary) || "";
+      const wanted = this.normalizeLocale(candidate);
+      if (!wanted) return "";
+      const byCanonical = new Map();
+      for (const code of offered) {
+        const canonical = this.normalizeLocale(code);
+        if (!byCanonical.has(canonical)) byCanonical.set(canonical, code);
+      }
+      if (byCanonical.has(wanted)) return byCanonical.get(wanted);
+      const primary = wanted.split("-")[0];
+      if (byCanonical.has(primary)) return byCanonical.get(primary);
+      for (const [canonical, code] of byCanonical) {
+        if (canonical.split("-")[0] === primary) return code;
+      }
+      return "";
     },
     storageGet() {
       // Never swallow silently: these catches are for a blocked-storage

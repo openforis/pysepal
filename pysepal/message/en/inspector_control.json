@@ -6,8 +6,8 @@
       "header": "info",
       "text": "data reading method not yet ready"
     },
-    "band": "band {}",
-    "coords": "Coordinates (lng, lat) at {} m/px",
+    "band": "band {index}",
+    "coords": "Coordinates (lng, lat) at {scale} m/px",
     "layers": "Layers"
   }
 }

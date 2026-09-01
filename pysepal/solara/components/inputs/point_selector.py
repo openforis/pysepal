@@ -10,7 +10,7 @@ import pandas as pd
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 from pysepal.solara.notifications import use_notifications
 
@@ -91,7 +91,7 @@ def PointsSelectorComponent(
             cols = df.columns.tolist()
 
             if len(cols) < 3:
-                notifications.warning(ms.widgets.load_table.too_small)
+                notifications.warning(msg("widgets.load_table.too_small"))
                 return
 
             column_items.set(cols)
@@ -133,13 +133,13 @@ def PointsSelectorComponent(
         FileInputComponent(
             initial_folder=initial_folder,
             extensions=POINT_EXTENSIONS,
-            label=ms.widgets.table.label,
+            label=msg("widgets.table.label"),
             value=file_path,
         )
 
         if column_items.value:
             with rv.Select(
-                label=ms.widgets.table.column.id,
+                label=msg("widgets.table.column.id"),
                 items=column_items.value,
                 v_model=id_column.value,
                 on_v_model=id_column.set,
@@ -149,7 +149,7 @@ def PointsSelectorComponent(
                 pass
 
             with rv.Select(
-                label=ms.widgets.table.column.lat,
+                label=msg("widgets.table.column.lat"),
                 items=column_items.value,
                 v_model=lat_column.value,
                 on_v_model=lat_column.set,
@@ -159,7 +159,7 @@ def PointsSelectorComponent(
                 pass
 
             with rv.Select(
-                label=ms.widgets.table.column.lng,
+                label=msg("widgets.table.column.lng"),
                 items=column_items.value,
                 v_model=lng_column.value,
                 on_v_model=lng_column.set,
