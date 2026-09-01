@@ -401,6 +401,48 @@ was intersected with `pysepal/data/locale.parquet`, which has `es-ES` but no
 bare `es` — so pysepal's own bundled `message/es/` and `message/ru-RU/` could
 never be selected. The parquet now supplies only display names and flags.
 
+**pysepal's own widgets follow the locale now.** They used to read their text
+once, when the module was imported, so every app showed English whatever the
+user picked. Two kinds of site changed, and both are breaking.
+
+A widget renders in the locale that is active when it is built. An ipywidget
+already on screen does not re-translate itself when the language changes.
+
+_Constants that held a translated word now hold a catalogue key:_
+
+| before                                   | after                                   |
+| ---------------------------------------- | --------------------------------------- |
+| `AoiModel.METHODS[k]["name"]`            | `msg(AoiModel.METHODS[k]["label_key"])` |
+| `AoiModel.CUSTOM` == "Custom geometries" | `AoiModel.CUSTOM` == `"custom"`         |
+| `AoiModel.ADMIN` == "Administrative …"   | `AoiModel.ADMIN` == `"admin"`           |
+| `AssetSelect.TYPES[k]` (a word)          | `msg(AssetSelect.TYPES[k])`             |
+| `VectorField.column_base_items` (a list) | same name, now a read-only property     |
+
+`METHODS` mixed a code the program compares with a word the user reads. The
+`type` field held a translated sentence, and code compared against it — which
+only worked because every string was frozen English. Identity and label are
+separate now, so `msg()` can move the label without breaking the comparison.
+`AoiModel.TYPE_LABEL_KEYS` gives the catalogue key for each group heading.
+
+_Translated default arguments are `None`:_
+
+```python
+# 3.x — the label froze in English at import
+def __init__(self, label: str = ms.widgets.fileinput.label): ...
+
+# 4.0 — resolved when the widget is built
+def __init__(self, label: Optional[str] = None):
+    label = msg("widgets.fileinput.label") if label is None else label
+```
+
+This affects `LegendControl(title=)`, `SepalMap.add_legend(title=)`,
+`FileInput(label=)`, `LoadTableField(label=)`, `VectorField(label=)` and
+`scripts.utils.check_input(msg=)`. `None`, not an empty string, is the
+sentinel, so you can still ask for a deliberately empty label.
+
+`pysepal.message.ms` still exists for modules that read it, and nothing inside
+pysepal uses it any more. New code should call `msg`.
+
 **CLI**: the `module_theme` and `module_l10n` entry points are removed — both
 existed only to edit that file. The remaining console scripts are
 `module_deploy`, `module_factory`, `module_venv`, `activate_venv`,
