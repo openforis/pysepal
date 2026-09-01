@@ -163,11 +163,15 @@ class LegendControl(WidgetControl):
         w = size
         h = size / 2
 
-        return [HTML(f"""
+        return [
+            HTML(
+                f"""
                     <th>
                         <svg width='{w}' height='{h}'>
                         <rect width='{w}' height='{h}' style='fill:{su.to_colors(color)};
                         stroke-width:1;stroke:rgb(255,255,255)'/>
                         </svg>
                     </th>
-                """)]
+                """
+            )
+        ]

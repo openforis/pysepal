@@ -254,7 +254,6 @@ def test_clear_output(test_model: aoi.AoiModel, aoi_model_outputs: List[str]) ->
         test_model: a aoi_model set on vatican city
         aoi_model_outputs: the name of the output members of the aoi_model object
     """
-
     # create functions for readability
     def is_not_none(member):
         return getattr(test_model, member) is not None
