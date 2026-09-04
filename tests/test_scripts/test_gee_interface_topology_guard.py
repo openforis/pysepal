@@ -192,3 +192,36 @@ def test_is_running_reads_the_task_state_off_the_model(state, expected):
         assert interface.is_running("my-export") is expected
     finally:
         interface.close()
+
+
+def test_dev_auth_serving_a_connection_refuses_a_session_less_interface():
+    """Dev-auth mimics production, so it must refuse what production refuses.
+
+    Armed under a real solara connection, a session-less interface would read
+    the machine's Earth Engine credentials instead of the session's -- the
+    exact class of bug ``PYSEPAL_DEV_AUTH`` exists to surface locally rather
+    than on SEPAL. Without a connection (notebook, script, pytest) the machine
+    credentials stay correct, which the parametrized test above pins.
+    """
+    with _topology(DEV_AUTH) as stubs:
+        with patch.object(session_manager_module, "is_serving_connections", lambda: True):
+            with pytest.raises(SepalSessionError, match="platform service account"):
+                GEEInterface()
+
+    assert stubs.new_event_loop.call_count == 0
+
+
+def test_the_guard_creates_no_event_loop_deciding_about_dev_auth():
+    """Deciding must stay free of side effects, whichever way it goes.
+
+    The guard exists to refuse *before* the loop is built. An earlier version
+    asked ``resolve_scope_id()``, which reaches into IPython and creates an
+    event loop even when it fails -- so merely deciding leaked exactly what the
+    guard is there to prevent.
+    """
+    with _topology(DEV_AUTH) as stubs:
+        with patch.object(gee_interface_module.EESession, "from_default", return_value=MagicMock()):
+            GEEInterface()
+
+    # One loop, built by the interface itself -- none from the decision.
+    assert stubs.new_event_loop.call_count == 1

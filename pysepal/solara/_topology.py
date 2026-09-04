@@ -250,3 +250,23 @@ def current_session_plan(*, has_sepal_headers: bool) -> SessionPlan:
         using_solara_server=solara._using_solara_server(),
         has_sepal_headers=has_sepal_headers,
     )
+
+
+def is_serving_connections() -> bool:
+    """Whether a Solara server is running this process, one kernel per connection.
+
+    The same signal rule 4 uses to recognise an app-launcher container. Read
+    separately by the session layer to decide whether ``DEV_AUTH`` scopes per
+    connection: it mimics that runtime, so it should scope like it, but only
+    where connections actually exist. A notebook, a script and pytest answer
+    False and keep the process session.
+
+    Deliberately not ``resolve_scope_id()``, which reaches into IPython and
+    creates an event loop as a side effect even when it fails -- the guard in
+    ``gee_interface`` reads this on a path whose whole purpose is to refuse
+    *before* a loop exists.
+
+    Returns:
+        True when a Solara server is running this process.
+    """
+    return solara._using_solara_server()

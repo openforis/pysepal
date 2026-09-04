@@ -26,6 +26,7 @@ from pysepal.solara._topology import (
     SessionSource,
     current_session_plan,
     is_sepal_sandbox,
+    is_serving_connections,
     plan_reads_sepal_headers,
 )
 from pysepal.solara.dev_auth import prime_dev_auth
@@ -134,6 +135,38 @@ def _carries_sepal_headers() -> bool:
     except ValidationError:
         return False
     return True
+
+
+def _is_scoped_per_connection(plan: SessionPlan) -> bool:
+    """Whether this plan's session belongs to one connection rather than the process.
+
+    Credential *source* and session *scope* are separate questions.
+    ``PYSEPAL_DEV_AUTH`` exists so a developer can run the app-launcher shape
+    locally, which only holds if the scoping matches it too: a process-wide
+    session makes several tabs look like one connection, hides every
+    per-connection fault until it reaches SEPAL, and keeps interfaces alive
+    across reloads that should have taken them down. The developer *login* stays
+    process-cached in :func:`prime_dev_auth`; only the session is per scope.
+
+    ``DEV_AUTH`` only scopes per connection where connections exist. Armed in a
+    notebook, a script or pytest there is no kernel to key a session on, so those
+    runtimes keep the process session they have always had.
+    ``PER_CONNECTION`` never degrades: it has no second source to fall back to.
+
+    The test is :func:`is_serving_connections`, not ``resolve_scope_id()``. The
+    latter reaches into IPython and creates an event loop as a side effect even
+    when it fails, and one reader of this predicate is the ``GEEInterface``
+    guard, whose whole purpose is to refuse before a loop exists.
+
+    Args:
+        plan: The resolved credential plan.
+
+    Returns:
+        True when the session is per connection.
+    """
+    if plan.source is SessionSource.PER_CONNECTION:
+        return True
+    return plan.source is SessionSource.DEV_AUTH and is_serving_connections()
 
 
 def _current_plan() -> SessionPlan:
@@ -257,12 +290,12 @@ class SessionManager:
             EEClientError: For authentication-related errors.
         """
         plan = _current_plan()
-        if plan.source is SessionSource.PER_CONNECTION:
-            self._create_connection_session(module_name)
+        if _is_scoped_per_connection(plan):
+            self._create_connection_session(module_name, plan)
         else:
             self._ensure_process_session(plan, module_name)
 
-    def _create_connection_session(self, module_name: str) -> None:
+    def _create_connection_session(self, module_name: str, plan: SessionPlan) -> None:
         """Create -- or reuse -- this connection's session from its SEPAL headers.
 
         The common case is the raw-header fast path: the same connection hands
@@ -274,8 +307,15 @@ class SessionManager:
         failure for a new ``module_name`` propagates as-is and leaves the
         session -- and its other modules' clients -- intact.
 
+        Under ``DEV_AUTH`` the connection carries no SEPAL headers -- there is no
+        SEPAL proxy in front of a local ``solara run`` -- so the identity comes
+        from the process-cached developer login instead. The scoping is
+        identical either way, which is the point: the same per-connection
+        lifetime, locally and on SEPAL.
+
         Args:
             module_name: The module name for the SepalClient.
+            plan: The resolved credential plan, which selects the identity source.
 
         Raises:
             MissingSepalHeadersError: The connection carries no valid SEPAL headers.
@@ -293,7 +333,10 @@ class SessionManager:
                 "refusing to create a per-connection session there."
             )
 
-        current_headers = headers.value
+        dev_auth = plan.source is SessionSource.DEV_AUTH
+        # The developer login is the process-level cache, so this is one blocking
+        # POST for the process, not one per connection.
+        current_headers = _require_session_id(prime_dev_auth()) if dev_auth else headers.value
         if current_headers is None:
             raise MissingSepalHeadersError(
                 f"No SEPAL authentication headers are available for scope {scope_id}; "
@@ -313,7 +356,9 @@ class SessionManager:
                 self._ensure_sepal_client(existing, module_name)
                 return
 
-            sepal_headers = resolve_sepal_headers(current_headers)
+            # prime_dev_auth already returns parsed SepalHeaders; only a real
+            # connection hands over a raw header dict that still needs parsing.
+            sepal_headers = current_headers if dev_auth else resolve_sepal_headers(current_headers)
             username = sepal_headers.sepal_user.username
             sepal_session_id = sepal_headers.cookies["SEPAL-SESSIONID"]
 
@@ -630,7 +675,7 @@ class SessionManager:
             SepalSessionError: A per-connection runtime has no session yet.
         """
         plan = _current_plan()
-        if plan.source is SessionSource.PER_CONNECTION:
+        if _is_scoped_per_connection(plan):
             return self._require_connection_session()["gee_interface"]
 
         with self._registry.scope_lock(PROCESS_SCOPE):
@@ -647,7 +692,7 @@ class SessionManager:
             SepalSessionError: A per-connection runtime has no session yet.
         """
         plan = _current_plan()
-        if plan.source is SessionSource.PER_CONNECTION:
+        if _is_scoped_per_connection(plan):
             return self._require_connection_session()["drive_interface"]
 
         with self._registry.scope_lock(PROCESS_SCOPE):
@@ -688,7 +733,7 @@ class SessionManager:
         """
         if scope_id is None:
             plan = _current_plan()
-            if plan.source is not SessionSource.PER_CONNECTION:
+            if not _is_scoped_per_connection(plan):
                 with self._registry.scope_lock(PROCESS_SCOPE):
                     process_session = self._ensure_process_session_locked(plan)
                     name = module_name or process_session["active_module_name"]

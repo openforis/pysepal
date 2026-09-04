@@ -48,11 +48,14 @@ def _refuse_ambient_session_per_connection() -> None:
     """
     # Local: pysepal.solara.session_manager imports this module, so neither of
     # these can be a module-level import.
-    from pysepal.solara._topology import SessionSource
     from pysepal.solara.errors import SepalSessionError
-    from pysepal.solara.session_manager import _current_plan
+    from pysepal.solara.session_manager import _current_plan, _is_scoped_per_connection
 
-    if _current_plan().source is not SessionSource.PER_CONNECTION:
+    # The same rule the session layer scopes by, so the guard can never disagree
+    # with where the session actually lives. That also covers a dev-auth runtime
+    # serving a real connection: it mimics production, so it must refuse what
+    # production refuses.
+    if not _is_scoped_per_connection(_current_plan()):
         return
 
     raise SepalSessionError(
