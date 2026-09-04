@@ -11,6 +11,7 @@ import ee
 
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
 
 async def process_asset(
@@ -71,4 +72,11 @@ async def process_asset(
         feature_collection=ee_object,
         admin=None,
         gee=True,
+        spec=AoiSpec(
+            method="ASSET",
+            asset_id=asset_id,
+            asset_type=asset_type,
+            column=column,
+            value=value,
+        ),
     )
