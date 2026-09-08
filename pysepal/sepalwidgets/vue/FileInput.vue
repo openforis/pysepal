@@ -17,7 +17,7 @@
         </v-btn>
       </template>
 
-      <v-card>
+      <v-card class="pt-2">
         <!-- Search field -->
         <v-text-field
           ref="searchField"
@@ -27,15 +27,14 @@
           clearable
           @click:clear="searchQuery = ''"
           @keydown="handleKeydown"
-          class="mx-3 mt-4"
-          style="margin-bottom: 5px"
+          class="mx-4 mb-1"
         ></v-text-field>
 
         <!-- Breadcrumb navigation -->
-        <div class="px-3 pb-2 breadcrumb-container">
+        <div class="px-4 pb-2 pysepal-file-input-crumbs">
           <v-breadcrumbs
             :items="breadcrumbItems"
-            class="pa-0 breadcrumb-wrapper"
+            class="pa-0 pysepal-file-input-crumbs-list"
           >
             <template v-slot:divider>
               <v-icon small>fa-solid fa-chevron-right</v-icon>
@@ -44,7 +43,7 @@
               <v-breadcrumbs-item
                 :disabled="item.disabled"
                 @click="navigateToPath(item.path)"
-                class="breadcrumb-item"
+                class="pysepal-file-input-crumb"
                 :title="item.tooltip || item.text"
               >
                 <v-icon v-if="item.isHome" small>fa-solid fa-home</v-icon>
@@ -74,7 +73,9 @@
               v-for="(item, index) in filteredItems"
               :key="item.path"
               @click="!isKeyboardNavigation && onFileSelect(item)"
-              :class="{ 'active-item': selectedIndex === index }"
+              :class="{
+                'pysepal-file-input-item--active': selectedIndex === index,
+              }"
               :style="getItemStyle(index)"
             >
               <v-list-item-action>
@@ -84,7 +85,10 @@
               </v-list-item-action>
               <v-list-item-content>
                 <v-list-item-title
-                  :class="{ 'active-item__title': selectedIndex === index }"
+                  :class="{
+                    'pysepal-file-input-item__title--active':
+                      selectedIndex === index,
+                  }"
                   :style="getTitleStyle(index)"
                 >
                   {{ item.name }}
@@ -535,7 +539,9 @@ export default {
       this.$nextTick(() => {
         const listEl = this.$refs.fileList?.$el;
         if (listEl) {
-          const selectedItem = listEl.querySelector(".active-item");
+          const selectedItem = listEl.querySelector(
+            ".pysepal-file-input-item--active"
+          );
           if (selectedItem) {
             selectedItem.scrollIntoView({
               block: "nearest",
@@ -614,9 +620,10 @@ export default {
 </script>
 
 <style>
-/* Responsive rules must be in a non-scoped block so ipyvuetify injects them
-   as plain global CSS (scoped + ::v-deep is inconsistently handled when a
-   .vue file is loaded as a runtime template rather than a compiled SFC). */
+/* Every rule lives here. ipyvuetify loads this file as a runtime template, not
+   a compiled SFC, so a `<style scoped>` block is dropped outright -- one lived
+   here for a while and none of its rules ever reached the page. Nothing scopes
+   these either, hence the `pysepal-file-input-` prefix on every class. */
 .pysepal-file-input-root {
   container-type: inline-size;
   container-name: pysepal-file-input;
@@ -639,33 +646,33 @@ export default {
     display: none !important;
   }
 }
-</style>
 
-<style scoped>
-/* Breadcrumb container */
-.breadcrumb-container {
+/* Breadcrumbs: one line that scrolls sideways, each crumb ellipsised. */
+.pysepal-file-input-crumbs {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
-/* Hide scrollbar but keep functionality */
-.breadcrumb-container::-webkit-scrollbar {
+.pysepal-file-input-crumbs::-webkit-scrollbar {
   height: 4px;
 }
 
-.breadcrumb-container::-webkit-scrollbar-thumb {
+.pysepal-file-input-crumbs::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 2px;
 }
 
-.breadcrumb-wrapper {
+.pysepal-file-input-crumbs-list {
   flex-wrap: nowrap !important;
   white-space: nowrap;
 }
 
-/* Breadcrumb item styling */
-.breadcrumb-item {
+/* The class sits on the `v-breadcrumbs-item` itself, so it needs no descendant
+   selector -- the old rule chained to `.v-breadcrumbs-item`, a class Vuetify
+   does not emit (it is `.v-breadcrumbs__item`) on an element that was never a
+   descendant. */
+.pysepal-file-input-crumb {
   cursor: pointer;
   max-width: 150px;
   overflow: hidden;
@@ -674,24 +681,17 @@ export default {
   display: inline-block;
 }
 
-.breadcrumb-item:hover:not([disabled]) {
+.pysepal-file-input-crumb:hover:not([disabled]) {
   text-decoration: underline;
 }
 
-/* Truncate breadcrumb text */
-::v-deep .breadcrumb-item .v-breadcrumbs-item {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Highlight selected item */
-::v-deep .active-item {
+/* The highlight itself is inline style from getItemStyle/getTitleStyle; these
+   only smooth the transition between rows. */
+.pysepal-file-input-item--active {
   transition: background-color 120ms ease, border-left 120ms ease;
 }
 
-::v-deep .active-item__title {
+.pysepal-file-input-item__title--active {
   transition: color 120ms ease;
 }
 </style>
