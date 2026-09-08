@@ -219,7 +219,7 @@ def AssetSelectComponent(
             dense=True,
             loading=loading_assets.value or asset_task.pending,
             placeholder=msg("widgets.asset_select.placeholder"),
-            prepend_icon="mdi-sync",
+            prepend_inner_icon="mdi-sync",
             error=bool(validation_msg),
             error_messages=validation_msg or None,
         ):
