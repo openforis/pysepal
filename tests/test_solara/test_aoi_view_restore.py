@@ -209,3 +209,35 @@ def test_autoselect_false_leaves_the_map_untouched(monkeypatch):
     render_and_drain(_Harness, _has_aoi_layer, timeout=0.5)
 
     assert not _has_aoi_layer()
+
+
+def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
+    """Clear must take the geometry off the map, not just the state.
+
+    Vector AOIs are added with ``key="aoi"`` but keep the file stem as their
+    ``name``, so matching cleanup on the name left the polygon behind.
+    """
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+    from pysepal import mapping as sm
+
+    sepal_map = sm.SepalMap(gee=False)
+    clear_ref = SimpleNamespace(current=None)
+
+    @solara.component
+    def _Harness():
+        AoiView(
+            spec=AoiSpec(method="SHAPE", pathname=str(DATA)),
+            map_=sepal_map,
+            gee=False,
+            clear_ref=clear_ref,
+        )
+
+    def _has_aoi_layer(*_):
+        return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
+
+    render_and_drain(_Harness, lambda *_: _has_aoi_layer())
+    assert _has_aoi_layer(), "the AOI never reached the map"
+
+    clear_ref.current()
+
+    assert not _has_aoi_layer()
