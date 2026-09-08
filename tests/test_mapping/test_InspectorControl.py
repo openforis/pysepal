@@ -78,8 +78,8 @@ def test_free_eelayer(world_temp: ee.imagecollection, ee_adm2: ee.FeatureCollect
         world_temp: the imagecollection of the world temperature dataset
         ee_adm2: the vectors of the administrative boundaries of level 2
     """
-    # create a map with a value inspector
-    m = sm.SepalMap()
+    # The inspector samples at the map zoom; the values below hold at zoom 2.
+    m = sm.SepalMap(zoom=2, min_zoom=2)
     inspector_control = sm.InspectorControl(m)
 
     # check a nodata place on Image
@@ -128,8 +128,8 @@ def test_from_raster(rgb: Path) -> None:
     Args:
         rgb: the path of a raster image
     """
-    # create a map with a value inspector
-    m = sm.SepalMap()
+    # The inspector samples at the map zoom; the values below hold at zoom 2.
+    m = sm.SepalMap(zoom=2, min_zoom=2)
     inspector_control = sm.InspectorControl(m)
 
     # check a featurecollection on nodata place
