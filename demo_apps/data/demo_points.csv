@@ -1,0 +1,5 @@
+site_id,latitude,longitude,cluster,status
+plot_001,4.711,-74.072,alpha,active
+plot_002,6.251,-75.564,beta,active
+plot_003,10.391,-75.479,gamma,review
+plot_004,3.452,-76.532,alpha,inactive
