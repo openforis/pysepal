@@ -7,6 +7,7 @@ from ipyleaflet import Map, Marker, PMTilesLayer
 from pysepal import aoi
 from pysepal import mapping as sm
 from pysepal import sepalwidgets as sw
+from pysepal.mapping.basemaps import basemap_tiles
 
 
 @pytest.mark.gee
@@ -134,30 +135,31 @@ def test_select() -> None:
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_change_basemap() -> None:
     """Check that besmap can be changed and that user can select 2 at a time."""
-    m = sm.SepalMap(["HYBRID", "CartoDB.Positron"])
+    terrain_name = basemap_tiles["TERRAIN"].name
+    m = sm.SepalMap(["HYBRID", "TERRAIN"])
     layer_control = next(c for c in m.controls if isinstance(c, sm.LayersControl))
     layer_rows = layer_control.tile.get_children(klass=sm.BaseRow)
-    carto_row = next(r for r in layer_rows if r.children[0].children[0] == "CartoDB.Positron")
+    terrain_row = next(r for r in layer_rows if r.children[0].children[0] == terrain_name)
     google_row = next(r for r in layer_rows if r.children[0].children[0] == "Google Satellite")
-    carto_layer = m.find_layer("CartoDB.Positron", base=True)
+    terrain_layer = m.find_layer(terrain_name, base=True)
     google_layer = m.find_layer("Google Satellite", base=True)
 
-    # select positron (their initial order is random)
-    carto_row.w_radio.active = True
+    # select terrain (their initial order is random)
+    terrain_row.w_radio.active = True
     assert google_row.w_radio.active is False
     assert google_layer.visible is False
-    assert carto_layer.visible is True
+    assert terrain_layer.visible is True
 
     # select google
     google_row.w_radio.active = True
-    assert carto_row.w_radio.active is False
+    assert terrain_row.w_radio.active is False
     assert google_layer.visible is True
-    assert carto_layer.visible is False
+    assert terrain_layer.visible is False
 
     # do it from the layers
-    carto_layer.visible = True
+    terrain_layer.visible = True
     assert google_row.w_radio.active is False
-    assert carto_row.w_radio.active is True
+    assert terrain_row.w_radio.active is True
     assert google_layer.visible is False
 
     return
@@ -167,7 +169,7 @@ def test_change_basemap() -> None:
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_ungrouped() -> None:
     """Check that layer control can be displayed at the same time with other menus."""
-    m = sm.SepalMap(["HYBRID", "CartoDB.Positron"], vinspector=True)
+    m = sm.SepalMap(["HYBRID", "TERRAIN"], vinspector=True)
     layer_control = next(c for c in m.controls if isinstance(c, sm.LayersControl))
     m.v_inspector.menu.v_model = True
 
