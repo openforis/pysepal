@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import reacton
 import solara
 
@@ -13,9 +14,10 @@ from pysepal.message import ms
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 
-from ._harness import find_by_label, render_and_drain
+from ._harness import find_by_label, of_type, render_and_drain, wait_until
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_polygons.geojson"
+pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
 _ITEMS = {
     (0, ""): [{"text": "Algeria", "value": "101"}],
@@ -29,7 +31,9 @@ def _fake_items(level, parent_code=""):
 
 def _render(component):
     async def _runner():
-        return component.widget()
+        root, rc = reacton.render(component(), handle_error=False)
+        rc.close()
+        return root
 
     return asyncio.run(_runner())
 
@@ -163,10 +167,16 @@ def test_clearing_retracts_the_published_spec(monkeypatch):
             clear_ref=clear_ref,
         )
 
-    render_and_drain(_Harness, lambda *_: bool(published))
-    clear_ref.current()
+    async def run():
+        _root, rc = reacton.render(_Harness(), handle_error=False)
+        try:
+            await wait_until(lambda: bool(published))
+            clear_ref.current()
+            assert published[-1] is None
+        finally:
+            rc.close()
 
-    assert published[-1] is None
+    asyncio.run(run())
 
 
 def test_a_successful_selection_publishes_its_spec(monkeypatch):
@@ -235,9 +245,246 @@ def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
     def _has_aoi_layer(*_):
         return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
 
-    render_and_drain(_Harness, lambda *_: _has_aoi_layer())
-    assert _has_aoi_layer(), "the AOI never reached the map"
+    async def run():
+        _root, rc = reacton.render(_Harness(), handle_error=False)
+        try:
+            await wait_until(_has_aoi_layer)
+            clear_ref.current()
+            assert not _has_aoi_layer()
+        finally:
+            rc.close()
 
-    clear_ref.current()
+    asyncio.run(run())
 
-    assert not _has_aoi_layer()
+
+def test_restoring_another_method_removes_the_draw_control():
+    from unittest.mock import Mock
+
+    draw = SimpleNamespace(data=[])
+    draw.clear = lambda: setattr(draw, "data", [])
+    map_ = SimpleNamespace(gee=False, dc=draw, controls=[], layers=[])
+    map_.add_control = map_.controls.append
+    map_.remove_control = map_.controls.remove
+    map_.remove_layer = Mock()
+    spec = solara.reactive(
+        AoiSpec(method="DRAW", geo_json={"type": "FeatureCollection", "features": [{"id": "a"}]})
+    )
+
+    @solara.component
+    def Harness():
+        AoiView(spec=spec, gee=False, map_=map_, autoselect=False)
+
+    async def run():
+        root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            assert draw in map_.controls
+            assert draw.data == [{"id": "a"}]
+            spec.set(AoiSpec(method="SHAPE", pathname=str(DATA)))
+            assert _method_select(root).v_model == "SHAPE"
+            assert draw not in map_.controls
+            assert draw.data == []
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_restoring_without_autoselect_cancels_the_previous_selection(monkeypatch):
+    from pysepal.solara.components.aoi import AoiResult
+
+    spec = solara.reactive(AoiSpec(method="SHAPE", pathname=str(DATA)))
+    autoselect = solara.reactive(True)
+    value = solara.reactive(None)
+
+    @solara.component
+    def Harness():
+        AoiView(spec=spec, value=value, gee=False, autoselect=autoselect.value)
+
+    async def run():
+        started = asyncio.Event()
+        release = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def process_shape(**kwargs):
+            started.set()
+            try:
+                await release.wait()
+                return AoiResult(
+                    method="SHAPE",
+                    name="old",
+                    spec=AoiSpec(method="SHAPE", pathname=kwargs["pathname"]),
+                )
+            finally:
+                finished.set()
+
+        monkeypatch.setattr(aoi_view_mod, "process_shape", process_shape)
+        _root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await asyncio.wait_for(started.wait(), 3)
+            autoselect.set(False)
+            replacement = AoiSpec(
+                method="SHAPE", pathname=str(DATA), column="region", value="south"
+            )
+            spec.set(replacement)
+            release.set()
+            await wait_until(finished.is_set)
+            assert spec.value == replacement
+            assert value.value is None
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_success_callback_can_unmount_the_picker(monkeypatch):
+    from pysepal.solara.components.aoi import AoiResult
+
+    mounted = solara.reactive(True)
+    specs = []
+    values = []
+    spec = AoiSpec(method="SHAPE", pathname=str(DATA))
+    result_spec = AoiSpec(method="SHAPE", pathname=str(DATA), column="ALL")
+
+    async def process_shape(**kwargs):
+        return AoiResult(method="SHAPE", name="selected", spec=result_spec)
+
+    monkeypatch.setattr(aoi_view_mod, "process_shape", process_shape)
+
+    def on_value(result):
+        values.append(result)
+        if result is not None:
+            mounted.set(False)
+
+    @solara.component
+    def Harness():
+        if mounted.value:
+            AoiView(spec=spec, on_value=on_value, on_spec=specs.append, gee=False)
+
+    async def run():
+        _root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await wait_until(lambda: not mounted.value)
+            assert values[-1].name == "selected"
+            assert specs == [result_spec]
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_explicit_clear_resets_an_incomplete_points_form(tmp_path):
+    table = tmp_path / "plots.csv"
+    table.write_text("id,lat,lon\n1,0,0\n")
+    clear_ref = SimpleNamespace(current=None)
+    spec = AoiSpec(
+        method="POINTS", pathname=str(table), id_column="id", lat_column="lat", lng_column="lon"
+    )
+
+    @solara.component
+    def Harness():
+        AoiView(spec=spec, clear_ref=clear_ref, gee=False, autoselect=False)
+
+    async def run():
+        root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await wait_until(
+                lambda: bool(getattr(find_by_label(root, ms.widgets.table.column.id), "items", []))
+            )
+            find_by_label(root, ms.widgets.table.column.id).v_model = None
+            clear_ref.current()
+            await wait_until(lambda: of_type(root, "FileInput")[0].v_model == "")
+            assert _method_select(root).v_model == "POINTS"
+            assert of_type(root, "FileInput")[0].v_model == ""
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_clearing_while_processing_cancels_the_run(monkeypatch):
+    """A clear must stop a running selection, not let it land on an emptied picker."""
+    from pysepal.solara.components.aoi import AoiResult
+
+    clear_ref = SimpleNamespace(current=None)
+    spec = AoiSpec(method="SHAPE", pathname=str(DATA))
+    value = solara.reactive(None)
+
+    @solara.component
+    def Harness():
+        AoiView(spec=spec, value=value, clear_ref=clear_ref, gee=False)
+
+    async def run():
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def process_shape(**kwargs):
+            started.set()
+            await release.wait()
+            return AoiResult(method="SHAPE", name="late", spec=spec)
+
+        monkeypatch.setattr(aoi_view_mod, "process_shape", process_shape)
+        root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await asyncio.wait_for(started.wait(), 3)
+            clear_ref.current()
+            await wait_until(lambda: of_type(root, "FileInput")[0].v_model == "")
+
+            # Releasing a run that was not cancelled would publish "late" here.
+            # Nothing arriving is the assertion, so this waits by time on purpose.
+            release.set()
+            await asyncio.sleep(0.1)
+
+            assert value.value is None
+            assert _method_select(root).v_model == "SHAPE"
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_a_restore_from_inside_a_run_does_not_break_that_run(monkeypatch):
+    """A run renders while it is still running, so a restore can land on its stack.
+
+    Writing a reactive from the task body renders synchronously, thus an effect
+    that restores or clears executes inside the coroutine. ``task.cancel()`` raises
+    there, which is why the cancel asks ``is_current()`` first.
+    """
+    from pysepal.solara.components.aoi import AoiResult
+
+    spec = solara.reactive(AoiSpec(method="SHAPE", pathname=str(DATA)))
+    replacement = AoiSpec(method="SHAPE", pathname=str(DATA), column="region", value="south")
+    running = solara.reactive(False)
+    value = solara.reactive(None)
+
+    @solara.component
+    def Harness():
+        def restore_once():
+            if running.value:
+                spec.set(replacement)
+
+        solara.use_effect(restore_once, [running.value])
+        AoiView(spec=spec, value=value, gee=False)
+
+    async def run():
+        started = asyncio.Event()
+        returned = asyncio.Event()
+
+        async def process_shape(**kwargs):
+            started.set()
+            # Renders inside this coroutine, which is what puts the restore here.
+            running.set(True)
+            try:
+                return AoiResult(method="SHAPE", name="ok", spec=spec.value)
+            finally:
+                returned.set()
+
+        monkeypatch.setattr(aoi_view_mod, "process_shape", process_shape)
+        _root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await asyncio.wait_for(started.wait(), 3)
+            await wait_until(returned.is_set)
+            assert spec.value == replacement
+        finally:
+            rc.close()
+
+    asyncio.run(run())

@@ -80,7 +80,9 @@ class AoiSpec:
             if spec_field.name in ("method", "schema_version"):
                 continue
             current = getattr(self, spec_field.name)
-            if current is None or current == () or current == "":
+            # Only an empty tuple is dropped as well: a filter value of "", 0 or
+            # False is a selection the user made and has to survive the round trip.
+            if current is None or current == ():
                 continue
             if isinstance(current, tuple):
                 data[spec_field.name] = list(current)

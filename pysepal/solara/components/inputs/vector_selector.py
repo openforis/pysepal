@@ -13,6 +13,7 @@ import solara
 
 from pysepal.message import ms
 from pysepal.solara.components.inputs.file_input import FileInputComponent
+from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
 
 VECTOR_EXTENSIONS = [".shp", ".geojson", ".gpkg", ".kml"]
@@ -69,162 +70,65 @@ def VectorSelectorComponent(
         initial_folder: Initial folder shown by the local file picker.
         value: Dict with {pathname, column, value} or None.
         on_value: Callback when selection changes.
-
-    Note:
-        A restore uses two refs. ``published`` holds what this component last
-        emitted: an incoming ``value`` that differs came from the app and seeds the
-        widgets, while one that matches is this component's own echo. Comparing
-        rather than flagging keeps the effect idempotent under reacton's double
-        effect-run.
-
-        ``pending_seed`` holds the caller's selection until the column cascade
-        consumes it. It has to stay separate from ``published``, which this
-        component's own intermediate publishes overwrite (it emits ``column="ALL"`` on its way through) -- that would erase
-        the selection being restored before anything reads it.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
 
     notifications = use_notifications()
+    draft, publish = _use_draft(reactive_value)
+    selection = draft.value or {}
+    file_path = selection.get("pathname") or ""
+    selected_column = selection.get("column") or "ALL"
+    selected_value = selection.get("value")
 
-    file_path = solara.use_reactive("")
-    selected_column = solara.use_reactive("ALL")
-    selected_value = solara.use_reactive(None)
-    column_items = solara.use_reactive([])
-    value_items = solara.use_reactive([])
-    loading_columns = solara.use_reactive(False)
-    loading_values = solara.use_reactive(False)
+    def select_file(path):
+        publish(None)
+        draft.set({"pathname": path, "column": "ALL", "value": None} if path else None)
 
-    # Restore bookkeeping; see Note in the docstring.
-    published = solara.use_ref(None)
-    pending_seed = solara.use_ref(None)
+    def select_column(column):
+        draft.set({**draft.value, "column": column or "ALL", "value": None})
 
-    def _seed_from_value():
-        incoming = reactive_value.value
-        if not incoming or incoming == published.current:
-            return
-        published.current = incoming
-        pending_seed.current = incoming
-        if (incoming.get("pathname") or "") == file_path.value:
-            # Same file, different filter: writing the same path back is a no-op,
-            # so on_file_change never re-runs. Apply the filter directly.
-            selected_column.set(incoming.get("column") or "ALL")
-            selected_value.set(incoming.get("value"))
-            return
-        file_path.set(incoming.get("pathname") or "")
+    def select_value(value):
+        draft.set({**draft.value, "value": value})
 
-    solara.use_effect(_seed_from_value, [reactive_value.value])
-
-    # --- File change: read columns in a background task ---
-
-    async def _load_columns(path: str):
-        cols = await asyncio.to_thread(_read_columns_from_file, path)
-        return cols
+    async def load_columns():
+        if not file_path:
+            return []
+        return await asyncio.to_thread(_read_columns_from_file, file_path)
 
     column_task = solara.lab.use_task(
-        _load_columns,
-        dependencies=None,
-        raise_error=False,
-        prefer_threaded=False,
+        load_columns, dependencies=[file_path], raise_error=False, prefer_threaded=False
     )
 
-    def on_file_change():
-        path = file_path.value
-        selected_column.set("ALL")
-        selected_value.set(None)
-        column_items.set([])
-        value_items.set([])
-
-        if not path:
-            reactive_value.set(None)
-            return
-
-        column_task(path)
-
-    solara.use_effect(on_file_change, [file_path.value])
-
-    def _handle_column_task():
-        loading_columns.set(column_task.pending)
-        if column_task.finished and column_task.value is not None:
-            column_items.set(COLUMN_ALL_ITEMS + column_task.value)
-            seeded = pending_seed.current or {}
-            if seeded.get("pathname") == file_path.value and seeded.get("column", "ALL") != "ALL":
-                selected_column.set(seeded["column"])
-                if seeded.get("value") is not None:
-                    selected_value.set(seeded["value"])
-                return
-            published.current = {"pathname": file_path.value, "column": "ALL", "value": None}
-            reactive_value.set(published.current)
-        elif column_task.error:
-            column_items.set([])
-            reactive_value.set(None)
-            notifications.error(f"Error reading columns: {column_task.exception}")
-
-    solara.use_effect(
-        _handle_column_task,
-        [column_task.pending, column_task.finished, column_task.error],
-    )
-
-    # --- Column change: read unique values in a background task ---
-
-    async def _load_values(path: str, col: str):
-        vals = await asyncio.to_thread(_read_column_values, path, col)
-        return vals
+    async def load_values():
+        if not file_path or selected_column == "ALL":
+            return []
+        return await asyncio.to_thread(_read_column_values, file_path, selected_column)
 
     value_task = solara.lab.use_task(
-        _load_values,
-        dependencies=None,
+        load_values,
+        dependencies=[file_path, selected_column],
         raise_error=False,
         prefer_threaded=False,
     )
 
-    def on_column_change():
-        col = selected_column.value
-        seeded = pending_seed.current or {}
-        # Restoring a filter writes the column and then the value, but this reaction
-        # runs in between and would null the value straight back out.
-        restoring_this_column = (
-            seeded.get("pathname") == file_path.value
-            and seeded.get("column") == col
-            and seeded.get("value") is not None
-        )
-        if not restoring_this_column:
-            selected_value.set(None)
-        value_items.set([])
+    def publish_selection():
+        if not file_path or column_task.error:
+            publish(None)
+        elif column_task.finished:
+            publish({"pathname": file_path, "column": selected_column, "value": selected_value})
 
-        if not file_path.value or not col or col == "ALL":
-            if file_path.value:
-                published.current = {"pathname": file_path.value, "column": col, "value": None}
-                reactive_value.set(published.current)
-            return
+    solara.use_effect(publish_selection, [draft.value, column_task.finished, column_task.error])
 
-        value_task(file_path.value, col)
-
-    solara.use_effect(on_column_change, [selected_column.value])
-
-    def _handle_value_task():
-        loading_values.set(value_task.pending)
-        if value_task.finished and value_task.value is not None:
-            value_items.set(value_task.value)
-        elif value_task.error:
-            value_items.set([])
+    def report_errors():
+        if column_task.error:
+            notifications.error(f"Error reading columns: {column_task.exception}")
+        if value_task.error:
             notifications.error(f"Error reading values: {value_task.exception}")
 
-    solara.use_effect(
-        _handle_value_task,
-        [value_task.pending, value_task.finished, value_task.error],
-    )
-
-    def on_value_change():
-        if file_path.value and selected_column.value:
-            published.current = {
-                "pathname": file_path.value,
-                "column": selected_column.value,
-                "value": selected_value.value,
-            }
-            reactive_value.set(published.current)
-
-    solara.use_effect(on_value_change, [selected_value.value])
+    solara.use_effect(report_errors, [column_task.exception, value_task.exception])
+    column_items = COLUMN_ALL_ITEMS + (column_task.value or []) if column_task.finished else []
+    value_items = value_task.value or [] if value_task.finished else []
 
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         FileInputComponent(
@@ -232,27 +136,28 @@ def VectorSelectorComponent(
             extensions=VECTOR_EXTENSIONS,
             label=ms.widgets.vector.label,
             value=file_path,
+            on_value=select_file,
         )
 
-        if file_path.value:
+        if file_path:
             with rv.Select(
                 label=ms.widgets.vector.column,
-                items=column_items.value,
-                v_model=selected_column.value,
-                on_v_model=selected_column.set,
+                items=column_items,
+                v_model=selected_column,
+                on_v_model=select_column,
                 dense=True,
-                loading=loading_columns.value,
+                loading=column_task.pending,
             ):
                 pass
 
-            if selected_column.value and selected_column.value != "ALL":
+            if selected_column != "ALL":
                 with rv.Select(
                     label=ms.widgets.vector.value,
-                    items=value_items.value,
-                    v_model=selected_value.value,
-                    on_v_model=selected_value.set,
+                    items=value_items,
+                    v_model=selected_value,
+                    on_v_model=select_value,
                     dense=True,
                     clearable=True,
-                    loading=loading_values.value,
+                    loading=value_task.pending,
                 ):
                     pass

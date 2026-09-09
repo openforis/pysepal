@@ -51,7 +51,7 @@ from pysepal.solara.notifications import use_notifications
 from pysepal.solara.notifications.notifier import NoopNotifier
 from pysepal.solara.utils import get_current_gee_interface
 
-__all__ = ["AoiView", "MethodSelect", "AoiResult"]
+__all__ = ["AoiResult", "AoiView", "MethodSelect"]
 
 # Method type constants
 CUSTOM: str = ms.aoi_sel.custom
@@ -230,11 +230,9 @@ def AoiView(
         Hydration writes it before it moves the select, so a restore does not trip
         the clear it would otherwise look like.
 
-        ``alive`` goes False on unmount. A ``use_task`` coroutine suspended at an
-        await survives unmount and resumes afterwards -- solara discards the task's
-        own result, not what its body writes -- so a late run would draw on a map
-        the app has moved on from, or repopulate the value unmount stopped
-        clearing.
+        Pending processing is cancelled on restore, clear and unmount. ``alive``
+        also guards publication during teardown, since the result belongs to the
+        host application rather than to the task's internal state.
 
     Example:
         ```python
@@ -280,6 +278,7 @@ def AoiView(
     aoi_dc = map_.dc if map_ else None
 
     selected_method = solara.use_reactive("")
+    form_revision = solara.use_reactive(0)
     admin_codes = solara.use_reactive(())
     admin_code = solara.use_reactive(None)
     draw_name = solara.use_reactive("")
@@ -331,6 +330,17 @@ def AoiView(
             # Control may already be detached by another cleanup path.
             pass
 
+    def _cancel_pending_run():
+        """Stop a run in flight, unless the run itself is what asked.
+
+        ``cancel()`` raises ``_CancelledErrorInOurTask`` when it is called from
+        inside the task's own coroutine, and it can be: writing a reactive from the
+        task body renders synchronously, so an effect that clears or restores runs
+        on that same stack.
+        """
+        if task.pending and not task.is_current():
+            task.cancel()
+
     def _clear_current_aoi(
         *,
         reset_method: bool = False,
@@ -349,6 +359,7 @@ def AoiView(
                 reactive owned by the host app, which ``use_reactive`` passes straight
                 through. Only user-driven clears may null it; teardown must not.
         """
+        _cancel_pending_run()
         if reset_loading:
             reactive_loading.set(False)
 
@@ -385,6 +396,8 @@ def AoiView(
                 # Preserve the currently selected method so the user can retry
                 # immediately after clearing the previous AOI.
                 _clear_current_aoi()
+                # An incomplete draft may already publish None, so reset its local state too.
+                form_revision.set(form_revision.peek() + 1)
 
             clear_ref.current = clear
 
@@ -393,7 +406,7 @@ def AoiView(
     # Track the current task in the notification system
     task_tracker_ref = solara.use_ref(None)
 
-    async def process_aoi() -> str:
+    async def process_aoi() -> Optional[AoiResult]:
         """Process the selected AOI."""
         method = selected_method.value
         tracker = notifications.track(f"Processing AOI ({method})")
@@ -495,16 +508,10 @@ def AoiView(
 
             if not alive.current:
                 tracker.complete()
-                return ""  # falsy: no success toast for a run nobody is watching
-
-            # Recording applied_spec first is what stops this publish from
-            # re-entering _apply_spec.
-            applied_spec.current = result.spec
-            reactive_value.set(result)
-            reactive_spec.set(result.spec)
+                return None
 
             tracker.complete()
-            return ms.aoi_sel.complete
+            return result
 
         except BaseException:
             tracker.__exit__(*__import__("sys").exc_info())
@@ -532,11 +539,15 @@ def AoiView(
             fallback_level.set("info")
         elif task.finished:
             reactive_loading.set(False)
-            if task.value:
+            if task.value is not None and alive.current:
+                result = task.value
+                applied_spec.current = result.spec
+                reactive_spec.set(result.spec)
+                reactive_value.set(result)
                 if has_notifications:
-                    notifications.success(task.value)
+                    notifications.success(ms.aoi_sel.complete)
                 else:
-                    fallback_message.set(task.value)
+                    fallback_message.set(ms.aoi_sel.complete)
                     fallback_level.set("success")
         elif task.error:
             reactive_loading.set(False)
@@ -588,6 +599,10 @@ def AoiView(
         applied_spec.current = incoming
         last_method.current = incoming.method
 
+        _cancel_pending_run()
+        if incoming.method != selected_method.value:
+            _sync_draw_control(incoming.method)
+
         selected_method.set(incoming.method)
         if incoming.method in ADMIN_METHODS:
             admin_codes.set(incoming.admin_codes)
@@ -632,10 +647,6 @@ def AoiView(
         def cleanup():
             alive.current = False
 
-            # Note: We don't cancel the task here because task.cancel() raises
-            # _CancelledErrorInOurTask which propagates up. The task will be
-            # garbage collected when the component unmounts.
-
             # Release only what this picker owns. `value` belongs to the caller —
             # use_reactive passes a host-owned reactive straight through — and
             # unmounting the widget is not the user dropping their AOI.
@@ -652,7 +663,7 @@ def AoiView(
     btn_props = use_task_button(task, on_start=start_process)
 
     # Render
-    with solara.Column(classes="mx-0 px-0"):
+    with solara.Column(classes="mx-0 px-0").key(str(form_revision.value)):
         # Method selector
         MethodSelect(
             methods=methods,

@@ -38,6 +38,19 @@ def test_shape_spec_round_trips_the_filter():
     }
 
 
+@pytest.mark.parametrize("method", ["SHAPE", "ASSET"])
+@pytest.mark.parametrize("value", ["", 0, False])
+def test_filter_values_survive_json_round_trip(method, value):
+    import json
+
+    spec = AoiSpec(method=method, column="category", value=value)
+
+    restored = AoiSpec.from_dict(json.loads(json.dumps(spec.to_dict())))
+
+    assert restored.value == value
+    assert type(restored.value) is type(value)
+
+
 def test_points_spec_round_trips_every_column():
     spec = AoiSpec(
         method="POINTS",

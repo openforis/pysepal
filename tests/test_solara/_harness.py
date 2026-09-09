@@ -3,6 +3,18 @@
 import asyncio
 from typing import Any, Callable, Iterator, List, Optional
 
+import reacton
+
+
+async def wait_until(predicate: Callable[[], bool], timeout: float = 3.0) -> None:
+    """Wait for an observable state while keeping the component's loop alive."""
+
+    async def wait():
+        while not predicate():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(wait(), timeout)
+
 
 def walk(widget: Any) -> Iterator[Any]:
     """Yield every widget in the tree, parents before children, in document order.
@@ -53,18 +65,11 @@ def render_and_drain(
     *,
     timeout: float = 3.0,
 ) -> Any:
-    """Render ``component`` and let its ``use_task`` work run until ``until`` holds.
+    """Wait for observable widget state, then close the render context.
 
-    ``asyncio.run(component.widget())`` returns as soon as the synchronous render is
-    done and then cancels every pending task, so anything a task produces is invisible
-    to a plain render. Yielding to the loop until the condition holds makes those
-    results observable without a fixed sleep.
-
-    ``until`` receives the rendered root so a test can gate on **widget** state. That
-    matters more than it sounds: a component republishing a value that deep-equals
-    what a reactive already holds fires no callback at all (solara compares with
-    ``equals_extra`` before notifying), so a restore test gated on a publish can wait
-    forever while the component behaves perfectly. Gate on what the widgets show.
+    Gate on widget state rather than publication: a restored value may compare
+    equal to the initial value and never fire a callback. Tests that interact
+    after loading should keep their own render context open on the same loop.
 
     Args:
         component: The Solara component to render.
@@ -78,10 +83,13 @@ def render_and_drain(
     """
 
     async def _runner():
-        root = component.widget()
-        deadline = asyncio.get_running_loop().time() + timeout
-        while not until(root) and asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(0.01)
-        return root
+        root, rc = reacton.render(component(), handle_error=False)
+        try:
+            deadline = asyncio.get_running_loop().time() + timeout
+            while not until(root) and asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(0.01)
+            return root
+        finally:
+            rc.close()
 
     return asyncio.run(_runner())
