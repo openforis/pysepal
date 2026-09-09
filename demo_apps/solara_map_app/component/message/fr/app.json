@@ -8,7 +8,11 @@
   },
   "section": {
     "aoi": {
-      "title": "Sélectionner l'AOI"
+      "title": "Sélectionner l'AOI",
+      "save": "Enregistrer l'AOI",
+      "restore": "Restaurer l'AOI enregistrée",
+      "saved": "Cette zone d'intérêt a été enregistrée.",
+      "empty": "Aucune zone d'intérêt enregistrée à restaurer."
     },
     "process": {
       "title": "Traiter",

@@ -12,6 +12,7 @@ import pandas as pd
 
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
 
 async def process_points(
@@ -76,4 +77,11 @@ async def process_points(
         feature_collection=feature_collection,
         admin=None,
         gee=gee,
+        spec=AoiSpec(
+            method="POINTS",
+            pathname=pathname,
+            id_column=id_column,
+            lat_column=lat_column,
+            lng_column=lng_column,
+        ),
     )

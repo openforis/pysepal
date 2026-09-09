@@ -11,6 +11,7 @@ import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.message import ms
+from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.utils import get_current_gee_interface
 
@@ -60,26 +61,24 @@ def AssetSelectComponent(
 
     gee_interface = gee_interface or get_current_gee_interface()
     notifications = use_notifications()
-
-    asset_id = solara.use_reactive(None)
-    asset_type = solara.use_reactive(None)
+    draft, publish = _use_draft(reactive_value)
+    selection = draft.value or {}
+    asset_id = selection.get("asset_id")
+    asset_type = selection.get("type")
+    selected_column = selection.get("column") or "ALL"
+    selected_value = selection.get("value")
     asset_items = solara.use_reactive([])
-    selected_column = solara.use_reactive("ALL")
-    selected_value = solara.use_reactive(None)
-    column_items = solara.use_reactive([])
-    value_items = solara.use_reactive([])
     loading_assets = solara.use_reactive(True)
-    loading_columns = solara.use_reactive(False)
-    loading_values = solara.use_reactive(False)
-    validation_msg = solara.use_reactive("")
 
-    def _sync_loading():
-        reactive_loading.set(loading_assets.value or loading_columns.value or loading_values.value)
+    def select_asset(aid):
+        publish(None)
+        draft.set({"asset_id": aid, "type": None, "column": "ALL", "value": None} if aid else None)
 
-    solara.use_effect(
-        _sync_loading,
-        [loading_assets.value, loading_columns.value, loading_values.value],
-    )
+    def select_column(column):
+        draft.set({**draft.value, "column": column or "ALL", "value": None})
+
+    def select_value(value):
+        draft.set({**draft.value, "value": value})
 
     async def load_assets():
         loading_assets.set(True)
@@ -123,148 +122,121 @@ def AssetSelectComponent(
         prefer_threaded=False,
     )
 
-    async def on_asset_change():
-        aid = asset_id.value
-        asset_type.set(None)
-        selected_column.set("ALL")
-        selected_value.set(None)
-        column_items.set([])
-        value_items.set([])
-        validation_msg.set("")
-
-        if not aid:
-            reactive_value.set(None)
-            return
-
-        loading_columns.set(True)
-        try:
-            asset_info = await gee_interface.get_asset_async(aid.strip())
-
-            if asset_info["type"] not in types:
-                validation_msg.set(
-                    ms.widgets.asset_select.wrong_type.format(asset_info["type"], ",".join(types))
-                )
-                reactive_value.set(None)
-                return
-
-            asset_type.set(asset_info["type"])
-
-            if asset_info["type"] == "TABLE":
-                info = await gee_interface.get_info_async(ee.FeatureCollection(aid).first())
-                cols = sorted(
-                    [str(col) for col in info["properties"] if col not in _EXCLUDED_PROPERTIES]
-                )
-                column_items.set(COLUMN_ALL_ITEMS + cols)
-
-            reactive_value.set(
-                {
-                    "asset_id": aid,
-                    "type": asset_info["type"],
-                    "column": "ALL",
-                    "value": None,
-                }
+    async def load_asset():
+        if not asset_id:
+            return None
+        info = await gee_interface.get_asset_async(asset_id.strip())
+        if info["type"] not in types:
+            raise ValueError(
+                ms.widgets.asset_select.wrong_type.format(info["type"], ",".join(types))
             )
-        except ValueError as e:
-            validation_msg.set(str(e))
-            reactive_value.set(None)
-        except Exception:
-            notifications.error(ms.widgets.asset_select.no_access)
-            reactive_value.set(None)
-        finally:
-            loading_columns.set(False)
+        columns = []
+        if info["type"] == "TABLE":
+            feature = await gee_interface.get_info_async(ee.FeatureCollection(asset_id).first())
+            columns = sorted(
+                str(col) for col in feature["properties"] if col not in _EXCLUDED_PROPERTIES
+            )
+        return info["type"], columns
 
-    solara.lab.use_task(
-        on_asset_change,
-        dependencies=[asset_id.value],
+    asset_task = solara.lab.use_task(
+        load_asset, dependencies=[asset_id], raise_error=False, prefer_threaded=False
+    )
+
+    # A wrong asset type is a fault in what the user typed, so it is reported under
+    # the field. Anything else is an access failure they cannot see there.
+    wrong_type = str(asset_task.exception) if isinstance(asset_task.exception, ValueError) else ""
+
+    def apply_asset():
+        if asset_task.error:
+            if not wrong_type:
+                notifications.error(ms.widgets.asset_select.no_access)
+        elif asset_task.finished and asset_task.value is not None:
+            draft.set({**draft.value, "type": asset_task.value[0]})
+
+    solara.use_effect(apply_asset, [asset_task.finished, asset_task.exception])
+
+    async def load_values():
+        if not asset_id or selected_column == "ALL" or asset_type != "TABLE":
+            return []
+        fc = ee.FeatureCollection(asset_id)
+        values = await gee_interface.get_info_async(
+            fc.distinct(selected_column).aggregate_array(selected_column)
+        )
+        return sorted(set(values))
+
+    value_task = solara.lab.use_task(
+        load_values,
+        dependencies=[asset_id, asset_type, selected_column],
         raise_error=False,
         prefer_threaded=False,
     )
 
-    async def on_column_change():
-        col = selected_column.value
-        selected_value.set(None)
-        value_items.set([])
+    def report_value_error():
+        if value_task.error:
+            notifications.error(f"Error loading column values: {value_task.exception}")
 
-        aid = asset_id.value
-        if not aid or not col or col == "ALL" or asset_type.value != "TABLE":
-            if aid:
-                reactive_value.set(
-                    {
-                        "asset_id": aid,
-                        "type": asset_type.value,
-                        "column": col,
-                        "value": None,
-                    }
-                )
-            return
+    solara.use_effect(report_value_error, [value_task.exception])
 
-        loading_values.set(True)
-        try:
-            fc = ee.FeatureCollection(aid)
-            vals = await gee_interface.get_info_async(fc.distinct(col).aggregate_array(col))
-            value_items.set(sorted(set(vals)))
-        except Exception as e:
-            notifications.error(f"Error loading column values: {e}")
-            value_items.set([])
-        finally:
-            loading_values.set(False)
-
-    solara.lab.use_task(
-        on_column_change,
-        dependencies=[selected_column.value],
-        raise_error=False,
-        prefer_threaded=False,
-    )
-
-    def on_value_change():
-        aid = asset_id.value
-        if aid and selected_column.value:
-            reactive_value.set(
+    def publish_selection():
+        if not asset_id or asset_task.error:
+            publish(None)
+        elif asset_task.finished and asset_type is not None:
+            publish(
                 {
-                    "asset_id": aid,
-                    "type": asset_type.value,
-                    "column": selected_column.value,
-                    "value": selected_value.value,
+                    "asset_id": asset_id,
+                    "type": asset_type,
+                    "column": selected_column,
+                    "value": selected_value,
                 }
             )
 
-    solara.use_effect(on_value_change, [selected_value.value])
+    solara.use_effect(publish_selection, [draft.value, asset_task.finished, asset_task.error])
+
+    def sync_loading():
+        reactive_loading.set(loading_assets.value or asset_task.pending or value_task.pending)
+
+    solara.use_effect(sync_loading, [loading_assets.value, asset_task.pending, value_task.pending])
+    column_items = []
+    if asset_task.finished and asset_task.value and asset_task.value[0] == "TABLE":
+        column_items = COLUMN_ALL_ITEMS + asset_task.value[1]
+    value_items = value_task.value or [] if value_task.finished else []
+    validation_msg = wrong_type
 
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         with rv.Combobox(
             label=ms.widgets.asset_select.label,
             items=asset_items.value,
-            v_model=asset_id.value,
-            on_v_model=asset_id.set,
+            v_model=asset_id,
+            on_v_model=select_asset,
             clearable=True,
             dense=True,
-            loading=loading_assets.value or loading_columns.value,
+            loading=loading_assets.value or asset_task.pending,
             placeholder=ms.widgets.asset_select.placeholder,
             prepend_icon="mdi-sync",
-            error=bool(validation_msg.value),
-            error_messages=validation_msg.value or None,
+            error=bool(validation_msg),
+            error_messages=validation_msg or None,
         ):
             pass
 
-        if column_items.value and not validation_msg.value:
+        if column_items and not validation_msg:
             with rv.Select(
                 label="Column",
-                items=column_items.value,
-                v_model=selected_column.value,
-                on_v_model=selected_column.set,
+                items=column_items,
+                v_model=selected_column,
+                on_v_model=select_column,
                 dense=True,
-                loading=loading_columns.value,
+                loading=asset_task.pending,
             ):
                 pass
 
-            if selected_column.value and selected_column.value != "ALL":
+            if selected_column != "ALL":
                 with rv.Select(
                     label="Value",
-                    items=value_items.value,
-                    v_model=selected_value.value,
-                    on_v_model=selected_value.set,
+                    items=value_items,
+                    v_model=selected_value,
+                    on_v_model=select_value,
                     dense=True,
                     clearable=True,
-                    loading=loading_values.value,
+                    loading=value_task.pending,
                 ):
                     pass

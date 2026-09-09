@@ -13,6 +13,7 @@ from shapely import force_2d
 
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
 
 async def process_shape(
@@ -73,4 +74,5 @@ async def process_shape(
         feature_collection=feature_collection,
         admin=None,
         gee=gee,
+        spec=AoiSpec(method="SHAPE", pathname=pathname, column=column, value=value),
     )

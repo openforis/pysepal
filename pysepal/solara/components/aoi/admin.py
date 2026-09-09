@@ -6,7 +6,7 @@ FAO GAUL 2024 data (both WFS for non-GEE and sat-io asset for GEE).
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import geopandas as gpd
 import httpx
@@ -17,6 +17,7 @@ from pysepal.message import ms
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.constants import FAO_GAUL_LAYERS, FAO_WFS_BASE_URL
 
 # Path to GAUL -> ISO-3 mapping file
@@ -184,11 +185,35 @@ def fetch_admin_items(
     return item_list
 
 
+def _derive_admin_chain(level: int, admin_code: str) -> Tuple[str, ...]:
+    """Return every GAUL code from level 0 down to ``admin_code``.
+
+    ``AoiView`` already knows the whole cascade and passes it in. A caller reaching
+    ``process_admin`` directly knows only the leaf, and falling back to ``(leaf,)``
+    would record a chain that a restore reads as a *level-0* selection — so an
+    ADMIN2 spec built outside the picker could never be restored.
+
+    Args:
+        level: The admin level of ``admin_code`` (1 or 2; level 0 needs no lookup).
+        admin_code: The leaf GAUL 2024 code.
+
+    Returns:
+        The codes for levels 0..``level``.
+
+    Raises:
+        ValueError: If ``admin_code`` is not a GAUL 2024 code. ``pygaul`` raises this
+            itself, which is the validation we want — a bad code must fail loudly.
+    """
+    row = pygaul.Names(admin=str(admin_code), complete=True).iloc[0]
+    return tuple(str(row[f"gaul{lvl}_code"]) for lvl in range(level + 1))
+
+
 async def process_admin(
     method: str,
     admin_code: str,
     gee: bool = True,
     gee_interface: Optional[Any] = None,
+    admin_codes: Sequence[str] = (),
 ) -> AoiResult:
     """Process administrative boundary selection.
 
@@ -204,6 +229,9 @@ async def process_admin(
         gee: If True, use Earth Engine with sat-io's GAUL 2024 asset.
              If False, use FAO GAUL 2024 WFS service.
         gee_interface: Optional GEEInterface for Earth Engine operations
+        admin_codes: Every GAUL code from level 0 down to ``admin_code``. Recorded on
+            the result's spec so a restore can seed the whole cascade. When omitted it
+            is ``(admin_code,)`` at level 0, and derived from ``pygaul`` otherwise.
 
     Returns:
         AoiResult with gdf=None (geometry fetched lazily via get_gdf_async())
@@ -232,6 +260,13 @@ async def process_admin(
         raise ValueError(f"Invalid admin method: {method}")
 
     level = int(method[-1])  # Extract level from method name
+
+    # At level 0 the leaf is already the whole chain, so no lookup is needed — and
+    # skipping it there keeps callers that pass a non-GAUL-2024 code working exactly
+    # as before, since only levels 1-2 pay pygaul's validation.
+    codes = tuple(str(code) for code in admin_codes) or (
+        (str(admin_code),) if level == 0 else _derive_admin_chain(level, admin_code)
+    )
 
     if gee:
         # Resolve the interface first: it refuses a session-less one in a
@@ -276,6 +311,7 @@ async def process_admin(
                 feature_collection=feature_collection,
                 admin=admin_code,
                 gee=True,
+                spec=AoiSpec(method=method, admin_codes=codes),
             )
         finally:
             if created_interface:
@@ -318,4 +354,5 @@ async def process_admin(
             feature_collection=None,
             admin=admin_code,
             gee=False,
+            spec=AoiSpec(method=method, admin_codes=codes),
         )
