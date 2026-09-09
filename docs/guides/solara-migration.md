@@ -310,6 +310,38 @@ def MyComponent():
 | `solara.use_ref()`                  | Mutable value that should NOT trigger re-renders (prev values, sync flags) |
 | `value/on_value` params             | Component inputs controlled by parent                                      |
 
+### Editable drafts and published values
+
+Use `solara.use_reactive(value, on_value)` directly when the editable value is also
+the component's output. A composite form sometimes needs a separate draft: a points
+picker must keep the selected CSV and column choices while publishing `None` until
+all required columns are selected.
+
+Keep related editable fields in one draft dict or object. A user changing the file
+should replace that draft and reset dependent column choices together. An external
+restore supplies the whole selection, including its column choices. Async loaders
+return available options; they should not replay an earlier restore over newer edits.
+
+The internal [`_use_draft` helper](../../pysepal/solara/hooks.py) supports this
+distinction in pysepal's vector, points, and asset selectors:
+
+- It returns a reactive draft and a `publish(output)` callback.
+- External value changes replace the draft, including a change to `None`.
+- Publishing an output leaves the draft intact. Use `publish(None)` to report an
+  incomplete selection without discarding the user's edits.
+- Setting a value equal to the current published value produces no change event.
+  Resetting an incomplete form that already publishes `None` needs an explicit
+  reset action; `AoiView` exposes this through `clear_ref`.
+
+`_use_draft` is a private implementation helper, not a supported app API. App
+authors should use the selectors' public `value`/`on_value` interface. It is not
+needed for ordinary inputs or for loading flags and option lists.
+
+For AOI persistence, the **draft** is the editable form, the **spec** records the
+selection inputs, and the **result** holds the processed AOI. See
+[Persist and restore an AOI](solara-app-builder.md#persist-and-restore-an-aoi) for
+the public API and clear behavior.
+
 ## 5. Threading and Async Patterns
 
 ### `solara.lab.use_task` (preferred for new code)
@@ -336,6 +368,32 @@ def MyComponent():
     elif task.error:
         solara.Error(f"Error: {task.exception}")
 ```
+
+### Internal task state and result publication
+
+For component-internal loading, derive option lists from `task.value` when
+`task.finished`, and loading indicators from `task.pending`. Separate reactive
+copies and effects that keep those copies synchronized are unnecessary. Include
+all inputs that determine the request in the task dependencies, such as both the
+file path and selected column. See the
+[column-loading example](solara-gee-patterns.md#blocking-io-in-solara-components).
+
+When a result must outlive the component, publish it into parent-owned state from
+an effect after `task.finished`. Task functions return the result; completion
+callbacks run in that effect. A callback may hide or unmount the component, so
+calling it inside a still-running task can trigger cleanup during that task.
+The same effect can expose `loading`/`on_loading` when a parent needs it.
+
+Cancel pending work when a restore or clear supersedes a manually started request,
+even if the new selection will not start another run. On unmount, cancel work and
+release resources owned by the component while preserving parent-owned results;
+an explicit clear is what resets those results. If cleanup can run inside the task
+itself, guard cancellation with `task.pending and not task.is_current()`.
+
+Cancellation cannot undo side effects already performed by a task or stop a
+blocking operation already running through `asyncio.to_thread`. Prefer returned
+outcomes over writes to external state, and guard unavoidable side effects against
+an obsolete request or an unmounted owner after an `await`.
 
 ### `solara.use_thread` (legacy, still works)
 

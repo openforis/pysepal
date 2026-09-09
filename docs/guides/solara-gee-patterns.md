@@ -356,28 +356,37 @@ async def load_user_csv(sepal_client, remote_path: str):
 ```
 
 **For component-internal loading** (column lists, metadata), use `use_task`
-instead of doing the read directly in `use_effect`:
+with the request inputs as dependencies. In the component body:
 
 ```python
-async def _load_columns(sepal_client, remote_path: str):
-    payload = await asyncio.to_thread(sepal_client.files.read_bytes, remote_path)
+path = remote_path.value
+
+async def _load_columns():
+    if not path:
+        return []
+    payload = await asyncio.to_thread(sepal_client.files.read_bytes, path)
     frame = await asyncio.to_thread(pd.read_csv, io.BytesIO(payload), nrows=0)
     return list(frame.columns)
 
 column_task = solara.lab.use_task(
-    _load_columns, dependencies=None, raise_error=False, prefer_threaded=False,
+    _load_columns,
+    dependencies=[sepal_client, path],
+    raise_error=False,
+    prefer_threaded=False,
 )
 
-def on_file_change():
-    if remote_path.value:
-        column_task(sepal_client, remote_path.value)
-
-solara.use_effect(on_file_change, [remote_path.value])
+column_items = (column_task.value or []) if column_task.finished else []
+loading_columns = column_task.pending
 ```
 
-The `use_effect` triggers the task (instant), the task uses `SepalClient` and
-does parsing in a thread (non-blocking), and a second `use_effect` mirrors the result into
-reactive state.
+Bind `column_items` and `loading_columns` directly to the selector. The task reruns
+when the client or path changes, including when the path is cleared; no trigger
+effect or reactive copy of its result is needed. Report errors from an effect
+observing `column_task.exception` through `use_notifications()`.
+
+For results published to parent-owned state, use an effect after the task finishes.
+See [Internal task state and result publication](solara-migration.md#internal-task-state-and-result-publication)
+for cancellation and unmount behavior.
 
 ## AOI Method Restrictions
 

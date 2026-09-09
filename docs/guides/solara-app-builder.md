@@ -461,28 +461,67 @@ GeoDataFrame and the Earth Engine object — which is not serializable. `spec`/`
 carries the `AoiSpec`, the small JSON-safe record of what the user picked. Persist the
 spec; the result is rebuilt from it.
 
+In the example below, the app supplies `load_saved_payload()` and `save_payload()`
+to read and write a JSON-compatible dict or `None` in its persistence layer.
+`my_map` comes from the app's map/session setup.
+
 ```python
+import solara
+
 from pysepal.solara.components.aoi import AoiSpec, AoiView
+
+
+def load_spec():
+    payload = load_saved_payload()
+    return AoiSpec.from_dict(payload) if payload is not None else None
+
+
+def save_spec(spec):
+    save_payload(spec.to_dict() if spec is not None else None)
+
 
 @solara.component
 def Page():
     aoi = solara.use_reactive(None)
-    spec = solara.use_memo(load_saved_spec, [])  # AoiSpec | None
+    spec = solara.use_reactive(solara.use_memo(load_spec, []))
+    clear_ref = solara.use_ref(None)
 
-    AoiView(value=aoi, spec=spec, on_spec=save_spec, map_=my_map)
+    def clear_aoi():
+        if clear_ref.current is not None:
+            clear_ref.current()
+
+    AoiView(
+        value=aoi,
+        spec=spec,
+        on_spec=save_spec,
+        map_=my_map,
+        clear_ref=clear_ref,
+    )
+    solara.Button("Clear AOI", on_click=clear_aoi)
 ```
 
-`save_spec` receives an `AoiSpec`; store `spec.to_dict()` and rebuild it with
-`AoiSpec.from_dict(...)`. Setting `spec` to a different value restores again — the
-component does not need a remount.
+`on_spec` publishes an `AoiSpec` after successful processing and `None` when the
+selection is cleared. Intermediate form edits are not published as specs. The
+serialization methods preserve filter values such as `""`, `0`, and `False`.
 
-By default a restored spec is processed straight away, so `aoi.value` holds a usable
-result and the map shows the AOI. Pass `autoselect=False` to fill the form and leave
-the run to the user.
+To restore another saved selection while the picker is mounted, call
+`spec.set(AoiSpec.from_dict(payload))` from an app callback. A different spec
+restores the form without a remount and cancels any pending AOI processing,
+including when `autoselect=False`.
 
-Clearing the AOI publishes `None` on this channel, so `save_spec(None)` records the
-clear and the next load starts empty rather than resurrecting what the user threw away.
-Setting `spec` to `None` from outside is a no-op, not a reset — use `clear_ref` for that.
+By default a restored spec starts processing immediately. On success, `aoi.value`
+holds the result and the map shows the AOI. Pass `autoselect=False` to fill the form
+and leave the run to the user.
+
+The clear callback cancels pending processing, clears the picker and its AOI map
+layers, and sets both `value` and `spec` to `None`. It preserves the selected method
+so the user can retry, and resets incomplete forms even when their child input
+already publishes `None`. `save_spec(None)` records the clear for the next load.
+Setting `spec` to `None` from outside is a no-op; use `clear_ref` for an explicit reset.
+
+Unmounting `AoiView` cancels its pending work and removes its map layers and draw
+control. It preserves the parent-owned result and spec, so hiding a completed
+picker does not erase the app's selection.
 
 A spec naming a method the picker does not offer is refused with a warning, so an ASSET
 spec cannot be restored into a `gee=False` view.
