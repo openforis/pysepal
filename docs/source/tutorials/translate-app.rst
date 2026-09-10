@@ -52,8 +52,9 @@ Then import :code:`msg` anywhere in your module:
 Write the English messages
 --------------------------
 
-English is the source of truth. Every key your application can ask for has to
-exist there; the other languages only replace what they translate.
+English defines message keys and named arguments. Every message your application
+can ask for must exist there. Other languages supply translations and their own
+plural forms.
 
 .. code-block:: json
 
@@ -90,7 +91,7 @@ instead:
 
     messages = catalog(Path(__file__).parent, strict=False)
 
-    msg("error.not_written_yet")   # '⟦error.not_written_yet⟧', and one warning
+    messages.msg("error.not_written_yet")   # '⟦error.not_written_yet⟧', and one warning
 
 Put a value in a message
 ------------------------
@@ -115,10 +116,17 @@ Give every placeholder a name and pass it by that name:
 .. important::
 
     A positional placeholder -- :code:`{}` or :code:`{0}` -- is refused when the
-    catalogue binds. A translator cannot reorder positional slots, and word order
-    differs between languages, so a named placeholder is the only form accepted.
+    catalogue binds. Names give translators the meaning of each value while
+    allowing word order to differ between languages.
     Rename :code:`"{}"` to something like :code:`"{detail}"` and update the call
     at the same time.
+
+Only simple named placeholders such as :code:`{detail}` are supported. Format
+numbers and dates before passing them to :code:`msg()`. Attribute/index access
+(:code:`{user.name}`, :code:`{items[0]}`), conversions (:code:`{name!r}`), and
+format specifications (:code:`{value:.2f}`) are rejected. This keeps a translation
+from changing the type of value the application must provide. Write literal
+braces as :code:`{{` and :code:`}}`.
 
 
 One or many
@@ -132,7 +140,7 @@ When a message counts something, write it as a node with :code:`one` and
     {
         "toasts": {
             "cleared": {
-                "one": "1 layer removed",
+                "one": "{count} layer removed",
                 "other": "{count} layers removed"
             }
         }
@@ -143,16 +151,46 @@ When a message counts something, write it as a node with :code:`one` and
     msg("toasts.cleared", count=1)   # '1 layer removed'
     msg("toasts.cleared", count=3)   # '3 layers removed'
 
-Each language writes its own forms, so French can say "1 couche supprimée" and
-"3 couches supprimées".
+Each language writes the cardinal categories it needs. Babel supplies the CLDR
+rules for the matched catalogue locale. French uses :code:`one` for zero as
+well as one; Russian uses :code:`one`, :code:`few`, :code:`many` and
+:code:`other`; Arabic also uses :code:`zero` and :code:`two`. Chinese needs
+only :code:`other`.
+
+For example, the French translation is:
+
+.. code-block:: json
+
+    {
+        "toasts": {
+            "cleared": {
+                "one": "{count} couche supprimée",
+                "many": "{count} couches supprimées",
+                "other": "{count} couches supprimées"
+            }
+        }
+    }
+
+Use :code:`{count}` in the singular form too: a category name does not imply
+one specific number. With French active, :code:`msg("toasts.cleared", count=0)`
+returns "0 couche supprimée". The :code:`many` form covers million-scale counts.
+
+If the selected form is missing or invalid, the message falls back to English,
+using English's rules for the same count. Missing French :code:`one` at zero
+therefore gives "0 layers removed". :code:`check()` reports missing categories
+according to each locale's rules, rather than demanding the English categories.
 
 .. note::
 
     :code:`count` only selects a form when the English key names a plural node.
     On any other key it is an ordinary named placeholder that fills in a number.
 
-    This release supports :code:`one` and :code:`other`. Languages that need more
-    categories fall back to these two.
+    :code:`count` must be a finite number. The remaining named arguments must
+    agree across English forms and their translations. Any plural form may
+    include or omit :code:`{count}` in its text, but the call always supplies it.
+
+    Objects containing a plural-category key are plural nodes. Keep other
+    message keys outside those objects.
 
 
 Translate into the other languages
@@ -235,9 +273,9 @@ Each record carries :code:`code`, :code:`locale`, :code:`key` and :code:`detail`
     ``missing_key``, English defines it and this language does not
     ``extra_key``, this language defines a key English does not; it is ignored
     ``placeholder_mismatch``, the translation asks for different values than English
-    ``malformed_template``, the translation is not something ``str.format`` can render
+    ``malformed_template``, the translation uses unsupported placeholder syntax or broken braces
     ``shape_mismatch``, one side is a plural node and the other is a plain string
-    ``unsupported_plural_category``, a plural form this release cannot select
+    ``unsupported_plural_category``, a plural form this locale's cardinal rules cannot select
     ``unreadable_locale``, the folder could not be read at all
 
 A translator's mistake never breaks a render. When a translation cannot be used,
@@ -247,8 +285,8 @@ English stays active for that key and :code:`check()` reports it.
 Change the language
 -------------------
 
-The language lives in the connection, not in your components. Read it and set it
-with:
+Solara stores a separate locale for each virtual kernel through one module-level
+reactive. Read it and set it with:
 
 .. code-block:: python
 
@@ -260,6 +298,11 @@ with:
 A component that calls :code:`msg()` re-renders on its own when the language
 changes. You do not need to rebuild anything or reload the page.
 
+Event handlers in the same Solara context read that connection's locale too.
+A background worker without that context reads the process default, which may
+be a different language. Let workers return results or a message key and named
+arguments, then call :code:`msg()` in the owning UI context after receiving them.
+
 The language selector in the app bar writes the user's choice here. Offer it the
 languages your catalogue actually ships:
 
@@ -269,6 +312,11 @@ languages your catalogue actually ships:
         app_title=msg("app.title"),
         locales=messages.available_locales(),
     )
+
+For a layout without :code:`MapApp`, mount
+:code:`pysepal.solara.components.locale_select.LocaleSelectComponent(locales=...)`.
+It uses the same locale. The underlying Vue widget only transports its value;
+applications do not need trait observers or manual subscriptions.
 
 .. note::
 
@@ -282,3 +330,7 @@ languages your catalogue actually ships:
     An ipywidget keeps the text it was given when it was built. Widgets from
     :code:`pysepal.sepalwidgets` therefore show the language that was active at
     that moment. Solara components re-render and follow the language live.
+
+    The legacy map/panel notebook scaffolds also bind catalogues, but their
+    imperative widget layouts do not provide live language switching. Use a
+    Solara layout for new applications.

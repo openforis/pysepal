@@ -329,8 +329,8 @@ still keeps the user's choice in browser `localStorage` (`:solara:theme.variant`
 so it survives a reload, per browser. The config file was process-global, which is
 why in a multi-user container one user's theme became everyone's.
 
-**Locale**: `Translator` no longer consults the config file. With no `target` it
-now resolves to English, deterministically:
+**Locale**: the standalone legacy `Translator` no longer consults the config
+file. With no `target` it now resolves to English, deterministically:
 
 ```python
 # 3.x — target came from ~/.sepal-ui-config
@@ -340,12 +340,12 @@ ms = Translator(json_folder)
 ms = Translator(json_folder, target=user_locale)
 ```
 
-Where the locale comes from at all is the other half. `LocaleSelect` resolves
+New Solara apps use `catalog()` and `msg()` as shown below. `LocaleSelectComponent` resolves
 it in the browser — `localStorage[":sepalUi:locale"]`, then
 `navigator.language`, then English, each candidate matched against the
-catalogs the app actually ships — and writes it into the runtime scope's
-locale, which `pysepal.i18n` reads and writes through `current_locale()` and
-`set_locale()`:
+catalogs the app actually ships — and writes it into one module-level Solara
+reactive. Solara isolates the value per virtual kernel; `pysepal.i18n` reads and
+writes it through `current_locale()` and `set_locale()`:
 
 ```python
 from pysepal.i18n import current_locale, set_locale
@@ -360,18 +360,16 @@ call made after that first mount — from a settings dialog, say — sticks.
 
 **The locale state that came before `current_locale()` / `set_locale()` is gone too:**
 
-| removed                                                    | replacement                                    |
-| ---------------------------------------------------------- | ---------------------------------------------- |
-| `use_locale()`                                             | `pysepal.i18n.current_locale()`                |
-| `LocaleState`                                              | nothing — the locale is scope state            |
-| `get_current_locale_state()`                               | `current_locale()` / `set_locale()`            |
-| `resolve_locale_state()`                                   | `current_locale()` / `set_locale()`            |
-| `locale_state=` on `MapApp` / `LocaleSelect`               | nothing — the selector writes the scope locale |
-| `LocaleSelect.bind_locale_state()` / `.get_locale_state()` | nothing                                        |
+| removed                                                    | replacement                                      |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| `use_locale()`                                             | `pysepal.i18n.current_locale()`                  |
+| `LocaleState`                                              | nothing — the locale is scope state              |
+| `get_current_locale_state()`                               | `current_locale()` / `set_locale()`              |
+| `resolve_locale_state()`                                   | `current_locale()` / `set_locale()`              |
+| `locale_state=` on `MapApp` / `LocaleSelect`               | nothing — the component writes the Solara locale |
+| `LocaleSelect.bind_locale_state()` / `.get_locale_state()` | nothing                                          |
 
-Building your own app's message catalog looks different from the `Translator`
-call above, though: bind it once, at import, with no target at all — this is
-what both demo apps do:
+Bind your app's catalogue once at import, with no target:
 
 ```python
 # component/message/__init__.py
@@ -383,11 +381,9 @@ messages = catalog(Path(__file__).parent)
 msg = messages.msg
 ```
 
-Then call `msg("app.title")` anywhere — a component, a helper on the same call
-stack, an event handler, a worker thread — with no per-render rebuild to write,
-because there is nothing to rebuild: `msg` reads `current_locale()` itself on
-every call, subscribing to it when a render is in progress and doing a plain
-read otherwise, so a language change re-renders in place with no reload:
+Call `msg("app.title")` from a component, a helper on its call stack, or an
+event handler in the same Solara context. It reads `current_locale()` on every
+call and subscribes during rendering, so a language change re-renders in place:
 
 ```python
 @solara.component
@@ -395,15 +391,37 @@ def Page():
     MapApp.element(app_title=msg("app.title"), locales=messages.available_locales())
 ```
 
+A worker without the connection's Solara context reads the process default,
+which may be English even when the user selected French. Return results or a
+message key plus named arguments from workers and translate in the owning UI
+context. Calling `msg()` from a worker does not propagate a session.
+
+Templates accept simple named placeholders and escaped braces. Replace
+positional placeholders, attribute/index access, conversions and format specs
+with named values formatted by the caller. For example, format an area before
+passing `area=` rather than writing `{area:.2f}` in the JSON catalogue.
+
 `count` is not always a plural selector: it only becomes one when `key` names a
 plural node in English, and is an ordinary placeholder on any other key.
 pysepal's own `msg("layer_state.complete", count=n)` just fills in a number —
 its English still reads "layer(s)", which is the workaround a plural node
 removes. The raster demo's `msg("toasts.cleared", count=n)` selects a form, and
-says "1 couche supprimée" or "3 couches supprimées" in French.
+says "0 couche supprimée", "1 couche supprimée" or "3 couches supprimées" in French.
 
-`MapApp` takes locale _codes_ rather than a `Translator` because `Translator`
-subclasses `dict`, which reacton flattens on the way to `.element()`.
+Plural selection uses Babel's CLDR rules for the matched locale. English defines
+the message identity and arguments; translated nodes may add the categories
+their language needs. Use `{count}` in singular forms too, since French zero
+and Russian 21 can select `one`. Missing or invalid forms fall back using English
+rules for the same number. `check()` reports missing locale-specific categories.
+
+`MapApp.element(locales=messages.available_locales())` mounts the Solara selector.
+For a custom layout use `LocaleSelectComponent` from
+`pysepal.solara.components.locale_select`. The raw `MapApp()` and Vue
+`LocaleSelect` classes are low-level transports: the former only embeds supplied
+`language_selector` widgets, and the latter accepts `available_locales` and
+`value`. `translator=`, `selected_locale` and the duplicate value link are gone
+from that Vue transport. Application code uses the Solara component and the
+`current_locale()` / `set_locale()` API.
 
 A 3.x locale saved in `~/.sepal-ui-config` is not migrated: the file is read
 nowhere in 4.0, so the first load falls to `navigator.language`.
@@ -452,8 +470,11 @@ This affects `LegendControl(title=)`, `SepalMap.add_legend(title=)`,
 `scripts.utils.check_input(msg=)`. `None`, not an empty string, is the
 sentinel, so you can still ask for a deliberately empty label.
 
-`pysepal.message.ms` still exists for modules that read it, and nothing inside
-pysepal uses it any more. New code should call `msg`.
+`pysepal.message.ms` is removed. Import `msg` from `pysepal.message` for built-in
+strings, or bind an application catalogue with `catalog()`. This import no longer
+constructs a `Translator` or applies its protected-key restrictions. Scaffolds
+also use bound catalogues. The independently imported legacy `Translator` class
+remains available for external modules during migration.
 
 **CLI**: the `module_theme` and `module_l10n` entry points are removed — both
 existed only to edit that file. The remaining console scripts are
@@ -627,12 +648,11 @@ behaviour by rebuilding the whole `MapApp`, or by mutating the child panel
 through `app.right_panel[0]`. Both are now unnecessary, and the second is
 silently overwritten the next time the parent trait changes.
 
-**Catalog keys may not be named after `dict` methods.** `Translator` subclasses
-`Box` subclasses `dict`, so a key called `clear`, `items`, `keys`, `values`,
-`get`, `copy`, `update` or `pop` returns the bound method instead of your
-string, and reaches the UI as `<bound method Box.clear ...>` with no error.
-Rename the key. For the same reason `MapApp` takes `locales=` rather than a
-`Translator`: reacton flattens a `dict` subclass on the way to `.element()`.
+**Message keys are independent of Python method names.** `msg("items")` and
+`msg("clear")` are ordinary lookups. The old `Translator` protected those names
+because it inherited from `Box`/`dict`; applications still using that legacy
+class retain its restrictions. Pass catalogue locale codes to the Solara
+selector rather than passing a translator object through Reacton.
 
 ## Audit checklist
 
@@ -656,6 +676,11 @@ Rename the key. For the same reason `MapApp` takes `locales=` rather than a
       `resolve_locale_state()` with `current_locale()` / `set_locale()`; drop
       `locale_state=` from `MapApp` / `LocaleSelect` and any
       `bind_locale_state()` / `get_locale_state()` call.
+- [ ] Replace `pysepal.message.ms` with `pysepal.message.msg`; move catalogue
+      format specifications into caller-supplied named values and supply each
+      locale's plural forms. Translate worker results in the owning UI context.
+- [ ] Mount language selection through `MapApp.element(locales=...)` or
+      `LocaleSelectComponent`; raw widget construction does not wire locale state.
 - [ ] Replace any "refresh to apply the language" instruction in your UI;
       switching is live, and picks no longer survive as a machine-global file.
 - [ ] Drop `module_theme` / `module_l10n` from scripts and CI.
