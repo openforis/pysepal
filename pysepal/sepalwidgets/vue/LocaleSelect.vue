@@ -138,7 +138,9 @@ export default {
       const canonical = [primary.toLowerCase()];
       for (const subtag of rest) {
         if (/^[A-Za-z]{4}$/.test(subtag)) {
-          canonical.push(subtag[0].toUpperCase() + subtag.slice(1).toLowerCase());
+          canonical.push(
+            subtag[0].toUpperCase() + subtag.slice(1).toLowerCase()
+          );
         } else if (/^[A-Za-z]{2}$/.test(subtag)) {
           canonical.push(subtag.toUpperCase());
         } else {

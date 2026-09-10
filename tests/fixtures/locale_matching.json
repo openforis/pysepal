@@ -1,14 +1,22 @@
 [
-  {"candidate": "pt-BR", "offered": ["pt", "pt-BR"], "expected": "pt-BR"},
-  {"candidate": "es-CL", "offered": ["en", "es"], "expected": "es"},
-  {"candidate": "pt", "offered": ["en", "pt-BR"], "expected": "pt-BR"},
-  {"candidate": "es", "offered": ["es-MX", "es-ES"], "expected": "es-MX"},
-  {"candidate": "de", "offered": ["en", "fr"], "expected": ""},
-  {"candidate": "", "offered": ["en"], "expected": ""},
-  {"candidate": "PT-br", "offered": ["pt-BR"], "expected": "pt-BR"},
-  {"candidate": "pt_BR", "offered": ["pt-BR"], "expected": "pt-BR"},
-  {"candidate": "zh-hans-cn", "offered": ["zh-Hans-CN"], "expected": "zh-Hans-CN"},
-  {"candidate": "en", "offered": [], "expected": ""},
-  {"candidate": "en-GB", "offered": ["en"], "expected": "en"},
-  {"candidate": "ru", "offered": ["ru-RU", "ru-UA", "ru-BY"], "expected": "ru-RU"}
+  { "candidate": "pt-BR", "offered": ["pt", "pt-BR"], "expected": "pt-BR" },
+  { "candidate": "es-CL", "offered": ["en", "es"], "expected": "es" },
+  { "candidate": "pt", "offered": ["en", "pt-BR"], "expected": "pt-BR" },
+  { "candidate": "es", "offered": ["es-MX", "es-ES"], "expected": "es-MX" },
+  { "candidate": "de", "offered": ["en", "fr"], "expected": "" },
+  { "candidate": "", "offered": ["en"], "expected": "" },
+  { "candidate": "PT-br", "offered": ["pt-BR"], "expected": "pt-BR" },
+  { "candidate": "pt_BR", "offered": ["pt-BR"], "expected": "pt-BR" },
+  {
+    "candidate": "zh-hans-cn",
+    "offered": ["zh-Hans-CN"],
+    "expected": "zh-Hans-CN"
+  },
+  { "candidate": "en", "offered": [], "expected": "" },
+  { "candidate": "en-GB", "offered": ["en"], "expected": "en" },
+  {
+    "candidate": "ru",
+    "offered": ["ru-RU", "ru-UA", "ru-BY"],
+    "expected": "ru-RU"
+  }
 ]

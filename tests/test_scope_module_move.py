@@ -8,7 +8,9 @@ the old paths became re-export shims.
 
 import subprocess
 import sys
+from pathlib import Path
 
+import pysepal
 import pysepal._runtime_context as runtime_context
 import pysepal._scope_registry as scope_registry
 import pysepal._ui_state as ui_state
@@ -20,8 +22,15 @@ PROBE = "import sys, pysepal._ui_state; print('pysepal.solara' in sys.modules)"
 
 
 def test_the_scope_layer_does_not_import_pysepal_solara():
+    # cwd pinned to the repo root: -c puts cwd on sys.path first, and pysepal
+    # is installed editable against a different checkout, so an inherited cwd
+    # elsewhere would probe that checkout instead of this one.
     probe = subprocess.run(
-        [sys.executable, "-c", PROBE], capture_output=True, text=True, check=True
+        [sys.executable, "-c", PROBE],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=Path(pysepal.__file__).parent.parent,
     )
     assert probe.stdout.strip().splitlines()[-1] == "False", probe.stderr
 
