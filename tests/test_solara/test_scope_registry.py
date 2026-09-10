@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pysepal.solara import scope_registry
+from pysepal import _scope_registry as scope_registry
 from pysepal.solara.runtime_context import (
     PROCESS_SCOPE,
     UnsupportedSolaraRuntimeError,

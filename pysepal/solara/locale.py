@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Optional
 import solara
 from traitlets import HasTraits, Unicode
 
-from pysepal.solara.ui_state import get_scoped_state
+from pysepal._ui_state import get_scoped_state
 
 
 def match_offered_locale(candidate: str, offered: Iterable[str]) -> str:

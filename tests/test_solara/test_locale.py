@@ -3,7 +3,7 @@
 import pytest
 
 import pysepal.solara.locale as locale_mod
-from pysepal.solara import scope_registry
+from pysepal import _scope_registry as scope_registry
 from pysepal.solara.locale import (
     LocaleState,
     describe_offered_locales,
