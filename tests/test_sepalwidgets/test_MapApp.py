@@ -67,36 +67,42 @@ def test_mapapp_builds_a_selector_bound_to_the_scope_locale():
     from pysepal.i18n import current_locale, set_locale
 
     set_locale("fr")
-    app = MapApp(locales=["en", "fr"])
-    selector = app.language_selector[0]
-    assert selector.selected_locale == "fr"
-    selector.selected_locale = "en"
-    assert current_locale() == "en"
+    app, rc = reacton.render_fixed(MapApp.element(locales=["en", "fr"]), handle_error=False)
+    try:
+        selector = app.language_selector[0]
+        assert selector.value == "fr"
+        selector.value = "en"
+        assert current_locale() == "en"
+        set_locale("fr")
+        assert selector.value == "fr"
+    finally:
+        rc.close()
 
 
-def test_a_supplied_selector_is_rebound_to_this_scope(monkeypatch):
-    """A selector built outside a render must not keep the process scope."""
-    import pysepal._scope_registry as scope_registry
-    from pysepal.i18n import set_locale
+def test_a_supplied_widget_is_embedded_as_provided():
     from pysepal.sepalwidgets.vue_app import LocaleSelect
 
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
-    selector = LocaleSelect(locales=["en", "fr"])
-
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-b")
-    MapApp(language_selector=selector)
-    set_locale("fr")
-    assert selector.selected_locale == "fr"
+    selector = LocaleSelect(value="fr")
+    app = MapApp(language_selector=selector)
+    try:
+        assert app.language_selector == [selector]
+        assert selector.value == "fr"
+    finally:
+        app.close()
+        selector.close()
 
 
 def test_mapapp_offers_the_locales_it_is_given() -> None:
     """Without them the default selector can only offer English."""
     translator = Translator(MESSAGE_DIR)
-    app = MapApp(locales=translator.available_locales())
-
-    offered = {record["code"] for record in app.language_selector[0].available_locales}
-
-    assert offered == set(translator.available_locales())
+    app, rc = reacton.render_fixed(
+        MapApp.element(locales=translator.available_locales()), handle_error=False
+    )
+    try:
+        offered = {record["code"] for record in app.language_selector[0].available_locales}
+        assert offered == set(translator.available_locales())
+    finally:
+        rc.close()
 
 
 def test_mapapp_pushes_panel_updates_into_the_child_panel() -> None:
@@ -128,12 +134,13 @@ def test_mapapp_panel_updates_survive_a_rerender() -> None:
         MapApp.element(right_panel_config={"title": title.value, "width": 400})
 
     _, rc = reacton.render(Demo())
-    panel = rc.find(MapApp).widget.right_panel[0]
-
-    title.value = "Herramientas"
-
-    assert rc.find(MapApp).widget.right_panel[0].config["title"] == "Herramientas"
-    assert panel.config["title"] == "Herramientas"
+    try:
+        panel = rc.find(MapApp).widget.right_panel[0]
+        title.value = "Herramientas"
+        assert rc.find(MapApp).widget.right_panel[0].config["title"] == "Herramientas"
+        assert panel.config["title"] == "Herramientas"
+    finally:
+        rc.close()
 
 
 def test_mapapp_element_carries_the_locales_through_reacton() -> None:
@@ -149,8 +156,74 @@ def test_mapapp_element_carries_the_locales_through_reacton() -> None:
         MapApp.element(locales=translator.available_locales())
 
     _, rc = reacton.render(Demo())
-    selector = rc.find(MapApp).widget.language_selector[0]
+    try:
+        selector = rc.find(MapApp).widget.language_selector[0]
+        offered = {record["code"] for record in selector.available_locales}
+        assert offered == set(translator.available_locales())
+    finally:
+        rc.close()
 
-    offered = {record["code"] for record in selector.available_locales}
 
-    assert offered == set(translator.available_locales())
+def test_mapapp_unmount_disposes_the_embedded_selector():
+    from pysepal.i18n import current_locale, set_locale
+
+    visible = solara.reactive(True)
+
+    @solara.component
+    def Page():
+        if visible.value:
+            MapApp.element(locales=["en", "fr"])
+        else:
+            solara.Text("Closed")
+
+    _, rc = reacton.render(Page(), handle_error=False)
+    try:
+        selector = rc.find(MapApp).widget.language_selector[0]
+        selector.value = "fr"
+        visible.value = False
+        set_locale("en")
+        assert selector.value == "fr"
+        selector.value = "es"
+        assert current_locale() == "en"
+        visible.value = True
+        replacement = rc.find(MapApp).widget.language_selector[0]
+        assert replacement is not selector
+        assert replacement.value == "en"
+    finally:
+        rc.close()
+
+
+def test_mapapp_component_constructs_independent_kernel_selectors(kernel_contexts):
+    from pysepal.i18n import current_locale
+
+    first, second = kernel_contexts(), kernel_contexts()
+    element = MapApp.element(locales=["en", "fr", "es"])
+    with first:
+        _, first_render = reacton.render(element, handle_error=False)
+        first_selector = first_render.find(MapApp).widget.language_selector[0]
+    with second:
+        _, second_render = reacton.render(element, handle_error=False)
+        second_selector = second_render.find(MapApp).widget.language_selector[0]
+    try:
+        with first:
+            first_selector.value = "fr"
+            assert current_locale() == "fr"
+        with second:
+            assert current_locale() == second_selector.value == "en"
+            second_selector.value = "es"
+        with first:
+            assert current_locale() == first_selector.value == "fr"
+        assert current_locale() == "en"
+    finally:
+        with first:
+            first_render.close()
+        with second:
+            second_render.close()
+
+
+def test_raw_mapapp_has_no_automatic_locale_component():
+    app = MapApp()
+    try:
+        assert app.language_selector == []
+    finally:
+        app.close()

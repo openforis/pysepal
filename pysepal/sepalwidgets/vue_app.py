@@ -1,21 +1,16 @@
 """Custom Map app layout for SEPAL ui Map interfaces."""
 
-import json
 import logging
 from pathlib import Path
-from typing import Callable, Iterable, Optional
+from typing import Iterable, Optional
 
 import ipyvuetify as v
 import pandas as pd
-import solara
-from ipywidgets import DOMWidget, jsdlink, link
+from ipywidgets import DOMWidget, link
 from ipywidgets.widgets.widget import widget_serialization
 from traitlets import Bool, Dict, HasTraits, Instance, Int, List, Unicode, observe
 
-from pysepal.i18n.locale_store import _locale_ref, _store
-from pysepal.solara.locale import describe_offered_locales
 from pysepal.solara.theme import ThemeState, get_current_theme_state
-from pysepal.translator import Translator
 
 logger = logging.getLogger("sepalui.vue_app")
 
@@ -100,6 +95,15 @@ class MapApp(v.VuetifyTemplate):
     current_step = Int(allow_none=True).tag(sync=True)
     step_open = Bool(False).tag(sync=True)
 
+    @classmethod
+    def element(cls, **kwargs):
+        """Let Reacton render the selector before constructing the widget shell."""
+        from pysepal.solara.components.locale_select import LocaleSelectComponent
+
+        if not kwargs.get("language_selector"):
+            kwargs["language_selector"] = [LocaleSelectComponent(locales=kwargs.get("locales"))]
+        return super().element(**kwargs)
+
     def __init__(
         self,
         theme_toggle: "ThemeToggle" = None,
@@ -118,11 +122,9 @@ class MapApp(v.VuetifyTemplate):
         theme_state : ThemeState, optional
             Shared theme state; defaults to the current scope's.
         locales : iterable of str, optional
-            Locale codes the default ``LocaleSelect`` offers, normally
-            ``messages.available_locales()``. Codes rather than a
-            ``Translator`` because ``Translator`` subclasses ``dict``, and
-            reacton passes a plain dict through to ``MapApp.element``.
-            Ignored when a ``language_selector`` is supplied.
+            Locale codes offered by ``MapApp.element``'s default selector,
+            normally ``messages.available_locales()``. Ignored by the raw
+            widget constructor and when a ``language_selector`` is supplied.
         initial_step : int, optional
             Initial step to display
         model : HasTraits, optional
@@ -134,7 +136,6 @@ class MapApp(v.VuetifyTemplate):
             raise TypeError(_LOCALE_STATE_REMOVED)
 
         self._theme_state = theme_state or get_current_theme_state()
-        self._locales = locales
         self._model = model
         self._model_links = []  # Store links for cleanup
         kwargs["theme_toggle"] = self._coerce_theme_toggle(theme_toggle, self._theme_state)
@@ -214,26 +215,13 @@ class MapApp(v.VuetifyTemplate):
 
         return [ThemeToggle(theme_state=theme_state)]
 
-    def _coerce_locale_select(self, language_selector) -> list["LocaleSelect"]:
-        """Normalise the language-selector input and bind it to this scope.
-
-        A selector built outside a render is attached to the process scope, so a
-        supplied one is rebound here rather than left pointing at it.
-        """
+    def _coerce_locale_select(self, language_selector) -> list[DOMWidget]:
+        """Normalize explicitly supplied language-selector widgets."""
         if isinstance(language_selector, (list, tuple)):
-            widgets = list(language_selector)
-        elif language_selector is None:
-            widgets = []
-        else:
-            widgets = [language_selector]
-
-        if widgets:
-            rebind = getattr(widgets[0], "_rebind", None)
-            if rebind is not None:
-                rebind()
-            return widgets
-
-        return [LocaleSelect(locales=self._locales)]
+            return list(language_selector)
+        if language_selector is None:
+            return []
+        return [language_selector]
 
     # Mirror of MapApp.vue: viewports below this width dock the right
     # panel as a bottom sheet sized at NARROW_PANEL_HEIGHT_VH of the
@@ -528,66 +516,8 @@ class RightPanel(v.VuetifyTemplate):
         self.is_open = state
 
 
-class _LocaleBinder:
-    """Keeps a selector's synced trait and a scope's locale Reactive in step.
-
-    Transport only. The locale lives in the Reactive; this carries it across the
-    widget boundary in both directions and owns the unsubscribe that stops it.
-    """
-
-    def __init__(self, widget: "LocaleSelect") -> None:
-        """Bind to nothing yet; :meth:`attach` chooses the Reactive."""
-        self._widget = widget
-        self._ref: Optional[solara.Reactive[str]] = None
-        self._unsubscribe: Optional[Callable[[], None]] = None
-        self._copying = False
-
-    def attach(self, ref: solara.Reactive[str]) -> None:
-        """Attach to ``ref``, detaching from any previous one first.
-
-        Args:
-            ref: The runtime scope's locale Reactive.
-        """
-        self.close()
-        self._ref = ref
-        # peek(), not .value: constructing a selector must neither subscribe
-        # whichever component builds it nor write back into the Reactive.
-        self._copying = True
-        try:
-            self._widget.selected_locale = ref.peek()
-        finally:
-            self._copying = False
-        self._unsubscribe = ref.subscribe(self._on_reactive_change)
-
-    def on_trait_change(self, code: str) -> None:
-        """Store a browser-resolved code in the Reactive this binder holds.
-
-        Args:
-            code: The code the Vue side resolved; empty while it is still
-                deciding, which is ignored.
-        """
-        if self._copying or not code or self._ref is None:
-            return
-        # The binder's own Reactive, never a freshly resolved one: this can fire
-        # on a thread with no scope, where re-resolving might not return it.
-        _store(self._ref, code)
-
-    def _on_reactive_change(self, code: str) -> None:
-        """Mirror a locale change back into the widget's trait."""
-        # Explicit, though traitlets also drops a same-value write: this is the
-        # boundary where a mirror could become a loop.
-        if code and code != self._widget.selected_locale:
-            self._widget.selected_locale = code
-
-    def close(self) -> None:
-        """Detach. Safe to call more than once."""
-        if self._unsubscribe is not None:
-            self._unsubscribe()
-        self._unsubscribe = None
-        self._ref = None
-
-
 class LocaleSelect(v.VuetifyTemplate):
+    """Vue transport rendered by ``LocaleSelectComponent``."""
 
     template_file = Unicode(
         str(Path(__file__).parents[1] / "sepalwidgets/vue/LocaleSelect.vue")
@@ -595,63 +525,4 @@ class LocaleSelect(v.VuetifyTemplate):
 
     COUNTRIES: pd.DataFrame = pd.read_parquet(Path(__file__).parents[1] / "data" / "locale.parquet")
     available_locales = List([{"code": "en", "name": "English", "flag": "gb"}]).tag(sync=True)
-    selected_locale = Unicode("en").tag(sync=True)
-    value = Unicode().tag(sync=True)
-
-    def __init__(
-        self,
-        translator: Optional[Translator] = None,
-        locales: Optional[Iterable[str]] = None,
-        **kwargs,
-    ):
-        """Instantiate the LocaleSelect class.
-
-        The effective locale is resolved in the browser (localStorage ->
-        ``navigator.language`` -> "en") and pushed back through
-        ``selected_locale``; this class only carries it to and from the runtime
-        scope's locale. Read that locale with
-        :func:`pysepal.i18n.current_locale`.
-
-        Args:
-            translator: Translator whose catalogs become the offered languages.
-            locales: Offered locale codes, taking precedence over ``translator``.
-            kwargs: any argument for a VuetifyTemplate object.
-        """
-        # The binder must be built before this guard can raise: close() runs on
-        # finalisation and would hit AttributeError on a half-built widget.
-        self._binder = _LocaleBinder(self)
-        if "locale_state" in kwargs:
-            raise TypeError(_LOCALE_STATE_REMOVED)
-
-        super().__init__(**kwargs)
-
-        if locales is not None:
-            offered = list(locales)
-        else:
-            offered = ["en"] if translator is None else translator.available_locales()
-        self.available_locales = describe_offered_locales(
-            offered, json.loads(self.COUNTRIES.to_json(orient="records"))
-        )
-
-        # TODO: consider removing this, I'm not sure if an app is using the value
-        jsdlink((self, "selected_locale"), (self, "value"))
-
-        self.observe(self._on_locale_select, "selected_locale")
-        self._binder.attach(_locale_ref())
-
-    def _rebind(self) -> None:
-        """Re-attach to the current runtime scope's locale.
-
-        For a selector built outside a render and then embedded in a connection:
-        without this it would stay attached to the process scope.
-        """
-        self._binder.attach(_locale_ref())
-
-    def _on_locale_select(self, change: dict) -> None:
-        """Carry a browser-resolved locale into the runtime scope."""
-        self._binder.on_trait_change(change["new"])
-
-    def close(self) -> None:
-        """Detach from the locale before closing the widget."""
-        self._binder.close()
-        super().close()
+    value = Unicode("en").tag(sync=True)

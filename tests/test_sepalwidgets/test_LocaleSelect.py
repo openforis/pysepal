@@ -1,14 +1,18 @@
 """Test both LocaleSelect widgets: the legacy v.Menu and the Vue template."""
 
+import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
+import solara
 
 import pysepal
 from pysepal import sepalwidgets as sw
 from pysepal.i18n import current_locale, set_locale
-from pysepal.i18n.locale_store import _locale_ref
 from pysepal.sepalwidgets.vue_app import LocaleSelect
+from pysepal.solara.components.locale_select import LocaleSelectComponent
 from pysepal.translator import Translator
 
 #: Absolute: tests/test_sepalwidgets/test_App.py chdirs and never restores.
@@ -50,161 +54,161 @@ def test_menu_value_is_the_locale_code() -> None:
     assert locale_select.value == "es"
 
 
-def test_vue_offers_every_bundled_catalog() -> None:
-    locale_select = LocaleSelect(translator=BUNDLED)
-    offered = {record["code"] for record in locale_select.available_locales}
-    assert offered == set(BUNDLED.available_locales())
+@pytest.fixture
+def render_selector():
+    contexts = []
+
+    def render(locales=None):
+        widget, rc = solara.render_fixed(LocaleSelectComponent(locales=locales), handle_error=False)
+        contexts.append(rc)
+        return widget, rc
+
+    yield render
+    for context in reversed(contexts):
+        context.close()
 
 
-def test_vue_accepts_bare_locale_codes() -> None:
-    """MapApp forwards codes rather than a Translator; see test_MapApp."""
-    locale_select = LocaleSelect(locales=["en", "es"])
-    assert [record["code"] for record in locale_select.available_locales] == ["en", "es"]
+def test_vue_offers_every_bundled_catalog(render_selector):
+    widget, _ = render_selector(BUNDLED.available_locales())
+    assert {record["code"] for record in widget.available_locales} == set(
+        BUNDLED.available_locales()
+    )
 
 
-def test_vue_borrows_a_display_name_for_a_bare_code() -> None:
-    locale_select = LocaleSelect(translator=BUNDLED)
-    spanish = next(r for r in locale_select.available_locales if r["code"] == "es")
-    assert spanish["name"] == "Spanish"
+def test_vue_accepts_bare_locale_codes(render_selector):
+    widget, _ = render_selector(["en", "es"])
+    assert [record["code"] for record in widget.available_locales] == ["en", "es"]
+    assert (
+        next(record for record in widget.available_locales if record["code"] == "es")["name"]
+        == "Spanish"
+    )
 
 
-def test_the_widget_starts_at_the_scope_locale():
-    """A newly built selector reads its initial value from the scope locale."""
+def test_mount_reads_the_locale_without_changing_it(render_selector):
     set_locale("fr")
-    assert LocaleSelect(locales=["en", "fr"]).selected_locale == "fr"
+    widget, _ = render_selector(["en", "fr"])
+    assert widget.value == current_locale() == "fr"
 
 
-def test_constructing_the_widget_does_not_write_back():
-    """Constructing a selector must not change the locale it reads."""
-    set_locale("fr")
-    LocaleSelect(locales=["en", "fr"])
-    assert current_locale() == "fr"
+def test_browser_and_python_switch_languages_repeatedly(render_selector):
+    widget, _ = render_selector(["en", "fr", "pt-BR"])
+    for browser_code, expected in [("fr", "fr"), ("pt_br", "pt-BR"), ("en", "en")]:
+        widget.value = browser_code
+        assert current_locale() == widget.value == expected
+    for code in ["pt-BR", "en", "fr"]:
+        set_locale(code)
+        assert widget.value == code
 
 
-def test_constructing_a_selector_does_not_subscribe_the_enclosing_component():
-    """peek(), not .value -- otherwise every locale change re-renders the parent."""
-    import solara
+def test_offered_locale_iterator_survives_language_changes(render_selector):
+    widget, _ = render_selector(iter(["en", "fr"]))
+    widget.value = "fr"
+    assert [record["code"] for record in widget.available_locales] == ["en", "fr"]
 
+
+def test_locale_changes_do_not_rerender_the_enclosing_component():
     renders = []
 
     @solara.component
     def Host():
         renders.append(1)
-        LocaleSelect(locales=["en", "fr"])
-        solara.Text("x")
+        LocaleSelectComponent(locales=["en", "fr"])
 
-    solara.render(Host(), handle_error=False)
-    set_locale("fr")
-    assert len(renders) == 1
-
-
-def test_the_browser_picking_a_language_sets_the_scope_locale():
-    widget = LocaleSelect(locales=["en", "fr"])
-    widget.selected_locale = "fr"
-    assert current_locale() == "fr"
-
-
-def test_a_trait_change_is_normalised_before_it_is_stored():
-    widget = LocaleSelect(locales=["en", "pt-BR"])
-    widget.selected_locale = "pt_br"
-    assert current_locale() == "pt-BR"
-
-
-def test_an_empty_trait_change_is_ignored():
-    """The Vue side clears the trait briefly while it resolves."""
-    set_locale("fr")
-    widget = LocaleSelect(locales=["en", "fr"])
-    widget.selected_locale = ""
-    assert current_locale() == "fr"
-
-
-def test_setting_the_locale_updates_the_widget():
-    widget = LocaleSelect(locales=["en", "fr"])
-    set_locale("fr")
-    assert widget.selected_locale == "fr"
-
-
-def test_the_two_directions_do_not_loop():
-    """A change must settle, not ping-pong between trait and Reactive."""
-    widget = LocaleSelect(locales=["en", "fr", "es"])
-    seen = []
-    unsubscribe = _locale_ref().subscribe(seen.append)
+    _, rc = solara.render(Host(), handle_error=False)
     try:
-        widget.selected_locale = "fr"
+        set_locale("fr")
+        assert renders == [1]
+        assert rc.find(LocaleSelect).widget.value == "fr"
     finally:
-        unsubscribe()
-    assert seen == ["fr"]
-
-    # "pt_br" -> "pt-BR" is the one input where the trait and the Reactive
-    # genuinely disagree, so the mirror has to correct the trait and then
-    # settle rather than keep bouncing.
-    widget = LocaleSelect(locales=["en", "pt-BR"])
-    seen = []
-    unsubscribe = _locale_ref().subscribe(seen.append)
-    try:
-        widget.selected_locale = "pt_br"
-    finally:
-        unsubscribe()
-    assert seen == ["pt-BR"]
-    assert widget.selected_locale == "pt-BR"
+        rc.close()
 
 
-def test_close_unsubscribes_so_a_dead_widget_is_not_updated():
-    widget = LocaleSelect(locales=["en", "fr"])
-    widget.close()
-    set_locale("fr")
-    assert widget.selected_locale == "en"
-
-
-def test_close_is_idempotent():
-    widget = LocaleSelect(locales=["en", "fr"])
-    widget.close()
-    widget.close()
-
-
-def test_close_also_stops_the_widget_writing():
-    """Unsubscribing covers the read direction; nulling _ref covers the write."""
-    widget = LocaleSelect(locales=["en", "fr"])
-    widget.close()
-    widget.selected_locale = "fr"
+def test_unmount_stops_both_directions_and_remount_keeps_the_locale(render_selector):
+    widget, rc = render_selector(["en", "fr"])
+    widget.value = "fr"
+    rc.close()
+    set_locale("en")
+    assert widget.value == "fr"
+    widget.value = "es"
     assert current_locale() == "en"
+    replacement, _ = render_selector(["en", "fr"])
+    assert replacement.value == "en"
 
 
-def test_rebinding_detaches_the_old_reactive(monkeypatch):
-    """A widget built outside a render must not stay on the process scope."""
-    import pysepal._scope_registry as scope_registry
+def test_each_kernel_selector_updates_its_own_render(kernel_contexts):
+    first, second = kernel_contexts(), kernel_contexts()
+    seen = {"first": [], "second": []}
 
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
-    widget = LocaleSelect(locales=["en", "fr"])
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-b")
-    widget._rebind()
-    set_locale("fr")
-    assert widget.selected_locale == "fr"
+    @solara.component
+    def Page(name):
+        seen[name].append(current_locale())
+        LocaleSelectComponent(locales=["en", "fr", "es"])
 
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
-    set_locale("es")
-    assert widget.selected_locale == "fr", "the old scope must no longer reach it"
+    with first:
+        _, first_render = solara.render(Page("first"), handle_error=False)
+        first_widget = first_render.find(LocaleSelect).widget
+    with second:
+        _, second_render = solara.render(Page("second"), handle_error=False)
+        second_widget = second_render.find(LocaleSelect).widget
+    try:
+        with first:
+            first_widget.value = "fr"
+            assert current_locale() == "fr"
+        with second:
+            assert current_locale() == second_widget.value == "en"
+            second_widget.value = "es"
+        with first:
+            assert current_locale() == first_widget.value == "fr"
+        assert seen == {"first": ["en", "fr"], "second": ["en", "es"]}
+        assert current_locale() == "en"
+    finally:
+        with first:
+            first_render.close()
+        with second:
+            second_render.close()
 
 
-def test_there_is_no_public_bind_method():
-    """The binder is transport, not an alternate locale API."""
-    assert not hasattr(LocaleSelect, "bind_locale_state")
-    assert not hasattr(LocaleSelect, "get_locale_state")
+def test_component_rejects_removed_constructor_arguments():
+    for argument in ["translator", "locale_state"]:
+        with pytest.raises(TypeError):
+            solara.render_fixed(LocaleSelectComponent(**{argument: object()}), handle_error=False)
 
 
-def test_vue_rejects_the_removed_locale_state_kwarg():
-    """locale_state= must fail loudly, not vanish into **kwargs like an unknown vuetify prop."""
-    with pytest.raises(TypeError):
-        LocaleSelect(locale_state=object())
-
-
-def test_selecting_a_locale_writes_no_config(tmp_path, monkeypatch):
-    """Adapted from the removed locale_state version, and still worth having.
-
-    pysepal 4 stopped writing ~/.sepal-ui-config, because a process-global file
-    made one machine's language decide what every connection rendered in.
-    """
+def test_selecting_a_locale_writes_no_config(tmp_path, monkeypatch, render_selector):
     monkeypatch.setenv("HOME", str(tmp_path))
-    widget = LocaleSelect(translator=BUNDLED)
-    widget.selected_locale = "fr"
+    widget, _ = render_selector(["en", "fr"])
+    widget.value = "fr"
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_resolution_persistence_and_remounts():
+    harness = Path(__file__).parents[1] / "js" / "locale_lifecycle.mjs"
+    vue = MESSAGE_DIR.parent / "sepalwidgets" / "vue" / "LocaleSelect.vue"
+    subprocess.run(["node", str(harness), str(vue)], check=True, capture_output=True, text=True)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_noncanonical_catalogue_locale_stays_selected_after_remount(tmp_path, render_selector):
+    from pysepal.i18n import catalog
+
+    for code, greeting in [("en", "Hello"), ("pt_br", "Olá")]:
+        folder = tmp_path / code
+        folder.mkdir()
+        (folder / "app.json").write_text(json.dumps({"greeting": greeting}))
+    messages = catalog(tmp_path)
+    widget, _ = render_selector(messages.available_locales())
+    set_locale("pt_br")
+    assert widget.value == "pt-BR"
+    assert messages.msg("greeting") == "Olá"
+    assert set(messages.available_locales()) == {"en", "pt_br"}
+
+    props = {"value": widget.value, "offered": [row["code"] for row in widget.available_locales]}
+    harness = Path(__file__).parents[1] / "js" / "locale_lifecycle.mjs"
+    vue = MESSAGE_DIR.parent / "sepalwidgets" / "vue" / "LocaleSelect.vue"
+    subprocess.run(
+        ["node", str(harness), str(vue), json.dumps(props)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )

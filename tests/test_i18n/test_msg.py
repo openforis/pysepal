@@ -1,6 +1,6 @@
 """msg() is the one lookup, and it follows the scope's locale."""
 
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import solara
 
@@ -53,9 +53,12 @@ def test_msg_re_renders_a_component_when_the_language_changes(build_catalog):
         solara.Text("x")
 
     set_locale("en")
-    solara.render(Greeting(), handle_error=False)
-    set_locale("fr")
-    assert seen == ["Hello", "Bonjour"]
+    _, rc = solara.render(Greeting(), handle_error=False)
+    try:
+        set_locale("fr")
+        assert seen == ["Hello", "Bonjour"]
+    finally:
+        rc.close()
 
 
 def test_msg_works_in_a_plain_helper_called_from_a_component(build_catalog):
@@ -72,35 +75,22 @@ def test_msg_works_in_a_plain_helper_called_from_a_component(build_catalog):
         solara.Text("x")
 
     set_locale("en")
-    solara.render(ViaHelper(), handle_error=False)
-    set_locale("fr")
-    assert seen == ["Hello", "Bonjour"]
+    _, rc = solara.render(ViaHelper(), handle_error=False)
+    try:
+        set_locale("fr")
+        assert seen == ["Hello", "Bonjour"]
+    finally:
+        rc.close()
 
 
-def test_msg_does_not_raise_off_the_main_thread(build_catalog):
-    """A worker calling msg() must degrade, never explode."""
+def test_worker_without_a_kernel_reads_the_process_default(build_catalog, kernel_contexts):
     messages = catalog(build_catalog(LAYOUT))
-    set_locale("fr")
-    out = []
-    worker = threading.Thread(target=lambda: out.append(messages.msg("hello")))
-    worker.start()
-    worker.join()
-    assert out and isinstance(out[0], str)
-
-
-def test_msg_reads_english_in_a_scope_that_never_set_a_locale(monkeypatch, build_catalog):
-    """This is the half of the worker story that is testable without a server.
-
-    Do NOT rewrite the thread test above to assert ``["Hello"]``. Under pytest
-    there is no Solara server, so the main thread and the worker BOTH resolve to
-    ``PROCESS_SCOPE`` -- the worker sees the same locale, and the assertion fails.
-    The spec's "a worker returns English" holds because a *served* connection has
-    a kernel scope while a pool worker falls back to the process one; what makes
-    English appear is the scope differing, which is what this test pins directly.
-    """
-    import pysepal._scope_registry as scope_registry
-
-    messages = catalog(build_catalog(LAYOUT))
-    set_locale("fr")
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-never-set")
-    assert messages.msg("hello") == "Hello"
+    context = kernel_contexts()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(messages.msg, "hello").result() == "Hello"
+        with context:
+            set_locale("fr")
+            assert messages.msg("hello") == "Bonjour"
+            assert pool.submit(messages.msg, "hello").result() == "Hello"
+        set_locale("fr")
+        assert pool.submit(messages.msg, "hello").result() == "Bonjour"

@@ -16,8 +16,8 @@ def describe_offered_locales(
     every code is returned, because a catalog the app ships must be
     selectable. ``catalog`` only supplies presentation, matched through
     :func:`match_offered_locale`, so a bare ``es`` borrows the name and flag
-    of ``es-ES`` while keeping ``es`` as its value -- the value is a folder
-    name that :class:`~pysepal.translator.Translator` has to be able to find.
+    of ``es-ES`` while keeping ``es`` as its value, matching the app's message
+    directory name.
 
     Args:
         offered: Locale codes the app has catalogs for.
