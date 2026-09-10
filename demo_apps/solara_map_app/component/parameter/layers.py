@@ -14,12 +14,14 @@ DEMO_CENTER = [4.75, -74.12]
 NDVI_VIS = {"min": -0.2, "max": 0.9, "palette": ["#d7191c", "#ffffbf", "#1a9641"]}
 PIXEL_AREA_VIS = {"min": 0, "max": 5000, "palette": ["#fff7bc", "#d95f0e"]}
 
-# (pixel value, legend label, color) -- drives the EE reclassification, the map
-# palette and the legend chips from a single source.
+# (pixel value, catalogue key, color) -- drives the EE reclassification, the map
+# palette and the legend chips from a single source. The middle field is a key,
+# not a label: this tuple is built at import, so a label frozen here would stay
+# in the language the module was imported in. The legend renders it with msg().
 ELEVATION_CLASSES = (
-    (1, "Lowland (< 500 m)", "#c7e9b4"),
-    (2, "Upland (500-1500 m)", "#41b6c4"),
-    (3, "Highland (>= 1500 m)", "#253494"),
+    (1, "elevation.lowland", "#c7e9b4"),
+    (2, "elevation.upland", "#41b6c4"),
+    (3, "elevation.highland", "#253494"),
 )
 
 # Vector tiles read straight from a public archive: the browser range-requests the

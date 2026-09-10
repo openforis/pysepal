@@ -1,0 +1,39 @@
+{
+  "app": {
+    "title": "Vector tiles"
+  },
+  "panel": {
+    "title": "Vectors",
+    "description": "Both buttons draw one PMTiles archive, styled two ways."
+  },
+  "section": {
+    "title": "Local vectors",
+    "description": "Tiling {source} with tippecanoe. The conversion is cached per source, so only the first button pays for it. Set {env_var} to use a real landcover.geojson."
+  },
+  "source": {
+    "synthetic": "a generated grid",
+    "real": "real data"
+  },
+  "buttons": {
+    "single": "single symbol",
+    "categorized": "categorized",
+    "clear_vectors": "clear vectors"
+  },
+  "layers": {
+    "single": "Landcover (single)",
+    "categorized": "Landcover (categorized)"
+  },
+  "tasks": {
+    "single": "Single symbol",
+    "categorized": "Categorized",
+    "building": "building tiles...",
+    "styling": "styling tiles..."
+  },
+  "toasts": {
+    "single": "Single symbol added",
+    "categorized": {
+      "one": "1 category added",
+      "other": "{count} categories added"
+    }
+  }
+}

@@ -396,8 +396,11 @@ def Page():
 ```
 
 `count` is not always a plural selector: it only becomes one when `key` names a
-plural node in English, and is an ordinary placeholder on any other key — the
-raster demo's `msg("toasts.classes", count=len(classes))` just fills in a number.
+plural node in English, and is an ordinary placeholder on any other key.
+pysepal's own `msg("layer_state.complete", count=n)` just fills in a number —
+its English still reads "layer(s)", which is the workaround a plural node
+removes. The raster demo's `msg("toasts.cleared", count=n)` selects a form, and
+says "1 couche supprimée" or "3 couches supprimées" in French.
 
 `MapApp` takes locale _codes_ rather than a `Translator` because `Translator`
 subclasses `dict`, which reacton flattens on the way to `.element()`.

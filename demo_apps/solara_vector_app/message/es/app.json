@@ -1,0 +1,39 @@
+{
+  "app": {
+    "title": "Teselas vectoriales"
+  },
+  "panel": {
+    "title": "Vectores",
+    "description": "Los dos botones dibujan el mismo archivo PMTiles, con dos estilos."
+  },
+  "section": {
+    "title": "Vectores locales",
+    "description": "Teselando {source} con tippecanoe. La conversión se almacena en caché por fuente, así que solo el primer botón la paga. Defina {env_var} para usar un landcover.geojson real."
+  },
+  "source": {
+    "synthetic": "una cuadrícula generada",
+    "real": "datos reales"
+  },
+  "buttons": {
+    "single": "símbolo único",
+    "categorized": "categorizado",
+    "clear_vectors": "borrar los vectores"
+  },
+  "layers": {
+    "single": "Cobertura del suelo (único)",
+    "categorized": "Cobertura del suelo (categorizada)"
+  },
+  "tasks": {
+    "single": "Símbolo único",
+    "categorized": "Categorizado",
+    "building": "construyendo las teselas...",
+    "styling": "aplicando estilo a las teselas..."
+  },
+  "toasts": {
+    "single": "Símbolo único añadido",
+    "categorized": {
+      "one": "1 categoría añadida",
+      "other": "{count} categorías añadidas"
+    }
+  }
+}

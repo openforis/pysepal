@@ -203,8 +203,15 @@ def RasterPanel():
         button = sw.Btn(msg("buttons.clear_rasters"), small=True, block=True)
 
         def clear():
+            # msg() reads the scope locale here too, in a plain widget callback
+            # with no render in progress and no locale threaded in to reach it.
+            removed = 0
             for key in ("continuous", "classes", "large"):
-                sepal_map.remove_layer(key, none_ok=True)
+                if sepal_map.find_layer(key, none_ok=True) is not None:
+                    sepal_map.remove_layer(key, none_ok=True)
+                    removed += 1
+            if removed:
+                notifications.success(msg("toasts.cleared", count=removed))
 
         button.on_event("click", lambda *args: clear())
         return button

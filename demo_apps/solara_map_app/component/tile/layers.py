@@ -10,6 +10,7 @@ widgets straight to MapApp's content list keeps them intact.
 import logging
 
 import solara
+from component.message import msg
 from component.model import AppModel, LayerLegend
 from component.parameter import (
     DEMO_CENTER,
@@ -43,7 +44,7 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
         await sepal_map.add_ee_layer_async(
             ndvi_composite(),
             vis_params=NDVI_VIS,
-            name="Sentinel-2 NDVI",
+            name=msg("layers.ndvi"),
             key=NDVI_LAYER_ID,
         )
         sepal_map.center = DEMO_CENTER
@@ -51,7 +52,11 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
         layer_legends.set(
             upsert_legends(
                 layer_legends.value,
-                LayerLegend(NDVI_LAYER_ID, "Sentinel-2 NDVI", gradient_legend("NDVI", NDVI_VIS)),
+                LayerLegend(
+                    NDVI_LAYER_ID,
+                    msg("layers.ndvi"),
+                    gradient_legend(msg("layers.ndvi_short"), NDVI_VIS),
+                ),
             )
         )
 
@@ -62,13 +67,13 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
 
     def build_layer_buttons():
         """Build the sync ipyvuetify buttons once; they close over stable reactives."""
-        btn_pmtiles = sw.Btn("add pmtiles layer", small=True, block=True)
-        btn_remove = sw.Btn("remove all layers", small=True, block=True)
+        btn_pmtiles = sw.Btn(msg("buttons.add_pmtiles"), small=True, block=True)
+        btn_remove = sw.Btn(msg("buttons.remove_all"), small=True, block=True)
 
         def add_pmtiles_layer():
             """Add vector tiles, which the layer control drives without Earth Engine."""
             sepal_map.add_layer(
-                PMTilesLayer(name="NZ buildings", url=PMTILES_URL, style=PMTILES_STYLE),
+                PMTilesLayer(name=msg("layers.pmtiles"), url=PMTILES_URL, style=PMTILES_STYLE),
                 key=PMTILES_LAYER_ID,
             )
             sepal_map.center = PMTILES_CENTER
@@ -85,11 +90,15 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
         btn_remove.on_event("click", lambda *args: remove_all_layers())
         return btn_pmtiles, btn_remove
 
-    btn_pmtiles, btn_remove = solara.use_memo(build_layer_buttons, [id(sepal_map)])
+    btn_pmtiles, btn_remove = solara.use_memo(
+        build_layer_buttons, [id(sepal_map), msg("buttons.add_pmtiles")]
+    )
     app_model = solara.use_memo(AppModel, [])
 
     return [
-        TaskButtonComponent(label="add layer", **ndvi_btn_props, small=True, block=True),
+        TaskButtonComponent(
+            label=msg("buttons.add_layer"), **ndvi_btn_props, small=True, block=True
+        ),
         btn_pmtiles,
         btn_remove,
         AdminButton(app_model, logger_instance=logger),

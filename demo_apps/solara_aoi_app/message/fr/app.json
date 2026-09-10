@@ -1,0 +1,26 @@
+{
+  "app": {
+    "title": "Sauvegarde et restauration d'AOI"
+  },
+  "panel": {
+    "title": "Zone d'intérêt",
+    "description": "Choisissez une AOI et sauvegardez-la. La restaurer reconstruit la géométrie à partir de la seule spécification -- seul ce petit enregistrement JSON a été écrit."
+  },
+  "section": {
+    "title": "Sélection",
+    "description": "La sauvegarde écrit {path}. Rien d'autre sur cette page ne le lit ni ne l'écrit, donc effacer l'AOI laisse intacte celle qui est sauvegardée."
+  },
+  "buttons": {
+    "save": "Sauvegarder cette AOI",
+    "restore": "Restaurer l'AOI sauvegardée"
+  },
+  "switch": {
+    "label": "Traiter automatiquement une AOI restaurée",
+    "hint": "Activé : la restauration dessine l'AOI tout de suite. Désactivé : elle remplit le formulaire et vous appuyez sur Sélectionner l'AOI."
+  },
+  "toasts": {
+    "saved": "Sélection {method} sauvegardée dans {file}.",
+    "missing": "{file} est absent ou illisible.",
+    "restored": "Sélection {method} restaurée."
+  }
+}

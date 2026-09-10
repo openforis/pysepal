@@ -1,6 +1,7 @@
 """Turn layer definitions and Earth Engine reductions into legend data."""
 
 import ee
+from component.message import msg
 from component.model import LayerLegend, ProcessingOutputs
 from component.parameter import ELEVATION_CLASSES
 
@@ -55,10 +56,12 @@ async def elevation_class_legend(gee_interface, outputs: ProcessingOutputs) -> L
     total = sum(area_by_class.values())
 
     items = [
-        DiscreteEntry(label, color, detail=_area_detail(area_by_class.get(value, 0.0), total))
-        for value, label, color in ELEVATION_CLASSES
+        DiscreteEntry(
+            msg(label_key), color, detail=_area_detail(area_by_class.get(value, 0.0), total)
+        )
+        for value, label_key, color in ELEVATION_CLASSES
     ]
     # An entry with no color renders without a chip, which reads as a totals row.
-    items.append(DiscreteEntry("Total", "", detail=_area_detail(total, total)))
+    items.append(DiscreteEntry(msg("legend.total"), "", detail=_area_detail(total, total)))
 
     return LegendData(items=items)

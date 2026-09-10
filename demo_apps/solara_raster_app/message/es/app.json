@@ -34,7 +34,14 @@
   },
   "toasts": {
     "continuous": "Rampa continua añadida",
-    "classes": "{count} clases añadidas",
-    "large": "Ráster grande añadido"
+    "classes": {
+      "one": "1 clase añadida",
+      "other": "{count} clases añadidas"
+    },
+    "large": "Ráster grande añadido",
+    "cleared": {
+      "one": "1 capa eliminada",
+      "other": "{count} capas eliminadas"
+    }
   }
 }

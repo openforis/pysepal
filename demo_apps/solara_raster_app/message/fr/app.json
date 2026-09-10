@@ -34,7 +34,14 @@
   },
   "toasts": {
     "continuous": "Rampe continue ajoutée",
-    "classes": "{count} classes ajoutées",
-    "large": "Raster volumineux ajouté"
+    "classes": {
+      "one": "1 classe ajoutée",
+      "other": "{count} classes ajoutées"
+    },
+    "large": "Raster volumineux ajouté",
+    "cleared": {
+      "one": "1 couche supprimée",
+      "other": "{count} couches supprimées"
+    }
   }
 }
