@@ -19,7 +19,10 @@ def codes(problems):
 def test_an_untranslated_key_is_reported_not_raised(build_catalog):
     problems = compare(
         build_catalog,
-        {"en": {"a": {"app": {"title": "T", "sub": "S"}}}, "fr": {"a": {"app": {"title": "T"}}}},
+        {
+            "en": {"a": {"app": {"title": "T", "sub": "S"}}},
+            "fr": {"a": {"app": {"title": "T"}}},
+        },
     )
     assert codes(problems) == [("missing_key", "app.sub")]
     assert problems[0].locale == "fr"
@@ -28,7 +31,10 @@ def test_an_untranslated_key_is_reported_not_raised(build_catalog):
 def test_a_target_only_key_is_reported(build_catalog):
     problems = compare(
         build_catalog,
-        {"en": {"a": {"app": {"title": "T"}}}, "fr": {"a": {"app": {"title": "T", "ghost": "G"}}}},
+        {
+            "en": {"a": {"app": {"title": "T"}}},
+            "fr": {"a": {"app": {"title": "T", "ghost": "G"}}},
+        },
     )
     assert codes(problems) == [("extra_key", "app.ghost")]
 
@@ -47,11 +53,21 @@ def test_an_unsupported_plural_category_is_named_as_such(build_catalog):
         build_catalog,
         {
             "en": {"c": {"models": {"one": "1", "other": "{count}"}}},
-            "ru-RU": {"c": {"models": {"one": "1", "few": "2", "other": "{count}"}}},
+            "ru-RU": {
+                "c": {
+                    "models": {
+                        "one": "1",
+                        "two": "2",
+                        "few": "{count}",
+                        "many": "{count}",
+                        "other": "{count}",
+                    }
+                }
+            },
         },
         target="ru-RU",
     )
-    assert codes(problems) == [("unsupported_plural_category", "models.few")]
+    assert codes(problems) == [("unsupported_plural_category", "models.two")]
     assert "never used" in problems[0].detail
 
 
@@ -104,7 +120,7 @@ def test_a_malformed_target_template_is_reported_not_raised(build_catalog):
 def test_a_malformed_english_template_never_reaches_check(build_catalog):
     """Binding refuses it, so there is no such problem for check() to report."""
     folder = build_catalog({"en": {"a": {"hello": "Hi {name"}}, "fr": {"a": {"hello": "Salut"}}})
-    with pytest.raises(CatalogError, match=r"str\.format can render"):
+    with pytest.raises(CatalogError, match=r"unsupported message template"):
         load_locale(folder, "en")
 
 

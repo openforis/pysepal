@@ -26,6 +26,7 @@ from pysepal.i18n.loading import (
     overlay,
 )
 from pysepal.i18n.locale_store import current_locale
+from pysepal.i18n.plurals import select_plural_category
 from pysepal.i18n.problems import CatalogProblem, compare_locale
 
 logger = logging.getLogger("sepalui.i18n")
@@ -67,22 +68,6 @@ def catalog(folder: Union[str, Path], *, strict: bool = True) -> "BoundCatalog":
         return _FACADES.setdefault((resolved, strict), bound)
 
 
-def select_plural_category(count: Any) -> str:
-    """Return the plural category ``count`` selects.
-
-    Two forms in this release. ``ar-SA`` needs six and ``ru-RU`` needs three;
-    adding them changes this function, the load-time validation and the
-    catalogue data, and no call site.
-
-    Args:
-        count: The number the message is about.
-
-    Returns:
-        ``"one"`` or ``"other"``.
-    """
-    return "one" if count == 1 else "other"
-
-
 class BoundCatalog:
     """One message directory, resolved per locale.
 
@@ -105,8 +90,9 @@ class BoundCatalog:
         This is the only lookup. Reading the locale subscribes when a render is
         in progress, so a component that calls this -- directly, or through an
         ordinary helper on the same call stack -- re-renders when the language
-        changes. Outside a render it is a plain read, which is what lets an
-        event handler or a worker thread call it too.
+        changes. Event handlers in the same Solara context read that locale
+        too. A worker without the context reads the process default; return
+        results or message keys to the UI context for translation instead.
 
         ``key`` is positional-only, so a message may carry a ``{key}``
         placeholder passed as ``key=...``.
@@ -159,47 +145,39 @@ class BoundCatalog:
                 continue
             problems.extend(compare_locale(self._english, target))
         return tuple(
-            sorted(problems, key=lambda problem: (problem.code, problem.locale, problem.key))
+            sorted(
+                problems,
+                key=lambda problem: (problem.code, problem.locale, problem.key),
+            )
         )
 
     def _resolve(self, locale: str, key: str, /, **values: Any) -> str:
-        """Return one formatted message. Piece 3's ``msg()`` calls this.
+        """Render a message, selecting plural fallback with English rules."""
+        if key not in self._english.messages and key not in self._english.plural_keys:
+            return self._missing(locale, key)
 
-        ``key`` is positional-only so a message may carry a ``{key}``
-        placeholder passed as ``key=``.
-
-        Args:
-            locale: The locale to render in; matched against what is shipped.
-            key: The dotted message key.
-            **values: Placeholder values. ``count`` also selects a plural form
-                when ``key`` names a plural node in English.
-
-        Returns:
-            The formatted message.
-
-        Raises:
-            MissingMessageError: A strict catalogue does not define ``key``.
-            MessageFormatError: ``key`` names a plural message and no ``count``
-                was given; a placeholder value was not supplied, or given a
-                value its ``.attr``/``[index]`` access does not support; or the
-                template itself is malformed. Only English can reach the last
-                case -- ``overlay`` drops a malformed target leaf, so a
-                translator cannot cause it.
-        """
-        messages = self._messages_for(locale)
-        lookup = key
-        if "count" in values and key in self._english.plural_keys:
-            lookup = f"{key}.{select_plural_category(values['count'])}"
-
-        if lookup not in messages:
-            if key in self._english.plural_keys:
+        matched = match_offered_locale(locale, self._codes) or ENGLISH
+        lookup = english_lookup = key
+        if key in self._english.plural_keys:
+            if "count" not in values:
                 raise MessageFormatError(
                     f"{self._folder}: '{key}' is a plural message and needs a count"
                 )
-            return self._missing(locale, key)
+            try:
+                lookup = f"{key}.{select_plural_category(matched, values['count'])}"
+                english_lookup = f"{key}.{select_plural_category(ENGLISH, values['count'])}"
+            except (ArithmeticError, TypeError, ValueError) as exc:
+                raise MessageFormatError(f"{self._folder}: '{key}': invalid count: {exc}") from exc
 
+        english = self._english.messages[english_lookup]
+        template = self._messages_for(matched).get(lookup, english)
         try:
-            return messages[lookup].format(**values)
+            if template != english:
+                try:
+                    return template.format(**values)
+                except (KeyError, IndexError, ValueError, TypeError, AttributeError):
+                    pass
+            return english.format(**values)
         except (KeyError, IndexError, ValueError, TypeError, AttributeError) as exc:
             raise MessageFormatError(
                 f"{self._folder}: cannot render '{key}' in {locale}: {exc}"
@@ -228,7 +206,7 @@ class BoundCatalog:
             # misbehaving, so fall back to English wholesale instead of leaf
             # by leaf.
             self._warn_unreadable(matched, exc)
-            target = self._english
+            target = LocaleData(matched, {}, frozenset())
 
         composite = overlay(self._english, target)
         with _LOCK:

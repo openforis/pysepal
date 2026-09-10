@@ -35,12 +35,12 @@
   "toasts": {
     "continuous": "Continuous ramp added",
     "classes": {
-      "one": "1 class added",
+      "one": "{count} class added",
       "other": "{count} classes added"
     },
     "large": "Large raster added",
     "cleared": {
-      "one": "1 layer removed",
+      "one": "{count} layer removed",
       "other": "{count} layers removed"
     }
   }

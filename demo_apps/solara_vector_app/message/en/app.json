@@ -32,7 +32,7 @@
   "toasts": {
     "single": "Single symbol added",
     "categorized": {
-      "one": "1 category added",
+      "one": "{count} category added",
       "other": "{count} categories added"
     }
   }

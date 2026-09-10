@@ -4,12 +4,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Dict, FrozenSet, Mapping, Set, Tuple
+from typing import Dict, FrozenSet, Mapping, Optional, Set, Tuple
 
 from pysepal._locale import normalize_locale
 from pysepal.i18n.errors import CatalogError
 from pysepal.i18n.flatten import flatten_document
 from pysepal.i18n.formatting import target_leaf_problem
+from pysepal.i18n.plurals import plural_categories
 
 ENGLISH = "en"
 "The authoritative locale. It defines every public key and its shape."
@@ -131,33 +132,37 @@ def load_locale(folder: Path, code: str) -> LocaleData:
 
 
 def overlay(english: LocaleData, target: LocaleData) -> Mapping[str, str]:
-    """Return English with the target's translations applied over it.
+    """Overlay valid translations, leaving missing plural forms unresolved.
 
-    English is the authoritative key universe: a key the target adds is
-    dropped, so a translator's typo cannot create a locale-only render failure
-    and an unsupported plural category simply never becomes a key. Whether a
-    shared leaf can replace English is :func:`~pysepal.i18n.formatting.target_leaf_problem`'s
-    call, the same one ``check()`` uses to decide what to report: a target
-    that cannot be parsed, or whose placeholders disagree with English's, is
-    dropped and English's text stays active instead. The one exception is
-    English's own template being the one that cannot be parsed -- that
-    imposes no constraint, so a parseable target replaces it rather than
-    being held to a standard English itself does not meet.
-
-    Args:
-        english: The English data.
-        target: The data to lay over it; pass ``english`` itself for English.
-
-    Returns:
-        A read-only mapping of every English key to its active message.
+    Plural fallback needs the actual count and English rules. Copying English
+    forms here would make French zero inherit English's literal "1 model".
     """
-    composite = dict(english.messages)
+    if target.code == ENGLISH:
+        return english.messages
+    composite = {
+        key: message
+        for key, message in english.messages.items()
+        if key.rpartition(".")[0] not in english.plural_keys
+    }
+    categories = plural_categories(target.code)
     for key, message in target.messages.items():
-        if key not in composite:
+        base, _, category = key.rpartition(".")
+        if base in english.plural_keys:
+            if base not in target.plural_keys or category not in categories:
+                continue
+        elif key not in composite or key in target.plural_keys:
             continue
-        if target_leaf_problem(composite[key], message) is None:
+        if translation_problem(english, key, message) is None:
             composite[key] = message
     return MappingProxyType(composite)
+
+
+def translation_problem(english: LocaleData, key: str, message: str) -> Optional[str]:
+    """Validate a target leaf against its English message's argument contract."""
+    base = key.rpartition(".")[0]
+    plural = base in english.plural_keys
+    reference = english.messages[f"{base}.other"] if plural else english.messages[key]
+    return target_leaf_problem(reference, message, plural=plural)
 
 
 def _refuse_leaf_and_prefix(

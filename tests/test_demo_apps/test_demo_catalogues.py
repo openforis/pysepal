@@ -46,3 +46,8 @@ def test_a_demo_shows_the_plural_selection_in_every_locale():
         # the wording has to change, not only the number: a flat
         # "{count} layers removed" would pass a digits-only comparison
         assert singular.replace("1", "") != plural.replace("3", ""), locale
+
+
+def test_french_demo_zero_preserves_the_count():
+    messages = catalog(DEMO_ROOT / "solara_raster_app" / "message")
+    assert messages._resolve("fr", "toasts.cleared", count=0) == "0 couche supprimée"

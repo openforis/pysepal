@@ -18,7 +18,11 @@ def test_english_comes_first_then_the_rest_sorted(build_catalog):
 def test_discovery_sorts_and_returns_the_raw_directory_names(build_catalog):
     """The codes are directory names, and the sort is what the matcher relies on."""
     folder = build_catalog(
-        {"en": {"a": {"t": "T"}}, "ZH-hans": {"a": {"t": "T"}}, "ar-SA": {"a": {"t": "T"}}}
+        {
+            "en": {"a": {"t": "T"}},
+            "ZH-hans": {"a": {"t": "T"}},
+            "ar-SA": {"a": {"t": "T"}},
+        }
     )
     assert discover_locale_codes(folder) == ("en", "ZH-hans", "ar-SA")
 
@@ -31,7 +35,11 @@ def test_a_folder_without_english_is_refused(build_catalog):
 
 def test_two_directories_normalising_to_one_code_are_refused(build_catalog):
     folder = build_catalog(
-        {"en": {"a": {"t": "T"}}, "pt-BR": {"a": {"t": "T"}}, "pt_br": {"a": {"t": "T"}}}
+        {
+            "en": {"a": {"t": "T"}},
+            "pt-BR": {"a": {"t": "T"}},
+            "pt_br": {"a": {"t": "T"}},
+        }
     )
     with pytest.raises(CatalogError, match="both normalise to"):
         discover_locale_codes(folder)
@@ -63,7 +71,9 @@ def test_an_english_directory_with_no_json_is_refused(build_catalog):
         discover_locale_codes(folder)
 
 
-def test_a_locale_whose_json_sits_in_a_nested_subdirectory_is_not_offered(build_catalog):
+def test_a_locale_whose_json_sits_in_a_nested_subdirectory_is_not_offered(
+    build_catalog,
+):
     """Not recursive: matches load_locale's own non-recursive glob."""
     folder = build_catalog({"en": {"a": {"t": "T"}}, "fr": {}})
     nested = folder / "fr" / "nested"
@@ -202,7 +212,7 @@ def test_an_empty_english_message_is_still_a_key(build_catalog):
     assert english.messages["app.title"] == ""
 
 
-def test_a_target_may_translate_one_plural_form_and_inherit_the_other(build_catalog):
+def test_missing_plural_forms_are_left_for_count_aware_fallback(build_catalog):
     folder = build_catalog(
         {
             "en": {"c": {"chips": {"models": {"one": "1 model", "other": "{count} models"}}}},
@@ -210,12 +220,11 @@ def test_a_target_may_translate_one_plural_form_and_inherit_the_other(build_cata
         }
     )
     composite = overlay(load_locale(folder, "en"), load_locale(folder, "fr"))
-    assert composite["chips.models.one"] == "1 model"
+    assert "chips.models.one" not in composite
     assert composite["chips.models.other"] == "{count} modeles"
 
 
-def test_a_target_plural_category_this_release_lacks_is_dropped(build_catalog):
-    """`ru-RU` needs three forms. Until the selector grows, `few` is not a key."""
+def test_translated_plural_forms_can_extend_english_categories(build_catalog):
     folder = build_catalog(
         {
             "en": {"c": {"chips": {"models": {"one": "1 model", "other": "{count} models"}}}},
@@ -223,7 +232,7 @@ def test_a_target_plural_category_this_release_lacks_is_dropped(build_catalog):
         }
     )
     composite = overlay(load_locale(folder, "en"), load_locale(folder, "ru-RU"))
-    assert "chips.models.few" not in composite
+    assert composite["chips.models.few"] == "2"
     assert composite["chips.models.one"] == "1"
 
 
@@ -247,7 +256,7 @@ def test_overlay_ignores_a_malformed_target_leaf(build_catalog):
 def test_load_locale_refuses_a_malformed_english_leaf(build_catalog):
     """Only English is validated when a catalogue binds, and this is a hard error."""
     folder = build_catalog({"en": {"a": {"hello": "Hi {name"}}})
-    with pytest.raises(CatalogError, match=r"str\.format can render"):
+    with pytest.raises(CatalogError, match=r"unsupported message template"):
         load_locale(folder, "en")
 
 

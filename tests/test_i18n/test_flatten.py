@@ -32,7 +32,10 @@ def test_a_plural_node_contributes_one_key_per_category():
     messages, plural_keys = flatten(
         {"chips": {"models": {"one": "1 model", "other": "{count} models"}}}
     )
-    assert messages == {"chips.models.one": "1 model", "chips.models.other": "{count} models"}
+    assert messages == {
+        "chips.models.one": "1 model",
+        "chips.models.other": "{count} models",
+    }
     assert plural_keys == frozenset({"chips.models"})
 
 
@@ -57,7 +60,7 @@ def test_a_plural_node_missing_a_category_is_refused():
 
 
 def test_a_plural_node_with_an_extra_category_is_refused():
-    """`few` is not supported yet; silently dropping it would hide the mistake."""
+    """English cannot select few, even though other locales can."""
     with pytest.raises(CatalogError, match="exactly the string leaves"):
         flatten({"chips": {"models": {"one": "1", "few": "2", "other": "{count}"}}})
 
@@ -78,8 +81,7 @@ def test_a_target_may_translate_one_plural_form():
     assert plural_keys == frozenset({"chips.models"})
 
 
-def test_a_target_may_carry_a_category_this_release_lacks():
-    """`ru-RU` needs three forms. The overlay drops `few`; check() reports it."""
+def test_a_target_may_carry_its_own_plural_categories():
     messages, _ = target({"c": {"m": {"one": "1", "few": "2", "other": "{count}"}}})
     assert set(messages) == {"c.m.one", "c.m.few", "c.m.other"}
 

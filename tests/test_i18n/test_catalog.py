@@ -191,12 +191,14 @@ def test_check_aggregates_every_shipped_locale_in_deterministic_order(build_cata
     problems = catalog(build_catalog(LAYOUT)).check()
     assert tuple((problem.code, problem.locale, problem.key) for problem in problems) == (
         ("missing_key", "fr", "app.sub"),
+        ("missing_key", "fr", "chips.models.many"),
         ("missing_key", "fr", "chips.models.one"),
         ("missing_key", "fr", "chips.models.other"),
         ("missing_key", "fr", "hello"),
         ("missing_key", "fr", "literal"),
         ("missing_key", "fr", "plain"),
         ("missing_key", "pt-BR", "app.sub"),
+        ("missing_key", "pt-BR", "chips.models.many"),
         ("missing_key", "pt-BR", "chips.models.one"),
         ("missing_key", "pt-BR", "chips.models.other"),
         ("missing_key", "pt-BR", "hello"),
@@ -294,7 +296,7 @@ def test_a_malformed_english_leaf_is_refused_when_the_catalogue_binds(build_cata
     folder = build_catalog(
         {"en": {"a": {"hello": "Hi {name"}}, "fr": {"a": {"hello": "Salut {nom}"}}}
     )
-    with pytest.raises(CatalogError, match=r"str\.format can render"):
+    with pytest.raises(CatalogError, match=r"unsupported message template"):
         catalog(folder)
 
 
@@ -337,17 +339,6 @@ def test_the_dedup_warning_names_the_locale_it_is_about(build_catalog, caplog):
     assert texts[0] != texts[1]
     assert "'en'" in texts[0]
     assert "'fr'" in texts[1]
-
-
-@pytest.mark.parametrize(
-    ("count", "expected"),
-    [(1, "one"), (1.0, "one"), (True, "one"), (0, "other"), (2, "other"), ("1", "other")],
-)
-def test_select_plural_category_pins_the_boundary(count, expected):
-    """``True == 1`` in Python, so a boolean count is a real gotcha worth pinning."""
-    import pysepal.i18n.binding as binding
-
-    assert binding.select_plural_category(count) == expected
 
 
 def test_a_translation_whose_spec_needs_another_value_falls_back_to_english(

@@ -8,9 +8,7 @@ from typing import Any, Dict, FrozenSet, Mapping, Sequence, Set, Tuple
 
 from pysepal.i18n.errors import CatalogError
 from pysepal.i18n.formatting import placeholders
-
-PLURAL_CATEGORIES: Tuple[str, ...] = ("one", "other")
-"The plural categories this release supports. English must define all of them."
+from pysepal.i18n.plurals import PLURAL_CATEGORIES
 
 
 def flatten_document(
@@ -22,10 +20,8 @@ def flatten_document(
         document: The parsed JSON value; it must be an object.
         locale: The locale the document belongs to, used in error messages.
         source: The file name, used in error messages.
-        authoritative: True for English, whose structure defines the public key
-            universe and is checked strictly. False for a translated locale,
-            which may translate one plural form and inherit the other, and may
-            carry a category this release does not support.
+        authoritative: True for English, which defines message identities and
+            named arguments. Translations may use their own plural categories.
 
     Returns:
         A ``(messages, plural_keys)`` pair. ``messages`` maps a dotted key to a
@@ -37,8 +33,8 @@ def flatten_document(
         CatalogError: The document is not an object, a key segment contains a
             dot, or a leaf is not a string. In English only: a plural node
             does not hold exactly the string leaves named in
-            :data:`PLURAL_CATEGORIES`, a leaf is not a template
-            ``str.format`` can render, or a leaf uses a positional placeholder
+            ``one`` and ``other``, a leaf uses unsupported template syntax,
+            or a leaf uses a positional placeholder
             (``{}`` or ``{0}``).
     """
     if not isinstance(document, dict):
@@ -63,22 +59,11 @@ def flatten_document(
 
 
 def _refuse_malformed_template(key: str, message: str, *, locale: str, source: str) -> None:
-    """Raise when ``message`` is not a template ``str.format`` can render.
-
-    Every other locale falls back to English, so English that cannot render
-    leaves nothing to fall back to: the failure reaches a screen in every
-    language at once, and no translation can rescue it. An unclosed brace and
-    an unknown conversion (``{n!z}``) both land here.
-
-    A target locale gets the gentler treatment for the same mistake: ``check()``
-    reports it and English stays active for that key. The asymmetry is the point
-    -- a translator must not be able to break a render, and an author must not
-    be able to ship a message that cannot be rendered at all.
-    """
+    """Require a valid English fallback before any message can render."""
     if placeholders(message) is None:
         raise CatalogError(
-            f"{locale}/{source}: '{key}' is not a template str.format can render; "
-            "check its braces and any conversion after '!'"
+            f"{locale}/{source}: '{key}' uses unsupported message template syntax; "
+            "use named placeholders and escape literal braces"
         )
 
 
@@ -119,13 +104,19 @@ def _walk(
             raise CatalogError(f"{where}: a plural node cannot sit at the root")
         base = ".".join(path)
         if authoritative and (
-            set(node) != set(PLURAL_CATEGORIES)
-            or not all(isinstance(node[category], str) for category in PLURAL_CATEGORIES)
+            set(node) != {"one", "other"}
+            or not all(isinstance(node[category], str) for category in ("one", "other"))
         ):
             raise CatalogError(
-                f"{where}: the plural node {base} must hold exactly the string leaves "
-                f"{', '.join(PLURAL_CATEGORIES)}"
+                f"{where}: the plural node {base} must hold exactly the string leaves " "one, other"
             )
+        if authoritative:
+            one = placeholders(node["one"])
+            other = placeholders(node["other"])
+            if one is not None and other is not None and one - {"count"} != other - {"count"}:
+                raise CatalogError(
+                    f"{where}: plural forms of {base} must use the same named arguments apart from count"
+                )
         plural_keys.add(base)
         for category, leaf in node.items():
             if "." in category:

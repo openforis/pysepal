@@ -32,7 +32,8 @@
   "toasts": {
     "single": "Símbolo único añadido",
     "categorized": {
-      "one": "1 categoría añadida",
+      "one": "{count} categoría añadida",
+      "many": "{count} categorías añadidas",
       "other": "{count} categorías añadidas"
     }
   }
