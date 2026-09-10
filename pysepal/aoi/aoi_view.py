@@ -52,7 +52,9 @@ class MethodSelect(sw.Select):
         """
         # create the method list
         if methods == "ALL":
-            self.methods = select_methods
+            # a copy: the pops below would otherwise strip ASSET and DRAW from
+            # AoiModel.METHODS itself, for every view built later in the process
+            self.methods = dict(select_methods)
         elif methods == "ADMIN":
             self.methods = {k: v for k, v in select_methods.items() if v["type"] == ADMIN}
         elif methods == "CUSTOM":

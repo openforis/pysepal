@@ -32,7 +32,9 @@ def test_init() -> None:
     # init with a remove list
     view = aoi.AoiView(["-POINTS"], gee=False)
     assert {"text": msg("aoi_sel.points"), "value": "POINTS"} not in view.w_method.items
-    assert len(view.w_method.items) == len(aoi.AoiModel.METHODS) + 2 - 1  # 2 headers this time
+    # every method, less the POINTS asked for and the ASSET and DRAW a mapless
+    # non-GEE view cannot use, plus one header per remaining group
+    assert len(view.w_method.items) == (len(aoi.AoiModel.METHODS) - 3) + 2
 
     # init with a mix of both
     with pytest.raises(Exception):
@@ -227,3 +229,18 @@ def aoi_local_view() -> aoi.AoiView:
     """
     m = SepalMap(dc=True)
     return aoi.AoiView(map_=m, gee=False)
+
+
+def test_building_a_view_does_not_strip_the_shared_method_list() -> None:
+    """`AoiView("ALL")` used to alias `AoiModel.METHODS` and then pop from it.
+
+    One non-GEE view removed ASSET for the whole process, so any GEE view built
+    afterwards could no longer offer a GEE asset at all.
+    """
+    before = dict(aoi.AoiModel.METHODS)
+
+    aoi.AoiView("ALL", gee=False)
+
+    assert aoi.AoiModel.METHODS == before
+    later = aoi.AoiView("ALL", gee=True)
+    assert "ASSET" in [item["value"] for item in later.w_method.items if "value" in item]

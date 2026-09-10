@@ -10,7 +10,7 @@ import solara
 
 import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 
@@ -39,7 +39,7 @@ def _render(component):
 
 
 def _method_select(root):
-    return find_by_label(root, ms.aoi_sel.method)
+    return find_by_label(root, msg("aoi_sel.method"))
 
 
 def test_a_spec_seeds_the_method_select(monkeypatch):
@@ -53,7 +53,7 @@ def test_a_spec_seeds_the_method_select(monkeypatch):
     root = _render(_Harness)
 
     assert _method_select(root).v_model == "ADMIN1"
-    assert find_by_label(root, ms.aoi_sel.adm[1]).v_model == "1001"
+    assert find_by_label(root, msg("aoi_sel.adm.1")).v_model == "1001"
 
 
 def test_a_shape_spec_reaches_the_result(monkeypatch):
@@ -388,9 +388,11 @@ def test_explicit_clear_resets_an_incomplete_points_form(tmp_path):
         root, rc = reacton.render(Harness(), handle_error=False)
         try:
             await wait_until(
-                lambda: bool(getattr(find_by_label(root, ms.widgets.table.column.id), "items", []))
+                lambda: bool(
+                    getattr(find_by_label(root, msg("widgets.table.column.id")), "items", [])
+                )
             )
-            find_by_label(root, ms.widgets.table.column.id).v_model = None
+            find_by_label(root, msg("widgets.table.column.id")).v_model = None
             clear_ref.current()
             await wait_until(lambda: of_type(root, "FileInput")[0].v_model == "")
             assert _method_select(root).v_model == "POINTS"
