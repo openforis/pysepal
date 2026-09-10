@@ -63,6 +63,12 @@ def render_selector():
         contexts.append(rc)
         return widget, rc
 
+    def close(rc):
+        """Close a render early. Teardown must not close it a second time."""
+        contexts.remove(rc)
+        rc.close()
+
+    render.close = close
     yield render
     for context in reversed(contexts):
         context.close()
@@ -126,7 +132,7 @@ def test_locale_changes_do_not_rerender_the_enclosing_component():
 def test_unmount_stops_both_directions_and_remount_keeps_the_locale(render_selector):
     widget, rc = render_selector(["en", "fr"])
     widget.value = "fr"
-    rc.close()
+    render_selector.close(rc)
     set_locale("en")
     assert widget.value == "fr"
     widget.value = "es"
