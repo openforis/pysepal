@@ -60,6 +60,63 @@ def test_search_key() -> None:
     return
 
 
+def test_search_key_in_second_sibling() -> None:
+    """A protected key hiding in the second of two sibling dicts must still be found.
+
+    Regression test: search_key used to return right after the first dict
+    child, so any sibling coming after it was never searched.
+    """
+    key = "toto"
+    d = {"first": {"a": "b"}, "second": {"toto": "c"}}
+
+    with pytest.raises(Exception):
+        Translator.search_key(d, key)
+
+    return
+
+
+def test_search_key_in_a_deeper_later_sibling() -> None:
+    """A later sibling nested one level deeper must also be found.
+
+    A fix that only widens the search to immediate siblings would still
+    miss this case.
+    """
+    key = "toto"
+    d = {"first": {"a": "b"}, "second": {"deeper": {"toto": "c"}}}
+
+    with pytest.raises(Exception):
+        Translator.search_key(d, key)
+
+    return
+
+
+def test_search_key_does_not_raise_when_key_is_absent() -> None:
+    """A dictionary that never contains the key must not raise."""
+    key = "toto"
+    d = {"first": {"a": "b"}, "second": {"deeper": {"c": "d"}}}
+
+    Translator.search_key(d, key)
+
+    return
+
+
+def test_translator_rejects_a_protected_key_in_a_later_section(tmp_path: Path) -> None:
+    """The constructor must refuse a protected key wherever it hides, not just in the first section.
+
+    Args:
+        tmp_path: a temporary folder to build a throwaway catalog in
+    """
+    catalog = {"first": {"a_key": "value"}, "second": {"get": "value"}}
+    folder = tmp_path / "message" / "en"
+    folder.mkdir(parents=True)
+    (folder / "locale.json").write_text(json.dumps(catalog, indent=2))
+
+    with pytest.raises(Exception, match=r"You cannot use the key get"):
+        Translator(tmp_path / "message")
+
+    return
+
+
 def test_sanitize() -> None:
     """Check that the dict are sanitized by the Translator object."""
     # a test dict with many embedded numbered list
