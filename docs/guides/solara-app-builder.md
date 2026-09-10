@@ -399,9 +399,14 @@ my_module/
 │   ├── scripts/               # Pure Python logic (no UI)
 │   │   ├── __init__.py
 │   │   └── calculations.py
-│   └── parameter/             # Constants, paths, config
-│       ├── __init__.py
-│       └── directory.py       # Local/remote file management
+│   ├── parameter/             # Constants, paths, config
+│   │   ├── __init__.py
+│   │   └── directory.py       # Local/remote file management
+│   └── message/               # The catalogue: catalog() bound once at import
+│       ├── __init__.py        # messages = catalog(...); msg = messages.msg
+│       ├── en/                # source of truth
+│       ├── es/
+│       └── fr/
 └── assets/                    # Static files (CSS, images)
 ```
 
@@ -536,6 +541,8 @@ meaningful for local and Voila deployments.
 ## 5. Map Integration
 
 ```python
+from component.message import messages, msg
+
 from pysepal import mapping as sm
 from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import get_current_theme_state
@@ -557,16 +564,25 @@ def Page():
         [id(gee_interface)],
     )
 
-    # Use MapApp layout (map background + sidebar + right panel)
+    # The shell. Rendered as an element inside this component: it mounts the
+    # language selector, and every nested element follows the locale.
     MapApp.element(
-        app_title="My App",
+        app_title=msg("app.title"),
         app_icon="mdi-earth",
         main_map=[sepal_map.get_map_widget()],
         theme_state=theme_state,
+        locales=messages.available_locales(),
         steps_data=[...],
         right_panel_content=[...],
     )
 ```
+
+`MapApp` is a shell, not a way to assemble an app: an application is the
+`@solara.component` above, and the shell is rendered inside it with
+`.element(...)`. The plain `MapApp(...)` constructor builds the bare widget,
+with no selector and nothing that follows a language change. Read a message
+anywhere in the app with `msg("key")` — see
+`docs/source/tutorials/translate-app.rst`.
 
 > `SepalMap(theme_toggle=...)` / `MapApp.element(theme_toggle=[...])` still
 > work but emit a `DeprecationWarning`. See `migration-notes-v3.4.md` § 7.

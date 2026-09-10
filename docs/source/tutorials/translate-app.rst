@@ -285,8 +285,8 @@ English stays active for that key and :code:`check()` reports it.
 Change the language
 -------------------
 
-Solara stores a separate locale for each virtual kernel through one module-level
-reactive. Read it and set it with:
+The locale is one Solara reactive. Solara keeps a separate value for each
+browser connection, so two users never share it. Read it and set it with:
 
 .. code-block:: python
 
@@ -303,8 +303,9 @@ A background worker without that context reads the process default, which may
 be a different language. Let workers return results or a message key and named
 arguments, then call :code:`msg()` in the owning UI context after receiving them.
 
-The language selector in the app bar writes the user's choice here. Offer it the
-languages your catalogue actually ships:
+An application is a Solara component, and :code:`MapApp.element(...)` is its
+shell. The shell mounts the language selector for you and the selector writes
+the user's choice here. Offer it the languages your catalogue ships:
 
 .. code-block:: python
 
@@ -314,9 +315,17 @@ languages your catalogue actually ships:
     )
 
 For a layout without :code:`MapApp`, mount
-:code:`pysepal.solara.components.locale_select.LocaleSelectComponent(locales=...)`.
-It uses the same locale. The underlying Vue widget only transports its value;
-applications do not need trait observers or manual subscriptions.
+:code:`pysepal.solara.components.locale_select.LocaleSelectComponent(locales=...)`
+inside your component. It writes the same locale.
+
+.. important::
+
+    Do not build the shell with the plain :code:`MapApp(...)` constructor. That
+    is the widget :code:`MapApp.element` creates for you. On its own it has no
+    render loop, so nothing in it follows the language and no selector is
+    mounted. The same holds for every widget in :code:`pysepal.sepalwidgets`:
+    they are the parts a Solara component renders, not a way to assemble an
+    application.
 
 .. note::
 

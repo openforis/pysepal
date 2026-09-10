@@ -15,12 +15,22 @@ from pysepal.solara.theme import ThemeState, get_current_theme_state
 logger = logging.getLogger("sepalui.vue_app")
 
 _LOCALE_STATE_REMOVED = (
-    "locale_state= was removed in pysepal 4.0: the locale is scope state. Read it "
-    "with pysepal.i18n.current_locale() and write it with pysepal.i18n.set_locale()."
+    "locale_state= was removed in pysepal 4.0: the locale is one Solara reactive per "
+    "kernel. Read it with pysepal.i18n.current_locale() and write it with "
+    "pysepal.i18n.set_locale()."
 )
 
 
 class MapApp(v.VuetifyTemplate):
+    """The map application shell. Render it with ``MapApp.element(...)``.
+
+    An application is a Solara component, and this is the shell it renders:
+    ``MapApp.element(...)`` mounts the language selector and lets every nested
+    element follow the locale. Constructing the widget directly gives the bare
+    layout only -- no selector, and nothing that follows a language change,
+    because outside a render there is no render loop. It is not a way to
+    assemble an application.
+    """
 
     template_file = Unicode(str(Path(__file__).parents[1] / "sepalwidgets/vue/MapApp.vue")).tag(
         sync=True
@@ -122,9 +132,10 @@ class MapApp(v.VuetifyTemplate):
         theme_state : ThemeState, optional
             Shared theme state; defaults to the current scope's.
         locales : iterable of str, optional
-            Locale codes offered by ``MapApp.element``'s default selector,
-            normally ``messages.available_locales()``. Ignored by the raw
-            widget constructor and when a ``language_selector`` is supplied.
+            Locale codes the selector ``MapApp.element`` mounts will offer,
+            normally ``messages.available_locales()``. Unused when a
+            ``language_selector`` is supplied, and by the bare widget, which
+            mounts no selector.
         initial_step : int, optional
             Initial step to display
         model : HasTraits, optional

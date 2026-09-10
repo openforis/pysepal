@@ -117,7 +117,7 @@ class BoundCatalog:
         """Return the codes this directory ships, English first.
 
         Returns:
-            The directory names, for ``MapApp(locales=...)``.
+            The directory names, for ``MapApp.element(locales=...)``.
         """
         return self._codes
 

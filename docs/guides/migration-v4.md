@@ -414,14 +414,20 @@ their language needs. Use `{count}` in singular forms too, since French zero
 and Russian 21 can select `one`. Missing or invalid forms fall back using English
 rules for the same number. `check()` reports missing locale-specific categories.
 
-`MapApp.element(locales=messages.available_locales())` mounts the Solara selector.
-For a custom layout use `LocaleSelectComponent` from
-`pysepal.solara.components.locale_select`. The raw `MapApp()` and Vue
-`LocaleSelect` classes are low-level transports: the former only embeds supplied
-`language_selector` widgets, and the latter accepts `available_locales` and
-`value`. `translator=`, `selected_locale` and the duplicate value link are gone
-from that Vue transport. Application code uses the Solara component and the
-`current_locale()` / `set_locale()` API.
+**An application is a Solara component, and `MapApp.element(...)` is its
+shell.** That was always how the examples were written; 4.0 makes it the only
+supported way. `MapApp.element(locales=messages.available_locales())` mounts the
+language selector, and the selector writes the locale that `msg()` reads. For a
+layout without `MapApp`, render `LocaleSelectComponent` from
+`pysepal.solara.components.locale_select` inside your component.
+
+The plain `MapApp(...)` constructor is the widget `MapApp.element` builds; it is
+not an API for assembling an application, and 4.0 no longer pretends it is. It
+mounts no selector and nothing in it follows the language, because outside a
+Solara render there is no render loop. 3.x code that constructed `MapApp`
+directly, Voila-style, has to become a component. The Vue `LocaleSelect` is
+pure transport: it carries `available_locales` and `value`, and `translator=`,
+`selected_locale` and the duplicate value link are gone.
 
 A 3.x locale saved in `~/.sepal-ui-config` is not migrated: the file is read
 nowhere in 4.0, so the first load falls to `navigator.language`.
