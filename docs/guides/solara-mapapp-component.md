@@ -138,7 +138,7 @@ panel visibility.
 | `right_panel_content=[{"title": ..., "content": [W]}]`   | `right_panel_content=[PanelSection(title=..., content=fn)]`                            |
 | Eager widget construction                                | `content=` is a Solara render function (lazy)                                          |
 | Manual `theme_toggle=ThemeToggle(...)` wiring            | Auto: pass `theme_state=` (or omit; falls back to `get_current_theme_state()`)         |
-| Manual `language_selector=LocaleSelect(translator=...)`  | Auto: pass `locales=ms.available_locales()` (or omit)                                  |
+| Manual `language_selector=LocaleSelect(translator=...)`  | Auto: pass `locales=messages.available_locales()` (or omit)                            |
 | `model=HasTraits()` auto-link                            | Use `solara.Reactive` props (`current_step=`, `right_panel_open=`)                     |
 
 ## Notifications

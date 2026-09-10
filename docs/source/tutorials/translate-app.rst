@@ -1,114 +1,174 @@
 Translate my application
 ========================
 
-Sepal tries to be as inclusive as possible. To do so the platform is translated in these languages:
+SEPAL tries to be as inclusive as possible. To do so the platform is translated in these languages:
 
 .. csv-table::
 
     English, Français, Español
 
-To reflect the diversity of language available, :code:`pysepal` embed an translator tool and help you manage your messages for different languages.
+:code:`pysepal` gives you a message catalogue so your own application can do the same.
 
-
-Update the main dictionary
---------------------------
-
-I assume that since you started using the lib you hard-coded in your files every single message displayed to the end user.
-The first thing you'll need to do is to update the main dictionary as it will be your reference for the rest of the app.
-
-If you removed every message relative to the default functions, your dictionary should look like the following :
-
-.. code-block:: python
-
-    # component/message/en/locale.json
-
-    {
-        "not_translated": "this message only exist in the en dict",
-        "app": {
-            "title": "My first module",
-            "footer": "The sky is the limit \u00a9 {}",
-            "drawer_item": {
-                "aoi": "AOI selection",
-                "about": "About"
-            }
-        }
-    }
-
-Add new message
-^^^^^^^^^^^^^^^
-
-Here you gather and add every message you display in your app.
-For example if I want to display an error when :code:`no_aoi` is set i can add the following input in the dictionary:
-
-.. code-block:: python
-
-    # component/message/en/locale.json
-
-    {
-        "error": {
-            "no_aoi":  "No AOI have been set, please provide one in step 1"
-        }
-    }
-
-.. danger::
-
-    remember that JSON format does only accept " (double quote)
-
-and to call in any of your component you just need to import the ms Translator and use the names you gave as :code:`SimpleNameSpace`:
-
-.. code-block:: python
-
-    # component/tile.my_tile.py
-
-    from component.message import ms
-
-    print(ms.error.no_aoi)
-
-Add message with parameter
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you want to keep the possibility to use parameter in your message you can use the :code:`.format()` method of Python string.
+A catalogue is a folder of JSON files, one subfolder per language. You read a
+message from it with :code:`msg()`, and the text follows the language the user
+picked. Nothing in your code passes a language around.
 
 .. note::
 
-    The :code:`format()` method formats the specified value(s) and insert them inside the string's placeholder. The placeholder is defined using curly brackets: :code:`{}`.
-    Read more about the placeholders in the Placeholder `official documentation <https://docs.python.org/fr/3.5/library/string.html>`_. The :code:`format()` method returns the formatted string.
+    :code:`Translator` still exists for modules written against pysepal 3. It
+    resolves its language when it is constructed, and modules construct it at
+    import, so its text cannot follow a language change. New code
+    should use :code:`catalog()` and :code:`msg()` described here. See
+    ``docs/guides/migration-v4.md`` to move an existing app.
 
-In our dictionary that could be use in the following way:
+
+Bind the catalogue
+------------------
+
+Bind it once, when your message module is imported. English is read and checked
+at that moment, so a mistake in your own file stops the app at startup rather
+than on a user's screen.
 
 .. code-block:: python
 
-    # component/message/en/locale.json
+    # component/message/__init__.py
 
-    {
-        "error": {
-            "error_occurred":  "The following error occurred: {}"
-        }
-    }
+    from pathlib import Path
 
-and call it in your components for example in a try/Except statement :
+    from pysepal.i18n import catalog
+
+    messages = catalog(Path(__file__).parent)
+    msg = messages.msg
+
+Then import :code:`msg` anywhere in your module:
 
 .. code-block:: python
 
     # component/tile/my_tile.py
 
+    from component.message import msg
+
+
+Write the English messages
+--------------------------
+
+English is the source of truth. Every key your application can ask for has to
+exist there; the other languages only replace what they translate.
+
+.. code-block:: json
+
+    {
+        "app": {
+            "title": "My first module",
+            "drawer_item": {
+                "aoi": "AOI selection",
+                "about": "About"
+            }
+        },
+        "error": {
+            "no_aoi": "No AOI has been set, please provide one in step 1"
+        }
+    }
+
+.. danger::
+
+    JSON accepts only " (double quotes).
+
+Read a message with the key path, joined by dots:
+
+.. code-block:: python
+
+    msg("error.no_aoi")
+    msg("app.drawer_item.aoi")
+
+A key you did not define raises :code:`MissingMessageError`. That is deliberate:
+a missing message is a bug in your app, and it is easier to fix when it names
+itself. While you are still filling the catalogue you can ask for a marker
+instead:
+
+.. code-block:: python
+
+    messages = catalog(Path(__file__).parent, strict=False)
+
+    msg("error.not_written_yet")   # '⟦error.not_written_yet⟧', and one warning
+
+Put a value in a message
+------------------------
+
+Give every placeholder a name and pass it by that name:
+
+.. code-block:: json
+
+    {
+        "error": {
+            "occurred": "The following error occurred: {detail}"
+        }
+    }
+
+.. code-block:: python
+
     try:
-        # do stuff
+        ...
     except Exception as e:
-        print(ms.error.error_occurred.format(e))
+        print(msg("error.occurred", detail=e))
+
+.. important::
+
+    A positional placeholder -- :code:`{}` or :code:`{0}` -- is refused when the
+    catalogue binds. A translator cannot reorder positional slots, and word order
+    differs between languages, so a named placeholder is the only form accepted.
+    Rename :code:`"{}"` to something like :code:`"{detail}"` and update the call
+    at the same time.
 
 
-Update the translated dictionaries
-----------------------------------
+One or many
+-----------
+
+When a message counts something, write it as a node with :code:`one` and
+:code:`other` instead of "layer(s)":
+
+.. code-block:: json
+
+    {
+        "toasts": {
+            "cleared": {
+                "one": "1 layer removed",
+                "other": "{count} layers removed"
+            }
+        }
+    }
+
+.. code-block:: python
+
+    msg("toasts.cleared", count=1)   # '1 layer removed'
+    msg("toasts.cleared", count=3)   # '3 layers removed'
+
+Each language writes its own forms, so French can say "1 couche supprimée" and
+"3 couches supprimées".
 
 .. note::
 
-    If a key is missing in the target language dictionary, the :code:`Translator` object (:code:`ms`) will automatically fallback to the "en" key in order to avoid error or non displayed messages
+    :code:`count` only selects a form when the English key names a plural node.
+    On any other key it is an ordinary named placeholder that fills in a number.
+
+    This release supports :code:`one` and :code:`other`. Languages that need more
+    categories fall back to these two.
+
+
+Translate into the other languages
+----------------------------------
 
 Automatic
 ^^^^^^^^^
 
-If your application is part of the OpenForis initiative and hosted on SEPAL, you can request to add your project to the **Pontoon** application list. Pontoon is an open-source translation solution that will deal with the trouble of creating the files and keep the keys updated. To learn more, please see their `documentation <https://mozilla-l10n.github.io/localizer-documentation/tools/pontoon/>`__. From the developer's side you'll need to add the folder corresponding to the language you want to support and open a request for a new project in our `issue tracker <https://github.com/openforis/pysepal/issues/new/choose>`__.
+If your application is part of the OpenForis initiative and hosted on SEPAL, you
+can request to add your project to the **Pontoon** application list. Pontoon is an
+open-source translation solution that will deal with the trouble of creating the
+files and keeping the keys updated. To learn more, please see their
+`documentation <https://mozilla-l10n.github.io/localizer-documentation/tools/pontoon/>`__.
+From the developer's side you'll need to add the folder corresponding to the
+language you want to support and open a request for a new project in our
+`issue tracker <https://github.com/openforis/pysepal/issues/new/choose>`__.
 
 .. note::
 
@@ -118,24 +178,10 @@ If your application is part of the OpenForis initiative and hosted on SEPAL, you
 
 .. important::
 
-    Pontoon application doesn't support nested list in the :code:`.json` file and only provides support for named keys. If you really need to have a nested list in your :code:`.json` file, then you need to change your message key. Let's take the following file:
+    Pontoon does not support a JSON list and only provides support for named keys.
+    Replace a list with a numbered object:
 
-.. code-block:: python
-
-    # component/message/en/locale.json
-
-    {
-        "paragraph": [
-            "I'm a multiline",
-            "paragraph."
-        ]
-    }
-
-Then you need to replace the list by a numbered dict using string integer as keys:
-
-.. code-block:: python
-
-    # component/message/en/locale.json
+.. code-block:: json
 
     {
         "paragraph": {
@@ -144,43 +190,95 @@ Then you need to replace the list by a numbered dict using string integer as key
         }
     }
 
-This is compatible with pontoon and can be called in your file as follows:
+The numbers become part of the key path:
 
 .. code-block:: python
 
-    # component/scripts/my_script.py
+    msg("paragraph.0")
+    msg("paragraph.1")
 
-    from component.message import cm
+Manual
+^^^^^^
 
-    print(cm.paragraph[0])
-    print(cm.paragraph[1])
+If this is your first translation, copy :code:`en/locale.json` to the target
+folder and replace each message with its translation.
+
+If it is not the first, do not copy over what is already translated. Use
+:code:`check()` below to find what is missing.
+
+.. note::
+
+    Pontoon exports a string nobody has translated yet as :code:`""`. An empty
+    translation is treated as absent, so English shows through rather than a blank
+    label.
 
 
-Manual update
-^^^^^^^^^^^^^
+Check the catalogue
+-------------------
 
-If this is the first time you translate your app, the easiest way is to simply copy/paste all the English dictionary (:code:`en/locale.json`) into the target one (:code:`fr/locale.json` or :code:`es/locale.json`) and replace all the message with their accurate translation.
-
-
-If it's not the first translation you make, you don't want to erase all you're already translated message. You only want to update the dictionary with the new key.
-To pinpoint the missing keys you can use your memory or one of the :code:`Translator` methods.
-Open the :code:`component/message/test_translation.ipynb` notebook. change the :code:`locale` variable into your target language. Then run all cells. The last one will display all the missing keys in the dictionary hierarchy.
+:code:`check()` compares every language against English and returns what it finds.
+It never raises, so you can call it in a test:
 
 .. code-block:: python
 
-    # component/message/test_translation.ipynb
+    from component.message import messages
 
-    from pathlib import Path
-    from pysepal.translator import Translator
+    def test_the_catalogue_is_clean():
+        problems = messages.check()
+        assert problems == (), [(p.code, p.locale, p.key) for p in problems]
 
-    # select the language you want to test
-    locale = 'fr'
+Each record carries :code:`code`, :code:`locale`, :code:`key` and :code:`detail`:
 
-    # normally there is only one key lissing ('not_tranlated') in the default module
-    # at the root of the file
-    print(ms.missing_keys())
+.. csv-table::
+    :header: code, meaning
 
-    >>>>> root['not_translated']
+    ``missing_key``, English defines it and this language does not
+    ``extra_key``, this language defines a key English does not; it is ignored
+    ``placeholder_mismatch``, the translation asks for different values than English
+    ``malformed_template``, the translation is not something ``str.format`` can render
+    ``shape_mismatch``, one side is a plural node and the other is a plain string
+    ``unsupported_plural_category``, a plural form this release cannot select
+    ``unreadable_locale``, the folder could not be read at all
 
-Once your output message is "All messages are translated" it means that all the dictionaries have the same keys and the same shape. if someone open your application in another language the translated message will be used instead of the English one.
+A translator's mistake never breaks a render. When a translation cannot be used,
+English stays active for that key and :code:`check()` reports it.
 
+
+Change the language
+-------------------
+
+The language lives in the connection, not in your components. Read it and set it
+with:
+
+.. code-block:: python
+
+    from pysepal.i18n import current_locale, set_locale
+
+    current_locale()   # 'en' until something sets one
+    set_locale("fr")   # any IETF BCP 47 code, in any casing
+
+A component that calls :code:`msg()` re-renders on its own when the language
+changes. You do not need to rebuild anything or reload the page.
+
+The language selector in the app bar writes the user's choice here. Offer it the
+languages your catalogue actually ships:
+
+.. code-block:: python
+
+    MapApp.element(
+        app_title=msg("app.title"),
+        locales=messages.available_locales(),
+    )
+
+.. note::
+
+    :code:`set_locale()` cannot choose the language your app starts in. A mounted
+    selector resolves the browser's language on its first mount and writes that
+    back, overwriting anything set before it. Call :code:`set_locale()` from a user
+    action instead.
+
+.. warning::
+
+    An ipywidget keeps the text it was given when it was built. Widgets from
+    :code:`pysepal.sepalwidgets` therefore show the language that was active at
+    that moment. Solara components re-render and follow the language live.

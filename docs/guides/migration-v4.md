@@ -617,7 +617,7 @@ This is what makes a panel that depends on state work at all:
 ```python
 # 4.0 — the heading and description follow the reactive value
 MapApp.element(
-    right_panel_config={"title": ms.panel.title, "width": 400},
+    right_panel_config={"title": msg("panel.title"), "width": 400},
     right_panel_content=[{"title": f"{len(layers)} layers", "content": [...]}],
 )
 ```
