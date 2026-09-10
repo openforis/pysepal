@@ -7,7 +7,7 @@ import reacton.ipyvuetify as rv
 import solara
 from deprecated.sphinx import versionadded, versionchanged
 
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 @solara.component
@@ -126,7 +126,7 @@ def AdminLevelSelector(
             if level > target_level:
                 continue
             with rv.Select(
-                label=ms.aoi_sel.adm[level],
+                label=msg(f"aoi_sel.adm.{level}"),
                 items=items.value,
                 v_model=_code_at(level),
                 clearable=True,

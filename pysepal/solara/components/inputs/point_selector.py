@@ -11,7 +11,7 @@ import pandas as pd
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
@@ -100,7 +100,7 @@ def PointsSelectorComponent(
         elif column_task.finished and file_path:
             columns = column_task.value
             if len(columns) < 3:
-                notifications.warning(ms.widgets.load_table.too_small)
+                notifications.warning(msg("widgets.load_table.too_small"))
                 return
             current = draft.value
             detected = _auto_detect_columns(columns)
@@ -122,14 +122,14 @@ def PointsSelectorComponent(
         FileInputComponent(
             initial_folder=initial_folder,
             extensions=POINT_EXTENSIONS,
-            label=ms.widgets.table.label,
+            label=msg("widgets.table.label"),
             value=file_path,
             on_value=select_file,
         )
 
         if file_path:
             with rv.Select(
-                label=ms.widgets.table.column.id,
+                label=msg("widgets.table.column.id"),
                 items=column_items,
                 v_model=id_column,
                 on_v_model=lambda column: select_column("id_column", column),
@@ -140,7 +140,7 @@ def PointsSelectorComponent(
                 pass
 
             with rv.Select(
-                label=ms.widgets.table.column.lat,
+                label=msg("widgets.table.column.lat"),
                 items=column_items,
                 v_model=lat_column,
                 on_v_model=lambda column: select_column("lat_column", column),
@@ -151,7 +151,7 @@ def PointsSelectorComponent(
                 pass
 
             with rv.Select(
-                label=ms.widgets.table.column.lng,
+                label=msg("widgets.table.column.lng"),
                 items=column_items,
                 v_model=lng_column,
                 on_v_model=lambda column: select_column("lng_column", column),

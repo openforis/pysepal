@@ -1,6 +1,6 @@
 {
   "test_key": "Clef de test",
-  "status": "Status : {}",
+  "status": "Status : {status}",
   "widgets": {
     "fileinput": {
       "label": "chercher un fichier",
@@ -41,7 +41,7 @@
       "label": "Selectionner un Asset",
       "custom": "Personnaliser",
       "no_access": "Il semble que vous n'ayez pas accès à l'Asset selectionné ou qu'il n'existe pas.",
-      "wrong_type": "Le type de l'asset selectioné ({}) ne correspond pas aux type autorisés par le widget ({}).",
+      "wrong_type": "Le type de l'asset selectioné ({asset_type}) ne correspond pas aux type autorisés par le widget ({allowed}).",
       "placeholder": "",
       "no_assets": ""
     },
@@ -50,7 +50,7 @@
     },
     "banner": {
       "close": "fermer",
-      "next": "suivant ({} de plus)"
+      "next": "suivant ({count} de plus)"
     }
   },
   "aoi_sel": {
@@ -167,7 +167,7 @@
           }
         },
         "title": "sauver la table de classification",
-        "info": "la table sera sauvegardé dans {}"
+        "info": "la table sera sauvegardé dans {folder}"
       }
     },
     "rec": {
@@ -195,12 +195,12 @@
       "btn": "Reclassifer",
       "export": {
         "0": {
-          "0": "Le Vecteur a été créé et ajouté à votre dossier SEPAL: {}",
-          "1": "L'Image a été créé et ajouté à votre dossier SEPAL: {}"
+          "0": "Le Vecteur a été créé et ajouté à votre dossier SEPAL: {path}",
+          "1": "L'Image a été créé et ajouté à votre dossier SEPAL: {path}"
         },
         "1": {
-          "0": "La ee.FeatureCollection a été exportée vers GEE comme {}. Utilisez l'interface de l'éditeur de code pour suivre le processus d'exportation.",
-          "1": "La ee.Image a été exportée vers GEE comme {}. Utilisez l'interface de l'éditeur de code pour suivre le processus d'exportation."
+          "0": "La ee.FeatureCollection a été exportée vers GEE comme {asset}. Utilisez l'interface de l'éditeur de code pour suivre le processus d'exportation.",
+          "1": "La ee.Image a été exportée vers GEE comme {asset}. Utilisez l'interface de l'éditeur de code pour suivre le processus d'exportation."
         }
       }
     },
@@ -209,11 +209,11 @@
     }
   },
   "locale": {
-    "change": "La locale \"{0}\" sera maintenant utilisée comme langue par défaut dans les applications SEPAL. Veuillez redémarrer l'application actuelle pour tenir compte de cette modification. Notez que si «{0}» n'est pas disponible dans une autre application, SEPAL se repliera sur la langue la plus proche possible",
-    "fallback": "La locale \"{0}\" n'est pas disponible pour cette application. Nous allons utiliser \"{1}\" sera utiliser à la place. Veuillez le signaler au developeurs si vous voulez ajouter \"{0}\" aux langues suportées."
+    "change": "La locale \"{locale}\" sera maintenant utilisée comme langue par défaut dans les applications SEPAL. Veuillez redémarrer l'application actuelle pour tenir compte de cette modification. Notez que si «{locale}» n'est pas disponible dans une autre application, SEPAL se repliera sur la langue la plus proche possible",
+    "fallback": "La locale \"{requested}\" n'est pas disponible pour cette application. Nous allons utiliser \"{used}\" sera utiliser à la place. Veuillez le signaler au developeurs si vous voulez ajouter \"{requested}\" aux langues suportées."
   },
   "theme": {
-    "change": "Le thème \"{0}\" sera utilisé comme thème par défaut dans les applications SEPAL. Veuillez redémarrer l'application actuelle pour prendre en compte ce changement."
+    "change": "Le thème \"{theme}\" sera utilisé comme thème par défaut dans les applications SEPAL. Veuillez redémarrer l'application actuelle pour prendre en compte ce changement."
   },
   "disclaimer": {
     "p": {

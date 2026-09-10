@@ -1,7 +1,7 @@
 {
   "layer_state": {
-    "loading": "chargement de {} layer(s) sur {}",
-    "complete": "{} layer(s) chargé(s)"
+    "loading": "chargement de {loading} layer(s) sur {total}",
+    "complete": "{count} layer(s) chargé(s)"
   },
   "layer_control": {
     "layer": {

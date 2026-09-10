@@ -7,7 +7,7 @@ from ipyleaflet import Map, WidgetControl
 from traitlets import observe
 
 from pysepal import sepalwidgets as sw
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 class LayerStateControl(WidgetControl):
@@ -36,8 +36,8 @@ class LayerStateControl(WidgetControl):
         self.m = m
 
         # create a statebar
-        msg = ms.layer_state.complete.format(self.nb_layer)
-        self.w_state = sw.StateBar(loading=False, msg=msg)
+        text = msg("layer_state.complete", count=self.nb_layer)
+        self.w_state = sw.StateBar(loading=False, msg=text)
 
         # overwrite the widget set in the kwargs (if any)
         kwargs["widget"] = self.w_state
@@ -92,10 +92,10 @@ class LayerStateControl(WidgetControl):
 
         # update the message
         if self.loading is True:
-            msg = ms.layer_state.loading.format(self.nb_loading_layer, self.nb_layer)
+            text = msg("layer_state.loading", loading=self.nb_loading_layer, total=self.nb_layer)
         else:
-            msg = ms.layer_state.complete.format(self.nb_layer)
+            text = msg("layer_state.complete", count=self.nb_layer)
 
-        self.w_state.msg = msg
+        self.w_state.msg = text
 
         return

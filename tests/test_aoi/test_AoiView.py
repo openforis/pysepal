@@ -7,7 +7,7 @@ import pytest
 
 from pysepal import aoi
 from pysepal.mapping import SepalMap
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 def test_init() -> None:
@@ -26,12 +26,12 @@ def test_init() -> None:
 
     # init with a list
     view = aoi.AoiView(["POINTS"], gee=False)
-    assert {"text": ms.aoi_sel.points, "value": "POINTS"} in view.w_method.items
+    assert {"text": msg("aoi_sel.points"), "value": "POINTS"} in view.w_method.items
     assert len(view.w_method.items) == 1 + 1  # 1 for the header, 1 for the object
 
     # init with a remove list
     view = aoi.AoiView(["-POINTS"], gee=False)
-    assert {"text": ms.aoi_sel.points, "value": "POINTS"} not in view.w_method.items
+    assert {"text": msg("aoi_sel.points"), "value": "POINTS"} not in view.w_method.items
     assert len(view.w_method.items) == len(aoi.AoiModel.METHODS) + 2 - 1  # 2 headers this time
 
     # init with a mix of both
