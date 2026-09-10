@@ -8,7 +8,7 @@
   },
   "section": {
     "title": "Local rasters",
-    "description": "Drawing {}. A continuous ramp stretched across sparse class codes renders them near-black; class_colors draws each one exactly. Set {} to use real products."
+    "description": "Drawing {source}. A continuous ramp stretched across sparse class codes renders them near-black; class_colors draws each one exactly. Set {env_var} to use real products."
   },
   "source": {
     "synthetic": "generated stand-ins",
@@ -34,7 +34,7 @@
   },
   "toasts": {
     "continuous": "Continuous ramp added",
-    "classes": "{} classes added",
+    "classes": "{count} classes added",
     "large": "Large raster added"
   }
 }

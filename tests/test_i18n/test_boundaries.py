@@ -37,6 +37,8 @@ def test_the_public_surface_is_what_the_spec_names():
         "MessageFormatError",
         "MissingMessageError",
         "catalog",
+        "current_locale",
+        "set_locale",
     ]
 
 

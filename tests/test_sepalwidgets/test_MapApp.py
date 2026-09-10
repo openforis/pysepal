@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
+import pytest
 import reacton
 import solara
 
 import pysepal
 from pysepal import mapping as sm
-from pysepal.sepalwidgets.vue_app import LocaleSelect, MapApp, ThemeToggle
-from pysepal.solara.locale import LocaleState, get_current_locale_state
+from pysepal.sepalwidgets.vue_app import MapApp, ThemeToggle
 from pysepal.solara.theme import ThemeState
 from pysepal.translator import Translator
 
@@ -49,29 +49,44 @@ def test_theme_toggle_stays_unbound_without_theme_state() -> None:
     return
 
 
-def test_mapapp_creates_a_selector_bound_to_the_shared_locale_state() -> None:
-    """Unbound, the selector relabels itself while every string stays English."""
-    locale_state = LocaleState()
-    app = MapApp(locale_state=locale_state)
+def test_mapapp_no_longer_takes_a_locale_state():
+    """The locale is scope state now; there is nothing to hand in."""
+    import inspect
 
-    app.language_selector[0].selected_locale = "fr"
-
-    assert locale_state.locale == "fr"
+    assert "locale_state" not in inspect.signature(MapApp.__init__).parameters
 
 
-def test_mapapp_falls_back_to_the_scope_locale_state() -> None:
-    """Apps that never pass a locale_state still share one per connection."""
-    app = MapApp()
-    assert app.language_selector[0].get_locale_state() is get_current_locale_state()
+def test_mapapp_rejects_the_removed_locale_state_kwarg():
+    """locale_state= must fail loudly, not vanish into **kwargs like an unknown vuetify prop."""
+    with pytest.raises(TypeError):
+        MapApp(locale_state=object())
 
 
-def test_mapapp_binds_a_supplied_selector() -> None:
-    locale_state = LocaleState()
-    selector = LocaleSelect()
+def test_mapapp_builds_a_selector_bound_to_the_scope_locale():
+    """The default selector starts at the scope locale and writes back to it."""
+    from pysepal.i18n import current_locale, set_locale
 
-    MapApp(language_selector=[selector], locale_state=locale_state)
+    set_locale("fr")
+    app = MapApp(locales=["en", "fr"])
+    selector = app.language_selector[0]
+    assert selector.selected_locale == "fr"
+    selector.selected_locale = "en"
+    assert current_locale() == "en"
 
-    assert selector.get_locale_state() is locale_state
+
+def test_a_supplied_selector_is_rebound_to_this_scope(monkeypatch):
+    """A selector built outside a render must not keep the process scope."""
+    import pysepal._scope_registry as scope_registry
+    from pysepal.i18n import set_locale
+    from pysepal.sepalwidgets.vue_app import LocaleSelect
+
+    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
+    selector = LocaleSelect(locales=["en", "fr"])
+
+    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-b")
+    MapApp(language_selector=selector)
+    set_locale("fr")
+    assert selector.selected_locale == "fr"
 
 
 def test_mapapp_offers_the_locales_it_is_given() -> None:

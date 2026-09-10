@@ -8,7 +8,7 @@
   },
   "section": {
     "title": "Rásteres locales",
-    "description": "Dibujando {}. Una rampa continua estirada sobre códigos de clase dispersos los muestra casi negros; class_colors dibuja cada uno con su color exacto. Defina {} para usar productos reales."
+    "description": "Dibujando {source}. Una rampa continua estirada sobre códigos de clase dispersos los muestra casi negros; class_colors dibuja cada uno con su color exacto. Defina {env_var} para usar productos reales."
   },
   "source": {
     "synthetic": "sustitutos generados",
@@ -34,7 +34,7 @@
   },
   "toasts": {
     "continuous": "Rampa continua añadida",
-    "classes": "{} clases añadidas",
+    "classes": "{count} clases añadidas",
     "large": "Ráster grande añadido"
   }
 }

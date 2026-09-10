@@ -11,7 +11,6 @@ INIT_PATH = Path(ps.__file__)
 #: cannot pass unnoticed: a diff here is the record that the decision was taken.
 SEALED_SURFACE = frozenset(
     {
-        "LocaleState",
         "MissingSepalHeadersError",
         "NotificationProvider",
         "PROCESS_SCOPE",
@@ -26,7 +25,6 @@ SEALED_SURFACE = frozenset(
         "current_scope_id",
         "get_current_drive_interface",
         "get_current_gee_interface",
-        "get_current_locale_state",
         "get_current_sepal_client",
         "get_current_session_info",
         "get_current_theme_state",
@@ -35,14 +33,12 @@ SEALED_SURFACE = frozenset(
         "has_scoped_state",
         "notify",
         "prime_dev_auth",
-        "resolve_locale_state",
         "resolve_scope_id",
         "resolve_theme_state",
         "setup_sessions",
         "setup_solara_server",
         "setup_theme_colors",
         "track_task",
-        "use_locale",
         "use_notifications",
         "use_theme_dark",
         "with_sepal_sessions",

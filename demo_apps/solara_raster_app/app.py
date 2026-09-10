@@ -25,17 +25,16 @@ import solara
 
 import pysepal.sepalwidgets as sw
 from pysepal import mapping as sm
+from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
 from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
-    use_locale,
 )
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 from pysepal.solara.notifications import NotificationProvider, use_notifications
-from pysepal.translator import Translator
 
 setup_solara_server(extra_asset_locations=[])
 
@@ -46,12 +45,8 @@ RASTER_DIR_ENV_VAR = "PYSEPAL_DEMO_RASTER_DIR"
 #: on ``sys.path``, so a second demo shipping ``component/`` would resolve to
 #: whichever one imported first. The map app owns that name; this one stays flat.
 MESSAGE_DIR = Path(__file__).parent / "message"
-
-
-def use_translator() -> Translator:
-    """Return a Translator following this connection's resolved locale."""
-    locale = use_locale()
-    return solara.use_memo(lambda: Translator(MESSAGE_DIR, target=locale), [locale])
+messages = catalog(MESSAGE_DIR)
+msg = messages.msg
 
 
 # aa_test_congo holds these nine classes; codes 2 and 4 are the ones a continuous
@@ -143,9 +138,6 @@ def RasterPanel():
     # where the map app's session manager is active process-wide.
     theme_state = get_current_theme_state()
     notifications = use_notifications()
-    # Rebuilt on every locale change, so the closures below -- which use_task
-    # re-binds each render -- publish their toasts in the current language.
-    cm = use_translator()
 
     rasters = solara.use_memo(demo_rasters, [])
 
@@ -158,39 +150,39 @@ def RasterPanel():
 
     async def add_continuous():
         """What every raster looked like before class_colors: a stretched ramp."""
-        with notifications.track(cm.tasks.continuous) as task:
-            task.step(cm.tasks.preparing)
+        with notifications.track(msg("tasks.continuous")) as task:
+            task.step(msg("tasks.preparing"))
             await sepal_map.add_raster_async(
                 rasters["congo"],
-                layer_name=cm.layers.continuous,
+                layer_name=msg("layers.continuous"),
                 key="continuous",
                 colormap="inferno",
             )
-        notifications.success(cm.toasts.continuous)
+        notifications.success(msg("toasts.continuous"))
 
     async def add_class_colors():
         """The same raster, each class in its own color."""
-        with notifications.track(cm.tasks.classes) as task:
-            task.step(cm.tasks.preparing)
+        with notifications.track(msg("tasks.classes")) as task:
+            task.step(msg("tasks.preparing"))
             await sepal_map.add_raster_async(
                 rasters["congo"],
-                layer_name=cm.layers.exact,
+                layer_name=msg("layers.exact"),
                 key="classes",
                 class_colors=CONGO_COLORS,
             )
-        notifications.success(cm.toasts.classes.format(len(CONGO_COLORS)))
+        notifications.success(msg("toasts.classes", count=len(CONGO_COLORS)))
 
     async def add_large():
         """A raster with no overviews, which is the case ``optimize`` exists for."""
-        with notifications.track(cm.tasks.large) as task:
-            task.step(cm.tasks.preparing_overviews)
+        with notifications.track(msg("tasks.large")) as task:
+            task.step(msg("tasks.preparing_overviews"))
             await sepal_map.add_raster_async(
                 rasters["hansen"],
-                layer_name=cm.layers.loss,
+                layer_name=msg("layers.loss"),
                 key="large",
                 class_colors=HANSEN_COLORS,
             )
-        notifications.success(cm.toasts.large)
+        notifications.success(msg("toasts.large"))
 
     continuous_task = solara.lab.use_task(
         add_continuous, dependencies=None, raise_error=False, prefer_threaded=False
@@ -208,7 +200,7 @@ def RasterPanel():
 
     def build_clear_button():
         """A plain ipyvuetify button, handed to MapApp intact with its handler."""
-        button = sw.Btn(cm.buttons.clear_rasters, small=True, block=True)
+        button = sw.Btn(msg("buttons.clear_rasters"), small=True, block=True)
 
         def clear():
             for key in ("continuous", "classes", "large"):
@@ -219,43 +211,47 @@ def RasterPanel():
 
     # Rebuilt on a language change too: it is a widget, not an element, so its
     # label is set at construction and nothing re-renders it.
-    clear_button = solara.use_memo(build_clear_button, [id(sepal_map), cm.buttons.clear_rasters])
+    clear_button = solara.use_memo(
+        build_clear_button, [id(sepal_map), msg("buttons.clear_rasters")]
+    )
 
-    source = cm.source.synthetic if rasters["synthetic"] else cm.source.real
+    source = msg("source.synthetic") if rasters["synthetic"] else msg("source.real")
 
     MapApp.element(
-        app_title=cm.app.title,
+        app_title=msg("app.title"),
         app_icon="mdi-layers",
         main_map=[sepal_map],
         steps_data=[],
         right_panel_config={
-            "title": cm.panel.title,
+            "title": msg("panel.title"),
             "icon": "mdi-image",
             "width": 380,
-            "description": cm.panel.description,
+            "description": msg("panel.description"),
         },
         right_panel_content=[
             {
-                "title": cm.section.title,
+                "title": msg("section.title"),
                 "icon": "mdi-image",
                 "content": [
                     TaskButtonComponent(
-                        label=cm.buttons.continuous, **continuous_props, small=True, block=True
+                        label=msg("buttons.continuous"), **continuous_props, small=True, block=True
                     ),
                     TaskButtonComponent(
-                        label=cm.buttons.classes, **classes_props, small=True, block=True
+                        label=msg("buttons.classes"), **classes_props, small=True, block=True
                     ),
                     TaskButtonComponent(
-                        label=cm.buttons.large, **large_props, small=True, block=True
+                        label=msg("buttons.large"), **large_props, small=True, block=True
                     ),
                     clear_button,
                 ],
-                "description": cm.section.description.format(source, RASTER_DIR_ENV_VAR),
+                "description": msg(
+                    "section.description", source=source, env_var=RASTER_DIR_ENV_VAR
+                ),
             }
         ],
         right_panel_open=True,
         theme_state=theme_state,
-        locales=cm.available_locales(),
+        locales=messages.available_locales(),
         dialog_width=750,
     )
 
