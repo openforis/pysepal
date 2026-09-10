@@ -37,8 +37,9 @@ def flatten_document(
         CatalogError: The document is not an object, a key segment contains a
             dot, or a leaf is not a string. In English only: a plural node
             does not hold exactly the string leaves named in
-            :data:`PLURAL_CATEGORIES`, or a leaf uses a positional
-            placeholder (``{}`` or ``{0}``).
+            :data:`PLURAL_CATEGORIES`, a leaf is not a template
+            ``str.format`` can render, or a leaf uses a positional placeholder
+            (``{}`` or ``{0}``).
     """
     if not isinstance(document, dict):
         raise CatalogError(f"{locale}/{source}: the document must be a JSON object")
@@ -56,8 +57,29 @@ def flatten_document(
     )
     if authoritative:
         for key, message in messages.items():
+            _refuse_malformed_template(key, message, locale=locale, source=source)
             _refuse_positional_placeholder(key, message, locale=locale, source=source)
     return messages, frozenset(plural_keys)
+
+
+def _refuse_malformed_template(key: str, message: str, *, locale: str, source: str) -> None:
+    """Raise when ``message`` is not a template ``str.format`` can render.
+
+    Every other locale falls back to English, so English that cannot render
+    leaves nothing to fall back to: the failure reaches a screen in every
+    language at once, and no translation can rescue it. An unclosed brace and
+    an unknown conversion (``{n!z}``) both land here.
+
+    A target locale gets the gentler treatment for the same mistake: ``check()``
+    reports it and English stays active for that key. The asymmetry is the point
+    -- a translator must not be able to break a render, and an author must not
+    be able to ship a message that cannot be rendered at all.
+    """
+    if placeholders(message) is None:
+        raise CatalogError(
+            f"{locale}/{source}: '{key}' is not a template str.format can render; "
+            "check its braces and any conversion after '!'"
+        )
 
 
 def _refuse_positional_placeholder(key: str, message: str, *, locale: str, source: str) -> None:
@@ -69,8 +91,8 @@ def _refuse_positional_placeholder(key: str, message: str, *, locale: str, sourc
     caught here rather than on a user's screen. A translator cannot reorder a
     positional placeholder safely for a language whose word order differs, so
     this is refused rather than supported: named placeholders are the only
-    sanctioned form. A malformed template is skipped -- that is a separate,
-    already-reported failure.
+    sanctioned form. A malformed template cannot reach here:
+    :func:`_refuse_malformed_template` runs first.
     """
     names = placeholders(message)
     if names is not None and any(name.isdigit() for name in names):

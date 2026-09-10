@@ -178,6 +178,30 @@ def test_a_target_replaces_only_the_keys_english_defines(build_catalog):
     assert "app.ghost" not in composite
 
 
+def test_an_untranslated_empty_string_leaves_english_active(build_catalog):
+    """Pontoon exports an untranslated string as "". It must not blank the widget.
+
+    ``Translator.merge_dict`` dropped empty keys through ``delete_empty``; the
+    catalogue has to do the same or 447 keys of the shipped locales render blank.
+    """
+    folder = build_catalog(
+        {
+            "en": {"app": {"app": {"title": "Spatial Risk", "sub": "Subtitle"}}},
+            "fr": {"app": {"app": {"title": "", "sub": "Sous-titre"}}},
+        }
+    )
+    composite = overlay(load_locale(folder, "en"), load_locale(folder, "fr"))
+    assert composite["app.title"] == "Spatial Risk"
+    assert composite["app.sub"] == "Sous-titre"
+
+
+def test_an_empty_english_message_is_still_a_key(build_catalog):
+    """English defines the key universe, so its own empty string stays."""
+    folder = build_catalog({"en": {"app": {"app": {"title": "", "sub": "Subtitle"}}}})
+    english = load_locale(folder, "en")
+    assert english.messages["app.title"] == ""
+
+
 def test_a_target_may_translate_one_plural_form_and_inherit_the_other(build_catalog):
     folder = build_catalog(
         {
@@ -220,18 +244,20 @@ def test_overlay_ignores_a_malformed_target_leaf(build_catalog):
     assert composite["hello"] == "Hi {name}"
 
 
-def test_overlay_lets_a_parseable_target_replace_a_malformed_english_leaf(build_catalog):
-    """A malformed English template imposes no constraint, so a working target still wins.
+def test_load_locale_refuses_a_malformed_english_leaf(build_catalog):
+    """Only English is validated when a catalogue binds, and this is a hard error."""
+    folder = build_catalog({"en": {"a": {"hello": "Hi {name"}}})
+    with pytest.raises(CatalogError, match=r"str\.format can render"):
+        load_locale(folder, "en")
 
-    French users get "Salut {nom}"; English's own render still crashes loudly
-    on "Hi {name" -- that half of the old ruling is unchanged, only which side
-    a *good* translation is held hostage to.
-    """
+
+def test_a_malformed_target_leaf_is_kept_and_loses_to_english(build_catalog):
+    """The same mistake in French is reported by check(), never raised."""
     folder = build_catalog(
-        {"en": {"a": {"hello": "Hi {name"}}, "fr": {"a": {"hello": "Salut {nom}"}}}
+        {"en": {"a": {"hello": "Hi {name}"}}, "fr": {"a": {"hello": "Salut {nom"}}}
     )
     composite = overlay(load_locale(folder, "en"), load_locale(folder, "fr"))
-    assert composite["hello"] == "Salut {nom}"
+    assert composite["hello"] == "Hi {name}"
 
 
 def test_the_composite_is_immutable(build_catalog):

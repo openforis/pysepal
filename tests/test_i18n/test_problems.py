@@ -1,5 +1,8 @@
 """What `check()` tells a translator, without raising at them."""
 
+import pytest
+
+from pysepal.i18n.errors import CatalogError
 from pysepal.i18n.loading import load_locale, overlay
 from pysepal.i18n.problems import compare_locale
 
@@ -98,13 +101,11 @@ def test_a_malformed_target_template_is_reported_not_raised(build_catalog):
     assert codes(problems) == [("malformed_template", "hello")]
 
 
-def test_a_malformed_english_template_is_not_reported_here(build_catalog):
-    """The module author's own mistake; Task 7 surfaces it loudly at render instead."""
-    problems = compare(
-        build_catalog,
-        {"en": {"a": {"hello": "Hi {name"}}, "fr": {"a": {"hello": "Salut {nom}"}}},
-    )
-    assert codes(problems) == []
+def test_a_malformed_english_template_never_reaches_check(build_catalog):
+    """Binding refuses it, so there is no such problem for check() to report."""
+    folder = build_catalog({"en": {"a": {"hello": "Hi {name"}}, "fr": {"a": {"hello": "Salut"}}})
+    with pytest.raises(CatalogError, match=r"str\.format can render"):
+        load_locale(folder, "en")
 
 
 def test_a_clean_translation_reports_nothing(build_catalog):

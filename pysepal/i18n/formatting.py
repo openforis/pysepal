@@ -3,6 +3,9 @@
 from string import Formatter
 from typing import FrozenSet, Optional, Set
 
+_CONVERSIONS: FrozenSet[str] = frozenset({"s", "r", "a"})
+"""The conversions ``str.format`` accepts after ``!``."""
+
 
 def placeholders(message: str) -> Optional[FrozenSet[str]]:
     """Return the placeholder names a message needs, or None if it cannot be parsed.
@@ -17,19 +20,54 @@ def placeholders(message: str) -> Optional[FrozenSet[str]]:
         the template is malformed -- a translator's mistake to report, not raise.
     """
     names: Set[str] = set()
-    auto = 0
-    try:
-        for _, field, _, _ in Formatter().parse(message):
-            if field is None:
-                continue
-            if field == "":
-                names.add(str(auto))
-                auto += 1
-            else:
-                names.add(field.split(".")[0].split("[")[0])
-    except ValueError:
+    if _scan(message, names, 0) is None:
         return None
     return frozenset(names)
+
+
+def _scan(message: str, names: Set[str], auto: int) -> Optional[int]:
+    """Collect every field name of ``message`` into ``names``.
+
+    ``Formatter().parse`` reports a field's format spec and conversion but does
+    not check either, and both can fail only at render:
+
+    - a spec carries replacement fields of its own in ``{name:{width}}``, so
+      ``width`` is a value the message needs and the scan recurses into it;
+    - ``{name!z}`` parses cleanly and raises inside ``str.format``.
+
+    Missing either one lets a translation pass ``check()`` and then break the
+    render, which is the failure the two-layer overlay exists to prevent.
+
+    Args:
+        message: A ``str.format`` template, or one template's format spec.
+        names: Collected field names; mutated in place.
+        auto: The next implicit position, threaded through nested specs so a
+            template and its spec cannot both claim position 0.
+
+    Returns:
+        The next implicit position, or None when the template is malformed.
+    """
+    try:
+        parsed = list(Formatter().parse(message))
+    except ValueError:
+        return None
+
+    for _, field, spec, conversion in parsed:
+        if conversion is not None and conversion not in _CONVERSIONS:
+            return None
+        if field is None:
+            continue
+        if field == "":
+            names.add(str(auto))
+            auto += 1
+        else:
+            names.add(field.split(".")[0].split("[")[0])
+        if spec:
+            nested = _scan(spec, names, auto)
+            if nested is None:
+                return None
+            auto = nested
+    return auto
 
 
 def target_leaf_problem(english: str, target: str) -> Optional[str]:

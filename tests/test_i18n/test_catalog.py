@@ -252,23 +252,19 @@ def test_a_non_utf8_locale_file_is_reported_and_falls_back_to_english(build_cata
     assert messages._resolve("fr", "t") == "Hello"
 
 
-def test_a_malformed_english_leaf_does_not_block_a_working_translation(build_catalog):
-    """``overlay`` and ``check`` must agree on which leaf wins; they used not to.
+def test_a_malformed_english_leaf_is_refused_when_the_catalogue_binds(build_catalog):
+    """English that cannot render leaves every other locale nothing to fall back to.
 
-    A malformed English template used to make ``overlay`` drop a perfectly
-    good French translation while ``check`` reported nothing about it -- a
-    working string silently inert, and a clean bill of health that was
-    wrong. Both now derive from the one rule: French renders, and ``check``
-    still says nothing, because French did nothing wrong.
+    A good French translation used to rescue the key for French readers while an
+    English reader still met the crash, and ``check()`` said nothing either way.
+    Binding refuses it instead, so the author meets it in development rather than
+    a user meeting it in production.
     """
     folder = build_catalog(
         {"en": {"a": {"hello": "Hi {name"}}, "fr": {"a": {"hello": "Salut {nom}"}}}
     )
-    messages = catalog(folder)
-    assert messages._resolve("fr", "hello", nom="Ana") == "Salut Ana"
-    assert messages.check() == ()
-    with pytest.raises(MessageFormatError, match="hello"):
-        messages._resolve("en", "hello", name="Ana")
+    with pytest.raises(CatalogError, match=r"str\.format can render"):
+        catalog(folder)
 
 
 def test_a_structural_error_is_raised_at_bind_time_not_at_first_lookup(build_catalog):
@@ -333,3 +329,26 @@ def test_select_plural_category_pins_the_boundary(count, expected):
     import pysepal.i18n.binding as binding
 
     assert binding.select_plural_category(count) == expected
+
+
+def test_a_translation_whose_spec_needs_another_value_falls_back_to_english(build_catalog):
+    """A name-only comparison passed this and then raised on a user's screen.
+
+    ``{name:{width}}`` needs ``width`` as well, and ``{name!z}`` is a conversion
+    ``str.format`` refuses. Both used to reach ``_resolve`` and raise
+    ``MessageFormatError`` in French alone, which is the failure the overlay
+    exists to prevent.
+    """
+    folder = build_catalog(
+        {
+            "en": {"a": {"hello": "Hello {name}", "bye": "Bye {name}"}},
+            "fr": {"a": {"hello": "Bonjour {name:{width}}", "bye": "Salut {name!z}"}},
+        }
+    )
+    messages = catalog(folder)
+
+    assert messages._resolve("fr", "hello", name="Ana") == "Hello Ana"
+    assert messages._resolve("fr", "bye", name="Ana") == "Bye Ana"
+
+    reported = {(problem.code, problem.key) for problem in messages.check()}
+    assert reported == {("placeholder_mismatch", "hello"), ("malformed_template", "bye")}

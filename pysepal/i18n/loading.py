@@ -119,6 +119,14 @@ def load_locale(folder: Path, code: str) -> LocaleData:
         plural_keys |= plurals
 
     _refuse_leaf_and_prefix(messages, origin, code)
+
+    if code != ENGLISH:
+        # Pontoon exports an untranslated string as "". Dropping it lets English
+        # show through, which is what Translator.merge_dict did via
+        # delete_empty(); keeping it blanks the widget instead. Applied after the
+        # collision checks so a duplicate or leaf/prefix clash still reports.
+        messages = {key: text for key, text in messages.items() if text != ""}
+
     return LocaleData(code, MappingProxyType(messages), frozenset(plural_keys))
 
 

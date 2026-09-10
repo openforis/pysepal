@@ -43,3 +43,32 @@ def test_matching_placeholders_can_replace_english():
 def test_a_malformed_english_template_imposes_no_constraint():
     """English cannot demand agreement with placeholders it does not itself have."""
     assert target_leaf_problem("Hi {name", "Salut {nom}") is None
+
+
+def test_a_nested_field_in_a_format_spec_is_a_value_the_message_needs():
+    """``{name:{width}}`` needs ``width`` too; missing it raises inside str.format."""
+    assert placeholders("Hi {name:{width}}") == frozenset({"name", "width"})
+
+
+def test_a_nested_spec_does_not_reuse_the_outer_auto_position():
+    """``"{:{}}".format(v, w)`` consumes two slots, so the scan must count both."""
+    assert placeholders("{:{}}") == frozenset({"0", "1"})
+
+
+def test_an_unknown_conversion_makes_the_template_malformed():
+    """``{n!z}`` parses cleanly and only raises inside str.format."""
+    assert placeholders("Hi {name!z}") is None
+
+
+def test_the_conversions_str_format_accepts_are_read_normally():
+    for conversion in ("s", "r", "a"):
+        assert placeholders(f"Hi {{name!{conversion}}}") == frozenset({"name"})
+
+
+def test_a_target_needing_an_extra_spec_value_cannot_replace_english():
+    """It would pass a name-only comparison and then raise at render."""
+    assert target_leaf_problem("Hi {name}", "Salut {name:{width}}") == "placeholder_mismatch"
+
+
+def test_a_target_with_an_unknown_conversion_cannot_replace_english():
+    assert target_leaf_problem("Hi {name}", "Salut {name!z}") == "malformed_template"
