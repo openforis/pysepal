@@ -1,92 +1,48 @@
-"""Read the placeholders a message template needs."""
+"""Validate the named placeholders accepted in message templates."""
 
 from string import Formatter
 from typing import FrozenSet, Optional, Set
 
-_CONVERSIONS: FrozenSet[str] = frozenset({"s", "r", "a"})
-"""The conversions ``str.format`` accepts after ``!``."""
-
 
 def placeholders(message: str) -> Optional[FrozenSet[str]]:
-    """Return the placeholder names a message needs, or None if it cannot be parsed.
+    """Return field names, or None for unsupported template syntax.
 
-    Args:
-        message: A ``str.format`` template.
-
-    Returns:
-        The root name of every replacement field: ``{a.b}`` and ``{a[0]}`` both
-        contribute ``a``, and each bare ``{}`` contributes its implicit position
-        so that losing one positional slot is still a difference. ``None`` when
-        the template is malformed -- a translator's mistake to report, not raise.
+    Fields are simple names. Escaped braces are literal text. Positional
+    fields are returned as numbers so English validation can name that error.
+    Object traversal, conversions and format specifications are not part of
+    the message language; callers format values before passing them to msg().
     """
     names: Set[str] = set()
-    if _scan(message, names, 0) is None:
+    auto = 0
+    try:
+        for _, field, spec, conversion in Formatter().parse(message):
+            if field is None:
+                continue
+            if spec or conversion is not None:
+                return None
+            if field == "":
+                names.add(str(auto))
+                auto += 1
+            elif field.isidentifier() or field.isdigit():
+                names.add(field)
+            else:
+                return None
+    except ValueError:
         return None
     return frozenset(names)
 
 
-def _scan(message: str, names: Set[str], auto: int) -> Optional[int]:
-    """Collect every field name of ``message`` into ``names``.
-
-    ``Formatter().parse`` reports a field's format spec and conversion but does
-    not check either, and both can fail only at render:
-
-    - a spec carries replacement fields of its own in ``{name:{width}}``, so
-      ``width`` is a value the message needs and the scan recurses into it;
-    - ``{name!z}`` parses cleanly and raises inside ``str.format``.
-
-    Missing either one lets a translation pass ``check()`` and then break the
-    render, which is the failure the two-layer overlay exists to prevent.
-
-    Args:
-        message: A ``str.format`` template, or one template's format spec.
-        names: Collected field names; mutated in place.
-        auto: The next implicit position, threaded through nested specs so a
-            template and its spec cannot both claim position 0.
-
-    Returns:
-        The next implicit position, or None when the template is malformed.
-    """
-    try:
-        parsed = list(Formatter().parse(message))
-    except ValueError:
-        return None
-
-    for _, field, spec, conversion in parsed:
-        if conversion is not None and conversion not in _CONVERSIONS:
-            return None
-        if field is None:
-            continue
-        if field == "":
-            names.add(str(auto))
-            auto += 1
-        else:
-            names.add(field.split(".")[0].split("[")[0])
-        if spec:
-            nested = _scan(spec, names, auto)
-            if nested is None:
-                return None
-            auto = nested
-    return auto
-
-
-def target_leaf_problem(english: str, target: str) -> Optional[str]:
-    """Return why a translated leaf cannot replace English, or None if it can.
-
-    Args:
-        english: The authoritative template.
-        target: The translated template offered in its place.
-
-    Returns:
-        ``"malformed_template"`` when the target cannot be parsed,
-        ``"placeholder_mismatch"`` when its placeholders differ from English's,
-        or ``None`` when the target is usable. An English template that cannot
-        be parsed imposes no constraint, so a parseable target still wins.
-    """
+def target_leaf_problem(english: str, target: str, *, plural: bool = False) -> Optional[str]:
+    """Return a template or argument mismatch, allowing count in any plural form."""
     given = placeholders(target)
     if given is None:
         return "malformed_template"
     wanted = placeholders(english)
-    if wanted is not None and wanted != given:
+    if wanted is None:
+        return "malformed_template"
+    if plural:
+        given = given - {"count"}
+        wanted = wanted - {"count"}
+    if wanted != given:
         return "placeholder_mismatch"
     return None

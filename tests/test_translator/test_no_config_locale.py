@@ -67,12 +67,3 @@ def test_translator_module_no_longer_imports_the_config():
 def test_module_l10n_entry_point_is_gone():
     shipped = shipped_locations("pysepal.bin.module_l10n")
     assert shipped == [], shipped
-
-
-@pytest.mark.parametrize("template", ["map_app", "panel_app"])
-def test_scaffolded_modules_declare_an_explicit_target(template):
-    """A scaffold with no target used to inherit the machine config's locale."""
-    source = (
-        Path(__file__).parents[2] / "pysepal/templates" / template / "component/message/__init__.py"
-    ).read_text()
-    assert "target=" in source

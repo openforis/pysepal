@@ -7,19 +7,12 @@
     msg("aoi_sel.custom")
 
 ``msg`` returns one message in the locale of the current runtime scope.
-
-``ms`` is the legacy ``Translator`` over the same files. pysepal itself no
-longer reads it; it stays because consumer modules still import it.
 """
 
 from pathlib import Path
 from typing import Any
 
-from pysepal.translator import Translator
-
 _HERE = Path(__file__).parent
-
-ms = Translator(_HERE)
 
 _catalogue = None
 

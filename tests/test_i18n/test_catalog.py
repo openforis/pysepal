@@ -28,6 +28,37 @@ def test_english_resolves(build_catalog):
     assert messages._resolve("en", "app.title") == "Spatial Risk"
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        "Bonjour {name:d}",
+        "Bonjour {name.missing}",
+        "Bonjour {name[0]}",
+        "Bonjour {name!r}",
+    ],
+)
+def test_translations_cannot_change_how_arguments_are_accessed(build_catalog, target):
+    messages = catalog(
+        build_catalog(
+            {
+                "en": {"app": {"hello": "Hello {name}"}},
+                "fr": {"app": {"hello": target}},
+            }
+        )
+    )
+    assert messages._resolve("fr", "hello", name="Ana") == "Hello Ana"
+    assert [(p.code, p.key) for p in messages.check()] == [("malformed_template", "hello")]
+
+
+@pytest.mark.parametrize(
+    "template",
+    ["Hello {name:d}", "Hello {name.missing}", "Hello {name[0]}", "Hello {name!r}"],
+)
+def test_english_rejects_non_named_only_templates(build_catalog, template):
+    with pytest.raises(CatalogError):
+        catalog(build_catalog({"en": {"app": {"hello": template}}}))
+
+
 def test_a_target_locale_resolves(build_catalog):
     messages = catalog(build_catalog(LAYOUT))
     assert messages._resolve("fr", "app.title") == "Risque spatial"
@@ -282,27 +313,15 @@ def test_a_malformed_catalogue_raises_again_on_a_second_bind(build_catalog):
         catalog(folder)
 
 
-def test_an_attribute_placeholder_against_the_wrong_value_type_raises_a_format_error(
-    build_catalog,
-):
-    messages = catalog(build_catalog({"en": {"a": {"greet": "Hi {who.name}"}}}))
-    with pytest.raises(MessageFormatError, match="greet"):
-        messages._resolve("en", "greet", who=5)
-
-
-def test_an_index_placeholder_against_the_wrong_value_type_raises_a_format_error(build_catalog):
-    messages = catalog(build_catalog({"en": {"a": {"greet": "Hi {who[0]}"}}}))
-    with pytest.raises(MessageFormatError, match="greet"):
-        messages._resolve("en", "greet", who=5)
-
-
 def test_a_plural_key_without_count_raises_a_format_error_in_strict_mode(build_catalog):
     messages = catalog(build_catalog(LAYOUT))
     with pytest.raises(MessageFormatError, match="needs a count"):
         messages._resolve("en", "chips.models")
 
 
-def test_a_plural_key_without_count_raises_a_format_error_in_non_strict_mode(build_catalog):
+def test_a_plural_key_without_count_raises_a_format_error_in_non_strict_mode(
+    build_catalog,
+):
     messages = catalog(build_catalog(LAYOUT), strict=False)
     with pytest.raises(MessageFormatError, match="needs a count"):
         messages._resolve("en", "chips.models")
@@ -331,7 +350,9 @@ def test_select_plural_category_pins_the_boundary(count, expected):
     assert binding.select_plural_category(count) == expected
 
 
-def test_a_translation_whose_spec_needs_another_value_falls_back_to_english(build_catalog):
+def test_a_translation_whose_spec_needs_another_value_falls_back_to_english(
+    build_catalog,
+):
     """A name-only comparison passed this and then raised on a user's screen.
 
     ``{name:{width}}`` needs ``width`` as well, and ``{name!z}`` is a conversion
@@ -351,4 +372,4 @@ def test_a_translation_whose_spec_needs_another_value_falls_back_to_english(buil
     assert messages._resolve("fr", "bye", name="Ana") == "Bye Ana"
 
     reported = {(problem.code, problem.key) for problem in messages.check()}
-    assert reported == {("placeholder_mismatch", "hello"), ("malformed_template", "bye")}
+    assert reported == {("malformed_template", "hello"), ("malformed_template", "bye")}

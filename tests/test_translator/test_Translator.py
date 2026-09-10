@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from pysepal.message import ms
 from pysepal.translator import Translator
 
 
@@ -195,15 +194,12 @@ def test_available_locales(translation_folder: Path) -> None:
     return
 
 
-def test_key_use() -> None:
-    """Check that are used at least once."""
-    # check key usage method
-    # don't test if all keys are translated, crowdin will monitor it
-    lib_folder = Path(__file__).parents[2] / "pysepal"
+def test_key_use(translation_folder: Path, tmp_path: Path) -> None:
+    """The legacy scanner still identifies unused messages in external apps."""
+    (tmp_path / "app.py").write_text("title = cm.a_key\n")
+    translator = Translator(translation_folder)
 
-    assert "test_key" in ms.key_use(lib_folder, "ms")
-
-    return
+    assert translator.key_use(tmp_path, "cm") == ["test_key"]
 
 
 @pytest.fixture(scope="module")
