@@ -9,6 +9,7 @@ from typing import Callable, Dict, List, Optional, Union
 import ee
 import reacton.ipyvuetify as rv
 import solara
+from reacton import ipyvue
 
 from pysepal.message import msg
 from pysepal.solara.hooks import _use_draft
@@ -70,6 +71,7 @@ def AssetSelectComponent(
     selected_value = selection.get("value")
     asset_items = solara.use_reactive([])
     loading_assets = solara.use_reactive(True)
+    reload_token = solara.use_reactive(0)
 
     def select_asset(aid):
         publish(None)
@@ -120,7 +122,7 @@ def AssetSelectComponent(
     # Keep session-backed GEE coroutines on Solara's current event loop.
     solara.lab.use_task(
         load_assets,
-        dependencies=[],
+        dependencies=[reload_token.value],
         raise_error=False,
         prefer_threaded=False,
     )
@@ -209,8 +211,11 @@ def AssetSelectComponent(
     value_items = value_task.value or [] if value_task.finished else []
     validation_msg = wrong_type
 
+    def reload_assets(*_ignore):
+        reload_token.set(reload_token.value + 1)
+
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
-        with rv.Combobox(
+        asset_field = rv.Combobox(
             label=msg("widgets.asset_select.label"),
             items=asset_items.value,
             v_model=asset_id,
@@ -222,8 +227,11 @@ def AssetSelectComponent(
             prepend_inner_icon="mdi-sync",
             error=bool(validation_msg),
             error_messages=validation_msg or None,
-        ):
-            pass
+        )
+        # Vuetify binds a click handler to an icon only when the icon has a
+        # listener, so registering this is also what stops the click falling
+        # through to the field and opening the combobox menu.
+        ipyvue.use_event(asset_field, "click:prepend-inner", reload_assets)
 
         if column_items and not validation_msg:
             with rv.Select(
