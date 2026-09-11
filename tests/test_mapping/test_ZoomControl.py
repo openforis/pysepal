@@ -38,9 +38,9 @@ def test_min_max_zoom() -> None:
 
     # click 40 times on plus and then 40 times on minus
     [zoom_control.zoom(zoom_control.plus) for i in range(40)]
-    assert m.zoom == 24
+    assert m.zoom == m.max_zoom
     [zoom_control.zoom(zoom_control.minus) for i in range(40)]
-    assert m.zoom == 0
+    assert m.zoom == m.min_zoom
 
     # same but with a min-max zoom on the map
     m.min_zoom = 5

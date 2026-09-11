@@ -171,7 +171,7 @@ def test_get_items(asset_select: sw.AssetSelect, gee_user_dir: Path) -> None:
     # we should export an extra asset and check if the new one is here but
     # that is 30 extra seconds so we cannot afford yet
     asset_select.items = []
-    wait_for_async(asset_select, lambda: asset_select.fire_event("click:prepend", None))
+    wait_for_async(asset_select, lambda: asset_select.fire_event("click:prepend-inner", None))
     assert str(gee_user_dir / "image") in asset_select.items
 
 
