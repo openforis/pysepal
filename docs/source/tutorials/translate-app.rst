@@ -299,9 +299,12 @@ A component that calls :code:`msg()` re-renders on its own when the language
 changes. You do not need to rebuild anything or reload the page.
 
 Event handlers in the same Solara context read that connection's locale too.
-A background worker without that context reads the process default, which may
-be a different language. Let workers return results or a message key and named
-arguments, then call :code:`msg()` in the owning UI context after receiving them.
+So does a thread created inside that context, including the thread that
+:code:`use_task(prefer_threaded=True)` starts. A pool thread never has the
+context: :code:`asyncio.to_thread` and executor workers read the process
+default, which may be a different language. Let such workers return results or
+a message key and named arguments, then call :code:`msg()` in the owning UI
+context after receiving them.
 
 An application is a Solara component, and :code:`MapApp.element(...)` is its
 shell. The shell mounts the language selector for you and the selector writes

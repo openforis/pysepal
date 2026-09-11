@@ -391,10 +391,12 @@ def Page():
     MapApp.element(app_title=msg("app.title"), locales=messages.available_locales())
 ```
 
-A worker without the connection's Solara context reads the process default,
-which may be English even when the user selected French. Return results or a
-message key plus named arguments from workers and translate in the owning UI
-context. Calling `msg()` from a worker does not propagate a session.
+A thread created inside the connection's Solara context keeps that locale,
+including the thread `use_task(prefer_threaded=True)` starts. A pool thread
+never has the context: `asyncio.to_thread` and executor workers read the
+process default, which may be English even when the user selected French.
+Return results or a message key plus named arguments from such workers and
+translate in the owning UI context.
 
 Templates accept simple named placeholders and escaped braces. Replace
 positional placeholders, attribute/index access, conversions and format specs
