@@ -8,11 +8,7 @@
   },
   "section": {
     "aoi": {
-      "title": "Seleccionar AOI",
-      "save": "Guardar AOI",
-      "restore": "Restaurar AOI guardada",
-      "saved": "Se guardó esta área de interés.",
-      "empty": "No hay ningún área de interés guardada para restaurar."
+      "title": "Seleccionar AOI"
     },
     "process": {
       "title": "Procesar",

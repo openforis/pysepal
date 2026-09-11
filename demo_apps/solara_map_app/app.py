@@ -29,7 +29,6 @@ pysepal$ ./run_solara.sh demo_apps/solara_map_app/app.py --port 8901
 import solara
 from component.message import messages, msg
 from component.parameter import DUMMY_DATA_DIR
-from component.scripts import has_saved_spec, load_spec, save_spec
 from component.tile import ExportPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
 
@@ -44,7 +43,7 @@ from pysepal.solara import (
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiView
-from pysepal.solara.notifications import NotificationProvider, use_notifications
+from pysepal.solara.notifications import NotificationProvider
 
 setup_solara_server(extra_asset_locations=[])
 
@@ -64,8 +63,6 @@ def MapAppDemo():
     drive_interface = get_current_drive_interface()
     theme_state = get_current_theme_state()
 
-    notifications = use_notifications()
-
     # State shared between the sections; each section owns whatever is private to it.
     aoi_data = solara.use_reactive(None)
     aoi_loading = solara.use_reactive(False)
@@ -76,28 +73,6 @@ def MapAppDemo():
     use_aoi_scoped_layers(aoi_data, sepal_map, outputs, layer_legends)
     layer_tools = use_layer_tools(sepal_map, layer_legends, outputs)
 
-    # The spec channel is two-way and in memory: AoiView publishes each successful
-    # selection into this reactive and restores from it. Only the two buttons
-    # below reach the disk, so persisting stays a user action — a module that
-    # wants it automatic passes `on_spec=save_spec` instead.
-    aoi_spec = solara.use_reactive(None)
-    has_saved_aoi = solara.use_reactive(solara.use_memo(has_saved_spec, []))
-
-    def save_aoi():
-        save_spec(aoi_spec.value)
-        has_saved_aoi.set(True)
-        notifications.success(msg("section.aoi.saved"))
-
-    def restore_aoi():
-        restored = load_spec()
-        if restored is None:
-            has_saved_aoi.set(False)
-            notifications.warning(msg("section.aoi.empty"))
-            return
-        # Setting the spec seeds the picker, reruns the selection and redraws the
-        # AOI, including a filtered Earth Engine asset.
-        aoi_spec.set(restored)
-
     aoi_view = AoiView(
         value=aoi_data,
         loading=aoi_loading,
@@ -105,26 +80,6 @@ def MapAppDemo():
         map_=sepal_map,
         gee=True,
         file_initial_folder=str(DUMMY_DATA_DIR),
-        spec=aoi_spec,
-    )
-
-    aoi_buttons = solara.Row(
-        children=[
-            solara.Button(
-                label=msg("section.aoi.save"),
-                icon_name="mdi-content-save-outline",
-                on_click=save_aoi,
-                disabled=aoi_spec.value is None,
-                text=True,
-            ),
-            solara.Button(
-                label=msg("section.aoi.restore"),
-                icon_name="mdi-restore",
-                on_click=restore_aoi,
-                disabled=not has_saved_aoi.value,
-                text=True,
-            ),
-        ]
     )
 
     right_panel_config = {
@@ -138,7 +93,7 @@ def MapAppDemo():
         {
             "title": msg("section.aoi.title"),
             "icon": "mdi-map-marker-check",
-            "content": [aoi_buttons, aoi_view],
+            "content": [aoi_view],
         },
         {
             "title": msg("section.process.title"),

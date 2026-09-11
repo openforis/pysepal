@@ -104,7 +104,10 @@ def AoiAppDemo():
     notifications = use_notifications()
 
     sepal_map = solara.use_memo(
-        lambda: sm.SepalMap(gee=False, fullscreen=True, theme_state=theme_state), []
+        lambda: sm.SepalMap(
+            zoom=3, center=[0, 0], gee=False, fullscreen=True, theme_state=theme_state
+        ),
+        [],
     )
 
     aoi = solara.use_reactive(None)
@@ -152,23 +155,14 @@ def AoiAppDemo():
                 "title": msg("section.title"),
                 "icon": "mdi-map-search-outline",
                 "content": [
-                    solara.Row(
-                        children=[
-                            solara.Button(
-                                label=msg("buttons.save"),
-                                icon_name="mdi-content-save-outline",
-                                on_click=save,
-                                disabled=spec.value is None,
-                                text=True,
-                            ),
-                            solara.Button(
-                                label=msg("buttons.restore"),
-                                icon_name="mdi-restore",
-                                on_click=restore,
-                                disabled=not has_saved.value,
-                                text=True,
-                            ),
-                        ]
+                    solara.Button(
+                        label=msg("buttons.restore"),
+                        icon_name="mdi-restore",
+                        on_click=restore,
+                        disabled=not has_saved.value,
+                        color="primary",
+                        small=True,
+                        block=True,
                     ),
                     rv.Switch(
                         label=msg("switch.label"),
@@ -186,6 +180,16 @@ def AoiAppDemo():
                         file_initial_folder=str(DEMO_DATA),
                         clear_ref=clear_ref,
                         autoselect=autoselect.value,
+                    ),
+                    solara.Button(
+                        label=msg("buttons.save"),
+                        icon_name="mdi-content-save-outline",
+                        on_click=save,
+                        disabled=spec.value is None,
+                        color="primary",
+                        small=True,
+                        block=True,
+                        classes=["mt-2"],
                     ),
                 ],
                 "description": msg("section.description", path=SAVED_AOI),

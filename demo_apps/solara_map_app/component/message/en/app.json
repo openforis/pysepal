@@ -8,11 +8,7 @@
   },
   "section": {
     "aoi": {
-      "title": "Select AOI",
-      "save": "Save AOI",
-      "restore": "Restore saved AOI",
-      "saved": "Saved this area of interest.",
-      "empty": "No saved area of interest to restore."
+      "title": "Select AOI"
     },
     "process": {
       "title": "Process",
