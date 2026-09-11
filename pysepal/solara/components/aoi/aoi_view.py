@@ -701,7 +701,7 @@ def AoiView(
         elif selected_method.value == "DRAW":
             if aoi_dc:
                 with rv.TextField(
-                    label="AOI Name (optional)",
+                    label=msg("aoi_sel.aoi_name"),
                     v_model=draw_name.value,
                     on_v_model=draw_name.set,
                     outlined=True,
@@ -722,7 +722,7 @@ def AoiView(
         # Action buttons
         if selected_method.value:
             TaskButtonComponent(
-                label="Select AOI",
+                label=msg("aoi_sel.btn"),
                 **btn_props,
                 external_busy=asset_loading.value,
                 small=True,
