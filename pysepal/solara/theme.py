@@ -7,7 +7,7 @@ from typing import Optional
 import solara
 from traitlets import Bool, Enum, HasTraits
 
-from pysepal.solara.ui_state import get_scoped_state
+from pysepal._ui_state import get_scoped_state
 
 
 class ThemeState(HasTraits):

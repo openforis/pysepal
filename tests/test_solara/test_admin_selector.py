@@ -5,7 +5,7 @@ import asyncio
 import solara
 
 import pysepal.solara.components.aoi.admin as admin_mod
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.solara.components.inputs.admin_selector import AdminLevelSelector
 
 from ._harness import find_by_label
@@ -53,9 +53,9 @@ def test_the_dropdowns_show_every_restored_level(monkeypatch):
 
     root = _render(_Harness)
 
-    assert find_by_label(root, ms.aoi_sel.adm[0]).v_model == "101"
-    assert find_by_label(root, ms.aoi_sel.adm[1]).v_model == "1001"
-    assert find_by_label(root, ms.aoi_sel.adm[2]).v_model == "100001"
+    assert find_by_label(root, msg("aoi_sel.adm.0")).v_model == "101"
+    assert find_by_label(root, msg("aoi_sel.adm.1")).v_model == "1001"
+    assert find_by_label(root, msg("aoi_sel.adm.2")).v_model == "100001"
 
 
 def test_picking_a_parent_drops_its_children(monkeypatch):
@@ -69,7 +69,7 @@ def test_picking_a_parent_drops_its_children(monkeypatch):
     root = _render(_Harness)
     # reacton binds on_v_model as a traitlet observer, so assigning v_model is
     # exactly what a user pick does.
-    find_by_label(root, ms.aoi_sel.adm[0]).v_model = "206"
+    find_by_label(root, msg("aoi_sel.adm.0")).v_model = "206"
 
     assert codes.value == ("206",)
 

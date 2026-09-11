@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pysepal.solara import scope_registry
+from pysepal import _scope_registry as scope_registry
 from pysepal.solara.notifications.bus import (
     DEDUP_WINDOW_SECONDS,
     MAX_TOAST_QUEUE,

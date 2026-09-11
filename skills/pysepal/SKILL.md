@@ -1,6 +1,6 @@
 ---
 name: pysepal
-description: Use when working with pysepal Solara components, debugging pysepal/Solara/GEE errors, auditing pysepal-based apps for stale patterns, or before modifying any code that imports from pysepal. Covers component discovery, GEE async patterns, known error fixes, and Solara best practices.
+description: Use when working with pysepal Solara components, debugging pysepal/Solara/GEE errors, auditing pysepal-based apps for stale patterns, or before modifying any code that imports from pysepal. Covers component discovery, GEE async patterns, translations with catalog() and msg(), known error fixes, and Solara best practices.
 ---
 
 # pysepal
@@ -18,6 +18,21 @@ or `/pysepal audit` (stale pattern check).
 > relative to the pysepal repo root (e.g. `docs/guides/...`,
 > `pysepal/templates/...`). When working in another project, substitute the
 > path of your local pysepal checkout.
+
+## Source of truth
+
+This skill is the source of truth for how to build a pysepal app. The package
+documentation under `docs/` lags behind the code: the Voila tutorials,
+`sw.App` + `ui.ipynb`, `Translator` attribute lookups, and the
+`MapAppComponent` guide are out of date. Read a guide for depth. When a document
+and this skill disagree, follow the skill and treat the document as stale.
+
+Two rules come before everything else:
+
+- An application is a `@solara.component`, and `MapApp.element(...)` is its
+  shell. Never build the shell with the plain `MapApp(...)` constructor.
+- Every user-facing string comes from a JSON catalogue through `msg()`. See
+  "Translations" below.
 
 ## Before Anything: Discover Components
 
@@ -400,6 +415,122 @@ Use `use_task` + `asyncio.to_thread` instead. Read
 `docs/guides/solara-gee-patterns.md` § "Blocking I/O
 in Solara Components" for the pattern.
 
+An `asyncio.to_thread` worker has no kernel context. Do not call `msg()` or
+`notify()` in it. Return the result and publish after the `await`. See
+"Translations" § "Workers and the locale".
+
+## Translations (`pysepal.i18n`)
+
+Every user-facing string comes from a JSON catalogue through one lookup,
+`msg("dotted.key")`. `Translator` attribute lookups (`ms.section.key`),
+`pysepal.message.ms`, `LocaleState`, `use_locale()` and `locale_state=` are
+gone from Solara apps. `Translator` survives only for the legacy Voila widgets.
+
+**Layout.** The app owns `component/message/`: one `__init__.py` and one folder
+per locale. English is the source of truth. Every other locale is an overlay,
+and a key it lacks falls back to English.
+
+```
+component/message/
+├── __init__.py       # messages = catalog(...); msg = messages.msg
+├── en/app.json       # every key lives here
+├── es/app.json       # overlay
+└── fr/app.json
+```
+
+```python
+# component/message/__init__.py
+from pathlib import Path
+
+from pysepal.i18n import catalog
+
+messages = catalog(Path(__file__).parent)
+msg = messages.msg
+```
+
+```json
+{
+  "app": { "title": "Risk mapping" },
+  "toasts": {
+    "saved": "Saved {name}",
+    "cleared": {
+      "one": "{count} layer removed",
+      "other": "{count} layers removed"
+    }
+  }
+}
+```
+
+**Use.** Import `messages` and `msg` from the app's own package, not from
+pysepal:
+
+```python
+from component.message import messages, msg
+
+@solara.component
+def Page():
+    NotificationProvider()
+    MapApp.element(
+        app_title=msg("app.title"),
+        locales=messages.available_locales(),  # the shell mounts the language selector
+    )
+```
+
+- `msg("toasts.saved", name=layer)` fills named placeholders. Only bare
+  `{name}` placeholders are valid: no `{0}`, no `{area:.2f}`, no `{obj.attr}`.
+  Format numbers in the caller and pass the string.
+- `msg("toasts.cleared", count=n)` selects the plural form when the English
+  key is a plural node: an object whose keys are CLDR categories (`one`,
+  `other`, and per language `zero`, `two`, `few`, `many`). Each locale writes
+  only the categories its rules use; Babel supplies the rules. On any other key
+  `count` is an ordinary placeholder.
+- A component that calls `msg()` re-renders when the language changes, also
+  through a helper on its call stack. Keys may come from data, for example a
+  registry table that stores keys.
+- `current_locale()` / `set_locale(code)` from `pysepal.i18n` read and change
+  the locale. It is one Solara reactive per kernel, so users never share it. A
+  selector's first browser mount overwrites it (localStorage, then
+  `navigator.language`, then English), so `set_locale` cannot seed a default.
+- Without `MapApp`, mount `LocaleSelectComponent(locales=...)` from
+  `pysepal.solara.components.locale_select` inside the component.
+- `messages.check()` returns a tuple of `CatalogProblem(code, locale, key, detail)`. Assert it is empty in a test. Codes: `missing_key`, `extra_key`,
+  `placeholder_mismatch`, `malformed_template`, `shape_mismatch`,
+  `unsupported_plural_category`, `unreadable_locale`.
+- `catalog(folder)` is strict: a missing English key or a malformed English
+  template raises. `catalog(folder, strict=False)` renders `⟦key⟧` instead. A
+  translator's mistake never raises: it is reported once in the log and
+  English shows. An empty string in a translation (Pontoon export) means "not
+  translated" and also shows English.
+- pysepal's own strings: `from pysepal.message import msg`.
+
+**Workers and the locale.** Solara keys the kernel context by thread:
+
+| Code runs in                                                                                                    | Sees the user's locale                   |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| A render, an event handler, a `use_task` body (threaded or not), a `threading.Thread` created inside the kernel | yes                                      |
+| `asyncio.to_thread`, any executor thread, a thread created at import                                            | no: the process default, usually English |
+
+Let such workers return results, or a message key plus named values, and call
+`msg()` in the UI context that receives them. Never call `msg()` from a pool
+thread. A `prefer_threaded=True` body keeps the locale but runs on its own
+event loop, so it must stay on the synchronous GEE API (see the event-loop
+error below).
+
+**Migrating a 3.x app:**
+
+| 3.x                                            | 4.0                                                |
+| ---------------------------------------------- | -------------------------------------------------- |
+| `ms = Translator(folder, target=locale)`       | `messages = catalog(folder)`; `msg = messages.msg` |
+| `ms.section.key`                               | `msg("section.key")`                               |
+| `ms.section.key.format(x)`, `{0}` in JSON      | `msg("section.key", name=x)`, `{name}` in JSON     |
+| `"layer(s)"`                                   | a plural node with `one` / `other`, and `count=`   |
+| `use_locale()`, `LocaleState`, `locale_state=` | `current_locale()` / `set_locale()`                |
+| `language_selector=[LocaleSelect(...)]`        | `locales=messages.available_locales()`             |
+
+All four `demo_apps/` are translated (en, es, fr); `solara_raster_app` shows
+plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
+`docs/guides/migration-v4.md` § 6.
+
 ## Charts and Graphs
 
 **Always use `ipecharts`** for charts in pysepal apps — bar, line, pie,
@@ -516,6 +647,10 @@ Run discovery for the full current list — do not rely on this table.
 | `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps) |
 | `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser     |
 | `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                         |
+| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`              |
+
+Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
+plural nodes, `check()`.
 
 ### Solara framework source
 
@@ -554,6 +689,13 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for user feedback (use `use_notifications()` + `NotificationProvider`)
 - [ ] Reading `bus.toasts.value` or `bus.tasks.value` in a Solara render body (use `Reactive.subscribe()` in `use_effect` to avoid triggering parent re-renders)
 - [ ] Manual `ThemeToggle()` + `theme.observe(...)` wiring, or `theme_toggle=` on `SepalMap` / `MapApp` (use `get_current_theme_state()` + `theme_state=`)
+- [ ] `Translator(...)`, `from component.message import ms`, or `ms.` attribute lookups (use `catalog()` + `msg("dotted.key")`)
+- [ ] `use_locale()`, `LocaleState`, `locale_state=`, `LocaleSelect.bind_locale_state()` (use `current_locale()` / `set_locale()`; pass `locales=` to `MapApp.element`)
+- [ ] Positional or formatted placeholders in JSON catalogues (`{0}`, `{area:.2f}`, `{obj.attr}`) (named `{name}` only; format in the caller)
+- [ ] `"layer(s)"`-style strings where a plural node with `count=` belongs
+- [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
+- [ ] No test asserting `messages.check() == ()`
+- [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
 
 Read `docs/guides/migration-notes-v3.4.md` for the
 full breaking changes list.

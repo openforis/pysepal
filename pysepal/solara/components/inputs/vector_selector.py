@@ -11,7 +11,7 @@ import geopandas as gpd
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
@@ -134,14 +134,14 @@ def VectorSelectorComponent(
         FileInputComponent(
             initial_folder=initial_folder,
             extensions=VECTOR_EXTENSIONS,
-            label=ms.widgets.vector.label,
+            label=msg("widgets.vector.label"),
             value=file_path,
             on_value=select_file,
         )
 
         if file_path:
             with rv.Select(
-                label=ms.widgets.vector.column,
+                label=msg("widgets.vector.column"),
                 items=column_items,
                 v_model=selected_column,
                 on_v_model=select_column,
@@ -152,7 +152,7 @@ def VectorSelectorComponent(
 
             if selected_column != "ALL":
                 with rv.Select(
-                    label=ms.widgets.vector.value,
+                    label=msg("widgets.vector.value"),
                     items=value_items,
                     v_model=selected_value,
                     on_v_model=select_value,

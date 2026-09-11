@@ -9,9 +9,9 @@ from typing import Optional
 
 from pysepal_api import SepalClient
 
+from pysepal._runtime_context import current_scope_id
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
-from pysepal.solara.runtime_context import current_scope_id
 from pysepal.solara.session_info import SessionInfo, SessionsOverview
 
 from .session_manager import SessionManager

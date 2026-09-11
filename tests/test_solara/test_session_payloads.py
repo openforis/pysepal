@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from pysepal.solara import runtime_context, ui_state, utils
+from pysepal import _runtime_context as runtime_context
+from pysepal.solara import ui_state, utils
 from pysepal.solara.runtime_context import PROCESS_SCOPE, UnsupportedSolaraRuntimeError
 from pysepal.solara.session_info import SessionInfo, SessionsOverview
 from pysepal.solara.session_manager import SessionManager

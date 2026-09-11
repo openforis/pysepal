@@ -22,9 +22,13 @@ def empty_file_browser(monkeypatch):
 @pytest.fixture(autouse=True)
 def _clean_ui_state():
     """Keep the process-wide UI-state registry from leaking across tests."""
+    from pysepal.i18n import set_locale
+
     ui_state._registry.clear()
+    set_locale("en")
     yield
     ui_state._registry.clear()
+    set_locale("en")
 
 
 @pytest.fixture(autouse=True)

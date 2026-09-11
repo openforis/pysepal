@@ -400,7 +400,7 @@ your tile should look like this one :
             # construct the Tile with the widget we have initialized
             super().__init__(
                 id_    = "process_widget", # the id will be used to make the Tile appear and disappear
-                title  = ms.process.title, # the Title will be displayed on the top of the tile
+                title  = msg("process.title"), # the Title will be displayed on the top of the tile
                 inputs = [...] # input list
                 btn    = sw.Btn(),
                 alert  = sw.Alert()

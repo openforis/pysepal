@@ -7,7 +7,7 @@ These defaults were recovered from the saved pysepal design session and should b
 - Ask the user to choose the app type explicitly.
 - New apps always use `solara.reactive()` AppState.
 - New apps never scaffold traitlets observer flows as the primary pattern.
-- Always include `component/message/` and the Translator pattern.
+- Always include `component/message/` and the `catalog()`/`msg()` pattern.
 - Use live pysepal source discovery instead of a baked-in component list.
 - Use `pyproject.toml` as the single source of truth for Python dependencies.
 - Do not create `requirements.txt`.
@@ -84,7 +84,7 @@ Local apps still use:
 - `solara.reactive()` AppState
 - pyproject-managed Python dependencies
 - pre-commit tooling
-- Translator/i18n structure
+- `catalog()`/`msg()` i18n structure
 
 ## Dependency Defaults
 

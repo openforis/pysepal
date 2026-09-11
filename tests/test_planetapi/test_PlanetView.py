@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from pysepal import sepalwidgets as sw
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.planetapi import PlanetModel, PlanetView
 
 
@@ -164,7 +164,7 @@ def test_validate_secret_file(planet_key) -> None:
 
     planet_view.validate_secret_file()
 
-    assert planet_view.w_secret_file.error_messages == [ms.planet.exception.no_secret_file]
+    assert planet_view.w_secret_file.error_messages == [msg("planet.exception.no_secret_file")]
 
     # Restore the file
     planet_secret_file.with_suffix(".json.bak").rename(planet_secret_file)
@@ -191,7 +191,7 @@ def test_validate_event() -> None:
         planet_view.btn.fire_event("click", None)
 
     # Assert
-    assert planet_view.alert.children[0].children == [ms.planet.exception.no_secret_file]
+    assert planet_view.alert.children[0].children == [msg("planet.exception.no_secret_file")]
 
     # Restore if there was a file
     if exists:

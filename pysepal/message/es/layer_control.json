@@ -1,7 +1,7 @@
 {
   "layer_state": {
-    "loading": "cargando {} capa(s) de {}",
-    "complete": "{} capa(s) cargadas"
+    "loading": "cargando {loading} capa(s) de {total}",
+    "complete": "{count} capa(s) cargadas"
   },
   "layer_control": {
     "layer": {

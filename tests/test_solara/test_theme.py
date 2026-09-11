@@ -3,7 +3,7 @@
 import pytest
 
 import pysepal.solara.theme as theme_mod
-from pysepal.solara import scope_registry
+from pysepal import _scope_registry as scope_registry
 from pysepal.solara.runtime_context import UnsupportedSolaraRuntimeError
 from pysepal.solara.theme import (
     ThemeState,

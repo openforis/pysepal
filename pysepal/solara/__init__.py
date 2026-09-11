@@ -13,12 +13,6 @@ from .errors import (
     SepalSessionError,
     SessionScopeClosedError,
 )
-from .locale import (
-    LocaleState,
-    get_current_locale_state,
-    resolve_locale_state,
-    use_locale,
-)
 from .notifications import (
     NotificationProvider,
     notify,
@@ -50,7 +44,6 @@ from .utils import (
 )
 
 __all__ = [
-    "LocaleState",
     "MissingSepalHeadersError",
     "NotificationProvider",
     "PROCESS_SCOPE",
@@ -65,7 +58,6 @@ __all__ = [
     "current_scope_id",
     "get_current_drive_interface",
     "get_current_gee_interface",
-    "get_current_locale_state",
     "get_current_sepal_client",
     "get_current_session_info",
     "get_current_theme_state",
@@ -74,14 +66,12 @@ __all__ = [
     "has_scoped_state",
     "notify",
     "prime_dev_auth",
-    "resolve_locale_state",
     "resolve_scope_id",
     "resolve_theme_state",
     "setup_sessions",
     "setup_solara_server",
     "setup_theme_colors",
     "track_task",
-    "use_locale",
     "use_notifications",
     "use_theme_dark",
     "with_sepal_sessions",

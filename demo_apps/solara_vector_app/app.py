@@ -33,6 +33,7 @@ from vectortileserver import TileWorkspace, categorized_style, single_symbol_sty
 
 import pysepal.sepalwidgets as sw
 from pysepal import mapping as sm
+from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
 from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
@@ -46,6 +47,13 @@ from pysepal.solara.notifications import NotificationProvider, use_notifications
 setup_solara_server(extra_asset_locations=[])
 
 #: Points the demo at a real vector file instead of the generated stand-in.
+#: Catalogs, but no importable package: ``gallery.py`` puts every demo directory
+#: on ``sys.path``, so a second demo shipping ``component/`` would resolve to
+#: whichever one imported first. The map app owns that name; this one stays flat.
+MESSAGE_DIR = Path(__file__).parent / "message"
+messages = catalog(MESSAGE_DIR)
+msg = messages.msg
+
 VECTOR_DIR_ENV_VAR = "PYSEPAL_DEMO_VECTOR_DIR"
 
 #: Browser-facing URL prefixes; see :func:`browser_facing_prefix`.
@@ -161,21 +169,21 @@ def VectorPanel():
 
     async def add_single_symbol():
         """One color for every feature: the archive drawn with no attribute lookup."""
-        with notifications.track("Single symbol") as task:
-            task.step("building tiles...")
-            await show(single_symbol_style(color="#2d6a4f"), "Landcover (single)", "single")
-        notifications.success("Single symbol added")
+        with notifications.track(msg("tasks.single")) as task:
+            task.step(msg("tasks.building"))
+            await show(single_symbol_style(color="#2d6a4f"), msg("layers.single"), "single")
+        notifications.success(msg("toasts.single"))
 
     async def add_categorized():
         """A deterministic palette color per attribute value, from the same archive."""
-        with notifications.track("Categorized") as task:
-            task.step("styling tiles...")
+        with notifications.track(msg("tasks.categorized")) as task:
+            task.step(msg("tasks.styling"))
             await show(
                 categorized_style(field=LANDCOVER_FIELD, values=LANDCOVER_CLASSES),
-                "Landcover (categorized)",
+                msg("layers.categorized"),
                 "categorized",
             )
-        notifications.success(f"{len(LANDCOVER_CLASSES)} categories added")
+        notifications.success(msg("toasts.categorized", count=len(LANDCOVER_CLASSES)))
 
     single_task = solara.lab.use_task(
         add_single_symbol, dependencies=None, raise_error=False, prefer_threaded=False
@@ -189,7 +197,7 @@ def VectorPanel():
 
     def build_clear_button():
         """A plain ipyvuetify button, handed to MapApp intact with its handler."""
-        button = sw.Btn("clear vectors", small=True, block=True)
+        button = sw.Btn(msg("buttons.clear_vectors"), small=True, block=True)
 
         def clear():
             for key in ("single", "categorized"):
@@ -198,38 +206,42 @@ def VectorPanel():
         button.on_event("click", lambda *args: clear())
         return button
 
-    clear_button = solara.use_memo(build_clear_button, [id(sepal_map)])
+    clear_button = solara.use_memo(
+        build_clear_button, [id(sepal_map), msg("buttons.clear_vectors")]
+    )
 
-    source = "a generated grid" if vector["synthetic"] else "real data"
+    source = msg("source.synthetic") if vector["synthetic"] else msg("source.real")
 
     MapApp.element(
-        app_title="Vector tiles",
+        app_title=msg("app.title"),
+        locales=messages.available_locales(),
         app_icon="mdi-vector-square",
         main_map=[sepal_map],
         steps_data=[],
         right_panel_config={
-            "title": "Vectors",
+            "title": msg("panel.title"),
             "icon": "mdi-vector-polygon",
             "width": 380,
-            "description": "Both buttons draw one PMTiles archive, styled two ways.",
+            "description": msg("panel.description"),
         },
         right_panel_content=[
             {
-                "title": "Local vectors",
+                "title": msg("section.title"),
                 "icon": "mdi-vector-polygon",
                 "content": [
                     TaskButtonComponent(
-                        label="single symbol", **single_props, small=True, block=True
+                        label=msg("buttons.single"), **single_props, small=True, block=True
                     ),
                     TaskButtonComponent(
-                        label="categorized", **categorized_props, small=True, block=True
+                        label=msg("buttons.categorized"),
+                        **categorized_props,
+                        small=True,
+                        block=True
                     ),
                     clear_button,
                 ],
-                "description": (
-                    f"Tiling {source} with tippecanoe. The conversion is cached per "
-                    f"source, so only the first button pays for it. Set "
-                    f"{VECTOR_DIR_ENV_VAR} to use a real landcover.geojson."
+                "description": msg(
+                    "section.description", source=source, env_var=VECTOR_DIR_ENV_VAR
                 ),
             }
         ],

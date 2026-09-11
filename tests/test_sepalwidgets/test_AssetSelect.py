@@ -8,7 +8,7 @@ import ee
 import pytest
 
 from pysepal import sepalwidgets as sw
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 def wait_for_async(asset_select: sw.AssetSelect, action: Callable, timeout: float = 10) -> None:
@@ -60,7 +60,7 @@ def test_init(gee_dir: Path, gee_user_dir: Path, asset_select: sw.AssetSelect) -
     # zero assets are represented by a disabled item
     no_asset_item = [
         {
-            "text": ms.widgets.asset_select.no_assets.format(str(gee_dir)),
+            "text": msg("widgets.asset_select.no_assets", folder=str(gee_dir)),
             "disabled": True,
         }
     ]

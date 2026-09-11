@@ -45,6 +45,7 @@ dependencies = [
     "pygaul>=0.4.2", # GAUL 2024 with iso3_code and gaul0_code columns
     "pygadm>=0.5.0", # use the class implementation
     # miscellaneous
+    "babel>=2.17,<3",
     "python-box",
     "tqdm",
     "Deprecated>=1.2.14",

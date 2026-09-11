@@ -8,11 +8,7 @@
   },
   "section": {
     "aoi": {
-      "title": "Sélectionner l'AOI",
-      "save": "Enregistrer l'AOI",
-      "restore": "Restaurer l'AOI enregistrée",
-      "saved": "Cette zone d'intérêt a été enregistrée.",
-      "empty": "Aucune zone d'intérêt enregistrée à restaurer."
+      "title": "Sélectionner l'AOI"
     },
     "process": {
       "title": "Traiter",
@@ -26,5 +22,53 @@
       "title": "Exporter",
       "description": "Envoyez l'AOI ou un résultat traité vers Earth Engine, Drive ou SEPAL."
     }
+  },
+  "layers": {
+    "ndvi": "NDVI Sentinel-2",
+    "ndvi_short": "NDVI",
+    "pixel_area": "Surface du pixel (m²)",
+    "elevation": "Classes d'altitude",
+    "pmtiles": "Bâtiments de Nouvelle-Zélande"
+  },
+  "elevation": {
+    "lowland": "Plaine (< 500 m)",
+    "upland": "Moyenne montagne (500-1500 m)",
+    "highland": "Haute montagne (>= 1500 m)"
+  },
+  "buttons": {
+    "process": "Lancer le traitement",
+    "simulate": "Simuler une erreur",
+    "add_layer": "ajouter une couche",
+    "add_pmtiles": "ajouter une couche pmtiles",
+    "remove_all": "supprimer toutes les couches"
+  },
+  "tasks": {
+    "process": "Traitement des données",
+    "building": "Construction des sorties Earth Engine...",
+    "adding_layers": "Ajout des couches dérivées à la carte...",
+    "measuring": "Mesure des surfaces par classe...",
+    "publishing": "Publication des légendes et des sources d'export...",
+    "risky": "Opération risquée",
+    "calling": "Appel du service externe...",
+    "parsing": "Analyse de la réponse..."
+  },
+  "toasts": {
+    "process_done": "Traitement terminé. Choisissez une couche dans la légende pour l'examiner."
+  },
+  "errors": {
+    "no_aoi": "Sélectionnez d'abord une AOI avant de lancer le traitement.",
+    "simulated": "Échec simulé : l'API externe a renvoyé un JSON incorrect à la ligne 42."
+  },
+  "export": {
+    "dialog_title": "Exporter les jeux de données",
+    "aoi_label": "Limite de l'AOI sélectionnée",
+    "aoi_description": "La collection d'entités de l'AOI actuellement sélectionnée dans le panneau.",
+    "pixel_area_description": "Sortie continue. Sa légende est le dégradé construit à partir de vis_params.",
+    "elevation_description": "Sortie classée. Sa légende donne la surface de chaque classe dans la colonne de détail.",
+    "multi_band_label": "Démo multibande (3 bandes)",
+    "multi_band_description": "Montre le sélecteur de bandes d'ExportLauncher : gardez toutes les bandes ou réduisez à un sous-ensemble."
+  },
+  "legend": {
+    "total": "Total"
   }
 }

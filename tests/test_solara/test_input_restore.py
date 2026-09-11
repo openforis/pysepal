@@ -9,7 +9,7 @@ import reacton
 import solara
 
 import pysepal.solara.components.inputs.asset_select as asset_select_mod
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.solara.components.inputs.asset_select import AssetSelectComponent
 from pysepal.solara.components.inputs.point_selector import PointsSelectorComponent
 from pysepal.solara.components.inputs.vector_selector import VectorSelectorComponent
@@ -172,11 +172,11 @@ def test_vector_selector_keeps_a_restored_column_filter():
 
     root = render_and_drain(
         _Harness,
-        lambda r: bool(getattr(find_by_label(r, ms.widgets.vector.value), "items", None)),
+        lambda r: bool(getattr(find_by_label(r, msg("widgets.vector.value")), "items", None)),
     )
 
-    assert find_by_label(root, ms.widgets.vector.column).v_model == "region"
-    assert find_by_label(root, ms.widgets.vector.value).v_model == region
+    assert find_by_label(root, msg("widgets.vector.column")).v_model == "region"
+    assert find_by_label(root, msg("widgets.vector.value")).v_model == region
 
 
 def test_points_selector_seeds_every_column_from_an_external_value(tmp_path):
@@ -192,9 +192,9 @@ def test_points_selector_seeds_every_column_from_an_external_value(tmp_path):
 
     root = _render(_Harness)
 
-    assert find_by_label(root, ms.widgets.table.column.id).v_model == "id"
-    assert find_by_label(root, ms.widgets.table.column.lat).v_model == "lat"
-    assert find_by_label(root, ms.widgets.table.column.lng).v_model == "lon"
+    assert find_by_label(root, msg("widgets.table.column.id")).v_model == "id"
+    assert find_by_label(root, msg("widgets.table.column.lat")).v_model == "lat"
+    assert find_by_label(root, msg("widgets.table.column.lng")).v_model == "lon"
 
 
 def test_asset_user_column_change_does_not_replay_the_restored_filter(_no_live_ee):
@@ -280,16 +280,18 @@ def test_vector_reselecting_a_file_does_not_restore_its_old_filter():
         root, rc = reacton.render(Harness(), handle_error=False)
         try:
             await wait_until(
-                lambda: bool(getattr(find_by_label(root, ms.widgets.vector.value), "items", []))
+                lambda: bool(getattr(find_by_label(root, msg("widgets.vector.value")), "items", []))
             )
             browser = of_type(root, "FileInput")[0]
             browser.v_model = ""
             await wait_until(lambda: held.value is None)
             browser.v_model = str(VECTORS)
             await wait_until(
-                lambda: bool(getattr(find_by_label(root, ms.widgets.vector.column), "items", []))
+                lambda: bool(
+                    getattr(find_by_label(root, msg("widgets.vector.column")), "items", [])
+                )
             )
-            assert find_by_label(root, ms.widgets.vector.column).v_model == "ALL"
+            assert find_by_label(root, msg("widgets.vector.column")).v_model == "ALL"
             assert held.value == {"pathname": str(VECTORS), "column": "ALL", "value": None}
         finally:
             rc.close()
@@ -318,11 +320,11 @@ def test_points_keeps_an_incomplete_draft_after_autodetecting_columns(tmp_path):
                 "lat_column": "lat",
                 "lng_column": "lon",
             }
-            find_by_label(root, ms.widgets.table.column.id).v_model = None
+            find_by_label(root, msg("widgets.table.column.id")).v_model = None
             assert held.value is None
             assert browser.v_model == str(table)
-            assert find_by_label(root, ms.widgets.table.column.lat).v_model == "lat"
-            find_by_label(root, ms.widgets.table.column.id).v_model = "id"
+            assert find_by_label(root, msg("widgets.table.column.lat")).v_model == "lat"
+            find_by_label(root, msg("widgets.table.column.id")).v_model = "id"
             assert held.value["id_column"] == "id"
         finally:
             rc.close()
@@ -365,8 +367,8 @@ def test_a_wrong_asset_type_is_reported_under_the_field_only(monkeypatch, _no_li
     root = render_and_drain(_Harness, lambda r: bool(of_type(r, "Combobox")[0].error_messages))
 
     assert errors == []
-    assert of_type(root, "Combobox")[0].error_messages == ms.widgets.asset_select.wrong_type.format(
-        "IMAGE_COLLECTION", "TABLE"
+    assert of_type(root, "Combobox")[0].error_messages == msg(
+        "widgets.asset_select.wrong_type", asset_type="IMAGE_COLLECTION", allowed="TABLE"
     )
 
 
@@ -389,5 +391,5 @@ def test_an_unreadable_asset_is_reported_as_a_toast(monkeypatch, _no_live_ee):
 
     root = render_and_drain(_Harness, lambda _r: bool(errors))
 
-    assert errors == [ms.widgets.asset_select.no_access]
+    assert errors == [msg("widgets.asset_select.no_access")]
     assert not of_type(root, "Combobox")[0].error_messages

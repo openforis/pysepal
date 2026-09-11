@@ -1,0 +1,40 @@
+{
+  "app": {
+    "title": "Tuiles vectorielles"
+  },
+  "panel": {
+    "title": "Vecteurs",
+    "description": "Les deux boutons dessinent la même archive PMTiles, stylée de deux façons."
+  },
+  "section": {
+    "title": "Vecteurs locaux",
+    "description": "Découpage de {source} avec tippecanoe. La conversion est mise en cache par source, donc seul le premier bouton la paie. Définissez {env_var} pour utiliser un vrai landcover.geojson."
+  },
+  "source": {
+    "synthetic": "une grille générée",
+    "real": "des données réelles"
+  },
+  "buttons": {
+    "single": "symbole unique",
+    "categorized": "catégorisé",
+    "clear_vectors": "effacer les vecteurs"
+  },
+  "layers": {
+    "single": "Occupation du sol (unique)",
+    "categorized": "Occupation du sol (catégorisée)"
+  },
+  "tasks": {
+    "single": "Symbole unique",
+    "categorized": "Catégorisé",
+    "building": "construction des tuiles...",
+    "styling": "stylisation des tuiles..."
+  },
+  "toasts": {
+    "single": "Symbole unique ajouté",
+    "categorized": {
+      "one": "{count} catégorie ajoutée",
+      "many": "{count} catégories ajoutées",
+      "other": "{count} catégories ajoutées"
+    }
+  }
+}

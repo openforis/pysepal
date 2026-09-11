@@ -8,11 +8,7 @@
   },
   "section": {
     "aoi": {
-      "title": "Seleccionar AOI",
-      "save": "Guardar AOI",
-      "restore": "Restaurar AOI guardada",
-      "saved": "Se guardó esta área de interés.",
-      "empty": "No hay ningún área de interés guardada para restaurar."
+      "title": "Seleccionar AOI"
     },
     "process": {
       "title": "Procesar",
@@ -26,5 +22,53 @@
       "title": "Exportar",
       "description": "Envíe el AOI o un resultado procesado a Earth Engine, Drive o SEPAL."
     }
+  },
+  "layers": {
+    "ndvi": "NDVI Sentinel-2",
+    "ndvi_short": "NDVI",
+    "pixel_area": "Área del píxel (m²)",
+    "elevation": "Clases de altitud",
+    "pmtiles": "Edificios de Nueva Zelanda"
+  },
+  "elevation": {
+    "lowland": "Tierras bajas (< 500 m)",
+    "upland": "Tierras altas (500-1500 m)",
+    "highland": "Alta montaña (>= 1500 m)"
+  },
+  "buttons": {
+    "process": "Ejecutar el procesamiento",
+    "simulate": "Simular un error",
+    "add_layer": "añadir una capa",
+    "add_pmtiles": "añadir una capa pmtiles",
+    "remove_all": "eliminar todas las capas"
+  },
+  "tasks": {
+    "process": "Procesando los datos",
+    "building": "Construyendo las salidas de Earth Engine...",
+    "adding_layers": "Añadiendo las capas derivadas al mapa...",
+    "measuring": "Midiendo las superficies por clase...",
+    "publishing": "Publicando las leyendas y las fuentes de exportación...",
+    "risky": "Operación arriesgada",
+    "calling": "Llamando al servicio externo...",
+    "parsing": "Analizando la respuesta..."
+  },
+  "toasts": {
+    "process_done": "Procesamiento terminado. Elija una capa en la leyenda del mapa para examinarla."
+  },
+  "errors": {
+    "no_aoi": "Seleccione primero un AOI antes de ejecutar el procesamiento.",
+    "simulated": "Fallo simulado: la API externa devolvió un JSON incorrecto en la línea 42."
+  },
+  "export": {
+    "dialog_title": "Exportar los conjuntos de datos",
+    "aoi_label": "Límite del AOI seleccionado",
+    "aoi_description": "La colección de entidades del AOI seleccionada en el panel.",
+    "pixel_area_description": "Salida continua. Su leyenda es el degradado construido a partir de vis_params.",
+    "elevation_description": "Salida clasificada. Su leyenda indica la superficie de cada clase en la columna de detalle.",
+    "multi_band_label": "Demostración multibanda (3 bandas)",
+    "multi_band_description": "Muestra el selector de bandas de ExportLauncher: conserve todas las bandas o reduzca a un subconjunto."
+  },
+  "legend": {
+    "total": "Total"
   }
 }

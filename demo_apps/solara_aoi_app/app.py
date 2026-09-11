@@ -41,6 +41,7 @@ import reacton.ipyvuetify as rv
 import solara
 
 from pysepal import mapping as sm
+from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
 from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
@@ -54,6 +55,13 @@ from pysepal.solara.notifications import NotificationProvider, use_notifications
 setup_solara_server(extra_asset_locations=[])
 
 #: Where the demo keeps the persisted selection between runs.
+#: Catalogs, but no importable package: ``gallery.py`` puts every demo directory
+#: on ``sys.path``, so a second demo shipping ``component/`` would resolve to
+#: whichever one imported first. The map app owns that name; this one stays flat.
+MESSAGE_DIR = Path(__file__).parent / "message"
+messages = catalog(MESSAGE_DIR)
+msg = messages.msg
+
 SAVED_AOI = scratch_root() / "demo_aoi_spec.json"
 
 #: Sample AOIs the SHAPE and POINTS pickers open on, in every format they read.
@@ -96,7 +104,10 @@ def AoiAppDemo():
     notifications = use_notifications()
 
     sepal_map = solara.use_memo(
-        lambda: sm.SepalMap(gee=False, fullscreen=True, theme_state=theme_state), []
+        lambda: sm.SepalMap(
+            zoom=3, center=[0, 0], gee=False, fullscreen=True, theme_state=theme_state
+        ),
+        [],
     )
 
     aoi = solara.use_reactive(None)
@@ -116,63 +127,49 @@ def AoiAppDemo():
     def save() -> None:
         save_spec(spec.value)
         has_saved.set(True)
-        notifications.success(f"Saved the {spec.value.method} selection to {SAVED_AOI.name}.")
+        notifications.success(msg("toasts.saved", method=spec.value.method, file=SAVED_AOI.name))
 
     def restore() -> None:
         loaded = load_spec()
         if loaded is None:
             has_saved.set(False)
-            notifications.warning(f"{SAVED_AOI.name} is missing or unreadable.")
+            notifications.warning(msg("toasts.missing", file=SAVED_AOI.name))
             return
         spec.set(loaded)
-        notifications.info(f"Restored a {loaded.method} selection.")
+        notifications.info(msg("toasts.restored", method=loaded.method))
 
     return MapApp.element(
-        app_title="AOI save & restore",
+        app_title=msg("app.title"),
         app_icon="mdi-content-save-move-outline",
+        locales=messages.available_locales(),
         main_map=[sepal_map],
         steps_data=[],
         right_panel_config={
-            "title": "Area of interest",
+            "title": msg("panel.title"),
             "icon": "mdi-map-marker-path",
             "width": 400,
-            "description": (
-                "Pick an AOI and save it. Restoring it later rebuilds the geometry "
-                "from the spec alone -- only that small JSON record was written."
-            ),
+            "description": msg("panel.description"),
         },
         right_panel_content=[
             {
-                "title": "Select",
+                "title": msg("section.title"),
                 "icon": "mdi-map-search-outline",
                 "content": [
-                    solara.Row(
-                        children=[
-                            solara.Button(
-                                label="Save this AOI",
-                                icon_name="mdi-content-save-outline",
-                                on_click=save,
-                                disabled=spec.value is None,
-                                text=True,
-                            ),
-                            solara.Button(
-                                label="Restore saved AOI",
-                                icon_name="mdi-restore",
-                                on_click=restore,
-                                disabled=not has_saved.value,
-                                text=True,
-                            ),
-                        ]
+                    solara.Button(
+                        label=msg("buttons.restore"),
+                        icon_name="mdi-restore",
+                        on_click=restore,
+                        disabled=not has_saved.value,
+                        color="primary",
+                        small=True,
+                        block=True,
                     ),
                     rv.Switch(
-                        label="Process a restored AOI automatically",
+                        label=msg("switch.label"),
                         v_model=autoselect.value,
                         on_v_model=autoselect.set,
                         dense=True,
-                        hint=(
-                            "On: Restore draws the AOI straight away. "
-                            "Off: it fills the form and you press Select AOI."
-                        ),
+                        hint=msg("switch.hint"),
                         persistent_hint=True,
                     ),
                     AoiView(
@@ -184,11 +181,18 @@ def AoiAppDemo():
                         clear_ref=clear_ref,
                         autoselect=autoselect.value,
                     ),
+                    solara.Button(
+                        label=msg("buttons.save"),
+                        icon_name="mdi-content-save-outline",
+                        on_click=save,
+                        disabled=spec.value is None,
+                        color="primary",
+                        small=True,
+                        block=True,
+                        classes=["mt-2"],
+                    ),
                 ],
-                "description": (
-                    f"Save writes {SAVED_AOI}. Nothing else on this page reads or "
-                    f"writes it, so clearing the AOI leaves the saved one alone."
-                ),
+                "description": msg("section.description", path=SAVED_AOI),
             }
         ],
         right_panel_open=True,

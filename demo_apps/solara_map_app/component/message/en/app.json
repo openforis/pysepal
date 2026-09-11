@@ -8,11 +8,7 @@
   },
   "section": {
     "aoi": {
-      "title": "Select AOI",
-      "save": "Save AOI",
-      "restore": "Restore saved AOI",
-      "saved": "Saved this area of interest.",
-      "empty": "No saved area of interest to restore."
+      "title": "Select AOI"
     },
     "process": {
       "title": "Process",
@@ -26,5 +22,53 @@
       "title": "Export",
       "description": "Send the AOI or a processed output to Earth Engine, Drive or SEPAL."
     }
+  },
+  "layers": {
+    "ndvi": "Sentinel-2 NDVI",
+    "ndvi_short": "NDVI",
+    "pixel_area": "Pixel area (m²)",
+    "elevation": "Elevation classes",
+    "pmtiles": "NZ buildings"
+  },
+  "elevation": {
+    "lowland": "Lowland (< 500 m)",
+    "upland": "Upland (500-1500 m)",
+    "highland": "Highland (>= 1500 m)"
+  },
+  "buttons": {
+    "process": "Run processing",
+    "simulate": "Simulate error",
+    "add_layer": "add layer",
+    "add_pmtiles": "add pmtiles layer",
+    "remove_all": "remove all layers"
+  },
+  "tasks": {
+    "process": "Processing data",
+    "building": "Building Earth Engine outputs...",
+    "adding_layers": "Adding derived layers to the map...",
+    "measuring": "Measuring class areas...",
+    "publishing": "Publishing legends and export sources...",
+    "risky": "Risky operation",
+    "calling": "Calling external service...",
+    "parsing": "Parsing response..."
+  },
+  "toasts": {
+    "process_done": "Processing complete. Pick a layer in the map legend to inspect it."
+  },
+  "errors": {
+    "no_aoi": "Select an AOI first before running processing.",
+    "simulated": "Simulated failure: external API returned malformed JSON at line 42."
+  },
+  "export": {
+    "dialog_title": "Export datasets",
+    "aoi_label": "Selected AOI boundary",
+    "aoi_description": "The AOI feature collection currently selected in the sidebar.",
+    "pixel_area_description": "Continuous output. Its map legend is the gradient built from vis_params.",
+    "elevation_description": "Classified output. Its legend lists per-class areas in the detail column.",
+    "multi_band_label": "Multi-band demo (3 bands)",
+    "multi_band_description": "Shows the ExportLauncher band picker: keep every band or narrow to a subset."
+  },
+  "legend": {
+    "total": "Total"
   }
 }

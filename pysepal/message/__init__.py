@@ -1,14 +1,38 @@
-"""Initialization of the ``Translator`` used in pysepal.
-
-Can be accessed as:
+"""pysepal's own message catalogue.
 
 .. code-block::
 
-    from pysepal.message import ms
+    from pysepal.message import msg
+
+    msg("aoi_sel.custom")
+
+``msg`` returns one message in the locale of the current runtime scope.
 """
 
 from pathlib import Path
+from typing import Any
 
-from pysepal.translator import Translator
+_HERE = Path(__file__).parent
 
-ms = Translator(Path(__file__).parent)
+_catalogue = None
+
+
+def msg(key: str, /, **values: Any) -> str:
+    """Return one message, in the locale of the current runtime scope.
+
+    Args:
+        key: A dotted key into the catalogue, e.g. ``"aoi_sel.custom"``.
+        values: Named placeholder values the message needs.
+
+    Returns:
+        The rendered message.
+    """
+    # Bound on first use, not at import: pysepal.i18n reaches solara, and
+    # `import pysepal` must touch no home directory -- see
+    # tests/test_meta_no_home_write.py.
+    global _catalogue
+    if _catalogue is None:
+        from pysepal.i18n import catalog
+
+        _catalogue = catalog(_HERE)
+    return _catalogue.msg(key, **values)

@@ -2,7 +2,8 @@
 
 from unittest.mock import patch
 
-from pysepal.solara import scope_registry, ui_state
+from pysepal import _scope_registry as scope_registry
+from pysepal.solara import ui_state
 
 
 def test_same_scope_reuses_the_same_instance():
