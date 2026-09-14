@@ -98,6 +98,18 @@ header.v-app-bar {
   margin-bottom: 0;
 }
 
+/* Vuetify's 8px drops a 24px icon 2px below the underline; 2px centres it. */
+.v-text-field.v-input--dense:not(.v-text-field--enclosed):not(.v-text-field--full-width)
+  .v-input__prepend-inner
+  .v-input__icon
+  > .v-icon,
+.v-text-field.v-input--dense:not(.v-text-field--enclosed):not(.v-text-field--full-width)
+  .v-input__append-inner
+  .v-input__icon
+  > .v-icon {
+  margin-top: 2px;
+}
+
 /* specific css for the btn placed on maps */
 .v-btn.v-size--default.v-map-btn:not(.v-btn--round) {
   padding: 0px;
@@ -206,6 +218,14 @@ header.theme--light.v-app-bar.v-toolbar.v-sheet {
  * This inverts colors and enhances contrast for better visibility. */
 .theme--dark .leaflet-tile-pane img[src*="gaul/wms"] {
   filter: invert(1) hue-rotate(180deg) brightness(1.3) contrast(1.5);
+}
+
+.pysepal-map-theme-dark > .leaflet-container {
+  background-color: #121212;
+}
+
+.pysepal-map-theme-light > .leaflet-container {
+  background-color: #eceff1;
 }
 
 /* Theme-aware Leaflet-Geoman toolbar styling.

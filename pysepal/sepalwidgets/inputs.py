@@ -87,7 +87,7 @@ class DatePicker(v.Layout, SepalWidget):
             label=label,
             hint="YYYY-MM-DD format",
             persistent_hint=True,
-            prepend_icon="event",
+            prepend_inner_icon="event",
             readonly=True,
             v_on="menuData.on",
         )
@@ -741,7 +741,7 @@ class AssetSelect(v.Combobox, SepalWidget):
         kwargs.setdefault("v_model", None)
         kwargs.setdefault("clearable", True)
         kwargs.setdefault("dense", True)
-        kwargs.setdefault("prepend_icon", "mdi-sync")
+        kwargs.setdefault("prepend_inner_icon", "mdi-sync")
         kwargs.setdefault("class_", "my-5")
         kwargs.setdefault("placeholder", msg("widgets.asset_select.placeholder"))
         kwargs.setdefault("label", msg("widgets.asset_select.label"))
@@ -753,7 +753,7 @@ class AssetSelect(v.Combobox, SepalWidget):
         self._configure_tasks()
         self._fill_no_data({})
         # add js behaviours
-        self.on_event("click:prepend", self._get_items)
+        self.on_event("click:prepend-inner", self._get_items)
 
         self.observe(self._get_items, "default_asset")
         self.observe(self._check_types, "types")

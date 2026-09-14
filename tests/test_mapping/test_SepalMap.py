@@ -32,7 +32,7 @@ def test_init() -> None:
 
     assert isinstance(m, sm.SepalMap)
     assert m.center == [0, 0]
-    assert m.zoom == 2
+    assert m.zoom == 3
     assert len(m.layers) == 2
 
     default_basemaps = ["SEPAL Dark", "SEPAL Light"]
