@@ -32,6 +32,8 @@ The main API lives in `pysepal.solara.notifications`:
 - `use_notifications()` — returns a `Notifier` bound to the current kernel bus
 - `notify()` and `track_task()` — global escape hatches for non-component code
 - `Notifier.track(...)` — returns a `TaskTracker` context manager for long-running work
+- `NoopNotifier` — what `use_notifications()` returns with no provider mounted; it
+  warns and logs rather than dropping messages quietly
 
 Conceptually:
 
@@ -189,35 +191,101 @@ For new GEE-based Solara apps:
 This matches the current session-backed async GEE path and avoids loop-hopping
 problems.
 
-## Fallback UX When No Provider Exists
+## When No Provider Is Mounted
 
-If a component can be used inside or outside a shell that mounts
-`NotificationProvider()`, do not assume the notifier is active.
+`use_notifications()` returns a `NoopNotifier`, and nothing reaches the screen.
+That is not silent:
 
-Preferred fallback pattern:
+- resolving without a bus raises a `UserWarning` naming `NotificationProvider`,
+  once per call site
+- every dropped message is logged at `WARNING` with its text, so an error the
+  user never saw is still findable in the server log
 
-- detect whether `use_notifications()` returned a `NoopNotifier`
-- still surface success/error/cancel inline if the provider is absent
-- reserve silent no-op behavior for utility-level code where inline feedback is
-  impossible
+Treat both as a bug report about the app, not as a supported mode. A missing
+provider means the error channel is off, and an app whose failures go nowhere
+looks like an app that never fails. Mount `NotificationProvider()` once at the
+root, above every component that notifies.
 
-The AOI Solara component is the reference example for this pattern.
+If a component genuinely has to run both inside and outside a shell — a widget
+published for reuse, say — check what you got back and fall back to inline
+feedback:
+
+```python
+from pysepal.solara.notifications import NoopNotifier, use_notifications
+
+notifications = use_notifications()
+standalone = isinstance(notifications, NoopNotifier)
+```
 
 ## Global Escape Hatches
 
-Use these only when you cannot conveniently call `use_notifications()` from a
-component:
+```python
+from pysepal.solara.notifications import notify, track_task
+```
 
-- `notify(message, type_="info")`
-- `track_task(title, total_steps=None)`
+- `notify(message, type_="info")` — one toast, no component
+- `track_task(title, total_steps=None)` — the same context manager
+  `notifications.track(...)` returns
+
+Both resolve the current scope's bus themselves, which is the whole point:
+there is no notifier to receive and no prop to thread. Reach for them where a
+hook cannot go.
+
+**A decorator wrapping app callbacks.** It has no component to call
+`use_notifications()` from, and threading a notifier through every decorated
+function would defeat the decorator:
+
+```python
+from functools import wraps
+
+from pysepal.solara.notifications import notify
+
+
+def report_failures(func):
+    """Turn an unhandled exception into a toast, and re-raise it."""
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as error:
+            notify(str(error), type_="error")
+            raise
+
+    return wrapper
+```
+
+**A worker thread.** `asyncio.to_thread` copies the kernel context, so the
+scope still resolves and the toast lands on the right connection's bus:
+
+```python
+import asyncio
+
+from pysepal.solara.notifications import track_task
+
+
+def convert_rasters(paths):
+    """Blocking file work; no component on this stack."""
+    with track_task("Converting rasters", total_steps=len(paths)) as task:
+        for path in paths:
+            task.step(f"Converting {path.name}")
+            _convert(path)
+
+
+await asyncio.to_thread(convert_rasters, paths)
+```
+
+**A script or a notebook cell** that drives app code directly and has no render
+context at all.
 
 Caveats:
 
-- they still resolve the current kernel bus
-- if no provider is mounted, `notify()` logs a warning and drops the toast
-- if no provider is mounted, `track_task()` returns a no-op tracker
-
-Prefer component-local `use_notifications()` whenever possible.
+- with no provider mounted, `notify()` logs the message at `WARNING` and drops
+  the toast; `track_task()` returns a tracker that logs and does nothing
+- they resolve the scope on every call, so a long loop should open one
+  `track_task` rather than emit a toast per iteration
+- inside a component, prefer `use_notifications()`: it memoizes on the bus and
+  keeps the dependency visible in the component body
 
 ## MapApp Integration
 
@@ -246,6 +314,11 @@ Important limits:
 - only the newest error toast is retained in the toast queue
 - only the newest few toasts are visible in the overlay
 - finished task history is capped and older finished tasks are pruned
+
+One guarantee it does make: a subscriber may publish to the bus from inside
+its own callback. The nested publication is deferred until the dispatch in
+progress finishes, so every subscriber ends on the state the bus holds
+rather than on whichever list reached it last.
 
 ## Default Scaffold Rule
 
