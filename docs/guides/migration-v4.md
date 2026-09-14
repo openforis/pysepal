@@ -217,16 +217,19 @@ debug panel renders, and nothing downstream may key a permission off it.
 ## 3. Version floors
 
 ```text
-ee-client>=3.1.0,<4
+ee-client>=3.2.1,<4
 pysepal-api>=0.3.0,<0.4
 solara>=1.60,<2
 localtileserver>=1.0.0
-ipyvuetify<3
+ipyvuetify>=1.8,<3
 ```
 
 Both floors are published. The provider-agnostic auth pysepal 4.0 needs from
 `ee-client` -- the `EESession.from_*()` factories and `close()` on every
-credential holder -- shipped as a minor, so that floor stays inside 3.x.
+credential holder -- shipped as a minor, so that floor stays inside 3.x. The
+floor sits at 3.2.1 because that is where the assets cache stopped returning
+`None` for ten seconds after a cancelled fetch; below it, a second click on the
+asset selector's reload raises.
 
 `pysepal-api` 0.3.0 is what moves the `createFolder` POST off the
 session-creation path: `SepalClient.create()` no longer touches the network, and
@@ -238,6 +241,8 @@ no import breaks, so the failure appears at write time.
 subclasses at import time — `CalendarDaily` among them — so an unpinned resolve
 produced a pysepal that could not be imported at all. If your module pins
 `ipyvuetify>=3`, that pin and pysepal 4.0 cannot be installed together; drop it.
+The floor is there because `_version.semver`, which pysepal imports at startup,
+arrived in 1.8 — with only a cap, a crowded solve can fall through to a 0.1.x.
 
 `solara` is now pinned because two of its private APIs are load-bearing:
 `solara.scope.get_kernel_id` (every per-connection scope id) and
