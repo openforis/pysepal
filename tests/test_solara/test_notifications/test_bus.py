@@ -5,6 +5,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+import solara
 
 from pysepal import _scope_registry as scope_registry
 from pysepal.solara.notifications.bus import (
@@ -143,6 +144,64 @@ def test_concurrent_toast_adds():
         t.join()
     assert not errors
     assert len(bus.toasts.value) <= MAX_TOAST_QUEUE
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda b: b.add_toast(Toast(message="added")), id="add_toast"),
+        pytest.param(lambda b: b.remove_toast("seed-toast"), id="remove_toast"),
+        pytest.param(lambda b: b.add_task(TrackedTask(id="added")), id="add_task"),
+        pytest.param(lambda b: b.update_task("seed-task", title="renamed"), id="update_task"),
+        pytest.param(lambda b: b.remove_task("seed-task"), id="remove_task"),
+    ],
+)
+def test_a_subscriber_can_mutate_the_bus_it_was_notified_by(mutate):
+    """Solara fires subscribers synchronously, inside the assignment to ``.value``.
+
+    Every subscriber therefore runs while the publishing thread holds the bus
+    lock. A plain ``threading.Lock`` is not reentrant, so a subscriber whose
+    call stack reaches back into the bus -- one reporting its own failure as a
+    toast, say -- blocks forever on a lock its own thread already owns. The
+    mutation never returns and the kernel stops with no traceback.
+    """
+    bus = NotificationBus()
+    bus.add_toast(Toast(id="seed-toast", message="seed"))
+    bus.add_task(TrackedTask(id="seed-task", title="seed"))
+
+    reentered = []
+
+    def mutate_from_the_callback(_value):
+        if reentered:
+            return
+        reentered.append(True)
+        bus.add_toast(Toast(message="from the subscriber"))
+
+    bus.toasts.subscribe(mutate_from_the_callback)
+    bus.tasks.subscribe(mutate_from_the_callback)
+
+    worker = threading.Thread(target=mutate, args=(bus,), daemon=True)
+    worker.start()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive(), "the re-entrant mutation deadlocked on the bus lock"
+    assert reentered == [True]
+
+
+def test_solara_stores_a_new_value_before_it_notifies():
+    """The bus lock is reentrant, which is only safe because of this ordering.
+
+    A subscriber that mutates the bus reads ``.value`` to compute its own new
+    list. If solara notified before storing, that read would return the old
+    list and the re-entrant write would discard the value being published.
+    """
+    reactive = solara.reactive(["first"])
+    seen_during_notify = []
+    reactive.subscribe(lambda _value: seen_during_notify.append(list(reactive.value)))
+
+    reactive.value = ["first", "second"]
+
+    assert seen_during_notify == [["first", "second"]]
 
 
 # Scope registry ------------------------------------------------------------

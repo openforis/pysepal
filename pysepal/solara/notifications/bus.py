@@ -29,7 +29,14 @@ class NotificationBus:
         """Initialize reactive state containers and thread lock."""
         self.toasts: solara.Reactive[list[Toast]] = solara.reactive([])
         self.tasks: solara.Reactive[list[TrackedTask]] = solara.reactive([])
-        self._lock = threading.Lock()
+        # Reentrant because solara fires subscribers synchronously inside the
+        # assignment to ``.value``, so every subscriber runs while this lock is
+        # held. A subscriber that reports its own failure as a toast would
+        # otherwise block forever on a lock its own thread owns. Safe only
+        # because solara stores the new value before it notifies -- a
+        # re-entrant mutator therefore reads the value being published, not the
+        # one it replaced.
+        self._lock = threading.RLock()
 
     def add_toast(self, toast: Toast) -> None:
         """Add a toast, applying dedup and queue limit rules.
