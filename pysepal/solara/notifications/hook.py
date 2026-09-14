@@ -1,6 +1,7 @@
 """Solara hook: use_notifications()."""
 
 import logging
+import warnings
 from typing import Optional, Union
 
 import solara
@@ -16,9 +17,17 @@ def use_notifications_from_bus(
 ) -> Union[Notifier, NoopNotifier]:
     """Resolve a Notifier from a bus (testable without Solara context)."""
     if bus is None:
-        logger.debug(
-            "use_notifications() called before NotificationProvider mounted. "
-            "Notifications will be silently dropped until next render."
+        # Loud, and once per call site: the provider is mounted for the life of
+        # the app, so a missing bus is misconfiguration rather than a transient.
+        # Staying quiet here silences the error channel itself -- every
+        # ``.error()`` the app reports goes nowhere and it looks like nothing
+        # ever fails.
+        warnings.warn(
+            "No NotificationProvider is mounted, so notifications are dropped. "
+            "Mount NotificationProvider() once at the app root, above the "
+            "components that call use_notifications().",
+            UserWarning,
+            stacklevel=3,
         )
         return NoopNotifier()
     return Notifier(bus)
