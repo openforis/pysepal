@@ -34,7 +34,6 @@ from .theme import (
     resolve_theme_state,
     use_theme_dark,
 )
-from .ui_state import clear_scoped_state, get_scoped_state, has_scoped_state
 from .utils import (
     get_current_drive_interface,
     get_current_gee_interface,
@@ -54,16 +53,13 @@ __all__ = [
     "SessionsOverview",
     "ThemeState",
     "UnsupportedSolaraRuntimeError",
-    "clear_scoped_state",
     "current_scope_id",
     "get_current_drive_interface",
     "get_current_gee_interface",
     "get_current_sepal_client",
     "get_current_session_info",
     "get_current_theme_state",
-    "get_scoped_state",
     "get_sessions_overview",
-    "has_scoped_state",
     "notify",
     "prime_dev_auth",
     "resolve_scope_id",

@@ -3,8 +3,9 @@
 import pytest
 
 from pysepal.solara import dev_auth as _dev_auth
-from pysepal.solara import ui_state
 from pysepal.solara.session_manager import SessionManager
+from pysepal.solara.theme import _theme_store
+from tests._kernel_contexts import kernel_contexts  # noqa: F401
 
 
 @pytest.fixture
@@ -21,13 +22,13 @@ def empty_file_browser(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clean_ui_state():
-    """Keep the process-wide UI-state registry from leaking across tests."""
+    """Keep this scope's theme and locale from leaking across tests."""
     from pysepal.i18n import set_locale
 
-    ui_state._registry.clear()
+    _theme_store.clear()
     set_locale("en")
     yield
-    ui_state._registry.clear()
+    _theme_store.clear()
     set_locale("en")
 
 

@@ -25,7 +25,6 @@ from pysepal._runtime_context import (
     resolve_scope_id,
 )
 from pysepal._scope_registry import ScopeRegistry
-from pysepal._ui_state import clear_scoped_state
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara._topology import (
@@ -942,6 +941,5 @@ def setup_sessions() -> Callable:
     # Return cleanup function
     def cleanup():
         session_manager.cleanup_session(scope_id)
-        clear_scoped_state(scope_id)
 
     return cleanup

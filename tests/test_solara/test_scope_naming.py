@@ -2,7 +2,7 @@
 
 import inspect
 
-from pysepal.solara import runtime_context, session_manager, ui_state
+from pysepal.solara import runtime_context, session_manager
 from pysepal.solara.notifications import bus
 from pysepal.solara.session_info import SessionInfo
 
@@ -33,8 +33,3 @@ def test_session_info_payload_key_is_scope_id():
 
 def test_bus_has_no_private_resolver():
     assert not hasattr(bus, "_get_kernel_id")
-
-
-def test_ui_state_reuses_the_shared_resolver():
-    assert ui_state.current_scope_id is runtime_context.current_scope_id
-    assert ui_state.PROCESS_SCOPE is runtime_context.PROCESS_SCOPE
