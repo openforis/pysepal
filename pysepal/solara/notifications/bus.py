@@ -30,95 +30,142 @@ class NotificationBus:
         self.toasts: solara.Reactive[list[Toast]] = solara.reactive([])
         self.tasks: solara.Reactive[list[TrackedTask]] = solara.reactive([])
         # Reentrant because solara fires subscribers synchronously inside the
-        # assignment to ``.value``, so every subscriber runs while this lock is
-        # held. A subscriber that reports its own failure as a toast would
-        # otherwise block forever on a lock its own thread owns. Safe only
-        # because solara stores the new value before it notifies -- a
-        # re-entrant mutator therefore reads the value being published, not the
-        # one it replaced.
+        # assignment to ``.value``, so every subscriber runs while the mutation
+        # that notified it still holds this lock.
         self._lock = threading.RLock()
+        # The reactives are a published mirror. These are the state a mutation
+        # reads and writes, and holding the two apart is what lets a
+        # subscriber's own mutation be deferred without it reading a stale list.
+        self._toasts: list[Toast] = []
+        self._tasks: list[TrackedTask] = []
+        self._published_toasts: list[Toast] = self._toasts
+        self._published_tasks: list[TrackedTask] = self._tasks
+        self._publishing = False
 
-    def add_toast(self, toast: Toast) -> None:
-        """Add a toast, applying dedup and queue limit rules.
+    def _publish(self) -> None:
+        """Push pending state onto the reactives, one dispatch at a time.
 
-        Error toasts replace previous errors (only the latest error is kept).
+        A subscriber that mutates the bus must not start a second dispatch:
+        the nested one would hand the newer list to whichever subscribers it
+        reached, and the dispatch already running would then resume and hand
+        its own, now stale, list to the ones it had not reached yet. A UI
+        subscriber could end on the older list and hide a toast until some
+        later, unrelated update.
+
+        Such a mutation therefore only writes the state above and returns
+        here; the dispatch in progress publishes it on its next turn. The same
+        turn absorbs another thread's mutation, so two threads cannot publish
+        out of order either.
         """
         with self._lock:
-            current = list(self.toasts.value)
-
-            # Error replacement: new errors remove all previous errors
-            if toast.type == ToastType.ERROR:
-                current = [t for t in current if t.type != ToastType.ERROR]
-                current.append(toast)
-                # Still enforce queue limit
-                if len(current) > MAX_TOAST_QUEUE:
-                    current = current[-MAX_TOAST_QUEUE:]
-                self.toasts.value = current
+            if self._publishing:
                 return
+            self._publishing = True
+        try:
+            while True:
+                with self._lock:
+                    toasts, tasks = self._toasts, self._tasks
+                    toasts_changed = toasts is not self._published_toasts
+                    tasks_changed = tasks is not self._published_tasks
+                    if not (toasts_changed or tasks_changed):
+                        return
+                    self._published_toasts = toasts
+                    self._published_tasks = tasks
+                # Outside the lock: these fire subscribers, and another thread
+                # has to be able to queue its own mutation while they run.
+                if toasts_changed:
+                    self.toasts.value = toasts
+                if tasks_changed:
+                    self.tasks.value = tasks
+        finally:
+            with self._lock:
+                self._publishing = False
 
-            # Dedup: merge if identical message+type within window
-            for i, existing in enumerate(current):
-                if (
-                    existing.message == toast.message
-                    and existing.type == toast.type
-                    and (toast.created_at - existing.created_at) < DEDUP_WINDOW_SECONDS
-                ):
-                    # Refresh the toast identity/timestamp so the frontend
-                    # resets its dismiss timer and progress bar on repeated
-                    # notifications instead of expiring relative to the first
-                    # occurrence in the burst.
-                    current[i] = replace(
-                        existing,
-                        id=toast.id,
-                        created_at=toast.created_at,
-                        timeout=toast.timeout,
-                        count=existing.count + 1,
-                    )
-                    self.toasts.value = current
-                    return
+    @staticmethod
+    def _with_toast(current: list[Toast], toast: Toast) -> list[Toast]:
+        """Return ``current`` plus ``toast``, applying dedup and queue limits.
 
+        Error toasts replace previous errors: only the latest error is kept.
+        """
+        if toast.type == ToastType.ERROR:
+            current = [t for t in current if t.type != ToastType.ERROR]
             current.append(toast)
+            return current[-MAX_TOAST_QUEUE:]
 
-            # Enforce queue limit: drop oldest non-errors first, then oldest errors
-            if len(current) > MAX_TOAST_QUEUE:
-                errors = [t for t in current if t.type == ToastType.ERROR]
-                non_errors = [t for t in current if t.type != ToastType.ERROR]
-                # Cap errors themselves so total never exceeds MAX_TOAST_QUEUE
-                errors = errors[-MAX_TOAST_QUEUE:]
-                keep_non_errors = max(0, MAX_TOAST_QUEUE - len(errors))
-                non_errors = non_errors[-keep_non_errors:] if keep_non_errors else []
-                current = errors + non_errors
+        for i, existing in enumerate(current):
+            if (
+                existing.message == toast.message
+                and existing.type == toast.type
+                and (toast.created_at - existing.created_at) < DEDUP_WINDOW_SECONDS
+            ):
+                # Refresh the toast identity/timestamp so the frontend resets
+                # its dismiss timer and progress bar on repeated notifications
+                # instead of expiring relative to the first of the burst.
+                current[i] = replace(
+                    existing,
+                    id=toast.id,
+                    created_at=toast.created_at,
+                    timeout=toast.timeout,
+                    count=existing.count + 1,
+                )
+                return current
 
-            self.toasts.value = current
+        current.append(toast)
+        if len(current) > MAX_TOAST_QUEUE:
+            # Drop oldest non-errors first, then oldest errors.
+            errors = [t for t in current if t.type == ToastType.ERROR][-MAX_TOAST_QUEUE:]
+            keep_non_errors = max(0, MAX_TOAST_QUEUE - len(errors))
+            non_errors = [t for t in current if t.type != ToastType.ERROR]
+            non_errors = non_errors[-keep_non_errors:] if keep_non_errors else []
+            current = errors + non_errors
+        return current
+
+    def add_toast(self, toast: Toast) -> None:
+        """Add a toast, applying dedup and queue limit rules."""
+        with self._lock:
+            self._toasts = self._with_toast(list(self._toasts), toast)
+        self._publish()
 
     def remove_toast(self, toast_id: str) -> None:
         """Remove a toast by ID."""
         with self._lock:
-            self.toasts.value = [t for t in self.toasts.value if t.id != toast_id]
+            self._toasts = [t for t in self._toasts if t.id != toast_id]
+        self._publish()
 
     def add_task(self, task: TrackedTask) -> None:
         """Add a tracked task. Prunes oldest finished tasks beyond MAX_TASK_HISTORY."""
         with self._lock:
-            current = [*self.tasks.value, task]
+            current = [*self._tasks, task]
             if len(current) > MAX_TASK_HISTORY:
                 # Keep running/pending tasks, prune oldest finished
                 active = [t for t in current if t.status.value in ("running", "pending")]
                 finished = [t for t in current if t.status.value not in ("running", "pending")]
                 finished = finished[-(MAX_TASK_HISTORY - len(active)) :]
                 current = active + finished
-            self.tasks.value = current
+            self._tasks = current
+        self._publish()
 
     def update_task(self, task_id: str, **changes) -> None:
         """Update a tracked task by ID. Unknown IDs are silently ignored."""
         with self._lock:
-            self.tasks.value = [
-                replace(t, **changes) if t.id == task_id else t for t in self.tasks.value
-            ]
+            self._tasks = [replace(t, **changes) if t.id == task_id else t for t in self._tasks]
+        self._publish()
 
     def remove_task(self, task_id: str) -> None:
         """Remove a tracked task by ID."""
         with self._lock:
-            self.tasks.value = [t for t in self.tasks.value if t.id != task_id]
+            self._tasks = [t for t in self._tasks if t.id != task_id]
+        self._publish()
+
+    def find_task(self, task_id: str) -> Optional[TrackedTask]:
+        """Return a tracked task by ID, reading the state a mutation would.
+
+        Not ``tasks.value``: that mirror lags by one turn while a deferred
+        publication is in flight, and a tracker stepping from inside a
+        subscriber would compute its update from the older list.
+        """
+        with self._lock:
+            return next((t for t in self._tasks if t.id == task_id), None)
 
 
 # --- Scope-keyed bus registry ---

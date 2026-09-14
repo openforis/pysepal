@@ -97,10 +97,7 @@ class TaskTracker:
 
     def _get_task(self) -> Optional[TrackedTask]:
         """Get the current task state from the bus."""
-        for t in self._bus.tasks.value:
-            if t.id == self._task_id:
-                return t
-        return None
+        return self._bus.find_task(self._task_id)
 
 
 class Notifier:

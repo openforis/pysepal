@@ -188,6 +188,62 @@ def test_a_subscriber_can_mutate_the_bus_it_was_notified_by(mutate):
     assert reentered == [True]
 
 
+def test_a_nested_mutation_does_not_publish_inside_the_current_dispatch():
+    """A subscriber that mutates the bus must not start a second dispatch.
+
+    Storing before notifying keeps the bus itself correct, but it does not
+    order the notifications. A nested dispatch delivers the newer list to
+    whichever subscribers it reaches, and the outer dispatch then resumes and
+    hands its stale list to the subscribers it had not reached yet. The UI
+    subscriber can therefore end on the older list and hide a toast until some
+    later, unrelated update.
+
+    Depth is the deterministic signal: subscriber order inside one dispatch is
+    a set iteration and cannot be pinned, but re-entrancy either happens or it
+    does not.
+    """
+    bus = NotificationBus()
+    depth = {"current": 0, "max": 0}
+    seen = []
+
+    def watcher(value):
+        depth["current"] += 1
+        depth["max"] = max(depth["max"], depth["current"])
+        seen.append([t.id for t in value])
+        if len(value) == 1:
+            bus.add_toast(Toast(id="B", message="second"))
+        depth["current"] -= 1
+
+    bus.toasts.subscribe(watcher)
+    bus.add_toast(Toast(id="A", message="first"))
+
+    assert depth["max"] == 1, "a nested mutation published inside the running dispatch"
+    assert seen == [["A"], ["A", "B"]]
+    assert [t.id for t in bus.toasts.value] == ["A", "B"]
+
+
+def test_every_subscriber_ends_on_the_state_the_bus_holds():
+    """Two subscribers, one of them mutating: neither may be left behind."""
+    bus = NotificationBus()
+    first_seen = []
+    second_seen = []
+
+    def mutating(value):
+        if len(value) == 1:
+            bus.add_toast(Toast(id="B", message="second"))
+
+    bus.toasts.subscribe(mutating)
+    bus.toasts.subscribe(lambda v: first_seen.append([t.id for t in v]))
+    bus.toasts.subscribe(lambda v: second_seen.append([t.id for t in v]))
+
+    bus.add_toast(Toast(id="A", message="first"))
+
+    final = [t.id for t in bus.toasts.value]
+    assert final == ["A", "B"]
+    assert first_seen[-1] == final
+    assert second_seen[-1] == final
+
+
 def test_solara_stores_a_new_value_before_it_notifies():
     """The bus lock is reentrant, which is only safe because of this ordering.
 
