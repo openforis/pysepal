@@ -54,7 +54,7 @@ dependencies = [
     "typing-extensions",
     "pydantic",  # SepalHeaders validation and the PYSEPAL_DEV_AUTH interlock
     "solara>=1.60,<2", # two private APIs are load-bearing: solara.scope.get_kernel_id and solara._using_solara_server
-    "ee-client>=3.2.0,<4", # AssetOptions carries the pyramiding policy (issue-1042)
+    "ee-client>=3.2.1,<4", # the assets cache survives a cancelled fetch (ee-client#43)
     "pysepal-api>=0.3.0,<0.4", # UI-free SEPAL HTTP client (SepalClient: files/tasks/recipes); 0.x: a minor is a breaking release, so cap it
     "colorlog",
     "reactivex"
