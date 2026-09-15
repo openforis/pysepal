@@ -400,7 +400,7 @@ def use_export_dialog(
     drive_interface = drive_interface or get_current_drive_interface()
     sepal_client = sepal_client or get_current_sepal_client()
 
-    notifications = use_notifications()
+    notifications = use_notifications(required=False)
     notifications_enabled = not isinstance(notifications, NoopNotifier)
 
     open_state = solara.use_reactive(False)

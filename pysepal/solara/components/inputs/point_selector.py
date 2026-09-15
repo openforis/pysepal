@@ -69,7 +69,7 @@ def PointsSelectorComponent(
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
 
-    notifications = use_notifications()
+    notifications = use_notifications(required=False)
     draft, publish = _use_draft(reactive_value)
     selection = draft.value or {}
     file_path = selection.get("pathname") or ""

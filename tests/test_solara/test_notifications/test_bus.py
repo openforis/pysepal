@@ -5,6 +5,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+import solara
 
 from pysepal import _scope_registry as scope_registry
 from pysepal.solara.notifications.bus import (
@@ -143,6 +144,177 @@ def test_concurrent_toast_adds():
         t.join()
     assert not errors
     assert len(bus.toasts.value) <= MAX_TOAST_QUEUE
+
+
+def test_a_mutation_during_publisher_shutdown_is_delivered(bus):
+    """Force another writer between the idle check and the publisher returning."""
+    idle = threading.Event()
+    resume = threading.Event()
+    lock = bus._lock
+    seen = []
+
+    class PauseAfterIdleCheck:
+        exits = 0
+
+        def __enter__(self):
+            lock.acquire()
+
+        def __exit__(self, *_):
+            pause = False
+            if threading.current_thread() is worker:
+                self.exits += 1
+                # An idle publisher acquires ownership, then checks for work.
+                pause = self.exits == 2
+            lock.release()
+            if pause:
+                idle.set()
+                assert resume.wait(2), "publisher was not resumed"
+
+    bus._lock = PauseAfterIdleCheck()
+    unsubscribe = bus.toasts.subscribe(lambda value: seen.append([t.id for t in value]))
+    worker = threading.Thread(target=bus._publish, daemon=True)
+    worker.start()
+    try:
+        assert idle.wait(2), "publisher did not reach its idle check"
+        bus.add_toast(Toast(id="late", message="arrived during shutdown"))
+    finally:
+        resume.set()
+        worker.join(timeout=2)
+        unsubscribe()
+
+    assert not worker.is_alive()
+    assert [t.id for t in bus.toasts.value] == ["late"]
+    assert seen == [["late"]]
+
+
+def test_a_subscriber_exception_keeps_unpublished_tasks_pending(bus):
+    """A failed toast dispatch must not acknowledge a task it never published."""
+    task = TrackedTask(id="pending", title="Export")
+    seen = []
+
+    def watcher(value):
+        if len(value) == 1:
+            bus.add_task(task)
+            bus.add_toast(Toast(id="second", message="queued by subscriber"))
+        else:
+            raise RuntimeError("subscriber failed")
+
+    unsubscribe_toasts = bus.toasts.subscribe(watcher)
+    unsubscribe_tasks = bus.tasks.subscribe(lambda value: seen.append([t.id for t in value]))
+    try:
+        with pytest.raises(RuntimeError, match="subscriber failed"):
+            bus.add_toast(Toast(id="first", message="first"))
+        unsubscribe_toasts()
+        bus.add_toast(Toast(id="recovery", message="after subscriber failure"))
+
+        assert bus.tasks.value == [task]
+        assert seen == [["pending"]]
+    finally:
+        unsubscribe_toasts()
+        unsubscribe_tasks()
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda b: b.add_toast(Toast(message="added")), id="add_toast"),
+        pytest.param(lambda b: b.remove_toast("seed-toast"), id="remove_toast"),
+        pytest.param(lambda b: b.add_task(TrackedTask(id="added")), id="add_task"),
+        pytest.param(lambda b: b.update_task("seed-task", title="renamed"), id="update_task"),
+        pytest.param(lambda b: b.remove_task("seed-task"), id="remove_task"),
+    ],
+)
+def test_a_subscriber_can_mutate_the_bus_it_was_notified_by(mutate):
+    """A subscriber calls back into the bus, so the lock must be reentrant.
+
+    A plain ``Lock`` blocks forever on a lock its own thread owns, with no
+    traceback.
+    """
+    bus = NotificationBus()
+    bus.add_toast(Toast(id="seed-toast", message="seed"))
+    bus.add_task(TrackedTask(id="seed-task", title="seed"))
+
+    reentered = []
+
+    def mutate_from_the_callback(_value):
+        if reentered:
+            return
+        reentered.append(True)
+        bus.add_toast(Toast(message="from the subscriber"))
+
+    bus.toasts.subscribe(mutate_from_the_callback)
+    bus.tasks.subscribe(mutate_from_the_callback)
+
+    worker = threading.Thread(target=mutate, args=(bus,), daemon=True)
+    worker.start()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive(), "the re-entrant mutation deadlocked on the bus lock"
+    assert reentered == [True]
+
+
+def test_a_nested_mutation_does_not_publish_inside_the_current_dispatch():
+    """A subscriber that mutates the bus must not start a second dispatch.
+
+    A nested dispatch leaves the subscribers the outer one had not reached
+    on the stale list. Depth is the deterministic signal: subscriber order
+    within a dispatch is a set iteration and cannot be pinned.
+    """
+    bus = NotificationBus()
+    depth = {"current": 0, "max": 0}
+    seen = []
+
+    def watcher(value):
+        depth["current"] += 1
+        depth["max"] = max(depth["max"], depth["current"])
+        seen.append([t.id for t in value])
+        if len(value) == 1:
+            bus.add_toast(Toast(id="B", message="second"))
+        depth["current"] -= 1
+
+    bus.toasts.subscribe(watcher)
+    bus.add_toast(Toast(id="A", message="first"))
+
+    assert depth["max"] == 1, "a nested mutation published inside the running dispatch"
+    assert seen == [["A"], ["A", "B"]]
+    assert [t.id for t in bus.toasts.value] == ["A", "B"]
+
+
+def test_every_subscriber_ends_on_the_state_the_bus_holds():
+    """Two subscribers, one of them mutating: neither may be left behind."""
+    bus = NotificationBus()
+    first_seen = []
+    second_seen = []
+
+    def mutating(value):
+        if len(value) == 1:
+            bus.add_toast(Toast(id="B", message="second"))
+
+    bus.toasts.subscribe(mutating)
+    bus.toasts.subscribe(lambda v: first_seen.append([t.id for t in v]))
+    bus.toasts.subscribe(lambda v: second_seen.append([t.id for t in v]))
+
+    bus.add_toast(Toast(id="A", message="first"))
+
+    final = [t.id for t in bus.toasts.value]
+    assert final == ["A", "B"]
+    assert first_seen[-1] == final
+    assert second_seen[-1] == final
+
+
+def test_solara_stores_a_new_value_before_it_notifies():
+    """The reentrant lock is only safe because of this ordering.
+
+    If solara notified before storing, a re-entrant write would read the old
+    list and discard the value being published.
+    """
+    reactive = solara.reactive(["first"])
+    seen_during_notify = []
+    reactive.subscribe(lambda _value: seen_during_notify.append(list(reactive.value)))
+
+    reactive.value = ["first", "second"]
+
+    assert seen_during_notify == [["first", "second"]]
 
 
 # Scope registry ------------------------------------------------------------

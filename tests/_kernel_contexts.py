@@ -1,25 +1,16 @@
-"""Shared fixtures for the sepalwidgets test-suite."""
+"""A real Solara kernel context, without running a Solara server.
+
+State that solara isolates per virtual kernel -- the locale reactive, the
+theme store -- can only be tested against real contexts: a fake scope id
+proves nothing about storage solara keys by its own kernel context.
+"""
 
 import pytest
-
-from pysepal.solara.theme import _theme_store
-
-
-@pytest.fixture(autouse=True)
-def _clear_scopes():
-    """Reset UI registries and the locale's process fallback between tests."""
-    from pysepal.i18n import set_locale
-
-    _theme_store.clear()
-    set_locale("en")
-    yield
-    _theme_store.clear()
-    set_locale("en")
 
 
 @pytest.fixture
 def kernel_contexts(monkeypatch, tmp_path):
-    """Create and close real Solara kernel contexts without a server."""
+    """Return a factory creating Solara kernel contexts, closed at teardown."""
     import asyncio
     import sys
     from uuid import uuid4

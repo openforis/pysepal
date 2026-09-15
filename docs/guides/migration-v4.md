@@ -588,16 +588,18 @@ Two more differences:
   process or dev-auth identity. Use `sessions_overview()` to see the process
   session.
 - `has_theme_state` is gone: it mixed a UI-scope fact into an authentication
-  payload. Ask the UI-state registry instead.
+  payload. Read the theme itself instead. There is no longer anything to ask —
+  the theme belongs to the kernel and is created on first read, so the question
+  "does one exist yet" has no caller.
 
 ```python
 # 3.x
 if info["has_theme_state"]: ...
 
 # 4.0
-from pysepal.solara import current_scope_id, has_scoped_state
+from pysepal.solara import get_current_theme_state
 
-if has_scoped_state("theme_state", current_scope_id()): ...
+theme_state = get_current_theme_state()
 ```
 
 `get_sessions_overview()` likewise returns a `SessionsOverview` with a
@@ -667,6 +669,36 @@ because it inherited from `Box`/`dict`; applications still using that legacy
 class retain its restrictions. Pass catalogue locale codes to the Solara
 selector rather than passing a translator object through Reacton.
 
+## 12. The theme belongs to its kernel; the UI-state registry is gone
+
+`get_scoped_state()`, `has_scoped_state()` and `clear_scoped_state()` are
+removed, along with `pysepal.solara.ui_state`. The theme was their only
+consumer, and it now lives in a solara kernel store.
+
+```python
+# 3.x / early 4.0
+from pysepal.solara import clear_scoped_state, get_scoped_state
+state = get_scoped_state("theme_state", ThemeState)
+
+# 4.0
+from pysepal.solara import get_current_theme_state
+state = get_current_theme_state()
+```
+
+`get_current_theme_state()` is unchanged, so an app that only ever called it
+needs no edit. What changes is lifetime: the theme is released with the kernel
+that created it, and there is nothing left to clear.
+
+That is the point of the move. A `ThemeState` retains every widget observing
+its traitlets — `SepalMap` binds a bound method to `dark` and never unobserves
+on teardown — so a theme the process kept after its connection ended kept that
+connection's map, its layers and its Earth Engine objects reachable for as long
+as the server ran. Clearing it was wired into `setup_sessions()`, which is
+opt-in, so an app that never called it never released anything.
+
+Nothing replaces the teardown call. If your app called `clear_scoped_state()`
+directly, delete the call.
+
 ## Audit checklist
 
 - [ ] Set `PYSEPAL_ADMIN_USERS` in every deployment that had a non-`admin`
@@ -697,6 +729,9 @@ selector rather than passing a translator object through Reacton.
 - [ ] Replace any "refresh to apply the language" instruction in your UI;
       switching is live, and picks no longer survive as a machine-global file.
 - [ ] Drop `module_theme` / `module_l10n` from scripts and CI.
+- [ ] Delete any `get_scoped_state()` / `has_scoped_state()` /
+      `clear_scoped_state()` call and read the theme with
+      `get_current_theme_state()`; its lifetime is the kernel's now.
 - [ ] Rename `SOLARA_TEST` to `PYSEPAL_DEV_AUTH` in `.env`, compose files and
       deployment manifests — or `PYSEPAL_LOCAL_EE=1` if the app only needs Earth
       Engine locally.

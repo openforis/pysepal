@@ -1,18 +1,16 @@
 """One scope-keyed registry for every per-connection object pysepal holds.
 
-UI state, the notification bus and ``SessionManager`` all key state by scope
-id. They used to disagree about what "no runtime" means -- one fell back to
-the process scope, one raised, one did both depending on the method. There is
-one default now, and it is the topology rule's: no per-connection runtime
-*is* the process scope. A registry over a credential store configures the
-strict resolver instead -- there, a wrong scope is a cross-user leak, not a
-shared bucket.
+The notification bus and ``SessionManager`` both key state by scope id. They
+used to disagree about what "no runtime" means -- one fell back to the process
+scope, one raised, one did both depending on the method. There is one default
+now, and it is the topology rule's: no per-connection runtime *is* the process
+scope. A registry over a credential store configures the strict resolver
+instead -- there, a wrong scope is a cross-user leak, not a shared bucket.
 
 Two policies, split deliberately. *Resolution* is configured per instance, via
 ``resolver=``. *Lifetime* is not configurable here at all -- it stays the
-caller's, because the three consumers disagree and always will:
+caller's, because the consumers disagree and always will:
 
-- plain drop -- ``ui_state`` removes a scope's state on the first release;
 - refcount -- ``notifications.bus`` keeps a bus until the last mount releases it;
 - tombstone -- ``SessionManager`` remembers a closed scope so it cannot be
   resurrected.
@@ -20,8 +18,13 @@ caller's, because the three consumers disagree and always will:
 This registry therefore has no opinion on *when* a value goes, only on how it
 is keyed and locked. A consumer layers its own policy on
 :meth:`ScopeRegistry.scope_lock` and drives it with the plain accessors --
-folding those three policies back in here as flags would recreate the
-per-caller tangle this class exists to remove.
+folding those policies back in here as flags would recreate the per-caller
+tangle this class exists to remove.
+
+What is *not* here is UI state. The theme used to be a third consumer, with a
+third lifetime -- a plain drop that only ran if the app had wired
+``setup_sessions()``. It lives in a solara kernel store now and is released
+with its kernel, so it needs no registry entry and no teardown call.
 """
 
 import logging

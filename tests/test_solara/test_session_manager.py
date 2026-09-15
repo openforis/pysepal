@@ -97,16 +97,3 @@ def test_explicit_process_scope_does_not_expose_the_process_session():
     assert info.username is None
     assert info.module_names == ()
     assert info.session_ready is False
-
-
-def test_setup_sessions_cleanup_clears_the_scope_ui_state():
-    from pysepal.solara import ui_state
-    from pysepal.solara.session_manager import setup_sessions
-    from pysepal.solara.theme import ThemeState
-
-    with patch("pysepal.solara.session_manager.resolve_scope_id", return_value="kernel-a"):
-        cleanup = setup_sessions()
-        ui_state.get_scoped_state("theme_state", ThemeState, scope_id="kernel-a")
-        cleanup()
-
-    assert ui_state.has_scoped_state("theme_state", "kernel-a") is False

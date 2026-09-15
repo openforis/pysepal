@@ -1,9 +1,11 @@
-"""Tests for scope-keyed theme-state resolution."""
+"""Tests for per-kernel theme-state resolution."""
+
+import gc
+import weakref
 
 import pytest
 
 import pysepal.solara.theme as theme_mod
-from pysepal import _scope_registry as scope_registry
 from pysepal.solara.runtime_context import UnsupportedSolaraRuntimeError
 from pysepal.solara.theme import (
     ThemeState,
@@ -36,25 +38,42 @@ def test_resolve_theme_state_does_not_swallow_errors(monkeypatch):
         resolve_theme_state()
 
 
-def test_current_theme_state_is_stable_per_scope(monkeypatch):
-    """Two reads in the same scope return the same ThemeState instance."""
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
-    assert get_current_theme_state() is get_current_theme_state()
+def test_one_kernel_reads_the_same_theme_twice(kernel_contexts):
+    """Two reads in the same kernel return the same ThemeState instance."""
+    with kernel_contexts():
+        assert get_current_theme_state() is get_current_theme_state()
 
 
-def test_current_theme_state_is_isolated_per_scope(monkeypatch):
+def test_two_kernels_do_not_share_a_theme(kernel_contexts):
     """Two connections must not share a theme; that was the process-global bug."""
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
-    first = get_current_theme_state()
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-b")
-    assert get_current_theme_state() is not first
+    with kernel_contexts():
+        first = get_current_theme_state()
+    with kernel_contexts():
+        assert get_current_theme_state() is not first
 
 
-def test_current_theme_state_never_raises_without_a_session(monkeypatch):
-    """A Solara scope with headers but no SEPAL session must still get a theme.
-
-    This used to raise "Session manager is active but no theme state exists".
-    Theme is UI state; it has no business failing on an auth condition.
-    """
-    monkeypatch.setattr(scope_registry, "current_scope_id", lambda: "kernel-a")
+def test_a_theme_is_available_without_a_kernel():
+    """A script, a notebook and pytest have no kernel and still need a theme."""
     assert isinstance(get_current_theme_state(), ThemeState)
+
+
+def test_pysepal_keeps_no_reference_to_a_closed_kernels_theme(kernel_contexts):
+    """A theme retains every widget that observes it.
+
+    ``SepalMap`` observes ``dark`` with a bound method and never unobserves
+    on teardown, so a theme outliving its kernel keeps that connection's map.
+    """
+    context = kernel_contexts()
+    with context:
+        state = get_current_theme_state()
+    reference = weakref.ref(state)
+    del state
+
+    context.close()
+    # Stands in for the context itself being collected: ``user_dicts`` is the
+    # kernel's own storage and goes with it. Whatever still holds the theme
+    # after this line is held by pysepal, not by solara.
+    context.user_dicts.clear()
+    gc.collect()
+
+    assert reference() is None

@@ -290,9 +290,18 @@ with track_task("Exporting", total_steps=2) as task:
 **Key rules:**
 
 - `NotificationProvider` must be mounted BEFORE components that call
-  `use_notifications()`. On the first render before the provider's
-  `use_effect` fires, the hook returns a `NoopNotifier` (silent fallback).
+  `use_notifications()`. Without one the hook raises
+  `NotificationProviderError` (pysepal 4.0; it used to return a silent
+  `NoopNotifier`).
+- A component published for reuse, which may render outside an app shell,
+  passes `use_notifications(required=False)` and reports feedback itself. It
+  then gets a `NoopNotifier`, which logs every dropped message at `WARNING`.
+  App code never passes it.
+- `notify()` / `track_task()` do not raise: a script or worker with no UI is a
+  legitimate caller, so they log and carry on.
 - Errors replace previous errors on the bus (only the latest is kept).
+- A subscriber may publish to the bus from its own callback; the nested
+  publication is deferred until the running dispatch finishes.
 - The Vue UI subscribes to the bus via `Reactive.subscribe()`, NOT by
   reading `.value` in the render body. This prevents notification changes
   from triggering parent component re-renders (which would disrupt
@@ -687,6 +696,8 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `methods="ALL"` in GEE/container apps (must exclude SHAPE and POINTS)
 - [ ] Blocking file I/O (`gpd.read_file`, `pd.read_csv`) directly in `use_effect` (use `use_task` + `asyncio.to_thread`)
 - [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for user feedback (use `use_notifications()` + `NotificationProvider`)
+- [ ] A component published for reuse calling `use_notifications()` without `required=False` (it raises when rendered outside an app shell)
+- [ ] `get_scoped_state()` / `has_scoped_state()` / `clear_scoped_state()` or `pysepal.solara.ui_state` (removed in 4.0; the theme is a kernel store, read it with `get_current_theme_state()`)
 - [ ] Reading `bus.toasts.value` or `bus.tasks.value` in a Solara render body (use `Reactive.subscribe()` in `use_effect` to avoid triggering parent re-renders)
 - [ ] Manual `ThemeToggle()` + `theme.observe(...)` wiring, or `theme_toggle=` on `SepalMap` / `MapApp` (use `get_current_theme_state()` + `theme_state=`)
 - [ ] `Translator(...)`, `from component.message import ms`, or `ms.` attribute lookups (use `catalog()` + `msg("dotted.key")`)

@@ -97,10 +97,7 @@ class TaskTracker:
 
     def _get_task(self) -> Optional[TrackedTask]:
         """Get the current task state from the bus."""
-        for t in self._bus.tasks.value:
-            if t.id == self._task_id:
-                return t
-        return None
+        return self._bus.find_task(self._task_id)
 
 
 class Notifier:
@@ -187,6 +184,15 @@ class _TaskTrackerContextManager(TaskTracker):
         return False
 
 
+def _dropped(kind: str, message: str) -> None:
+    """Report a notification nothing will display.
+
+    The provider is missing, but the text is not: an error the user never sees
+    must still be findable in the server log.
+    """
+    logger.warning("No NotificationProvider is mounted; %s dropped: %s", kind, message)
+
+
 class _NoopTaskTracker:
     """TaskTracker that does nothing (used when no provider is mounted)."""
 
@@ -203,7 +209,8 @@ class _NoopTaskTracker:
         pass
 
     def fail(self, message: str) -> None:
-        pass
+        """Log the failure: a task nobody tracked still failed."""
+        _dropped("task failure", message)
 
     def cancel(self) -> None:
         pass
@@ -216,30 +223,43 @@ class _NoopTaskTrackerContextManager(_NoopTaskTracker):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_val is not None:
+            _dropped("task failure", str(exc_val))
         return False
 
 
 class NoopNotifier:
-    """Notifier that does nothing (used when no provider is mounted)."""
+    """Notifier that does nothing (used when no provider is mounted).
+
+    Nothing reaches the screen, so every message goes to the log instead. A
+    dropped error is the one that matters: without this the app reports a
+    failure and looks like it succeeded.
+    """
 
     def success(self, message: str, *, timeout: Optional[float] = None) -> None:
-        """No-op success toast."""
+        """Log a success toast that nothing will display."""
+        _dropped("success", message)
 
     def error(self, message: str, *, timeout: Optional[float] = None) -> None:
-        """No-op error toast."""
+        """Log an error toast that nothing will display."""
+        _dropped("error", message)
 
     def warning(self, message: str, *, timeout: Optional[float] = None) -> None:
-        """No-op warning toast."""
+        """Log a warning toast that nothing will display."""
+        _dropped("warning", message)
 
     def info(self, message: str, *, timeout: Optional[float] = None) -> None:
-        """No-op info toast."""
+        """Log an info toast that nothing will display."""
+        _dropped("info", message)
 
     def cancel(self, message: str, *, timeout: Optional[float] = None) -> None:
-        """No-op cancel toast."""
+        """Log a cancel toast that nothing will display."""
+        _dropped("cancel", message)
 
     def dismiss(self, toast_id: str) -> None:
-        """No-op dismiss."""
+        """No-op dismiss: nothing was displayed to dismiss."""
 
     def track(self, title: str, total_steps: Optional[int] = None):
-        """Return a no-op task tracker context manager."""
+        """Log the task and return a no-op tracker context manager."""
+        _dropped("task", title)
         return _NoopTaskTrackerContextManager()

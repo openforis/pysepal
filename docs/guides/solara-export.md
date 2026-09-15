@@ -480,8 +480,11 @@ notifications.success("Export submitted", timeout=12.0)
 notifications.warning("Almost done…")  # uses type default (3s)
 ```
 
-When no `NotificationProvider` is mounted, the dialog falls back to an
-inline `solara.Success` / `solara.Error` / etc. rendered inside the card.
+The dialog asks for `use_notifications(required=False)`, so it renders
+standalone. With no `NotificationProvider` mounted it falls back to an inline
+`solara.Success` / `solara.Error` / etc. inside the card. Your own components
+should leave `required` alone: without a provider the hook raises
+`NotificationProviderError`, which is what you want in an app.
 
 ## The Modal Stays Open After Success
 
