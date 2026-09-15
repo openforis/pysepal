@@ -29,9 +29,10 @@ class NotificationBus:
         """Initialize reactive state containers and thread lock."""
         self.toasts: solara.Reactive[list[Toast]] = solara.reactive([])
         self.tasks: solara.Reactive[list[TrackedTask]] = solara.reactive([])
-        # Reentrant because solara fires subscribers synchronously inside the
-        # assignment to ``.value``, so every subscriber runs while the mutation
-        # that notified it still holds this lock.
+        # Still reentrant although _publish releases this before it fires
+        # subscribers: a subscriber runs on the publishing thread and calls back
+        # into the bus, so a plain Lock would turn any later change that narrows
+        # that gap into a silent deadlock.
         self._lock = threading.RLock()
         # The reactives are a published mirror. These are the state a mutation
         # reads and writes, and holding the two apart is what lets a
@@ -68,18 +69,24 @@ class NotificationBus:
                     toasts_changed = toasts is not self._published_toasts
                     tasks_changed = tasks is not self._published_tasks
                     if not (toasts_changed or tasks_changed):
+                        # Release ownership atomically with the idle check so
+                        # another writer cannot defer to a departing publisher.
+                        self._publishing = False
                         return
-                    self._published_toasts = toasts
-                    self._published_tasks = tasks
                 # Outside the lock: these fire subscribers, and another thread
                 # has to be able to queue its own mutation while they run.
                 if toasts_changed:
                     self.toasts.value = toasts
+                    with self._lock:
+                        self._published_toasts = toasts
                 if tasks_changed:
                     self.tasks.value = tasks
-        finally:
+                    with self._lock:
+                        self._published_tasks = tasks
+        except BaseException:
             with self._lock:
                 self._publishing = False
+            raise
 
     @staticmethod
     def _with_toast(current: list[Toast], toast: Toast) -> list[Toast]:

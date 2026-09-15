@@ -146,6 +146,74 @@ def test_concurrent_toast_adds():
     assert len(bus.toasts.value) <= MAX_TOAST_QUEUE
 
 
+def test_a_mutation_during_publisher_shutdown_is_delivered(bus):
+    """Force another writer between the idle check and the publisher returning."""
+    idle = threading.Event()
+    resume = threading.Event()
+    lock = bus._lock
+    seen = []
+
+    class PauseAfterIdleCheck:
+        exits = 0
+
+        def __enter__(self):
+            lock.acquire()
+
+        def __exit__(self, *_):
+            pause = False
+            if threading.current_thread() is worker:
+                self.exits += 1
+                # An idle publisher acquires ownership, then checks for work.
+                pause = self.exits == 2
+            lock.release()
+            if pause:
+                idle.set()
+                assert resume.wait(2), "publisher was not resumed"
+
+    bus._lock = PauseAfterIdleCheck()
+    unsubscribe = bus.toasts.subscribe(lambda value: seen.append([t.id for t in value]))
+    worker = threading.Thread(target=bus._publish, daemon=True)
+    worker.start()
+    try:
+        assert idle.wait(2), "publisher did not reach its idle check"
+        bus.add_toast(Toast(id="late", message="arrived during shutdown"))
+    finally:
+        resume.set()
+        worker.join(timeout=2)
+        unsubscribe()
+
+    assert not worker.is_alive()
+    assert [t.id for t in bus.toasts.value] == ["late"]
+    assert seen == [["late"]]
+
+
+def test_a_subscriber_exception_keeps_unpublished_tasks_pending(bus):
+    """A failed toast dispatch must not acknowledge a task it never published."""
+    task = TrackedTask(id="pending", title="Export")
+    seen = []
+
+    def watcher(value):
+        if len(value) == 1:
+            bus.add_task(task)
+            bus.add_toast(Toast(id="second", message="queued by subscriber"))
+        else:
+            raise RuntimeError("subscriber failed")
+
+    unsubscribe_toasts = bus.toasts.subscribe(watcher)
+    unsubscribe_tasks = bus.tasks.subscribe(lambda value: seen.append([t.id for t in value]))
+    try:
+        with pytest.raises(RuntimeError, match="subscriber failed"):
+            bus.add_toast(Toast(id="first", message="first"))
+        unsubscribe_toasts()
+        bus.add_toast(Toast(id="recovery", message="after subscriber failure"))
+
+        assert bus.tasks.value == [task]
+        assert seen == [["pending"]]
+    finally:
+        unsubscribe_toasts()
+        unsubscribe_tasks()
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
