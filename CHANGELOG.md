@@ -1,3 +1,107 @@
+## v4.0.0rc2 (2026-09-15)
+
+### BREAKING CHANGE
+
+- use_notifications() raises NotificationProviderError when no
+NotificationProvider is mounted. Pass required=False from components that are
+published for reuse and report feedback themselves.
+- get_scoped_state, has_scoped_state and clear_scoped_state
+are removed with pysepal.solara.ui_state. Use get_current_theme_state().
+- the plain MapApp(...) constructor builds no language
+selector; only MapApp.element(...) does. LocaleSelect loses selected_locale,
+translator= and locales=; it carries value only.
+- a catalogue leaf using {a.b}, {a[0]}, {a!r} or {a:spec} is
+refused when the catalogue binds. pysepal.message.ms is removed; nothing in
+pysepal read it.
+- English that str.format cannot render now raises when the
+catalogue binds. Every other locale falls back to English, so English that
+cannot render leaves nothing to fall back to.
+- AoiModel.METHODS entries carry "label_key" instead of "name";
+AoiModel.CUSTOM and ADMIN are now "custom" and "admin"; AssetSelect.TYPES
+values are catalogue keys; VectorField.column_base_items is a read-only
+property; six functions that took a translated default now take None.
+- LocaleState, use_locale, get_current_locale_state and
+resolve_locale_state are removed. Use pysepal.i18n.current_locale() and
+set_locale(). MapApp no longer accepts locale_state= and raises TypeError.
+
+### Feat
+
+- **demo**: a GEE AOI save/restore demo, and fix how the demos reach the notification bus (#1060)
+- **demo**: add a GEE variant of the AOI save and restore demo
+- **solara/notifications**: require a provider, with an opt-out for reuse
+- **i18n**: one msg() lookup over a flat message catalogue (#1037)
+- **i18n**: select plural forms with each locale's CLDR rules
+- **demo**: translate every demo app, not only its outer shell
+- **i18n**: make the locale reactive scope state
+- **i18n**: add the message catalogue
+- **solara/aoi**: restore an AOI selection from a serializable spec (#1031)
+- **demo**: persist and restore the AOI in the GEE map app
+- **demo**: add an AOI save and restore demo app
+- **demo**: ship a sample AOI in every format the picker reads
+- **solara/aoi**: restore AoiView from a persisted spec
+- **solara/inputs**: seed the pickers from an externally set value
+- **solara/aoi**: record the selection spec on every AoiResult
+- **solara/aoi**: add AoiSpec, the serializable AOI selection
+- **gee**: let asset exports set a pyramiding policy (#1043)
+- **gee**: let asset exports set a pyramiding policy
+
+### Fix
+
+- **demo**: mount the notification bus where the Voila entrypoint can reach it
+- **solara/aoi**: translate the missing-draw-control message and stop the docstring teaching inline alerts
+- **solara/aoi**: refuse ambient Earth Engine credentials in every AOI method (#1057)
+- **solara/aoi**: refuse ambient Earth Engine credentials in every AOI method
+- **mapping**: unobserve the theme when a SepalMap closes (#1056)
+- **sepalwidgets**: unobserve the theme toggle when a disclaimer tile closes
+- **mapping**: unobserve the theme when a SepalMap closes
+- **solara**: release the theme with its kernel, make the bus lock reentrant (#1054)
+- **solara/notifications**: release publisher ownership with the idle check
+- **solara/notifications**: log messages dropped without a provider
+- **solara/notifications**: defer a subscriber's own publication
+- **solara/notifications**: make the bus lock reentrant
+- **mapping,inputs**: map background, zoom floor and input alignment (#1046)
+- **inputs**: centre the inner icons of a dense field
+- **solara/inputs**: make the asset select sync icon reload the assets
+- **inputs**: keep prepended icons inside the field they belong to
+- **sepalwidgets**: give the file picker one inset and a live stylesheet
+- **mapping**: stop zooming out past a world that fills the viewport
+- **mapping**: paint the map void in the map's own theme
+- **solara**: merge the server assets once per process (#1050)
+- **solara**: merge the server assets once per process
+- **deps**: require ee-client 3.2.1 (#1052)
+- **deps**: require ee-client 3.2.1
+- **solara**: translate the Select AOI labels and drop the debug button
+- **aoi**: copy the shared method list instead of stripping it
+- **i18n**: close three gaps review found in catalogue validation
+- **translator**: search sibling dicts past the first in search_key
+- **solara/aoi**: clear the AOI layers by key, not by name
+- **solara/aoi**: keep a caller-owned value on unmount
+- **solara/session**: refuse a session-less interface under dev-auth connections
+- **solara/session**: scope a dev-auth session per connection
+
+### Refactor
+
+- **solara/theme**: hold the theme in a solara kernel store
+- **demo**: reshape the AOI buttons, keep save and restore in the AOI app only
+- **i18n**: hold the locale in one Solara reactive per kernel
+- **i18n**: accept only named placeholders in a message
+- **i18n**: read pysepal's own messages with msg()
+- **locale**: use one canonical locale matcher
+- move the runtime scope primitives above pysepal.solara
+- **solara**: drive the pickers and AOI restore from an editable draft
+- **solara/inputs**: hold the admin cascade as one code tuple
+
+## v4.0.0rc1 (2026-09-03)
+
+### Fix
+
+- **mapping**: keep the basemap order given by the caller (#1041)
+- **mapping**: keep the basemap order given by the caller
+- **mapping**: drive the CARTO backgrounds off a single API key (#1036)
+- **mapping**: drive the CARTO backgrounds off a single API key
+- **mapping**: make the background basemaps configurable (#1035)
+- **mapping**: make the background basemaps configurable
+
 ## v4.0.0rc0 (2026-08-20)
 
 ### Feat
