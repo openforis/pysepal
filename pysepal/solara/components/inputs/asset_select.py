@@ -61,7 +61,7 @@ def AssetSelectComponent(
     del value, on_value, loading, on_loading
 
     gee_interface = gee_interface or get_current_gee_interface()
-    notifications = use_notifications()
+    notifications = use_notifications(required=False)
     draft, publish = _use_draft(reactive_value)
     selection = draft.value or {}
     asset_id = selection.get("asset_id")

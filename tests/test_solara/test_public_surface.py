@@ -12,6 +12,7 @@ INIT_PATH = Path(ps.__file__)
 SEALED_SURFACE = frozenset(
     {
         "MissingSepalHeadersError",
+        "NotificationProviderError",
         "NotificationProvider",
         "PROCESS_SCOPE",
         "SepalSessionError",

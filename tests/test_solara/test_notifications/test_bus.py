@@ -225,13 +225,10 @@ def test_a_subscriber_exception_keeps_unpublished_tasks_pending(bus):
     ],
 )
 def test_a_subscriber_can_mutate_the_bus_it_was_notified_by(mutate):
-    """Solara fires subscribers synchronously, inside the assignment to ``.value``.
+    """A subscriber calls back into the bus, so the lock must be reentrant.
 
-    Every subscriber therefore runs while the publishing thread holds the bus
-    lock. A plain ``threading.Lock`` is not reentrant, so a subscriber whose
-    call stack reaches back into the bus -- one reporting its own failure as a
-    toast, say -- blocks forever on a lock its own thread already owns. The
-    mutation never returns and the kernel stops with no traceback.
+    A plain ``Lock`` blocks forever on a lock its own thread owns, with no
+    traceback.
     """
     bus = NotificationBus()
     bus.add_toast(Toast(id="seed-toast", message="seed"))
@@ -259,16 +256,9 @@ def test_a_subscriber_can_mutate_the_bus_it_was_notified_by(mutate):
 def test_a_nested_mutation_does_not_publish_inside_the_current_dispatch():
     """A subscriber that mutates the bus must not start a second dispatch.
 
-    Storing before notifying keeps the bus itself correct, but it does not
-    order the notifications. A nested dispatch delivers the newer list to
-    whichever subscribers it reaches, and the outer dispatch then resumes and
-    hands its stale list to the subscribers it had not reached yet. The UI
-    subscriber can therefore end on the older list and hide a toast until some
-    later, unrelated update.
-
-    Depth is the deterministic signal: subscriber order inside one dispatch is
-    a set iteration and cannot be pinned, but re-entrancy either happens or it
-    does not.
+    A nested dispatch leaves the subscribers the outer one had not reached
+    on the stale list. Depth is the deterministic signal: subscriber order
+    within a dispatch is a set iteration and cannot be pinned.
     """
     bus = NotificationBus()
     depth = {"current": 0, "max": 0}
@@ -313,11 +303,10 @@ def test_every_subscriber_ends_on_the_state_the_bus_holds():
 
 
 def test_solara_stores_a_new_value_before_it_notifies():
-    """The bus lock is reentrant, which is only safe because of this ordering.
+    """The reentrant lock is only safe because of this ordering.
 
-    A subscriber that mutates the bus reads ``.value`` to compute its own new
-    list. If solara notified before storing, that read would return the old
-    list and the re-entrant write would discard the value being published.
+    If solara notified before storing, a re-entrant write would read the old
+    list and discard the value being published.
     """
     reactive = solara.reactive(["first"])
     seen_during_notify = []

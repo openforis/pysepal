@@ -58,9 +58,8 @@ class ThemeState(HasTraits):
         return "dark" if value else "light"
 
 
-#: One ``ThemeState`` per virtual kernel, built on first read and released with
-#: the kernel that read it. A factory store, not ``solara.reactive(ThemeState())``:
-#: that hands every kernel the *same* default instance.
+#: One ``ThemeState`` per kernel. A factory store, not
+#: ``solara.reactive(ThemeState())``: that shares one instance across kernels.
 _theme_store = solara.toestand.KernelStoreFactory(ThemeState)
 
 
@@ -74,10 +73,8 @@ def get_current_theme_state() -> ThemeState:
 
     The state belongs to the kernel that first read it and is released with it.
     That lifetime is the point: a ``ThemeState`` retains every widget observing
-    its traitlets -- ``SepalMap`` binds a bound method and never unobserves on
-    teardown -- so one kept past its connection keeps that connection's map
-    alive for as long as the server runs. Outside a Solara server there is one
-    kernel per process, so the process-wide fallback is still one connection's.
+    its traitlets, so one kept past its connection keeps that connection's map
+    alive. Outside a Solara server there is one kernel per process.
 
     A fresh state starts at ``mode="auto"``; it is no longer seeded from
     ``~/.sepal-ui-config``, which is process-global and therefore leaked one

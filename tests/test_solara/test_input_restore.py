@@ -336,7 +336,7 @@ def _recording_notifier(monkeypatch):
     """Capture what the asset picker would toast."""
     errors = []
     monkeypatch.setattr(
-        asset_select_mod, "use_notifications", lambda: MagicMock(error=errors.append)
+        asset_select_mod, "use_notifications", lambda **_: MagicMock(error=errors.append)
     )
     return errors
 

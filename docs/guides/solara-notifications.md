@@ -32,8 +32,8 @@ The main API lives in `pysepal.solara.notifications`:
 - `use_notifications()` — returns a `Notifier` bound to the current kernel bus
 - `notify()` and `track_task()` — global escape hatches for non-component code
 - `Notifier.track(...)` — returns a `TaskTracker` context manager for long-running work
-- `NoopNotifier` — what `use_notifications()` returns with no provider mounted; it
-  warns and logs rather than dropping messages quietly
+- `NoopNotifier` — what `use_notifications(required=False)` returns with no
+  provider mounted; it logs each message rather than dropping it quietly
 
 Conceptually:
 
@@ -193,29 +193,42 @@ problems.
 
 ## When No Provider Is Mounted
 
-`use_notifications()` returns a `NoopNotifier`, and nothing reaches the screen.
-That is not silent:
+`use_notifications()` raises `NotificationProviderError`, on the first render
+that asks for it.
 
-- resolving without a bus raises a `UserWarning` naming `NotificationProvider`,
-  once per call site
-- every dropped message is logged at `WARNING` with its text, so an error the
-  user never saw is still findable in the server log
+That is deliberate. A component inside an app shell always has a provider above
+it, so a missing one is a bug in the app, not a runtime condition to absorb.
+Absorbing it switches the error channel off: every `.error()` the app reports
+goes nowhere, and an app whose failures vanish looks like an app that never
+fails. Mount `NotificationProvider()` once at the root, above every component
+that notifies.
 
-Treat both as a bug report about the app, not as a supported mode. A missing
-provider means the error channel is off, and an app whose failures go nowhere
-looks like an app that never fails. Mount `NotificationProvider()` once at the
-root, above every component that notifies.
+### Components published for reuse
 
-If a component genuinely has to run both inside and outside a shell — a widget
-published for reuse, say — check what you got back and fall back to inline
-feedback:
+A component that must also render outside a shell says so, and takes
+responsibility for its own feedback:
 
 ```python
-from pysepal.solara.notifications import NoopNotifier, use_notifications
-
-notifications = use_notifications()
-standalone = isinstance(notifications, NoopNotifier)
+notifications = use_notifications(required=False)
 ```
+
+It then gets a `NoopNotifier`. Nothing reaches the screen, but nothing is lost
+either: every dropped message is logged at `WARNING` with its text.
+
+Every pysepal component that notifies is in this category — `AoiView`,
+`AssetSelectComponent`, `PointsSelectorComponent`, `VectorSelectorComponent`
+and the export dialog all render standalone. `AoiView` goes furthest and
+surfaces success and failure inline when it has no provider; the others log.
+
+Use `required=False` only for that case. Inside an application, the default is
+what you want: a missing provider should stop the app, not quietly disarm it.
+
+### Scripts and workers
+
+`notify()` and `track_task()` do not raise. Code that runs with no UI at all —
+a script, a notebook cell, a worker — is a legitimate caller, so they log the
+message at `WARNING` and carry on. The rule is: inside a component a provider
+is required; outside one it is best effort.
 
 ## Global Escape Hatches
 

@@ -29,14 +29,9 @@ class NotificationBus:
         """Initialize reactive state containers and thread lock."""
         self.toasts: solara.Reactive[list[Toast]] = solara.reactive([])
         self.tasks: solara.Reactive[list[TrackedTask]] = solara.reactive([])
-        # Still reentrant although _publish releases this before it fires
-        # subscribers: a subscriber runs on the publishing thread and calls back
-        # into the bus, so a plain Lock would turn any later change that narrows
-        # that gap into a silent deadlock.
+        # Reentrant: a subscriber runs on the publishing thread and calls back in.
         self._lock = threading.RLock()
-        # The reactives are a published mirror. These are the state a mutation
-        # reads and writes, and holding the two apart is what lets a
-        # subscriber's own mutation be deferred without it reading a stale list.
+        # The reactives are a published mirror; these are what a mutation reads.
         self._toasts: list[Toast] = []
         self._tasks: list[TrackedTask] = []
         self._published_toasts: list[Toast] = self._toasts
@@ -46,17 +41,10 @@ class NotificationBus:
     def _publish(self) -> None:
         """Push pending state onto the reactives, one dispatch at a time.
 
-        A subscriber that mutates the bus must not start a second dispatch:
-        the nested one would hand the newer list to whichever subscribers it
-        reached, and the dispatch already running would then resume and hand
-        its own, now stale, list to the ones it had not reached yet. A UI
-        subscriber could end on the older list and hide a toast until some
-        later, unrelated update.
-
-        Such a mutation therefore only writes the state above and returns
-        here; the dispatch in progress publishes it on its next turn. The same
-        turn absorbs another thread's mutation, so two threads cannot publish
-        out of order either.
+        A nested dispatch would hand the newer list to the subscribers it
+        reached and leave the rest on the stale one. A mutation from inside a
+        subscriber therefore only writes the state; the dispatch in progress
+        publishes it on its next turn, as it does another thread's.
         """
         with self._lock:
             if self._publishing:
@@ -73,8 +61,7 @@ class NotificationBus:
                         # another writer cannot defer to a departing publisher.
                         self._publishing = False
                         return
-                # Outside the lock: these fire subscribers, and another thread
-                # has to be able to queue its own mutation while they run.
+                # Outside the lock: these fire subscribers, which may mutate.
                 if toasts_changed:
                     self.toasts.value = toasts
                     with self._lock:
@@ -165,11 +152,10 @@ class NotificationBus:
         self._publish()
 
     def find_task(self, task_id: str) -> Optional[TrackedTask]:
-        """Return a tracked task by ID, reading the state a mutation would.
+        """Return a tracked task by ID.
 
-        Not ``tasks.value``: that mirror lags by one turn while a deferred
-        publication is in flight, and a tracker stepping from inside a
-        subscriber would compute its update from the older list.
+        Not ``tasks.value``: that mirror lags while a deferred publication is
+        in flight.
         """
         with self._lock:
             return next((t for t in self._tasks if t.id == task_id), None)

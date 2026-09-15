@@ -299,7 +299,7 @@ def AoiView(
     # Notification system (replaces embedded alert). When no
     # NotificationProvider is mounted, `notifications` is a NoopNotifier
     # and user feedback is published inline instead.
-    notifications = use_notifications()
+    notifications = use_notifications(required=False)
     fallback_message = solara.use_reactive("")
     fallback_level = solara.use_reactive("info")
 

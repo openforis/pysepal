@@ -10,6 +10,7 @@ from .decorators import with_sepal_sessions
 from .dev_auth import prime_dev_auth
 from .errors import (
     MissingSepalHeadersError,
+    NotificationProviderError,
     SepalSessionError,
     SessionScopeClosedError,
 )
@@ -45,6 +46,7 @@ from .utils import (
 __all__ = [
     "MissingSepalHeadersError",
     "NotificationProvider",
+    "NotificationProviderError",
     "PROCESS_SCOPE",
     "SepalSessionError",
     "SessionInfo",

@@ -60,11 +60,8 @@ def test_a_theme_is_available_without_a_kernel():
 def test_pysepal_keeps_no_reference_to_a_closed_kernels_theme(kernel_contexts):
     """A theme retains every widget that observes it.
 
-    ``SepalMap._bind_theme_source`` observes ``dark`` with a bound method and
-    unobserves only when it rebinds to another source, never on teardown. A
-    theme the process keeps after its kernel is gone therefore keeps that
-    connection's map -- layers and Earth Engine objects included -- reachable
-    for the lifetime of the server.
+    ``SepalMap`` observes ``dark`` with a bound method and never unobserves
+    on teardown, so a theme outliving its kernel keeps that connection's map.
     """
     context = kernel_contexts()
     with context:
