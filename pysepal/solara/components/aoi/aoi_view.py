@@ -244,12 +244,20 @@ def AoiView(
         def MyApp():
             aoi = solara.use_reactive(None)
 
+            # Ahead of the view: the bus exists only once the provider element
+            # has rendered, so a consumer earlier in render order sees none.
+            NotificationProvider()
+
             with solara.Column():
                 AoiView(value=aoi, map_=my_map, gee=False)
 
                 if aoi.value:
-                    solara.Success(f"Selected: {aoi.value.name}")
+                    solara.Text(f"Selected: {aoi.value.name}")
         ```
+
+        Feedback about the selection is published to the notification bus, not
+        rendered inline -- the alerts further down this module are the fallback
+        for an application that mounts no provider at all.
 
     Returns:
         None. AOI data is passed through value/on_value as AoiResult.
@@ -718,7 +726,7 @@ def AoiView(
                 ):
                     pass
             else:
-                solara.Error("DrawControl not available. Please provide a map with DrawControl.")
+                solara.Error(msg("aoi_sel.exception.no_draw_control"))
 
         elif selected_method.value == "ASSET" and gee:
             session_gee_interface = get_current_gee_interface()

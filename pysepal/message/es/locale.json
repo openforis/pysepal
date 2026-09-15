@@ -78,6 +78,7 @@
       "no_file": "Por favor seleccione un archivo",
       "duplicate_key": "Una llave está duplicada en su selección. Por favor, seleccione diferentes columnas para los parámetros de latitud, longitud e Id",
       "no_draw": "Por favor, dibuje una figura en el mapa",
+      "no_draw_control": "Este mapa no tiene control de dibujo, así que no se pueden dibujar figuras en él.",
       "no_admlyr": "Seleccione una capa administrativa",
       "invalid_code": "El código no está en la base de datos",
       "no_gdf": "Debe establecer el gdf antes de interactuar con él",

@@ -78,6 +78,7 @@
       "no_file": "Veuillez sélectionner un fichier.",
       "duplicate_key": "Une clef est dupliquée dans votre selection. Veuillez selectionner des colonnes différentes pour la latitude, la longitude et l'id",
       "no_draw": "Veuillez dessiner une forme sur la carte",
+      "no_draw_control": "Cette carte n'a pas de contrôle de dessin, les formes ne peuvent donc pas y être dessinées.",
       "no_admlyr": "Sélectionnez une couche administrative",
       "invalid_code": "Le code administratif n'est pas dans la base de données.",
       "no_gdf": "Vous devez définir le gdf avant d'interagir avec celui-ci",

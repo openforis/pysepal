@@ -78,6 +78,7 @@
       "no_file": "Please select a file.",
       "duplicate_key": "A key is duplicated in your selection. Please select different columns for your latitude, longitude and Id parameters",
       "no_draw": "Please draw a shape in the map",
+      "no_draw_control": "This map has no draw control, so shapes cannot be drawn on it.",
       "no_admlyr": "Select an administrative layer",
       "invalid_code": "The code is not in the database",
       "no_gdf": "You must set the gdf before interacting with it",
