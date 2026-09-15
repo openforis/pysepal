@@ -273,6 +273,9 @@ def AoiView(
     # Initialize Earth Engine once
     def _ensure_ee():
         if gee:
+            # Before init_ee(): a connection with no session refuses here,
+            # and a refusal must leave the global ee unbound.
+            get_current_gee_interface()
             su.init_ee()
         return None
 
@@ -449,6 +452,7 @@ def AoiView(
                     geo_json=features,
                     name=draw_name.value,
                     gee=gee,
+                    gee_interface=gee_interface,
                 )
 
             elif method == "SHAPE":
@@ -456,14 +460,18 @@ def AoiView(
                     raise ValueError("Please select a vector file")
 
                 tracker.step("Processing vector file...")
-                result = await process_shape(**shape_data.value, gee=gee)
+                result = await process_shape(
+                    **shape_data.value, gee=gee, gee_interface=gee_interface
+                )
 
             elif method == "POINTS":
                 if not points_data.value or not points_data.value.get("pathname"):
                     raise ValueError("Please select a points file and id/lat/lng columns")
 
                 tracker.step("Processing points file...")
-                result = await process_points(**points_data.value, gee=gee)
+                result = await process_points(
+                    **points_data.value, gee=gee, gee_interface=gee_interface
+                )
 
             elif method == "ASSET":
                 if not asset_data.value or not asset_data.value.get("asset_id"):
@@ -475,6 +483,7 @@ def AoiView(
                     asset_type=asset_data.value["type"],
                     column=asset_data.value.get("column", "ALL"),
                     value=asset_data.value.get("value"),
+                    gee_interface=gee_interface,
                 )
 
             else:
