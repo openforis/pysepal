@@ -110,7 +110,22 @@ def load_spec() -> Optional[AoiSpec]:
 
 @solara.component
 def AoiGeeAppDemo():
-    """The demo UI, shared by the Solara and Voila entrypoints."""
+    """The demo UI, shared by the Solara and Voila entrypoints.
+
+    Only mounts the bus and the shell below it. ``NotificationProvider`` creates
+    the bus when its element renders, which is after this body has finished, so
+    a component cannot mount a provider for its own ``use_notifications()`` --
+    the consumer has to be a separate component rendered after it. Keeping the
+    provider here rather than in ``Page`` is what gives the Voila entrypoint,
+    which displays this component directly, a working bus too.
+    """
+    NotificationProvider()
+    _AoiGeeShell()
+
+
+@solara.component
+def _AoiGeeShell():
+    """Everything the demo shows, one level below the bus it publishes to."""
     setup_theme_colors()
     theme_state = get_current_theme_state()
     gee_interface = get_current_gee_interface()
@@ -222,13 +237,5 @@ def AoiGeeAppDemo():
 @solara.component
 @with_sepal_sessions(module_name="solara_aoi_gee_app")
 def Page():
-    """Authenticated Solara-server entrypoint for the GEE AOI demo.
-
-    The provider has to sit in an ancestor of whatever calls
-    ``use_notifications()``: the bus is created when the provider element
-    renders, so a component that mounts one in its own body still resolves a
-    ``NoopNotifier`` for itself and drops every toast it publishes. Under Voila
-    there is no ``Page``, so the demo degrades to ``AoiView``'s inline feedback.
-    """
-    NotificationProvider()
+    """Authenticated Solara-server entrypoint for the GEE AOI demo."""
     AoiGeeAppDemo()

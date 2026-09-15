@@ -123,9 +123,9 @@ def demo_vector() -> dict:
 def VectorAppDemo():
     """Mount the notification bus, then the app that publishes to it.
 
-    ``use_notifications()`` resolves to a NoopNotifier while no provider is
-    mounted, and the tasks close over whatever it returned -- so the hook has to
-    run in a child of the provider, not alongside it.
+    The bus is created when the provider element renders, which is after this
+    body has finished -- so the hook has to run in a child of the provider, not
+    alongside it. Called with no provider above it, it raises.
     """
     # Toasts top-right, task progress pill bottom-right.
     NotificationProvider()

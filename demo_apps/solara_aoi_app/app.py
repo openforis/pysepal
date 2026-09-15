@@ -98,7 +98,22 @@ def load_spec() -> Optional[AoiSpec]:
 
 @solara.component
 def AoiAppDemo():
-    """The demo UI, shared by the Solara and Voila entrypoints."""
+    """The demo UI, shared by the Solara and Voila entrypoints.
+
+    Only mounts the bus and the shell below it. ``NotificationProvider`` creates
+    the bus when its element renders, which is after this body has finished, so
+    a component cannot mount a provider for its own ``use_notifications()`` --
+    the consumer has to be a separate component rendered after it. Keeping the
+    provider here rather than in ``Page`` is what gives the Voila entrypoint,
+    which displays this component directly, a working bus too.
+    """
+    NotificationProvider()
+    _AoiShell()
+
+
+@solara.component
+def _AoiShell():
+    """Everything the demo shows, one level below the bus it publishes to."""
     setup_theme_colors()
     theme_state = get_current_theme_state()
     notifications = use_notifications()
@@ -204,5 +219,4 @@ def AoiAppDemo():
 @solara.component
 def Page():
     """Solara entrypoint -- no SEPAL session, no Earth Engine, no credentials."""
-    NotificationProvider()
     AoiAppDemo()
