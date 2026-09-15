@@ -5,6 +5,7 @@ from pathlib import Path
 import ipyvuetify as v
 
 from pysepal import sepalwidgets as sw
+from pysepal.sepalwidgets.vue_app import ThemeToggle
 
 
 def test_init() -> None:
@@ -183,3 +184,14 @@ def test_tile_disclaimer() -> None:
     assert tile._metadata["mount_id"] == "about_tile"
 
     return
+
+
+def test_a_closed_disclaimer_stops_following_its_theme_toggle() -> None:
+    """The toggle keeps the bound method, and that holds the tile."""
+    theme_toggle = ThemeToggle()
+    tile = sw.TileDisclaimer(theme_toggle=theme_toggle)
+
+    tile.close()
+
+    observers = theme_toggle._trait_notifiers.get("dark", {}).get("change", [])
+    assert not [h for h in observers if getattr(h, "__self__", None) is tile]
