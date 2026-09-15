@@ -17,7 +17,7 @@ from pysepal.logger import log
 from pysepal.scripts.gee_task import GEETask, R, TaskState
 
 
-def _refuse_ambient_session_per_connection() -> None:
+def refuse_ambient_session_per_connection() -> None:
     """Refuse to resolve machine credentials where the process serves many users.
 
     Called only when no session was supplied, immediately before
@@ -39,6 +39,11 @@ def _refuse_ambient_session_per_connection() -> None:
     ``gee_interface or GEEInterface()`` or a ``gee_session`` that is allowed to
     be None. Guarding them one at a time is a list that silently grows every
     time somebody adds a sixth.
+
+    Callers that need the decision but not an interface call this directly. The
+    AOI methods are the case: they only ever wanted the global ``ee`` for
+    ``geojson_to_ee``, so building an interface to throw away would spin up an
+    event loop and a thread for a check.
 
     Only ``PER_CONNECTION`` is refused: a notebook, a script, pytest or a SEPAL
     sandbox owns its machine credentials, and resolving them there is correct.
@@ -144,12 +149,12 @@ class GEEInterface:
             session: The session every call is made on behalf of. Omitting it
                 resolves one from the machine's own credentials, which is only
                 accepted where topology says the process serves a single
-                identity -- see :func:`_refuse_ambient_session_per_connection`.
+                identity -- see :func:`refuse_ambient_session_per_connection`.
         """
         # Before the loop thread below: a refused interface must not leak one.
         # Topology is decided here, eagerly; the credentials themselves are not.
         if session is None:
-            _refuse_ambient_session_per_connection()
+            refuse_ambient_session_per_connection()
 
         self._session = session
         self._session_lock = threading.Lock()
