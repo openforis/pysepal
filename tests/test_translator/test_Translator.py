@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from pysepal.message import ms
 from pysepal.translator import Translator
 
 
@@ -56,6 +55,63 @@ def test_search_key() -> None:
 
     with pytest.raises(Exception):
         Translator.search_key(d, key)
+
+    return
+
+
+def test_search_key_in_second_sibling() -> None:
+    """A protected key hiding in the second of two sibling dicts must still be found.
+
+    Regression test: search_key used to return right after the first dict
+    child, so any sibling coming after it was never searched.
+    """
+    key = "toto"
+    d = {"first": {"a": "b"}, "second": {"toto": "c"}}
+
+    with pytest.raises(Exception):
+        Translator.search_key(d, key)
+
+    return
+
+
+def test_search_key_in_a_deeper_later_sibling() -> None:
+    """A later sibling nested one level deeper must also be found.
+
+    A fix that only widens the search to immediate siblings would still
+    miss this case.
+    """
+    key = "toto"
+    d = {"first": {"a": "b"}, "second": {"deeper": {"toto": "c"}}}
+
+    with pytest.raises(Exception):
+        Translator.search_key(d, key)
+
+    return
+
+
+def test_search_key_does_not_raise_when_key_is_absent() -> None:
+    """A dictionary that never contains the key must not raise."""
+    key = "toto"
+    d = {"first": {"a": "b"}, "second": {"deeper": {"c": "d"}}}
+
+    Translator.search_key(d, key)
+
+    return
+
+
+def test_translator_rejects_a_protected_key_in_a_later_section(tmp_path: Path) -> None:
+    """The constructor must refuse a protected key wherever it hides, not just in the first section.
+
+    Args:
+        tmp_path: a temporary folder to build a throwaway catalog in
+    """
+    catalog = {"first": {"a_key": "value"}, "second": {"get": "value"}}
+    folder = tmp_path / "message" / "en"
+    folder.mkdir(parents=True)
+    (folder / "locale.json").write_text(json.dumps(catalog, indent=2))
+
+    with pytest.raises(Exception, match=r"You cannot use the key get"):
+        Translator(tmp_path / "message")
 
     return
 
@@ -138,15 +194,12 @@ def test_available_locales(translation_folder: Path) -> None:
     return
 
 
-def test_key_use() -> None:
-    """Check that are used at least once."""
-    # check key usage method
-    # don't test if all keys are translated, crowdin will monitor it
-    lib_folder = Path(__file__).parents[2] / "pysepal"
+def test_key_use(translation_folder: Path, tmp_path: Path) -> None:
+    """The legacy scanner still identifies unused messages in external apps."""
+    (tmp_path / "app.py").write_text("title = cm.a_key\n")
+    translator = Translator(translation_folder)
 
-    assert "test_key" in ms.key_use(lib_folder, "ms")
-
-    return
+    assert translator.key_use(tmp_path, "cm") == ["test_key"]
 
 
 @pytest.fixture(scope="module")

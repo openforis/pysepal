@@ -8,7 +8,7 @@ import ee
 import pytest
 
 from pysepal import sepalwidgets as sw
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 def wait_for_async(asset_select: sw.AssetSelect, action: Callable, timeout: float = 10) -> None:
@@ -60,7 +60,7 @@ def test_init(gee_dir: Path, gee_user_dir: Path, asset_select: sw.AssetSelect) -
     # zero assets are represented by a disabled item
     no_asset_item = [
         {
-            "text": ms.widgets.asset_select.no_assets.format(str(gee_dir)),
+            "text": msg("widgets.asset_select.no_assets", folder=str(gee_dir)),
             "disabled": True,
         }
     ]
@@ -171,7 +171,7 @@ def test_get_items(asset_select: sw.AssetSelect, gee_user_dir: Path) -> None:
     # we should export an extra asset and check if the new one is here but
     # that is 30 extra seconds so we cannot afford yet
     asset_select.items = []
-    wait_for_async(asset_select, lambda: asset_select.fire_event("click:prepend", None))
+    wait_for_async(asset_select, lambda: asset_select.fire_event("click:prepend-inner", None))
     assert str(gee_user_dir / "image") in asset_select.items
 
 

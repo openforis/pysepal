@@ -140,7 +140,7 @@ class Translator(Box):
 
         for v in d.values():
             if isinstance(v, dict):
-                return cls.search_key(v, key)
+                cls.search_key(v, key)
 
     @classmethod
     def sanitize(cls, d: Union[dict, list]) -> dict:

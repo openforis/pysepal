@@ -19,6 +19,7 @@ DEMO_DIRS = sorted(path.parent for path in DEMO_ROOT.glob("*/app.py"))
 DEMO_IDS = [path.name for path in DEMO_DIRS]
 
 MAP_APP = DEMO_ROOT / "solara_map_app"
+AOI_GEE_APP = DEMO_ROOT / "solara_aoi_gee_app"
 
 
 def _decorator_name(decorator: ast.expr) -> str:
@@ -102,6 +103,44 @@ def test_voila_notebook_only_imports_and_displays(demo: Path):
     assert source == f"from app import {shared_name}\n\ndisplay({shared_name}())\n"
 
 
+def _calls_named(tree: ast.AST, name: str) -> list[ast.Call]:
+    """Return every ``name(...)`` call in ``tree``."""
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+    ]
+
+
+@pytest.mark.parametrize("demo", DEMO_DIRS, ids=DEMO_IDS)
+def test_the_voila_entrypoint_gets_a_notification_bus(demo: Path):
+    """``ui.ipynb`` displays the shared component with no ``Page`` above it.
+
+    So a demo that publishes notifications has to mount the provider in the
+    shared component itself. Mounting it only in ``Page`` leaves the Voila path
+    with no bus, and ``use_notifications()`` raises there -- which is what
+    ``solara_aoi_app`` did, silently, because nothing rendered that path.
+    """
+    consumers = [
+        path
+        for path in sorted(demo.rglob("*.py"))
+        if any(
+            not any(kw.arg == "required" for kw in call.keywords)
+            for call in _calls_named(ast.parse(path.read_text()), "use_notifications")
+        )
+    ]
+    if not consumers:
+        pytest.skip("this demo publishes no notifications of its own")
+
+    shared_name = _shared_component_name(demo)
+    shared = _functions(demo / "app.py")[shared_name]
+
+    assert _calls_named(shared, "NotificationProvider"), (
+        f"{demo.name}: {[str(p.relative_to(demo)) for p in consumers]} call "
+        f"use_notifications(), but {shared_name} mounts no NotificationProvider"
+    )
+
+
 @pytest.mark.parametrize("demo", DEMO_DIRS, ids=DEMO_IDS)
 def test_demo_never_schedules_gee_work_on_a_second_event_loop(demo: Path):
     """Every async button must go through solara's loop, not GEEInterface's own.
@@ -149,3 +188,23 @@ def test_map_app_page_authenticates():
     assert [_decorator_name(item) for item in functions["MapAppDemo"].decorator_list] == [
         "component"
     ]
+
+
+def test_the_gee_aoi_demo_offers_what_a_spec_can_carry():
+    """Its point is which methods survive being written down and read back.
+
+    ASSET and DRAW are what the local demo cannot reach; SHAPE and POINTS persist
+    a server-local pathname, which the next connection cannot resolve.
+    """
+    import importlib.util
+
+    from pysepal.solara.components.aoi.aoi_view import resolve_methods
+
+    spec = importlib.util.spec_from_file_location("_aoi_gee_demo", AOI_GEE_APP / "app.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # map_ stands in for the demo's SepalMap: resolve_methods only tests it for None.
+    offered = resolve_methods(module.METHODS, gee=True, map_=object())
+
+    assert set(offered) == {"ADMIN0", "ADMIN1", "ADMIN2", "DRAW", "ASSET"}

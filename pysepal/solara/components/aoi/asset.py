@@ -5,12 +5,14 @@ into an AoiResult that can be rendered on the map.
 """
 
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Optional
 
 import ee
 
 from pysepal.scripts import utils as su
+from pysepal.scripts.gee_interface import refuse_ambient_session_per_connection
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
 
 async def process_asset(
@@ -18,6 +20,7 @@ async def process_asset(
     asset_type: str = "TABLE",
     column: str = "ALL",
     value: Any = None,
+    gee_interface: Optional[Any] = None,
 ) -> AoiResult:
     """Process a supported GEE asset into an AoiResult.
 
@@ -30,6 +33,8 @@ async def process_asset(
         asset_type: Earth Engine asset type reported by AssetSelectComponent.
         column: Column to filter by, or "ALL" for all features.
         value: Value to filter for in the column.
+        gee_interface: The session's interface. Omitting it is only accepted
+            where the process serves a single identity.
 
     Returns:
         AoiResult with the selected EE asset.
@@ -46,6 +51,10 @@ async def process_asset(
 
     if column != "ALL" and value is None:
         raise ValueError("Please select a value when filtering by column")
+
+    # Before init_ee(): a refusal must leave the global ee unbound.
+    if gee_interface is None:
+        refuse_ambient_session_per_connection()
 
     su.init_ee()
 
@@ -71,4 +80,11 @@ async def process_asset(
         feature_collection=ee_object,
         admin=None,
         gee=True,
+        spec=AoiSpec(
+            method="ASSET",
+            asset_id=asset_id,
+            asset_type=asset_type,
+            column=column,
+            value=value,
+        ),
     )

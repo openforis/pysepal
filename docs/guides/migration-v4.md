@@ -76,6 +76,15 @@ deleted branch: `pyramid_policy` on `export_image_to_asset`, and `dimensions`,
 `skip_empty_tiles` and `format_options` on `export_image_to_drive`. None had a
 caller in pysepal or in any downstream module.
 
+`pyramid_policy` has a successor. It was never a working parameter under either
+name: the session branch accepted it and dropped it, and the deleted branch sent
+it as `pyramidPolicy`, which Earth Engine rejects outright with
+`EEException: Unknown configuration options`. `export_image_to_asset` now takes
+`pyramiding_policy` and `pyramiding_policy_overrides`, spelled the way the REST
+API spells them and forwarded through ee-client. Reach for them on any
+categorical image: the server default is `MEAN`, which averages class codes in
+every overview level and renders the asset wrong below native zoom.
+
 **A task is now an ee-client model, not an `ee.batch.Task`.** `get_task` and
 `get_task_async` return `Optional[eeclient.tasks.Task]` — a pydantic model — and
 give you `None` for an unknown id. The deleted branch returned an `ee.batch.Task`
@@ -208,16 +217,19 @@ debug panel renders, and nothing downstream may key a permission off it.
 ## 3. Version floors
 
 ```text
-ee-client>=3.1.0,<4
+ee-client>=3.2.1,<4
 pysepal-api>=0.3.0,<0.4
 solara>=1.60,<2
 localtileserver>=1.0.0
-ipyvuetify<3
+ipyvuetify>=1.8,<3
 ```
 
 Both floors are published. The provider-agnostic auth pysepal 4.0 needs from
 `ee-client` -- the `EESession.from_*()` factories and `close()` on every
-credential holder -- shipped as a minor, so that floor stays inside 3.x.
+credential holder -- shipped as a minor, so that floor stays inside 3.x. The
+floor sits at 3.2.1 because that is where the assets cache stopped returning
+`None` for ten seconds after a cancelled fetch; below it, a second click on the
+asset selector's reload raises.
 
 `pysepal-api` 0.3.0 is what moves the `createFolder` POST off the
 session-creation path: `SepalClient.create()` no longer touches the network, and
@@ -229,6 +241,8 @@ no import breaks, so the failure appears at write time.
 subclasses at import time — `CalendarDaily` among them — so an unpinned resolve
 produced a pysepal that could not be imported at all. If your module pins
 `ipyvuetify>=3`, that pin and pysepal 4.0 cannot be installed together; drop it.
+The floor is there because `_version.semver`, which pysepal imports at startup,
+arrived in 1.8 — with only a cap, a crowded solve can fall through to a 0.1.x.
 
 `solara` is now pinned because two of its private APIs are load-bearing:
 `solara.scope.get_kernel_id` (every per-connection scope id) and
@@ -320,8 +334,8 @@ still keeps the user's choice in browser `localStorage` (`:solara:theme.variant`
 so it survives a reload, per browser. The config file was process-global, which is
 why in a multi-user container one user's theme became everyone's.
 
-**Locale**: `Translator` no longer consults the config file. With no `target` it
-now resolves to English, deterministically:
+**Locale**: the standalone legacy `Translator` no longer consults the config
+file. With no `target` it now resolves to English, deterministically:
 
 ```python
 # 3.x — target came from ~/.sepal-ui-config
@@ -331,26 +345,96 @@ ms = Translator(json_folder)
 ms = Translator(json_folder, target=user_locale)
 ```
 
-Where `user_locale` comes from is the other half. `LocaleSelect` resolves it in
-the browser — `localStorage[":sepalUi:locale"]`, then `navigator.language`, then
-English, each candidate matched against the catalogs the app actually ships —
-and pushes the result into a scope-keyed `LocaleState`. Build the translator
-from that and a language change re-renders in place, with no reload:
+New Solara apps use `catalog()` and `msg()` as shown below. `LocaleSelectComponent` resolves
+it in the browser — `localStorage[":sepalUi:locale"]`, then
+`navigator.language`, then English, each candidate matched against the
+catalogs the app actually ships — and writes it into one module-level Solara
+reactive. Solara isolates the value per virtual kernel; `pysepal.i18n` reads and
+writes it through `current_locale()` and `set_locale()`:
 
 ```python
-from pysepal.solara import use_locale
+from pysepal.i18n import current_locale, set_locale
 
-@solara.component
-def Page():
-    locale = use_locale()
-    ms = solara.use_memo(lambda: Translator(json_folder, target=locale), [locale])
-
-    MapApp.element(app_title=ms.app.title, locales=ms.available_locales())
+current_locale()  # "en" until something sets one
+set_locale("fr")  # any IETF BCP 47 code, in any casing
 ```
 
-`MapApp` takes locale _codes_ rather than a `Translator` because `Translator`
-subclasses `dict`, which reacton flattens on the way to `.element()`. Outside a
-Solara render, `get_current_locale_state()` returns the same state directly.
+`set_locale` cannot seed a startup default: a `LocaleSelect`'s first mount in a
+browser tab always overwrites it with the browser's own resolution, so only a
+call made after that first mount — from a settings dialog, say — sticks.
+
+**The locale state that came before `current_locale()` / `set_locale()` is gone too:**
+
+| removed                                                    | replacement                                      |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| `use_locale()`                                             | `pysepal.i18n.current_locale()`                  |
+| `LocaleState`                                              | nothing — the locale is scope state              |
+| `get_current_locale_state()`                               | `current_locale()` / `set_locale()`              |
+| `resolve_locale_state()`                                   | `current_locale()` / `set_locale()`              |
+| `locale_state=` on `MapApp` / `LocaleSelect`               | nothing — the component writes the Solara locale |
+| `LocaleSelect.bind_locale_state()` / `.get_locale_state()` | nothing                                          |
+
+Bind your app's catalogue once at import, with no target:
+
+```python
+# component/message/__init__.py
+from pathlib import Path
+
+from pysepal.i18n import catalog
+
+messages = catalog(Path(__file__).parent)
+msg = messages.msg
+```
+
+Call `msg("app.title")` from a component, a helper on its call stack, or an
+event handler in the same Solara context. It reads `current_locale()` on every
+call and subscribes during rendering, so a language change re-renders in place:
+
+```python
+@solara.component
+def Page():
+    MapApp.element(app_title=msg("app.title"), locales=messages.available_locales())
+```
+
+A thread created inside the connection's Solara context keeps that locale,
+including the thread `use_task(prefer_threaded=True)` starts. A pool thread
+never has the context: `asyncio.to_thread` and executor workers read the
+process default, which may be English even when the user selected French.
+Return results or a message key plus named arguments from such workers and
+translate in the owning UI context.
+
+Templates accept simple named placeholders and escaped braces. Replace
+positional placeholders, attribute/index access, conversions and format specs
+with named values formatted by the caller. For example, format an area before
+passing `area=` rather than writing `{area:.2f}` in the JSON catalogue.
+
+`count` is not always a plural selector: it only becomes one when `key` names a
+plural node in English, and is an ordinary placeholder on any other key.
+pysepal's own `msg("layer_state.complete", count=n)` just fills in a number —
+its English still reads "layer(s)", which is the workaround a plural node
+removes. The raster demo's `msg("toasts.cleared", count=n)` selects a form, and
+says "0 couche supprimée", "1 couche supprimée" or "3 couches supprimées" in French.
+
+Plural selection uses Babel's CLDR rules for the matched locale. English defines
+the message identity and arguments; translated nodes may add the categories
+their language needs. Use `{count}` in singular forms too, since French zero
+and Russian 21 can select `one`. Missing or invalid forms fall back using English
+rules for the same number. `check()` reports missing locale-specific categories.
+
+**An application is a Solara component, and `MapApp.element(...)` is its
+shell.** That was always how the examples were written; 4.0 makes it the only
+supported way. `MapApp.element(locales=messages.available_locales())` mounts the
+language selector, and the selector writes the locale that `msg()` reads. For a
+layout without `MapApp`, render `LocaleSelectComponent` from
+`pysepal.solara.components.locale_select` inside your component.
+
+The plain `MapApp(...)` constructor is the widget `MapApp.element` builds; it is
+not an API for assembling an application, and 4.0 no longer pretends it is. It
+mounts no selector and nothing in it follows the language, because outside a
+Solara render there is no render loop. 3.x code that constructed `MapApp`
+directly, Voila-style, has to become a component. The Vue `LocaleSelect` is
+pure transport: it carries `available_locales` and `value`, and `translator=`,
+`selected_locale` and the duplicate value link are gone.
 
 A 3.x locale saved in `~/.sepal-ui-config` is not migrated: the file is read
 nowhere in 4.0, so the first load falls to `navigator.language`.
@@ -359,6 +443,51 @@ The picker now offers every catalog the app ships. Previously the offered list
 was intersected with `pysepal/data/locale.parquet`, which has `es-ES` but no
 bare `es` — so pysepal's own bundled `message/es/` and `message/ru-RU/` could
 never be selected. The parquet now supplies only display names and flags.
+
+**pysepal's own widgets follow the locale now.** They used to read their text
+once, when the module was imported, so every app showed English whatever the
+user picked. Two kinds of site changed, and both are breaking.
+
+A widget renders in the locale that is active when it is built. An ipywidget
+already on screen does not re-translate itself when the language changes.
+
+_Constants that held a translated word now hold a catalogue key:_
+
+| before                                   | after                                   |
+| ---------------------------------------- | --------------------------------------- |
+| `AoiModel.METHODS[k]["name"]`            | `msg(AoiModel.METHODS[k]["label_key"])` |
+| `AoiModel.CUSTOM` == "Custom geometries" | `AoiModel.CUSTOM` == `"custom"`         |
+| `AoiModel.ADMIN` == "Administrative …"   | `AoiModel.ADMIN` == `"admin"`           |
+| `AssetSelect.TYPES[k]` (a word)          | `msg(AssetSelect.TYPES[k])`             |
+| `VectorField.column_base_items` (a list) | same name, now a read-only property     |
+
+`METHODS` mixed a code the program compares with a word the user reads. The
+`type` field held a translated sentence, and code compared against it — which
+only worked because every string was frozen English. Identity and label are
+separate now, so `msg()` can move the label without breaking the comparison.
+`AoiModel.TYPE_LABEL_KEYS` gives the catalogue key for each group heading.
+
+_Translated default arguments are `None`:_
+
+```python
+# 3.x — the label froze in English at import
+def __init__(self, label: str = ms.widgets.fileinput.label): ...
+
+# 4.0 — resolved when the widget is built
+def __init__(self, label: Optional[str] = None):
+    label = msg("widgets.fileinput.label") if label is None else label
+```
+
+This affects `LegendControl(title=)`, `SepalMap.add_legend(title=)`,
+`FileInput(label=)`, `LoadTableField(label=)`, `VectorField(label=)` and
+`scripts.utils.check_input(msg=)`. `None`, not an empty string, is the
+sentinel, so you can still ask for a deliberately empty label.
+
+`pysepal.message.ms` is removed. Import `msg` from `pysepal.message` for built-in
+strings, or bind an application catalogue with `catalog()`. This import no longer
+constructs a `Translator` or applies its protected-key restrictions. Scaffolds
+also use bound catalogues. The independently imported legacy `Translator` class
+remains available for external modules during migration.
 
 **CLI**: the `module_theme` and `module_l10n` entry points are removed — both
 existed only to edit that file. The remaining console scripts are
@@ -459,16 +588,18 @@ Two more differences:
   process or dev-auth identity. Use `sessions_overview()` to see the process
   session.
 - `has_theme_state` is gone: it mixed a UI-scope fact into an authentication
-  payload. Ask the UI-state registry instead.
+  payload. Read the theme itself instead. There is no longer anything to ask —
+  the theme belongs to the kernel and is created on first read, so the question
+  "does one exist yet" has no caller.
 
 ```python
 # 3.x
 if info["has_theme_state"]: ...
 
 # 4.0
-from pysepal.solara import current_scope_id, has_scoped_state
+from pysepal.solara import get_current_theme_state
 
-if has_scoped_state("theme_state", current_scope_id()): ...
+theme_state = get_current_theme_state()
 ```
 
 `get_sessions_overview()` likewise returns a `SessionsOverview` with a
@@ -522,7 +653,7 @@ This is what makes a panel that depends on state work at all:
 ```python
 # 4.0 — the heading and description follow the reactive value
 MapApp.element(
-    right_panel_config={"title": ms.panel.title, "width": 400},
+    right_panel_config={"title": msg("panel.title"), "width": 400},
     right_panel_content=[{"title": f"{len(layers)} layers", "content": [...]}],
 )
 ```
@@ -532,12 +663,41 @@ behaviour by rebuilding the whole `MapApp`, or by mutating the child panel
 through `app.right_panel[0]`. Both are now unnecessary, and the second is
 silently overwritten the next time the parent trait changes.
 
-**Catalog keys may not be named after `dict` methods.** `Translator` subclasses
-`Box` subclasses `dict`, so a key called `clear`, `items`, `keys`, `values`,
-`get`, `copy`, `update` or `pop` returns the bound method instead of your
-string, and reaches the UI as `<bound method Box.clear ...>` with no error.
-Rename the key. For the same reason `MapApp` takes `locales=` rather than a
-`Translator`: reacton flattens a `dict` subclass on the way to `.element()`.
+**Message keys are independent of Python method names.** `msg("items")` and
+`msg("clear")` are ordinary lookups. The old `Translator` protected those names
+because it inherited from `Box`/`dict`; applications still using that legacy
+class retain its restrictions. Pass catalogue locale codes to the Solara
+selector rather than passing a translator object through Reacton.
+
+## 12. The theme belongs to its kernel; the UI-state registry is gone
+
+`get_scoped_state()`, `has_scoped_state()` and `clear_scoped_state()` are
+removed, along with `pysepal.solara.ui_state`. The theme was their only
+consumer, and it now lives in a solara kernel store.
+
+```python
+# 3.x / early 4.0
+from pysepal.solara import clear_scoped_state, get_scoped_state
+state = get_scoped_state("theme_state", ThemeState)
+
+# 4.0
+from pysepal.solara import get_current_theme_state
+state = get_current_theme_state()
+```
+
+`get_current_theme_state()` is unchanged, so an app that only ever called it
+needs no edit. What changes is lifetime: the theme is released with the kernel
+that created it, and there is nothing left to clear.
+
+That is the point of the move. A `ThemeState` retains every widget observing
+its traitlets — `SepalMap` binds a bound method to `dark` and never unobserves
+on teardown — so a theme the process kept after its connection ended kept that
+connection's map, its layers and its Earth Engine objects reachable for as long
+as the server ran. Clearing it was wired into `setup_sessions()`, which is
+opt-in, so an app that never called it never released anything.
+
+Nothing replaces the teardown call. If your app called `clear_scoped_state()`
+directly, delete the call.
 
 ## Audit checklist
 
@@ -553,11 +713,25 @@ Rename the key. For the same reason `MapApp` takes `locales=` rather than a
       four legacy verbs with `client.files.*`.
 - [ ] Create the results directory yourself before writing into `results_path`;
       `SepalClient.create()` no longer does it, and nothing fails until the write.
-- [ ] Remove every `~/.sepal-ui-config` reader/writer; build the `Translator`
-      from `use_locale()` and use `get_current_theme_state()` for theme.
+- [ ] Remove every `~/.sepal-ui-config` reader/writer; bind your app's message
+      directory with `catalog()`, look up strings with `msg()`, and read/write
+      the runtime locale with `current_locale()` / `set_locale()`; use
+      `get_current_theme_state()` for theme.
+- [ ] Replace `use_locale()`, `LocaleState`, `get_current_locale_state()` and
+      `resolve_locale_state()` with `current_locale()` / `set_locale()`; drop
+      `locale_state=` from `MapApp` / `LocaleSelect` and any
+      `bind_locale_state()` / `get_locale_state()` call.
+- [ ] Replace `pysepal.message.ms` with `pysepal.message.msg`; move catalogue
+      format specifications into caller-supplied named values and supply each
+      locale's plural forms. Translate worker results in the owning UI context.
+- [ ] Mount language selection through `MapApp.element(locales=...)` or
+      `LocaleSelectComponent`; raw widget construction does not wire locale state.
 - [ ] Replace any "refresh to apply the language" instruction in your UI;
       switching is live, and picks no longer survive as a machine-global file.
 - [ ] Drop `module_theme` / `module_l10n` from scripts and CI.
+- [ ] Delete any `get_scoped_state()` / `has_scoped_state()` /
+      `clear_scoped_state()` call and read the theme with
+      `get_current_theme_state()`; its lifetime is the kernel's now.
 - [ ] Rename `SOLARA_TEST` to `PYSEPAL_DEV_AUTH` in `.env`, compose files and
       deployment manifests — or `PYSEPAL_LOCAL_EE=1` if the app only needs Earth
       Engine locally.
@@ -572,9 +746,10 @@ Rename the key. For the same reason `MapApp` takes `locales=` rather than a
       `GEEInterface()` now raises there.
 - [ ] Pass `gee_interface` to `get_viz_params` / `get_viz_params_async`; it is
       no longer optional.
-- [ ] Drop `pyramid_policy`, `dimensions`, `skip_empty_tiles` and
-      `format_options` from any `export_image_to_asset` / `export_image_to_drive`
-      call.
+- [ ] Drop `dimensions`, `skip_empty_tiles` and `format_options` from any
+      `export_image_to_drive` call, and rename `pyramid_policy` to
+      `pyramiding_policy` on `export_image_to_asset` — it never reached Earth
+      Engine under the old name.
 - [ ] Read a task's state as `task.metadata.state`, and handle `get_task`
       returning `None` instead of raising on an unknown id.
 - [ ] Replace every `pysepal.scripts.gee` call except `init_ee` and `need_ee`.

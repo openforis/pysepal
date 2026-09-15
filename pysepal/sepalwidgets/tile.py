@@ -17,7 +17,7 @@ from typing import List, Optional, Union
 import ipyvuetify as v
 from typing_extensions import Self
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.sepalwidgets.sepalwidget import SepalWidget
 from pysepal.sepalwidgets.vue_app import ThemeToggle
@@ -203,6 +203,7 @@ class TileDisclaimer(Tile):
 
         self.card = v.Card(class_="pa-5", raised=True, xs12=True, children=[])
 
+        self._theme_toggle = theme_toggle
         if theme_toggle:
             theme_toggle.observe(self.set_disclaimer, "dark")
         else:
@@ -211,10 +212,24 @@ class TileDisclaimer(Tile):
 
         self.children = [self.card]
 
+    def close(self) -> None:
+        """Release the theme toggle before closing the widget.
+
+        traitlets keeps ``set_disclaimer``, and a bound method holds the tile.
+        """
+        toggle, self._theme_toggle = self._theme_toggle, None
+        if toggle is not None:
+            try:
+                toggle.unobserve(self.set_disclaimer, "dark")
+            except (AttributeError, KeyError, ValueError):
+                pass
+        super().close()
+
     def set_disclaimer(self, change) -> List[Markdown]:
         """Rebuild the disclaimer element when the theme changes."""
         # create the tile content on the fly
-        disclaimer = "  \n".join(ms.disclaimer.p)
+        # disclaimer.p is a three-paragraph block in every shipped locale
+        disclaimer = "  \n".join(msg(f"disclaimer.p.{i}") for i in range(3))
         disclaimer += "  \n"
         disclaimer += '<div style="inline-block">'
 

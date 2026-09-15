@@ -6,11 +6,12 @@ from unittest.mock import patch
 
 import pytest
 
-from pysepal.solara import runtime_context, ui_state, utils
+from pysepal import _runtime_context as runtime_context
+from pysepal.solara import utils
 from pysepal.solara.runtime_context import PROCESS_SCOPE, UnsupportedSolaraRuntimeError
 from pysepal.solara.session_info import SessionInfo, SessionsOverview
 from pysepal.solara.session_manager import SessionManager
-from pysepal.solara.theme import ThemeState
+from pysepal.solara.theme import get_current_theme_state
 
 
 @contextmanager
@@ -76,10 +77,9 @@ def test_current_session_info_uses_the_process_scope_in_a_script():
 
 def test_touching_the_theme_does_not_change_the_session_payload():
     with scope("kernel-a"):
-        ui_state.get_scoped_state("theme_state", ThemeState)
+        get_current_theme_state()
         info = utils.get_current_session_info()
     assert info.session_ready is False
-    assert ui_state.has_scoped_state("theme_state", "kernel-a") is True
 
 
 def test_overview_derives_its_counts():

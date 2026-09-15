@@ -1,0 +1,26 @@
+{
+  "app": {
+    "title": "Guardar y restaurar el AOI (GEE)"
+  },
+  "panel": {
+    "title": "Área de interés",
+    "description": "El mismo guardado y restauración que el demo local, sobre una sesión de SEPAL. Earth Engine está activo, así que el selector ofrece recursos de GEE y cada selección se reconstruye como un objeto ee."
+  },
+  "section": {
+    "title": "Selección",
+    "description": "Guardar escribe {path}. Los métodos de archivo faltan a propósito: una ruta guardada no significa nada para otro usuario en un contenedor compartido, mientras que el identificador de un recurso y una geometría dibujada sí viajan."
+  },
+  "buttons": {
+    "save": "Guardar este AOI",
+    "restore": "Restaurar el AOI guardado"
+  },
+  "switch": {
+    "label": "Procesar automáticamente un AOI restaurado",
+    "hint": "Activado: al restaurar se dibuja el AOI de inmediato. Desactivado: rellena el formulario y usted pulsa Seleccionar AOI."
+  },
+  "toasts": {
+    "saved": "Selección {method} guardada en {file}.",
+    "missing": "{file} no existe o no se puede leer.",
+    "restored": "Selección {method} restaurada."
+  }
+}

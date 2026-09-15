@@ -6,7 +6,7 @@ from typing import Optional
 import ipyvuetify as v
 
 import pysepal.sepalwidgets as sw
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.planetapi.planet_model import PlanetModel
 from pysepal.planetapi.planet_widgets import InfoView
 from pysepal.scripts.decorator import loading_button
@@ -62,11 +62,13 @@ class PlanetView(sw.Layout):
         self.btn = btn if btn else sw.Btn("Validate", small=True, class_="mr-1")
         self.alert = alert if alert else sw.Alert()
 
-        self.w_username = sw.TextField(label=ms.planet.widget.username, class_="mr-2", v_model="")
-        self.w_password = sw.PasswordField(label=ms.planet.widget.password)
-        self.w_key = sw.PasswordField(label=ms.planet.widget.apikey, v_model="").hide()
+        self.w_username = sw.TextField(
+            label=msg("planet.widget.username"), class_="mr-2", v_model=""
+        )
+        self.w_password = sw.PasswordField(label=msg("planet.widget.password"))
+        self.w_key = sw.PasswordField(label=msg("planet.widget.apikey"), v_model="").hide()
         self.w_secret_file = sw.TextField(
-            label=ms.planet.widget.store,
+            label=msg("planet.widget.store"),
             v_model=str(Path.home() / ".planet.json"),
             readonly=True,
             class_="mr-2",
@@ -74,17 +76,17 @@ class PlanetView(sw.Layout):
         self.w_info_view = InfoView(model=self.planet_model)
 
         self.w_method = v.Select(
-            label=ms.planet.widget.method.label,
+            label=msg("planet.widget.method.label"),
             class_="mr-2",
             v_model="",
             items=[
-                {"value": "from_file", "text": ms.planet.widget.method.from_file},
-                {"value": "credentials", "text": ms.planet.widget.method.credentials},
-                {"value": "api_key", "text": ms.planet.widget.method.api_key},
+                {"value": "from_file", "text": msg("planet.widget.method.from_file")},
+                {"value": "credentials", "text": msg("planet.widget.method.credentials")},
+                {"value": "api_key", "text": msg("planet.widget.method.api_key")},
             ],
         )
 
-        self.w_store = sw.Checkbox(label=ms.planet.widget.store, v_model=True)
+        self.w_store = sw.Checkbox(label=msg("planet.widget.store"), v_model=True)
 
         w_validation = v.Flex(
             style_="flex-grow: 0 !important;",
@@ -125,7 +127,7 @@ class PlanetView(sw.Layout):
     def validate_secret_file(self) -> None:
         """Validate the secret file path."""
         if not Path(self.w_secret_file.v_model).exists():
-            self.w_secret_file.error_messages = [ms.planet.exception.no_secret_file]
+            self.w_secret_file.error_messages = [msg("planet.exception.no_secret_file")]
             return False
 
         self.w_secret_file.error_messages = []
@@ -191,7 +193,7 @@ class PlanetView(sw.Layout):
 
         else:
             if not self.validate_secret_file():
-                raise Exception(ms.planet.exception.no_secret_file)
+                raise Exception(msg("planet.exception.no_secret_file"))
             credentials = self.w_secret_file.v_model
 
         self.planet_model.init_session(credentials, write_secrets=self.w_store.v_model)

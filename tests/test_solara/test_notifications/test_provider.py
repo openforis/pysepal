@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pysepal.solara import scope_registry
+from pysepal import _scope_registry as scope_registry
 from pysepal.solara.notifications.bus import (
     NotificationBus,
     _refcounts,

@@ -4,14 +4,18 @@ This module provides utilities to configure common Solara server settings
 that are typically needed across all pysepal-based applications.
 """
 
+import atexit
 import logging
+import shutil
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Iterator, List, Optional, Tuple, Union
 
 import solara
 import solara.server.settings
 
-from .asset_merger import create_merged_assets_directory
+from pysepal.scripts.scratch import scratch_dir
+
+from .asset_merger import merge_asset_files
 
 logger = logging.getLogger("sepalui.solara.setup")
 
@@ -55,6 +59,10 @@ def setup_theme_colors():
     solara.lab.theme.themes.light.menu = "#FFFFFF"
 
 
+_merged_root: Optional[Path] = None
+_merged_locations: Tuple[Path, ...] = ()
+
+
 def setup_solara_server(
     extra_asset_locations: Optional[List[Union[str, Path]]] = None,
 ) -> None:
@@ -69,35 +77,80 @@ def setup_solara_server(
     - pysepal common assets (CSS, JS)
     - No kernel timeout ("0s") (helps to kill sessions once the page is closed)
 
-    If extra asset locations are provided, this function will merge all CSS and JS
-    files into combined files to ensure they are all properly served by Solara.
+    Solara serves extra assets from one location, so the CSS and JS of pysepal
+    and of every extra location are merged into one folder. That folder is
+    created once per process and removed at exit. A repeated call is cheap: with
+    no new location and no changed source file it does nothing, and with new
+    locations it merges the union into the same folder. Several apps in one
+    server, or a reload of the app module, therefore share one folder.
 
     Args:
         extra_asset_locations: Additional asset locations to serve beyond pysepal's common assets
 
     """
-    logger.debug("Setting up Solara server configuration for sepal_ui application")
+    global _merged_root, _merged_locations
 
     solara.server.settings.assets.fontawesome_path = DEFAULT_FONT_AWESOME
     solara.server.settings.kernel.cull_timeout = DEFAULT_CULL_TIMEOUT
 
-    # Get pysepal common assets
     sepal_common_assets = Path(__file__).parent / "common" / "assets"
     if not sepal_common_assets.exists():
         logger.warning(f"sepal_ui common assets directory not found: {sepal_common_assets}")
         return
 
-    # Always merge so the shared base.css is served alongside the Solara
-    # override sheet (and any extra locations). Both the "no extra locations"
-    # and "extra locations" cases go through the same path.
-    extra_paths = [Path(loc) for loc in (extra_asset_locations or [])]
-    if extra_paths:
-        logger.debug(f"Extra asset locations: {[str(p) for p in extra_paths]}")
+    requested = [Path(location).resolve() for location in (extra_asset_locations or [])]
+    new = tuple(dict.fromkeys(p for p in requested if p not in _merged_locations))
+    if _merged_root is not None and not new and _merged_is_current(sepal_common_assets):
+        logger.debug(f"Solara assets already merged at: {_merged_root / 'assets'}")
+        return
 
-    merged_assets_dir = create_merged_assets_directory(
-        sepal_common_assets, extra_paths, base_css_files=[SHARED_BASE_CSS]
+    logger.debug("Setting up Solara server configuration for sepal_ui application")
+    if _merged_root is None:
+        _merged_root = scratch_dir(prefix="sepal_ui_assets_")
+        atexit.register(_remove_merged_assets)
+        logger.debug(f"Created temporary assets directory: {_merged_root}")
+    _merged_root.mkdir(parents=True, exist_ok=True)
+    _merged_locations += new
+    if _merged_locations:
+        logger.debug(f"Extra asset locations: {[str(p) for p in _merged_locations]}")
+
+    merge_asset_files(
+        sepal_common_assets,
+        list(_merged_locations),
+        _merged_root,
+        base_css_files=[SHARED_BASE_CSS],
     )
+    merged_assets_dir = _merged_root / "assets"
     solara.server.settings.assets.extra_locations = [str(merged_assets_dir)]
     logger.debug(f"Asset location set to merged directory: {merged_assets_dir}")
 
     logger.info("Solara server configuration completed successfully")
+
+
+def _merged_is_current(sepal_common_assets: Path) -> bool:
+    """Whether the merged files are at least as new as every source file."""
+    merged_css = _merged_root / "assets" / "custom.css"
+    if not merged_css.exists():
+        return False
+    merged_at = merged_css.stat().st_mtime_ns
+    return all(
+        source.stat().st_mtime_ns <= merged_at for source in _source_files(sepal_common_assets)
+    )
+
+
+def _source_files(sepal_common_assets: Path) -> Iterator[Path]:
+    if SHARED_BASE_CSS.is_file():
+        yield SHARED_BASE_CSS
+    yield from (path for path in sepal_common_assets.iterdir() if path.is_file())
+    for location in _merged_locations:
+        for pattern in ("**/*.css", "**/*.js"):
+            yield from (path for path in location.glob(pattern) if path.is_file())
+
+
+def _remove_merged_assets() -> None:
+    """Delete the merged assets folder and forget it. Registered with ``atexit``."""
+    global _merged_root, _merged_locations
+    if _merged_root is not None:
+        shutil.rmtree(_merged_root, ignore_errors=True)
+    _merged_root = None
+    _merged_locations = ()

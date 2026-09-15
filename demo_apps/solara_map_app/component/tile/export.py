@@ -1,6 +1,7 @@
 """Right-panel section that exports the AOI and the processed outputs."""
 
 import solara
+from component.message import msg
 from component.scripts import export_sources
 
 from pysepal.solara.components.export import ExportLauncher
@@ -20,7 +21,7 @@ def ExportPanel(aoi_data, outputs, gee_interface, drive_interface):
     """
     ExportLauncher(
         sources=export_sources(aoi_data.value, outputs.value),
-        dialog_title="Export datasets",
+        dialog_title=msg("export.dialog_title"),
         default_target="gee",
         button_text=True,
         block=True,

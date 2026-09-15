@@ -8,7 +8,7 @@ from ipywidgets import link
 
 from pysepal import sepalwidgets as sw
 from pysepal.mapping.menu_control import MenuControl
-from pysepal.message import ms
+from pysepal.message import msg
 
 
 class HeaderRow(sw.Html):
@@ -277,7 +277,7 @@ class LayersControl(MenuControl):
 
         vector_rows = []
         if len(vectors) > 0 or len(others) > 0:
-            head = [HeaderRow(ms.layer_control.vector.header)]
+            head = [HeaderRow(msg("layer_control.vector.header"))]
             rows = [VectorRow(lyr) for lyr in vectors]
             rows += [ToggleRow(lyr, self, i) for i, lyr in enumerate(others)]
             vector_rows = head + rows
@@ -290,7 +290,7 @@ class LayersControl(MenuControl):
         ]
         layer_rows = []
         if len(layers) > 0:
-            head = [HeaderRow(ms.layer_control.layer.header)]
+            head = [HeaderRow(msg("layer_control.layer.header"))]
             rows = [LayerRow(lyr) for lyr in layers]
             layer_rows = head + rows
 
@@ -300,7 +300,7 @@ class LayersControl(MenuControl):
         base_rows = []
         current = next((lyr for lyr in bases if lyr.visible is True), SimpleNamespace(name=None))
         if len(bases) > 0:
-            head = [HeaderRow(ms.layer_control.basemap.header)]
+            head = [HeaderRow(msg("layer_control.basemap.header"))]
             empy_cell = sw.Html(tag="td", children=[" "], attributes={"colspan": 3})
             empty_row = sw.Html(tag="tr", class_="v-no-hever", children=[empy_cell])
             rows = [BaseRow(lyr) for lyr in bases] + [empty_row]

@@ -250,3 +250,19 @@ def current_session_plan(*, has_sepal_headers: bool) -> SessionPlan:
         using_solara_server=solara._using_solara_server(),
         has_sepal_headers=has_sepal_headers,
     )
+
+
+def is_serving_connections() -> bool:
+    """Whether a Solara server runs this process, with one kernel per connection.
+
+    This is the signal of rule 4. The session layer also reads it to decide if
+    ``DEV_AUTH`` scopes per connection.
+
+    Do not use ``resolve_scope_id()`` here. It uses IPython and also makes an
+    event loop, even when it fails, but the ``gee_interface`` guard must refuse
+    before a loop exists.
+
+    Returns:
+        True when a Solara server runs this process.
+    """
+    return solara._using_solara_server()

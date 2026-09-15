@@ -9,7 +9,7 @@ from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple, Union
 import ee
 from eeclient.client import EESession
 from eeclient.data import MapTileOptions
-from eeclient.export.image import ImageFileFormat
+from eeclient.export.image import ImageFileFormat, PyramidingPolicy
 from eeclient.export.table import TableFileFormat
 from eeclient.tasks import Task
 
@@ -17,7 +17,7 @@ from pysepal.logger import log
 from pysepal.scripts.gee_task import GEETask, R, TaskState
 
 
-def _refuse_ambient_session_per_connection() -> None:
+def refuse_ambient_session_per_connection() -> None:
     """Refuse to resolve machine credentials where the process serves many users.
 
     Called only when no session was supplied, immediately before
@@ -40,6 +40,11 @@ def _refuse_ambient_session_per_connection() -> None:
     be None. Guarding them one at a time is a list that silently grows every
     time somebody adds a sixth.
 
+    Callers that need the decision but not an interface call this directly. The
+    AOI methods are the case: they only ever wanted the global ``ee`` for
+    ``geojson_to_ee``, so building an interface to throw away would spin up an
+    event loop and a thread for a check.
+
     Only ``PER_CONNECTION`` is refused: a notebook, a script, pytest or a SEPAL
     sandbox owns its machine credentials, and resolving them there is correct.
 
@@ -48,11 +53,12 @@ def _refuse_ambient_session_per_connection() -> None:
     """
     # Local: pysepal.solara.session_manager imports this module, so neither of
     # these can be a module-level import.
-    from pysepal.solara._topology import SessionSource
     from pysepal.solara.errors import SepalSessionError
-    from pysepal.solara.session_manager import _current_plan
+    from pysepal.solara.session_manager import _current_plan, _is_scoped_per_connection
 
-    if _current_plan().source is not SessionSource.PER_CONNECTION:
+    # Use the rule of the session layer, so the guard always agrees with it.
+    # A dev-auth runtime that serves a connection refuses what production refuses.
+    if not _is_scoped_per_connection(_current_plan()):
         return
 
     raise SepalSessionError(
@@ -143,12 +149,12 @@ class GEEInterface:
             session: The session every call is made on behalf of. Omitting it
                 resolves one from the machine's own credentials, which is only
                 accepted where topology says the process serves a single
-                identity -- see :func:`_refuse_ambient_session_per_connection`.
+                identity -- see :func:`refuse_ambient_session_per_connection`.
         """
         # Before the loop thread below: a refused interface must not leak one.
         # Topology is decided here, eagerly; the credentials themselves are not.
         if session is None:
-            _refuse_ambient_session_per_connection()
+            refuse_ambient_session_per_connection()
 
         self._session = session
         self._session_lock = threading.Lock()
@@ -420,6 +426,8 @@ class GEEInterface:
         scale: Optional[float] = None,
         crs: Optional[str] = None,
         crs_transform: Optional[dict] = None,
+        pyramiding_policy: Optional[PyramidingPolicy] = None,
+        pyramiding_policy_overrides: Optional[Dict[str, PyramidingPolicy]] = None,
     ) -> str:
         """Asynchronously export an image to an asset."""
         return await self.session.export.image_to_asset_async(
@@ -435,6 +443,8 @@ class GEEInterface:
             scale=scale,
             crs=crs,
             crs_transform=crs_transform,
+            pyramiding_policy=pyramiding_policy,
+            pyramiding_policy_overrides=pyramiding_policy_overrides,
         )
 
     async def export_image_to_drive_async(
@@ -592,6 +602,8 @@ class GEEInterface:
         crs_transform: Optional[List[float]] = None,
         max_pixels: Optional[int] = None,
         priority: Optional[int] = None,
+        pyramiding_policy: Optional[PyramidingPolicy] = None,
+        pyramiding_policy_overrides: Optional[Dict[str, PyramidingPolicy]] = None,
     ) -> str:
         """Export an image to an asset, blocking until done."""
         return self._run_async_blocking(
@@ -605,6 +617,8 @@ class GEEInterface:
                 crs_transform=crs_transform,
                 max_pixels=max_pixels,
                 priority=priority,
+                pyramiding_policy=pyramiding_policy,
+                pyramiding_policy_overrides=pyramiding_policy_overrides,
             )
         )
 

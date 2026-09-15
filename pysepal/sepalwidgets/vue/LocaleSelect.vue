@@ -6,7 +6,7 @@
       style="background-color: unset !important"
     >
       <v-icon small left>mdi-translate</v-icon>
-      {{ currentLanguage }}
+      {{ value }}
     </v-btn>
 
     <v-dialog v-model="dialogOpen" max-width="400">
@@ -30,7 +30,7 @@
                   >{{ locale.name }} ({{ locale.code }})</v-list-item-title
                 >
               </v-list-item-content>
-              <v-list-item-action v-if="locale.code === currentLanguage">
+              <v-list-item-action v-if="isSelected(locale.code)">
                 <v-icon color="primary">mdi-check</v-icon>
               </v-list-item-action>
             </v-list-item>
@@ -42,29 +42,8 @@
 </template>
 
 <script>
-// Browser-owned locale resolution, mirroring Theming.vue's ownership model.
-//
-// Resolution order on mount (each candidate validated via matchOffered):
-//   1. localStorage[":sepalUi:locale"]  -- a previous explicit pick
-//   2. navigator.language               -- browser auto-detection
-//   3. "en"
-//
-// The ladder runs only ONCE per tab: after it has resolved, remounts adopt the
-// value Python already holds (see mounted()).
-//
-// The result is pushed to Python by DIRECT trait assignment
-// (this.selected_locale = code). Never use $emit("update:selected_locale"):
-// that is the Vue .sync convention, which requires a binding parent and is
-// silently dropped when this widget is a root widget -- which is why picks
-// did not survive a refresh before pysepal 4.
-//
-// matchOffered is a transcription of pysepal.solara.locale.match_offered_locale
-// (the tested Python reference implementation) -- keep both in sync.
-//
-// The storage key is written out at each use rather than hoisted into a const:
-// ipyvue evaluates the object below, not this file as a module, so a binding
-// declared out here is undefined inside methods. Theming.vue inlines its key
-// for the same reason. tests/test_sepalwidgets/test_vue_templates.py guards it.
+// ipyvue evaluates only the exported object, so storage keys stay inside it.
+// Direct value assignment also works when the selector is a root widget.
 
 export default {
   name: "LocaleSelect",
@@ -75,23 +54,13 @@ export default {
       required: true,
       default: () => [{ code: "en", name: "English", flag: "gb" }],
     },
-    selected_locale: { type: String, required: true, default: "en" },
+    value: { type: String, required: true, default: "en" },
   },
 
   data() {
-    // ipyvue calls this script's data() unbound, so `this` is the exported
-    // options object -- never the component instance. Initialisers must be
-    // literals (see Theming.vue); mounted() sets the real value.
     return {
       dialogOpen: false,
-      currentLanguage: "",
     };
-  },
-
-  watch: {
-    selected_locale(newValue) {
-      this.currentLanguage = newValue;
-    },
   },
 
   created() {
@@ -102,18 +71,10 @@ export default {
 
   mounted() {
     const offered = this.offeredCodes();
-    // MapApp.vue destroys and recreates this widget on every drawer
-    // expand/collapse, so mounted() runs many times per page. Once the ladder
-    // has resolved a locale for this tab, Python owns the value: re-running
-    // the ladder would revert a live pick (and, with two tabs sharing one
-    // localStorage, adopt the *other* tab's pick). Same ownership handoff as
-    // Theming.vue.
-    if (
-      this.localeResolved() &&
-      this.selected_locale &&
-      offered.includes(this.selected_locale)
-    ) {
-      this.apply(this.selected_locale);
+    // Drawer changes remount this widget. After the first browser resolution,
+    // preserve Python's value instead of adopting another tab's stored pick.
+    if (this.localeResolved() && this.matchOffered(this.value, offered)) {
+      this.apply(this.value);
       return;
     }
     const stored = this.matchOffered(this.storageGet(), offered);
@@ -132,12 +93,41 @@ export default {
     offeredCodes() {
       return (this.available_locales || []).map((locale) => locale.code);
     },
+    isSelected(code) {
+      return this.matchOffered(this.value, this.offeredCodes()) === code;
+    },
+    normalizeLocale(code) {
+      if (!code) return "";
+      const [primary, ...rest] = String(code).replace(/_/g, "-").split("-");
+      const canonical = [primary.toLowerCase()];
+      for (const subtag of rest) {
+        if (/^[A-Za-z]{4}$/.test(subtag)) {
+          canonical.push(
+            subtag[0].toUpperCase() + subtag.slice(1).toLowerCase()
+          );
+        } else if (/^[A-Za-z]{2}$/.test(subtag)) {
+          canonical.push(subtag.toUpperCase());
+        } else {
+          canonical.push(subtag.toLowerCase());
+        }
+      }
+      return canonical.join("-");
+    },
     matchOffered(candidate, offered) {
-      if (!candidate) return "";
-      if (offered.includes(candidate)) return candidate;
-      const primary = candidate.split("-")[0];
-      if (offered.includes(primary)) return primary;
-      return offered.find((code) => code.split("-")[0] === primary) || "";
+      const wanted = this.normalizeLocale(candidate);
+      if (!wanted) return "";
+      const byCanonical = new Map();
+      for (const code of offered) {
+        const canonical = this.normalizeLocale(code);
+        if (!byCanonical.has(canonical)) byCanonical.set(canonical, code);
+      }
+      if (byCanonical.has(wanted)) return byCanonical.get(wanted);
+      const primary = wanted.split("-")[0];
+      if (byCanonical.has(primary)) return byCanonical.get(primary);
+      for (const [canonical, code] of byCanonical) {
+        if (canonical.split("-")[0] === primary) return code;
+      }
+      return "";
     },
     storageGet() {
       // Never swallow silently: these catches are for a blocked-storage
@@ -169,10 +159,9 @@ export default {
     },
     apply(code) {
       this.markLocaleResolved();
-      this.currentLanguage = code;
-      if (this.selected_locale !== code) {
+      if (this.value !== code) {
         // eslint-disable-next-line vue/no-mutating-props
-        this.selected_locale = code;
+        this.value = code;
       }
     },
     openDialog() {
@@ -182,7 +171,7 @@ export default {
       this.dialogOpen = false;
     },
     selectLanguage(code) {
-      if (code !== this.currentLanguage) {
+      if (!this.isSelected(code)) {
         this.storageSet(code);
         this.apply(code);
       }

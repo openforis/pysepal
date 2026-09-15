@@ -69,7 +69,7 @@ When a new pysepal Solara app has async work or user-visible state transitions:
 - call `use_notifications()` inside pages, tiles, or widgets that own user-facing work
 - use `notifications.track(...)` for long-running tasks
 - use final success/error/cancel toasts for task completion state
-- if a component may render without a provider, provide inline fallback UX instead of silently dropping important feedback
+- a component that may render without a provider passes `use_notifications(required=False)` and provides inline fallback UX; without that flag the hook raises `NotificationProviderError`
 
 Scope model:
 
@@ -88,7 +88,7 @@ When a new pysepal Solara app produces GEE-backed layers users may want to take 
 - let the dialog publish toasts through the mounted `NotificationProvider`; do not add inline success/error widgets alongside it
 - do not build a second custom export UX unless the dialog genuinely cannot cover the requirements; if customization is needed, prefer `use_export_dialog(...)` + `ExportDialog(controller=...)` over re-implementing submission logic
 - use canonical file-format values (`"GEO_TIFF"`, `"GEO_JSON"`, `"SHP"`, `"CSV"`, `"KML"`, `"KMZ"`) at the pysepal to ee-client boundary
-- match pysepal's own `ee-client>=3.1.0,<4` floor in the app's pyproject rather
+- match pysepal's own `ee-client>=3.2.1,<4` floor in the app's pyproject rather
   than pinning an older ee-client
 
 ## App Shell Guidance

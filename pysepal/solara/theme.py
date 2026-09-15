@@ -5,9 +5,17 @@ from __future__ import annotations
 from typing import Optional
 
 import solara
+import solara.toestand
 from traitlets import Bool, Enum, HasTraits
 
-from pysepal.solara.ui_state import get_scoped_state
+if not hasattr(solara.toestand, "KernelStoreFactory"):
+    raise ImportError(
+        "solara.toestand.KernelStoreFactory is missing. The theme is stored "
+        "per virtual kernel through it, and solara's public reactive() hands "
+        "every kernel the same default object: without it each connection "
+        "would share one theme. Install a solara that provides it "
+        "(pysepal pins solara>=1.60,<2)."
+    )
 
 
 class ThemeState(HasTraits):
@@ -50,19 +58,29 @@ class ThemeState(HasTraits):
         return "dark" if value else "light"
 
 
+#: One ``ThemeState`` per kernel. A factory store, not
+#: ``solara.reactive(ThemeState())``: that shares one instance across kernels.
+_theme_store = solara.toestand.KernelStoreFactory(ThemeState)
+
+
 def get_current_theme_state() -> ThemeState:
     """Return the theme state for the current runtime scope.
 
-    Theme is UI state, not session state: it is keyed by the runtime scope and
-    created on first access, so a Solara connection, a Voila page, plain Jupyter,
-    a script and pytest all get a real ``ThemeState``. There is no session lookup
-    and no credential in this path, and this function never raises.
+    Theme is UI state, not session state: it is created on first access, so a
+    Solara connection, a Voila page, plain Jupyter, a script and pytest all get
+    a real ``ThemeState``. There is no session lookup and no credential in this
+    path, and this function never raises.
+
+    The state belongs to the kernel that first read it and is released with it.
+    That lifetime is the point: a ``ThemeState`` retains every widget observing
+    its traitlets, so one kept past its connection keeps that connection's map
+    alive. Outside a Solara server there is one kernel per process.
 
     A fresh state starts at ``mode="auto"``; it is no longer seeded from
     ``~/.sepal-ui-config``, which is process-global and therefore leaked one
     user's theme into every other session (issue #977).
     """
-    return get_scoped_state("theme_state", ThemeState)
+    return _theme_store.get()
 
 
 def resolve_theme_state(theme_state: Optional[ThemeState] = None) -> ThemeState:

@@ -1,0 +1,70 @@
+{
+  "type": "FeatureCollection",
+  "name": "demo_aoi",
+  "crs": {
+    "type": "name",
+    "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "north_forest",
+        "region": "north",
+        "land_use": "forest"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.12, 4.82],
+            [-74.12, 4.92],
+            [-73.98, 4.92],
+            [-73.98, 4.82],
+            [-74.12, 4.82]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "central_crop",
+        "region": "central",
+        "land_use": "agriculture"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.0, 4.64],
+            [-74.0, 4.74],
+            [-73.86, 4.74],
+            [-73.86, 4.64],
+            [-74.0, 4.64]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "coastal_wetland",
+        "region": "coast",
+        "land_use": "wetland"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-75.62, 10.34],
+            [-75.62, 10.46],
+            [-75.48, 10.46],
+            [-75.48, 10.34],
+            [-75.62, 10.34]
+          ]
+        ]
+      }
+    }
+  ]
+}

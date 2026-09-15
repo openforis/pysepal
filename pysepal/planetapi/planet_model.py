@@ -12,7 +12,7 @@ from planet.auth import Auth
 from planet.exceptions import NoPermission
 from planet.http import Session
 
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.model import Model
 
 
@@ -99,7 +99,7 @@ class PlanetModel(Model):
             credentials = [credentials]
 
         if not all(credentials):
-            raise ValueError(ms.planet.exception.empty)
+            raise ValueError(msg("planet.exception.empty"))
 
         if len(credentials) == 2:
             self.auth = Auth.from_login(*credentials)

@@ -3,6 +3,7 @@
 import asyncio
 
 import solara
+from component.message import msg
 from component.model import LayerLegend
 from component.parameter import (
     ELEVATION_CLASS_LAYER_ID,
@@ -27,20 +28,20 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
 
     async def run_process():
         if aoi_data.value is None or aoi_data.value.feature_collection is None:
-            raise ValueError("Select an AOI first before running processing.")
+            raise ValueError(msg("errors.no_aoi"))
 
         built = build_outputs(aoi_data.value)
 
-        with notifications.track("Processing data", total_steps=4) as task:
-            task.step("Building Earth Engine outputs...")
+        with notifications.track(msg("tasks.process"), total_steps=4) as task:
+            task.step(msg("tasks.building"))
             await asyncio.sleep(0.5)
             task.set_progress(0.2)
 
-            task.step("Adding derived layers to the map...")
+            task.step(msg("tasks.adding_layers"))
             await sepal_map.add_ee_layer_async(
                 built.pixel_area,
                 vis_params=PIXEL_AREA_VIS,
-                name="Pixel area (m²)",
+                name=msg("layers.pixel_area"),
                 key=PIXEL_AREA_LAYER_ID,
             )
             await sepal_map.add_ee_layer_async(
@@ -50,43 +51,41 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
                     "max": len(ELEVATION_CLASSES),
                     "palette": [color for _, _, color in ELEVATION_CLASSES],
                 },
-                name="Elevation classes",
+                name=msg("layers.elevation"),
                 key=ELEVATION_CLASS_LAYER_ID,
             )
             task.set_progress(0.6)
 
-            task.step("Measuring class areas...")
+            task.step(msg("tasks.measuring"))
             class_legend = await elevation_class_legend(gee_interface, built)
             task.set_progress(0.9)
 
-            task.step("Publishing legends and export sources...")
+            task.step(msg("tasks.publishing"))
             layer_legends.set(
                 upsert_legends(
                     layer_legends.value,
                     LayerLegend(
                         PIXEL_AREA_LAYER_ID,
-                        "Pixel area (m²)",
-                        gradient_legend("Pixel area (m²)", PIXEL_AREA_VIS),
+                        msg("layers.pixel_area"),
+                        gradient_legend(msg("layers.pixel_area"), PIXEL_AREA_VIS),
                     ),
-                    LayerLegend(ELEVATION_CLASS_LAYER_ID, "Elevation classes", class_legend),
+                    LayerLegend(ELEVATION_CLASS_LAYER_ID, msg("layers.elevation"), class_legend),
                 )
             )
             outputs.set(built)
 
-        notifications.success("Processing complete. Pick a layer in the map legend to inspect it.")
+        notifications.success(msg("toasts.process_done"))
 
     async def run_failing_process():
         """Simulate a Python exception mid-task to exercise error handling."""
-        with notifications.track("Risky operation", total_steps=2) as task:
-            task.step("Calling external service...")
+        with notifications.track(msg("tasks.risky"), total_steps=2) as task:
+            task.step(msg("tasks.calling"))
             await asyncio.sleep(1)
             task.set_progress(0.5)
 
-            task.step("Parsing response...")
+            task.step(msg("tasks.parsing"))
             await asyncio.sleep(0.5)
-            raise RuntimeError(
-                "Simulated failure: external API returned malformed JSON at line 42."
-            )
+            raise RuntimeError(msg("errors.simulated"))
 
     process_task = solara.lab.use_task(
         run_process, dependencies=None, raise_error=False, prefer_threaded=False
@@ -99,7 +98,7 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
 
     with solara.Column(style="gap: 8px;"):
         solara.Button(
-            "Run Processing",
+            msg("buttons.process"),
             on_click=process_task,
             color="primary",
             loading=process_task.pending,
@@ -108,7 +107,7 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
             block=True,
         )
         solara.Button(
-            "Simulate Error",
+            msg("buttons.simulate"),
             on_click=failing_task,
             color="error",
             outlined=True,

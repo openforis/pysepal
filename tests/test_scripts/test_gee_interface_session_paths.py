@@ -51,6 +51,7 @@ def interface():
     session.operations.create_folder_async = AsyncMock(return_value={"id": "created"})
     session.export.table_to_drive_async = AsyncMock(return_value="table-task-id")
     session.export.image_to_drive_async = AsyncMock(return_value="image-task-id")
+    session.export.image_to_asset_async = AsyncMock(return_value="asset-task-id")
 
     interface = GEEInterface(session=session)
     try:
@@ -176,6 +177,60 @@ def test_export_image_to_drive_forwards_every_argument(interface):
         crs_transform=[1, 0, 0, 0, 1, 0],
         priority=7,
     )
+
+
+def test_export_image_to_asset_forwards_every_argument(interface):
+    image = MagicMock()
+    region = MagicMock()
+
+    result = interface.export_image_to_asset(
+        image=image,
+        asset_id="projects/p/assets/x",
+        description="my-image",
+        region=region,
+        scale=30,
+        crs="EPSG:4326",
+        crs_transform=[1, 0, 0, 0, 1, 0],
+        max_pixels=1e9,
+        priority=7,
+    )
+
+    assert result == "asset-task-id"
+    interface.session.export.image_to_asset_async.assert_awaited_once_with(
+        image=image,
+        asset_id="projects/p/assets/x",
+        description="my-image",
+        max_pixels=1e9,
+        grid=None,
+        request_id=None,
+        workload_tag=None,
+        priority=7,
+        region=region,
+        scale=30,
+        crs="EPSG:4326",
+        crs_transform=[1, 0, 0, 0, 1, 0],
+        pyramiding_policy=None,
+        pyramiding_policy_overrides=None,
+    )
+
+
+def test_export_image_to_asset_forwards_the_pyramiding_policy(interface):
+    """Issue #1042.
+
+    The server default is ``MEAN``, which averages class codes in every
+    overview of a categorical image. A caller asking for ``MODE`` has to reach
+    ee-client, not be dropped here.
+    """
+    interface.export_image_to_asset(
+        image=MagicMock(),
+        asset_id="projects/p/assets/x",
+        pyramiding_policy="mode",
+        pyramiding_policy_overrides={"B1": "min"},
+    )
+
+    kwargs = interface.session.export.image_to_asset_async.await_args.kwargs
+    assert kwargs["pyramiding_policy"] == "mode"
+    assert kwargs["pyramiding_policy_overrides"] == {"B1": "min"}
 
 
 @pytest.mark.parametrize(

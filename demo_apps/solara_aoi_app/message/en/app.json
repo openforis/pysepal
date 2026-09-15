@@ -1,0 +1,26 @@
+{
+  "app": {
+    "title": "AOI save & restore"
+  },
+  "panel": {
+    "title": "Area of interest",
+    "description": "Pick an AOI and save it. Restoring it later rebuilds the geometry from the spec alone -- only that small JSON record was written."
+  },
+  "section": {
+    "title": "Select",
+    "description": "Save writes {path}. Nothing else on this page reads or writes it, so clearing the AOI leaves the saved one alone."
+  },
+  "buttons": {
+    "save": "Save this AOI",
+    "restore": "Restore saved AOI"
+  },
+  "switch": {
+    "label": "Process a restored AOI automatically",
+    "hint": "On: Restore draws the AOI straight away. Off: it fills the form and you press Select AOI."
+  },
+  "toasts": {
+    "saved": "Saved the {method} selection to {file}.",
+    "missing": "{file} is missing or unreadable.",
+    "restored": "Restored a {method} selection."
+  }
+}

@@ -6,12 +6,15 @@ point data into an AoiResult.
 
 import asyncio
 from pathlib import Path
+from typing import Any, Optional
 
 import geopandas as gpd
 import pandas as pd
 
 from pysepal.scripts import utils as su
+from pysepal.scripts.gee_interface import refuse_ambient_session_per_connection
 from pysepal.solara.components.aoi.aoi_result import AoiResult
+from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
 
 async def process_points(
@@ -20,6 +23,7 @@ async def process_points(
     lat_column: str,
     lng_column: str,
     gee: bool = True,
+    gee_interface: Optional[Any] = None,
 ) -> AoiResult:
     """Process a CSV/TXT file with point data into an AoiResult.
 
@@ -33,6 +37,8 @@ async def process_points(
         lat_column: Column name for latitude values.
         lng_column: Column name for longitude values.
         gee: If True, create Earth Engine FeatureCollection.
+        gee_interface: The session's interface. Omitting it is only accepted
+            where the process serves a single identity.
 
     Returns:
         AoiResult with point geometries.
@@ -66,6 +72,10 @@ async def process_points(
 
     feature_collection = None
     if gee:
+        # Before init_ee(): a refusal must leave the global ee unbound.
+        if gee_interface is None:
+            refuse_ambient_session_per_connection()
+
         su.init_ee()
         feature_collection = await asyncio.to_thread(su.geojson_to_ee, gdf.__geo_interface__)
 
@@ -76,4 +86,11 @@ async def process_points(
         feature_collection=feature_collection,
         admin=None,
         gee=gee,
+        spec=AoiSpec(
+            method="POINTS",
+            pathname=pathname,
+            id_column=id_column,
+            lat_column=lat_column,
+            lng_column=lng_column,
+        ),
     )

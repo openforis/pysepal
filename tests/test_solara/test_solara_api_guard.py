@@ -36,7 +36,7 @@ def exec_fresh(module_name: str) -> None:
 @pytest.mark.parametrize(
     ("module_name", "owner", "symbol"),
     [
-        ("pysepal.solara.runtime_context", solara.scope, "get_kernel_id"),
+        ("pysepal._runtime_context", solara.scope, "get_kernel_id"),
         ("pysepal.solara._topology", solara, "_using_solara_server"),
     ],
 )
@@ -48,7 +48,7 @@ def test_a_missing_solara_symbol_fails_the_import(module_name, owner, symbol, mo
 
 @pytest.mark.parametrize(
     "module_name",
-    ["pysepal.solara.runtime_context", "pysepal.solara._topology"],
+    ["pysepal._runtime_context", "pysepal.solara._topology"],
 )
 def test_the_guard_passes_against_the_installed_solara(module_name):
     """Otherwise the tests above would pass on any module that raises anything."""

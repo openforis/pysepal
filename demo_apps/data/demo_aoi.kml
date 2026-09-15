@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>demo_aoi</name>
+    <Placemark>
+      <name>north_forest</name>
+      <ExtendedData>
+        <Data name="plot_id">
+          <value>north_forest</value>
+        </Data>
+        <Data name="region">
+          <value>north</value>
+        </Data>
+        <Data name="land_use">
+          <value>forest</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -74.12,4.82,0 -74.12,4.92,0 -73.98,4.92,0 -73.98,4.82,0 -74.12,4.82,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>central_crop</name>
+      <ExtendedData>
+        <Data name="plot_id">
+          <value>central_crop</value>
+        </Data>
+        <Data name="region">
+          <value>central</value>
+        </Data>
+        <Data name="land_use">
+          <value>agriculture</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -74.0,4.64,0 -74.0,4.74,0 -73.86,4.74,0 -73.86,4.64,0 -74.0,4.64,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>coastal_wetland</name>
+      <ExtendedData>
+        <Data name="plot_id">
+          <value>coastal_wetland</value>
+        </Data>
+        <Data name="region">
+          <value>coast</value>
+        </Data>
+        <Data name="land_use">
+          <value>wetland</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -75.62,10.34,0 -75.62,10.46,0 -75.48,10.46,0 -75.48,10.34,0 -75.62,10.34,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

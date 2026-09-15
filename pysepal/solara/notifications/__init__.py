@@ -12,6 +12,7 @@ Usage::
 
 from .globals import notify, track_task
 from .hook import use_notifications
+from .notifier import NoopNotifier
 from .provider import NotificationProvider
 from .state import (
     TOAST_TIMEOUT_DEFAULTS,
@@ -23,6 +24,7 @@ from .state import (
 )
 
 __all__ = [
+    "NoopNotifier",
     "NotificationProvider",
     "notify",
     "track_task",

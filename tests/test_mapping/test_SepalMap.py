@@ -13,6 +13,7 @@ from ipyleaflet import GeoJSON
 
 from pysepal import mapping as sm
 from pysepal.frontend import styles as ss
+from pysepal.mapping.basemaps import basemap_tiles, xyz_tiles
 from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.visualization import get_viz_params
 from pysepal.scripts.gee_interface import GEEInterface
@@ -31,7 +32,7 @@ def test_init() -> None:
 
     assert isinstance(m, sm.SepalMap)
     assert m.center == [0, 0]
-    assert m.zoom == 2
+    assert m.zoom == 3
     assert len(m.layers) == 2
 
     default_basemaps = ["SEPAL Dark", "SEPAL Light"]
@@ -44,20 +45,23 @@ def test_init() -> None:
 
     # check that the map start with several basemaps
 
-    basemaps = ["CartoDB.DarkMatter", "CartoDB.Positron"]
+    # xyz_tiles keys, so that an upstream provider needing a key cannot take
+    # these out of basemap_tiles the way it took CartoDB out (#1044).
+    basemaps = ["ROADMAP", "TERRAIN"]
+    names = [basemap_tiles[b].name for b in basemaps]
     m = sm.SepalMap(basemaps)
     assert len(m.layers) == 3
     layers_name = [layer.name for layer in m.layers]
-    assert all(b in layers_name for b in basemaps)
+    assert all(n in layers_name for n in names)
 
     # the caller's order has to survive, as only the first one is left visible
-    assert layers_name[: len(basemaps)] == basemaps
+    assert layers_name[: len(names)] == names
     assert m.layers[0].visible
     assert not m.layers[1].visible
 
     # duplicates are dropped without disturbing that order
-    m = sm.SepalMap(["CartoDB.Positron", "CartoDB.DarkMatter", "CartoDB.Positron"])
-    assert [layer.name for layer in m.layers][:2] == ["CartoDB.Positron", "CartoDB.DarkMatter"]
+    m = sm.SepalMap([basemaps[1], basemaps[0], basemaps[1]])
+    assert [layer.name for layer in m.layers][:2] == [names[1], names[0]]
 
     # check that the map start with a DC
     m = sm.SepalMap(dc=True)
@@ -284,19 +288,17 @@ def test_add_ee_layer(image_id: str) -> None:
 
 
 def test_get_basemap_list() -> None:
-    """Set multiple basemaps on the SepalMap."""
-    # Retrieve 5 random maps
-    random_basemaps = [
-        "Esri.OceanBasemap",
-        "OpenStreetMap",
-        "HikeBike.HikeBike",
-        "HikeBike.HillShading",
-        "BasemapAT.orthofoto",
-    ]
+    """Every key SepalMap will accept as a basemap has to be listed.
 
+    Named providers used to stand in for "some upstream basemaps"; xyzservices
+    withdrew the whole CARTO family behind an API key in 2026.9.1 and the
+    stand-ins became a failing test (#1044). The list is asserted against its
+    two real sources instead.
+    """
     res = sm.SepalMap.get_basemap_list()
 
-    assert all([bm in res for bm in random_basemaps])
+    assert all(key in res for key in xyz_tiles)
+    assert set(sm.basemaps.get_xyz_dict()) <= set(res)
 
     return
 
@@ -698,3 +700,40 @@ def ee_map_with_layers(image_id: str) -> sm.SepalMap:
         m.addLayer(image, {}, viz["name"], viz_name=viz["name"])
 
     return m
+
+
+def _dark_observers(source):
+    """Return the handlers ``source`` will call when ``dark`` changes."""
+    return source._trait_notifiers.get("dark", {}).get("change", [])
+
+
+def test_a_closed_map_stops_following_its_theme_state() -> None:
+    theme_state = ThemeState(mode="light")
+    map_ = sm.SepalMap(theme_state=theme_state)
+    map_.close()
+
+    classes = tuple(map_._dom_classes)
+    theme_state.set_mode("dark")
+
+    assert tuple(map_._dom_classes) == classes
+
+
+def test_a_closed_map_stops_following_the_global_vuetify_theme() -> None:
+    """The default source is ``v.theme``, process-global and never collected.
+
+    A map that keeps observing it is retained for the life of the process,
+    which the per-kernel theme store does not help with.
+    """
+    map_ = sm.SepalMap()
+    map_.close()
+
+    assert not [h for h in _dark_observers(v.theme) if getattr(h, "__self__", None) is map_]
+
+
+def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
+    """The bound method traitlets keeps is what holds the map."""
+    theme_state = ThemeState(mode="light")
+    map_ = sm.SepalMap(theme_state=theme_state)
+    map_.close()
+
+    assert not [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is map_]

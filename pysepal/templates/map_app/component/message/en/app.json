@@ -1,7 +1,7 @@
 {
   "app": {
     "title": "Map application",
-    "footer": "The sky is the limit \u00A9 {}",
+    "footer": "The sky is the limit \u00A9 {year}",
     "banner": "This is a automatically generated application. Remove this banner once your application is ready.",
     "link": {
       "code": "Code link",

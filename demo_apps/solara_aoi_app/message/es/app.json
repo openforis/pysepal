@@ -1,0 +1,26 @@
+{
+  "app": {
+    "title": "Guardar y restaurar el AOI"
+  },
+  "panel": {
+    "title": "Área de interés",
+    "description": "Elija un AOI y guárdelo. Al restaurarlo se reconstruye la geometría solo a partir de la especificación: únicamente se escribió ese pequeño registro JSON."
+  },
+  "section": {
+    "title": "Selección",
+    "description": "Guardar escribe {path}. Nada más en esta página lo lee ni lo escribe, así que borrar el AOI deja intacto el guardado."
+  },
+  "buttons": {
+    "save": "Guardar este AOI",
+    "restore": "Restaurar el AOI guardado"
+  },
+  "switch": {
+    "label": "Procesar automáticamente un AOI restaurado",
+    "hint": "Activado: al restaurar se dibuja el AOI de inmediato. Desactivado: rellena el formulario y usted pulsa Seleccionar AOI."
+  },
+  "toasts": {
+    "saved": "Selección {method} guardada en {file}.",
+    "missing": "{file} no existe o no se puede leer.",
+    "restored": "Selección {method} restaurada."
+  }
+}

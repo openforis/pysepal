@@ -1,5 +1,7 @@
 """Declare the datasets the export dialog is allowed to offer."""
 
+from component.message import msg
+
 from pysepal.solara.components.export import ExportSource, ResolvedExport
 
 
@@ -14,9 +16,9 @@ def export_sources(aoi_value, outputs) -> list[ExportSource]:
         sources.append(
             ExportSource(
                 id="selected_aoi",
-                label="Selected AOI boundary",
+                label=msg("export.aoi_label"),
                 kind="table",
-                description="The AOI feature collection currently selected in the sidebar.",
+                description=msg("export.aoi_description"),
                 resolve=lambda fc=aoi_value.feature_collection, name=aoi_value.name: ResolvedExport(
                     ee_object=fc,
                     default_name=name,
@@ -50,21 +52,21 @@ def export_sources(aoi_value, outputs) -> list[ExportSource]:
     sources += [
         image_source(
             "pixel_area",
-            "Pixel area (m²)",
+            msg("layers.pixel_area"),
             outputs.pixel_area,
-            "Continuous output. Its map legend is the gradient built from vis_params.",
+            msg("export.pixel_area_description"),
         ),
         image_source(
             "elevation_class",
-            "Elevation classes",
+            msg("layers.elevation"),
             outputs.elevation_class,
-            "Classified output. Its legend lists per-class areas in the detail column.",
+            msg("export.elevation_description"),
         ),
         image_source(
             "multi_band",
-            "Multi-band demo (3 bands)",
+            msg("export.multi_band_label"),
             outputs.multi_band,
-            "Shows the ExportLauncher band picker: keep every band or narrow to a subset.",
+            msg("export.multi_band_description"),
             bands=("pixel_area_m2", "elevation_class", "flag"),
             # Pre-select the useful bands; `flag` stays deselectable from the dialog.
             default_bands=("pixel_area_m2", "elevation_class"),

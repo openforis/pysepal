@@ -13,7 +13,7 @@ the tile cod is the following :
 
     from pysepal import sepalwidgets as sw
     import ipyvuetify as v
-    from component.message import ms
+    from component.message import msg
     from pysepal.scripts import utils as su
     from pysepal.scripts import decorator as sd
 
@@ -26,7 +26,7 @@ the tile cod is the following :
 
         # a single widget
         self.slider = v.Slider(
-            label       = ms.my_tile_slider,
+            label       = msg("my_tile_slider"),
             class_      = "mt-5",
             thumb_label = True,
             v_model     = 0
@@ -37,7 +37,7 @@ the tile cod is the following :
         # construct the Tile with the widget we have initialized
         super().__init__(
             id_    = "my_tile",
-            title  = ms.my_tile.title,
+            title  = msg("my_tile.title"),
             inputs = [self.slider],
             btn    = sw.Btn(),
             alert  = sw.Alert()
@@ -135,7 +135,7 @@ in the :code:`app_items` list, add a :code:`DrawerItem` corresponding to your ti
     app_items = [
         # [...]
         sw.DrawerItem(
-            title = ms.app.drawer_item.aoi,
+            title = msg("app.drawer_item.aoi"),
             icon 'fa-solid fa-cogs',  # optional
             card="my_tile"
         )

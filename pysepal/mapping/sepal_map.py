@@ -59,7 +59,7 @@ from pysepal.mapping.layer_state_control import LayerStateControl
 from pysepal.mapping.layers_control import LayersControl
 from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.zoom_control import ZoomControl
-from pysepal.message import ms
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 
@@ -167,7 +167,8 @@ class SepalMap(ipl.Map):
 
         # set the default parameters
         kwargs.setdefault("center", [0, 0])
-        kwargs.setdefault("zoom", 2)
+        kwargs.setdefault("zoom", 3)
+        kwargs.setdefault("min_zoom", 3)
         kwargs.setdefault("max_zoom", 24)
         kwargs["basemap"] = {}
         kwargs["zoom_control"] = False
@@ -267,17 +268,34 @@ class SepalMap(ipl.Map):
         """Bind the map to a shared theme state."""
         self._bind_theme_source(theme_state if theme_state is not None else v.theme)
 
+    def _unbind_theme_source(self) -> None:
+        """Stop following the current theme source, if any.
+
+        traitlets keeps ``_on_theme_change``, and a bound method holds the map.
+        A source outliving the map -- ``v.theme`` is process-global -- would
+        otherwise keep it, its layers and its Earth Engine objects reachable.
+        """
+        previous = self._theme_source
+        self._theme_source = None
+        if previous is None:
+            return
+        try:
+            previous.unobserve(self._on_theme_change, "dark")
+        except (AttributeError, KeyError, ValueError):
+            pass
+
+    def close(self) -> None:
+        """Release the theme source before closing the widget."""
+        self._unbind_theme_source()
+        super().close()
+
     def _bind_theme_source(self, source) -> None:
         """Bind the map to the resolved source used to drive dark/light changes."""
         if source is self._theme_source:
             return
 
         previous = self._theme_source
-        if previous is not None:
-            try:
-                previous.unobserve(self._on_theme_change, "dark")
-            except (AttributeError, KeyError, ValueError):
-                pass
+        self._unbind_theme_source()
 
         source.observe(self._on_theme_change, "dark")
         self._theme_source = source
@@ -519,7 +537,7 @@ class SepalMap(ipl.Map):
         image = Path(image)
 
         if not image.is_file():
-            raise Exception(ms.mapping.no_image)
+            raise Exception(msg("mapping.no_image"))
 
         source = image
         if class_colors and _needs_dense_codes(class_colors):
@@ -1059,7 +1077,7 @@ class SepalMap(ipl.Map):
 
     def add_legend(
         self,
-        title: str = ms.mapping.legend,
+        title: Optional[str] = None,
         legend_dict: dict = {},
         position: str = "bottomright",
         vertical: bool = True,
@@ -1072,6 +1090,8 @@ class SepalMap(ipl.Map):
             position: the position (corners) of the legend on the map
             vertical: vertical or horizoal position of the legend
         """
+        title = msg("mapping.legend") if title is None else title
+
         # Define as class member so it can be accessed from outside.
         self.legend = LegendControl(legend_dict, title=title, vertical=vertical, position=position)
 

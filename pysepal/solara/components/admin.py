@@ -35,7 +35,7 @@ def AdminButton(
 
     Args:
         models: Single traitlets model or list of traitlets models to display in the dialog
-        logger_instance: Optional logger instance to use for debug logging
+        logger_instance: Accepted for backwards compatibility; unused
 
     Usage:
         from admin_session_dialog import AdminButton
@@ -133,33 +133,9 @@ def AdminButton(
     def close_dialog():
         set_dialog_open(False)
 
-    def debug_log_models():
-        active_logger = logger_instance if logger_instance is not None else logger
-        normalized_models = normalize_models()
-
-        if len(normalized_models) > 0:
-            for i, model in enumerate(normalized_models):
-                active_logger.debug(f"Model {i}: {model}")
-        else:
-            active_logger.debug("No models provided")
-
     # Only render the button if user is admin
     if not is_admin_user():
         return
-
-    # Create the debug button (only if models are provided)
-    normalized_models_for_button = normalize_models()
-    if len(normalized_models_for_button) > 0:
-        button_label = (
-            "Debug: Log Model" if len(normalized_models_for_button) == 1 else "Debug: Log Models"
-        )
-        solara.Button(
-            label=button_label,
-            on_click=debug_log_models,
-            color="info",
-            icon_name="mdi-bug",
-            outlined=True,
-        )
 
     # Create the admin button
     solara.Button(
