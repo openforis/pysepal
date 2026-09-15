@@ -1,0 +1,26 @@
+{
+  "app": {
+    "title": "AOI save & restore (GEE)"
+  },
+  "panel": {
+    "title": "Area of interest",
+    "description": "The same save and restore as the local demo, on a SEPAL session. Earth Engine is on, so the picker offers GEE assets and every selection is rebuilt as an ee object."
+  },
+  "section": {
+    "title": "Select",
+    "description": "Save writes {path}. The file methods are absent on purpose: a saved path means nothing to another user in a shared container, while an asset id and a drawn geometry travel."
+  },
+  "buttons": {
+    "save": "Save this AOI",
+    "restore": "Restore saved AOI"
+  },
+  "switch": {
+    "label": "Process a restored AOI automatically",
+    "hint": "On: Restore draws the AOI straight away. Off: it fills the form and you press Select AOI."
+  },
+  "toasts": {
+    "saved": "Saved the {method} selection to {file}.",
+    "missing": "{file} is missing or unreadable.",
+    "restored": "Restored a {method} selection."
+  }
+}

@@ -293,6 +293,33 @@ with track_task("Exporting", total_steps=2) as task:
   `use_notifications()`. Without one the hook raises
   `NotificationProviderError` (pysepal 4.0; it used to return a silent
   `NoopNotifier`).
+- "Before" means **earlier in render order**, and a component can never provide
+  for itself. The bus is created when the provider _element renders_, which is
+  after the body that created it has finished, so this raises:
+
+  ```python
+  @solara.component
+  def MyApp():          # WRONG -- raises NotificationProviderError
+      NotificationProvider()
+      notifications = use_notifications()
+  ```
+
+  Put the provider in an enclosing component, or in an earlier sibling, and do
+  the consuming one level down:
+
+  ```python
+  @solara.component
+  def MyApp():          # CORRECT -- Panel renders after the provider
+      NotificationProvider()
+      Panel()
+  ```
+
+  A shared component with two entrypoints (a Solara `Page` and a Voila
+  `ui.ipynb` that displays it directly) must therefore mount the provider
+  itself and consume in a child, as `demo_apps/solara_map_app` does. Mounting
+  it only in `Page` leaves the Voila path with no provider, so the hook raises
+  there.
+
 - A component published for reuse, which may render outside an app shell,
   passes `use_notifications(required=False)` and reports feedback itself. It
   then gets a `NoopNotifier`, which logs every dropped message at `WARNING`.
@@ -697,6 +724,8 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] Blocking file I/O (`gpd.read_file`, `pd.read_csv`) directly in `use_effect` (use `use_task` + `asyncio.to_thread`)
 - [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for user feedback (use `use_notifications()` + `NotificationProvider`)
 - [ ] A component published for reuse calling `use_notifications()` without `required=False` (it raises when rendered outside an app shell)
+- [ ] `NotificationProvider()` mounted in the same component body that calls `use_notifications()`, or after it (the bus exists only once the provider element has rendered, so both raise)
+- [ ] A dual-entrypoint app mounting `NotificationProvider()` only in `Page` (the Voila `ui.ipynb` displays the shared component directly, so that path has no provider and raises)
 - [ ] `get_scoped_state()` / `has_scoped_state()` / `clear_scoped_state()` or `pysepal.solara.ui_state` (removed in 4.0; the theme is a kernel store, read it with `get_current_theme_state()`)
 - [ ] Reading `bus.toasts.value` or `bus.tasks.value` in a Solara render body (use `Reactive.subscribe()` in `use_effect` to avoid triggering parent re-renders)
 - [ ] Manual `ThemeToggle()` + `theme.observe(...)` wiring, or `theme_toggle=` on `SepalMap` / `MapApp` (use `get_current_theme_state()` + `theme_state=`)

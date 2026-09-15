@@ -1,35 +1,36 @@
-"""Saving an AOI and getting it back: the two channels of ``AoiView``.
+"""Saving an AOI and getting it back, with Earth Engine on.
 
-``AoiView`` carries two different things on two different channels, and the
-difference is the whole point of this demo:
+``solara_aoi_app`` is the same demo with ``gee=False``. Read that one first: it
+explains the two channels of :class:`AoiView` -- ``value`` carries the computed
+:class:`AoiResult`, ``spec`` carries the small JSON :class:`AoiSpec` -- and the
+save/restore loop here is identical to it, line for line.
 
-* ``value``/``on_value`` carries an :class:`AoiResult` -- a GeoDataFrame and,
-  when Earth Engine is on, an ``ee`` object. It is what you compute with, and it
-  cannot be written to disk.
-* ``spec``/``on_spec`` carries an :class:`AoiSpec` -- the small JSON record of
-  what the user actually picked. It is what you persist, and passing it back
-  rebuilds both the picker and the AOI.
+What this one adds is the half the local demo cannot reach:
 
-The spec channel is two-way and lives entirely in memory. This app holds it in
-one reactive: ``AoiView`` writes every successful selection into it, and reading
-a saved selection back means writing that reactive. The disk is not part of that
-loop -- the **Save** and **Restore** buttons are the only code here that touches
-the file, so an app that never persists anything simply never adds them.
+* **ASSET.** The method only exists with Earth Engine, so only here does the
+  round-trip cover ``asset_id`` and ``asset_type``. Pick a GEE table, save,
+  clear, restore: the spec rebuilds the ``ee.FeatureCollection``, not just the
+  form.
+* **DRAW against the session.** ``process_draw`` converts the drawn GeoJSON
+  with ``geojson_to_ee``. The interface this app authenticated is threaded into
+  that call, so the geometry is built for the user whose connection asked --
+  not on whatever credentials the container happens to hold.
 
-Earth Engine is off, so this runs with no credentials at all: the admin
-boundaries come from FAO's WFS service and the file methods read local files.
-That also means the ASSET method is not offered here -- it needs GEE.
+SHAPE and POINTS are excluded. They read server-local paths, so the ``pathname``
+a spec persists means nothing to the next user of a shared container -- see
+``docs/guides/solara-gee-patterns.md``, "AOI Method Restrictions". That is the
+other thing worth seeing here: which methods survive being written down.
 
-The saved file lives in the scratch directory, so nothing in the repo changes.
-Delete it to start over.
+The saved file lives in the scratch directory under its own name, so the two AOI
+demos never read each other's. Delete it to start over.
 
-The UI lives in :func:`AoiAppDemo` so the same code serves both runtimes --
-``Page`` is the Solara entrypoint and ``ui.ipynb`` is a thin Voila one.
+The UI lives in :func:`AoiGeeAppDemo` so the same code serves both runtimes --
+``Page`` adds the SEPAL session for Solara and ``ui.ipynb`` is a thin Voila one.
 
-To run:
+To run (needs SEPAL credentials in a ``.env`` at the repo root):
 
 ```bash
-pysepal$ ./run_solara.sh demo_apps/solara_aoi_app/app.py --port 8901
+pysepal$ ./run_solara.sh demo_apps/solara_aoi_gee_app/app.py --port 8901
 ```
 """
 
@@ -45,16 +46,25 @@ from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
 from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
+    get_current_gee_interface,
     get_current_theme_state,
+    setup_sessions,
     setup_solara_server,
     setup_theme_colors,
+    with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiSpec, AoiView
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
 
-#: Where the demo keeps the persisted selection between runs.
+
+@solara.lab.on_kernel_start
+def on_kernel_start():
+    """Set up sessions management."""
+    return setup_sessions()
+
+
 #: Catalogs, but no importable package: ``gallery.py`` puts every demo directory
 #: on ``sys.path``, so a second demo shipping ``component/`` would resolve to
 #: whichever one imported first. The map app owns that name; this one stays flat.
@@ -62,10 +72,12 @@ MESSAGE_DIR = Path(__file__).parent / "message"
 messages = catalog(MESSAGE_DIR)
 msg = messages.msg
 
-SAVED_AOI = scratch_root() / "demo_aoi_spec.json"
+#: Its own name, so this demo and the local one never restore each other's AOI.
+SAVED_AOI = scratch_root() / "demo_aoi_gee_spec.json"
 
-#: Sample AOIs the SHAPE and POINTS pickers open on, in every format they read.
-DEMO_DATA = Path(__file__).resolve().parents[1] / "data"
+#: Everything a spec can carry across users. The file methods persist a
+#: server-local pathname, which the next connection cannot resolve.
+METHODS = ["-SHAPE", "-POINTS"]
 
 
 def save_spec(spec: AoiSpec) -> None:
@@ -97,7 +109,7 @@ def load_spec() -> Optional[AoiSpec]:
 
 
 @solara.component
-def AoiAppDemo():
+def AoiGeeAppDemo():
     """The demo UI, shared by the Solara and Voila entrypoints.
 
     Only mounts the bus and the shell below it. ``NotificationProvider`` creates
@@ -108,21 +120,27 @@ def AoiAppDemo():
     which displays this component directly, a working bus too.
     """
     NotificationProvider()
-    _AoiShell()
+    _AoiGeeShell()
 
 
 @solara.component
-def _AoiShell():
+def _AoiGeeShell():
     """Everything the demo shows, one level below the bus it publishes to."""
     setup_theme_colors()
     theme_state = get_current_theme_state()
+    gee_interface = get_current_gee_interface()
     notifications = use_notifications()
 
     sepal_map = solara.use_memo(
         lambda: sm.SepalMap(
-            zoom=3, center=[0, 0], gee=False, fullscreen=True, theme_state=theme_state
+            zoom=3,
+            center=[0, 0],
+            gee=True,
+            gee_interface=gee_interface,
+            fullscreen=True,
+            theme_state=theme_state,
         ),
-        [],
+        [id(gee_interface)],
     )
 
     aoi = solara.use_reactive(None)
@@ -191,8 +209,8 @@ def _AoiShell():
                         value=aoi,
                         spec=spec,
                         map_=sepal_map,
-                        gee=False,
-                        file_initial_folder=str(DEMO_DATA),
+                        gee=True,
+                        methods=METHODS,
                         clear_ref=clear_ref,
                         autoselect=autoselect.value,
                     ),
@@ -217,6 +235,7 @@ def _AoiShell():
 
 
 @solara.component
+@with_sepal_sessions(module_name="solara_aoi_gee_app")
 def Page():
-    """Solara entrypoint -- no SEPAL session, no Earth Engine, no credentials."""
-    AoiAppDemo()
+    """Authenticated Solara-server entrypoint for the GEE AOI demo."""
+    AoiGeeAppDemo()
