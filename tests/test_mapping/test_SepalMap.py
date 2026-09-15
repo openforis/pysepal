@@ -700,3 +700,40 @@ def ee_map_with_layers(image_id: str) -> sm.SepalMap:
         m.addLayer(image, {}, viz["name"], viz_name=viz["name"])
 
     return m
+
+
+def _dark_observers(source):
+    """Return the handlers ``source`` will call when ``dark`` changes."""
+    return source._trait_notifiers.get("dark", {}).get("change", [])
+
+
+def test_a_closed_map_stops_following_its_theme_state() -> None:
+    theme_state = ThemeState(mode="light")
+    map_ = sm.SepalMap(theme_state=theme_state)
+    map_.close()
+
+    classes = tuple(map_._dom_classes)
+    theme_state.set_mode("dark")
+
+    assert tuple(map_._dom_classes) == classes
+
+
+def test_a_closed_map_stops_following_the_global_vuetify_theme() -> None:
+    """The default source is ``v.theme``, process-global and never collected.
+
+    A map that keeps observing it is retained for the life of the process,
+    which the per-kernel theme store does not help with.
+    """
+    map_ = sm.SepalMap()
+    map_.close()
+
+    assert not [h for h in _dark_observers(v.theme) if getattr(h, "__self__", None) is map_]
+
+
+def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
+    """The bound method traitlets keeps is what holds the map."""
+    theme_state = ThemeState(mode="light")
+    map_ = sm.SepalMap(theme_state=theme_state)
+    map_.close()
+
+    assert not [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is map_]
