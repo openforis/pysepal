@@ -69,7 +69,7 @@ When a new pysepal Solara app has async work or user-visible state transitions:
 - call `use_notifications()` inside pages, tiles, or widgets that own user-facing work
 - use `notifications.track(...)` for long-running tasks
 - use final success/error/cancel toasts for task completion state
-- if a component may render without a provider, provide inline fallback UX instead of silently dropping important feedback
+- a component that may render without a provider passes `use_notifications(required=False)` and provides inline fallback UX; without that flag the hook raises `NotificationProviderError`
 
 Scope model:
 
