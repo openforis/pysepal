@@ -43,6 +43,16 @@ DEMOS = [
         "Engine and no credentials -- admin boundaries come from FAO's WFS service.",
     ),
     (
+        "solara_aoi_gee_app",
+        "aoi-gee-app",
+        "AOI Save & Restore (GEE)",
+        "The same save and restore with Earth Engine on, against a SEPAL session. It "
+        "reaches the half the local demo cannot: an ASSET selection round-trips its "
+        "`asset_id`, and DRAW builds its `ee` geometry on the session the app "
+        "authenticated. The file methods are excluded, because a saved pathname means "
+        "nothing to the next user of a shared container. Needs credentials in `.env`.",
+    ),
+    (
         "solara_raster_app",
         "raster-app",
         "Raster App",

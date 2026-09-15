@@ -19,6 +19,7 @@ DEMO_DIRS = sorted(path.parent for path in DEMO_ROOT.glob("*/app.py"))
 DEMO_IDS = [path.name for path in DEMO_DIRS]
 
 MAP_APP = DEMO_ROOT / "solara_map_app"
+AOI_GEE_APP = DEMO_ROOT / "solara_aoi_gee_app"
 
 
 def _decorator_name(decorator: ast.expr) -> str:
@@ -149,3 +150,23 @@ def test_map_app_page_authenticates():
     assert [_decorator_name(item) for item in functions["MapAppDemo"].decorator_list] == [
         "component"
     ]
+
+
+def test_the_gee_aoi_demo_offers_what_a_spec_can_carry():
+    """Its point is which methods survive being written down and read back.
+
+    ASSET and DRAW are what the local demo cannot reach; SHAPE and POINTS persist
+    a server-local pathname, which the next connection cannot resolve.
+    """
+    import importlib.util
+
+    from pysepal.solara.components.aoi.aoi_view import resolve_methods
+
+    spec = importlib.util.spec_from_file_location("_aoi_gee_demo", AOI_GEE_APP / "app.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # map_ stands in for the demo's SepalMap: resolve_methods only tests it for None.
+    offered = resolve_methods(module.METHODS, gee=True, map_=object())
+
+    assert set(offered) == {"ADMIN0", "ADMIN1", "ADMIN2", "DRAW", "ASSET"}
