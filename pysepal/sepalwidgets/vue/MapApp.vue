@@ -526,30 +526,6 @@ export default {
   },
 
   watch: {
-    // Watch for steps data changes to auto-activate first step when no main map
-    steps_data: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
-    // Watch for main_map changes to handle auto-activation
-    main_map: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
-    // Watch for initial_step changes
-    initial_step: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
     // Watch for current_step changes from Python
     current_step(newValue) {
       if (newValue !== null && newValue !== this.activeStepId) {
@@ -634,6 +610,8 @@ export default {
 
   mounted() {
     window.addEventListener("resize", this.handleResize);
+    // Once, at mount: rerunning it when steps_data changes (a language switch
+    // renames the steps) would reopen a step the user has closed.
     this.autoActivateFirstStepIfNeeded();
     if (!this.is_pinned) {
       this.mini = true;
