@@ -567,11 +567,41 @@ All four `demo_apps/` are translated (en, es, fr); `solara_raster_app` shows
 plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
 `docs/guides/migration-v4.md` § 6.
 
+## File Selection
+
+Pick by where the files live, not by how the picker looks:
+
+| Files live in                                                           | Use                                                                            |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| The user's SEPAL sandbox (any container / GEE app)                      | `FileInputComponent` — it resolves paths through a `SepalClient`, single value |
+| The filesystem of the process running the app (local, Voila, notebooks) | `solara.FileBrowser`, or `solara.FileBrowserMultiple` for several paths        |
+
+`solara.FileBrowserMultiple` (Solara 1.62) returns `pathlib.Path` values, toggles
+on a single click, and opens or enters on a double click. It browses the process
+filesystem only, so it is **not** a drop-in for `FileInputComponent` in a
+container app. It also sits above pysepal's floor (`solara>=1.60.3`), so an app
+that wants it pins Solara itself. Recipe:
+`docs/guides/solara-upstream.md` § "Documented — `FileBrowserMultiple`".
+
 ## Charts and Graphs
 
 **Always use `ipecharts`** for charts in pysepal apps — bar, line, pie,
 scatter, heatmap, 3D, network graphs, etc. Do not use matplotlib,
 plotly, or other charting libraries unless the user explicitly asks.
+
+`solara.FigureEcharts` is not an exception: it takes raw option dicts, fetches
+ECharts from a CDN at mount, and rebuilds the chart on every update. The guide's
+"Why not `solara.FigureEcharts`?" section holds the full comparison — read it
+before re-opening the question when an upstream release touches that component.
+
+A chart measures its container once and redraws only when something calls
+`resize()`. Measured across seven mount points in `demo_apps/solara_chart_app`,
+two go wrong: a container that changes width with no window resize, and a chart
+built inside a container that is in the DOM but hidden (a map `MenuControl`).
+Lazy containers — collapsed panels, unopened tabs, dialog steps — are fine.
+Telling the chart from Python only works after the browser has applied the
+layout; a nudge in the same batch redraws at the old width. Recipe:
+`docs/guides/ipecharts.md` § "Responsive Charts".
 
 Read `docs/guides/ipecharts.md` before creating any
 chart. It covers both approaches (`EChartsRawWidget` for quick prototypes,
@@ -673,17 +703,18 @@ Run discovery for the full current list — do not rely on this table.
 
 ### pysepal guides (`docs/guides/`)
 
-| Guide                     | When to read                                                        |
-| ------------------------- | ------------------------------------------------------------------- |
-| `solara-gee-patterns.md`  | Any GEE work in Solara                                              |
-| `solara-app-builder.md`   | Scaffolding or restructuring an app                                 |
-| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                 |
-| `solara-migration.md`     | Converting ipyvuetify widget to Solara                              |
-| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                           |
-| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps) |
-| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser     |
-| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                         |
-| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`              |
+| Guide                     | When to read                                                                      |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `solara-gee-patterns.md`  | Any GEE work in Solara                                                            |
+| `solara-app-builder.md`   | Scaffolding or restructuring an app                                               |
+| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                               |
+| `solara-migration.md`     | Converting ipyvuetify widget to Solara                                            |
+| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                                         |
+| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
+| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser                   |
+| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                                       |
+| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
+| `solara-upstream.md`      | What an upstream Solara release means for pysepal; why the pin sits where it does |
 
 Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
 plural nodes, `check()`.
@@ -736,6 +767,7 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
 - [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
+- [ ] A Solara install below 1.60.3 (the `use_task` result store and the leak-free subscription lifecycle the notification bus depends on landed in 1.60.1–1.60.3), or an app using `solara.FileBrowserMultiple` without pinning `solara>=1.62` itself
 
 Read `docs/guides/migration-notes-v3.4.md` for the
 full breaking changes list.
