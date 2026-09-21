@@ -80,6 +80,7 @@ Download = "https://github.com/openforis/pysepal/archive/v_${metadata:version}.t
 # needs the tippecanoe binary, which pip cannot provide: conda-forge has it.
 demos = [
     "vectortileserver>=0.2.1",
+    "ipecharts>=1.4", # the charting library the guides standardise on; solara_chart_app only
 ]
 dev = [
     "pre-commit>=2.18.0",

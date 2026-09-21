@@ -1,0 +1,57 @@
+{
+  "app": {
+    "title": "Charts and their containers"
+  },
+  "page": {
+    "intro": "ECharts measures its container when it draws and never again on its own. Each context below draws the same series twice -- once as ipecharts mounts it, once with the app telling it its box changed -- so you can see which layouts need telling. Measured on this page: only two of the seven do. The headings say which, and why."
+  },
+  "buttons": {
+    "regenerate": "new data",
+    "open_map": "open the map shell",
+    "wide": "full width",
+    "back": "back to the page"
+  },
+  "chart": {
+    "raw": "as ipecharts mounts it",
+    "nudged": "told when the box changed"
+  },
+  "contexts": {
+    "column": {
+      "title": "1. A plain page column — fine",
+      "description": "The control case. Nothing changes this chart's width except the browser window, and a window resize is one of the events ipecharts already listens for. Resize the window: both charts follow."
+    },
+    "width": {
+      "title": "2. A container that changes width — BREAKS",
+      "description": "The card goes from half width to full width with no window resize, so nothing asks the chart to measure again and it keeps its old canvas. The second chart is told, but only after a pause: a nudge sent in the same batch as the layout change redraws at the old width, because the browser has not applied the new one yet."
+    },
+    "panel": {
+      "title": "3. Inside a collapsed panel — fine",
+      "description": "This one looks dangerous and is not. Vuetify does not mount a collapsed panel's content, so the chart is built the moment you open it, when its container already has a width.",
+      "header": "open me"
+    },
+    "tabs": {
+      "title": "4. On a tab nobody has opened — fine",
+      "description": "The same story one layer up: the second tab's content is mounted the first time it is shown, not with the page, so the chart never measures a hidden box.",
+      "first": "first tab",
+      "first_body": "Switch to the second tab: the chart is built now, not when this page loaded.",
+      "second": "second tab"
+    },
+    "right_panel": {
+      "title": "5. MapApp's right panel — fine",
+      "description": "Closing the panel slides it out of view without changing its width, so the chart inside keeps a box it can still trust. The app watches MapApp's own traits anyway, which is what a panel that did change width would need."
+    },
+    "dialog": {
+      "title": "6. A dialog step — fine"
+    },
+    "map": {
+      "card_title": "7. On the map — BREAKS"
+    }
+  },
+  "panel": {
+    "title": "Charts",
+    "description": "Contexts 5 to 7 live here. Open and close this panel, open the dialog step, and open the chart button on the map: the chart on the map is the one that mounts inside an already-rendered menu, so it measures a hidden box and starts out wrong."
+  },
+  "toasts": {
+    "regenerated": "New series drawn"
+  }
+}
