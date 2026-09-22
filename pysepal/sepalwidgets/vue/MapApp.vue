@@ -23,7 +23,11 @@
       class="step-content-container"
       :class="{ 'right-panel-open': rightPanelOpen }"
     >
-      <jupyter-widget :widget="activeStep.content"></jupyter-widget>
+      <jupyter-widget
+        v-for="(widget, i) in activeStep.content"
+        :key="`step-content-${i}`"
+        :widget="widget"
+      ></jupyter-widget>
     </div>
 
     <v-navigation-drawer
@@ -259,13 +263,18 @@
         <v-divider></v-divider>
 
         <v-card-text class="dialog-content pt-4">
-          <jupyter-widget
+          <template
             v-if="
               activeStep && activeStep.content && activeStep.content.length > 0
             "
-            :widget="activeStep.content"
-            class="jupyter-widget-container"
-          ></jupyter-widget>
+          >
+            <jupyter-widget
+              v-for="(widget, i) in activeStep.content"
+              :key="`dialog-content-${i}`"
+              :widget="widget"
+              class="jupyter-widget-container"
+            ></jupyter-widget>
+          </template>
         </v-card-text>
 
         <v-divider

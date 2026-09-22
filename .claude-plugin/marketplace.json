@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "pysepal",
+  "owner": {
+    "name": "OpenForis"
+  },
+  "metadata": {
+    "description": "Claude Code skills for building SEPAL apps with pysepal"
+  },
+  "plugins": [
+    {
+      "name": "pysepal",
+      "description": "Skills for building and maintaining SEPAL apps with pysepal: component discovery, Solara and Earth Engine patterns, app scaffolding.",
+      "version": "4.0.0rc2",
+      "source": "./",
+      "category": "development",
+      "homepage": "https://github.com/openforis/pysepal"
+    }
+  ]
+}

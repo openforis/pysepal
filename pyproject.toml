@@ -154,7 +154,11 @@ update_changelog_on_bump = false
 version = "4.0.0rc2"
 version_files = [
     "pyproject.toml:version",
-    "pysepal/__init__.py:__version__"
+    "pysepal/__init__.py:__version__",
+    ".claude-plugin/plugin.json:version",
+    ".claude-plugin/marketplace.json:version",
+    "skills/pysepal/SKILL.md:documents pysepal",
+    "skills/pysepal-app/SKILL.md:documents pysepal"
 ]
 
 [tool.pytest.ini_options]

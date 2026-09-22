@@ -1,15 +1,29 @@
 ---
 name: pysepal-app
-description: Scaffold or update pysepal Solara and Voila apps using current pysepal architecture. Use when creating a new pysepal app, restructuring an existing app to follow pysepal patterns, mapping notebook logic into a pysepal app, choosing between local/Voila and GEE/container app layouts, wiring session-backed GEE flows, integrating MapApp, or adding user-facing notifications with NotificationProvider and use_notifications.
+description: Scaffold or update pysepal Solara and Voila apps using current pysepal architecture. Use when creating a new pysepal app, restructuring an existing app to follow pysepal patterns, mapping notebook logic into a pysepal app, choosing between local/Voila and GEE/container app layouts, wiring session-backed GEE flows, integrating MapApp, or adding user-facing notifications with NotificationProvider and use_notifications. Only for standalone SEPAL apps built on pysepal, never for the SEPAL platform codebase itself.
 ---
 
 # Pysepal App
 
 Use this skill when building or restructuring pysepal applications.
 
+## Version check
+
+This skill documents pysepal 4.0.0rc2. Compare that with the pysepal installed in
+the app's environment before relying on any API detail here:
+
+```bash
+python -c "import importlib.metadata as m; print(m.version('pysepal'))"
+```
+
+If the two differ, say so up front. Wherever this skill and the installed package
+disagree, the installed package's docstrings win. Suggest `claude plugin update pysepal` when the skill is behind, or upgrading pysepal when the app is behind.
+
 ## Read These Sources First
 
-Always inspect the live repository before writing code.
+Always inspect the live repository before writing code. `docs/guides/...` paths
+are relative to the pysepal repo root: `${CLAUDE_PLUGIN_ROOT}` under a plugin
+install, otherwise your local pysepal checkout.
 
 For app architecture:
 
