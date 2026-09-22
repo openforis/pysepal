@@ -1,3 +1,19 @@
+## v4.0.0 (2026-09-22)
+
+### Feat
+
+- **scripts**: screenshot, wait-js and repeatable clicks in browser_probe
+- **demo**: add a Sentinel-1 radar layer to the map app
+- **demo**: chart contexts demo and the measured resize rules (#1063)
+- **demo**: chart contexts demo
+
+### Fix
+
+- **MapApp**: drop the object-form watchers on synced traits (#1068)
+- **logger**: stop a local logging config from blinding caplog (#1059)
+- **MapApp**: accept a bare widget as step or panel content
+- **MapApp**: render step content widgets by iterating the list
+
 ## v4.0.0rc2 (2026-09-15)
 
 ### BREAKING CHANGE

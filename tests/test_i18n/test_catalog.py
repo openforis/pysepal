@@ -130,7 +130,8 @@ def test_a_non_strict_catalogue_renders_a_marker_and_warns_once(build_catalog, c
     with caplog.at_level(logging.WARNING, logger="sepalui.i18n"):
         assert messages._resolve("en", "app.nothing") == "⟦app.nothing⟧"
         assert messages._resolve("en", "app.nothing") == "⟦app.nothing⟧"
-    assert len(caplog.records) == 1
+    warnings = [record for record in caplog.records if record.name == "sepalui.i18n"]
+    assert len(warnings) == 1
 
 
 def test_a_non_strict_catalogue_still_raises_on_a_formatting_error(build_catalog):
@@ -262,8 +263,9 @@ def test_an_unreadable_locale_warns_once(build_catalog, caplog):
     with caplog.at_level(logging.WARNING, logger="sepalui.i18n"):
         assert messages._resolve("fr", "t") == "Hello"
         assert messages._resolve("fr", "t") == "Hello"
-    assert len(caplog.records) == 1
-    assert "'fr'" in caplog.records[0].getMessage()
+    warnings = [record for record in caplog.records if record.name == "sepalui.i18n"]
+    assert len(warnings) == 1
+    assert "'fr'" in warnings[0].getMessage()
 
 
 def test_a_non_utf8_locale_file_is_reported_and_falls_back_to_english(build_catalog):

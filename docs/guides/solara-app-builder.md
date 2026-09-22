@@ -559,6 +559,7 @@ def Page():
         lambda: sm.SepalMap(
             gee=True,
             gee_interface=gee_interface,
+            fullscreen=True,
             theme_state=theme_state,
         ),
         [id(gee_interface)],
@@ -569,13 +570,19 @@ def Page():
     MapApp.element(
         app_title=msg("app.title"),
         app_icon="mdi-earth",
-        main_map=[sepal_map.get_map_widget()],
+        main_map=[sepal_map],
         theme_state=theme_state,
         locales=messages.available_locales(),
         steps_data=[...],
         right_panel_content=[...],
     )
 ```
+
+`fullscreen=True` is what makes the map fill the shell. `MapApp` lays its
+drawers and panels over a fixed, viewport-sized container and never sizes the
+widget inside it, so a map built without the flag keeps ipyleaflet's default
+400 px height and renders as a strip across the top. Every demo under
+`demo_apps/` passes it.
 
 `MapApp` is a shell, not a way to assemble an app: an application is the
 `@solara.component` above, and the shell is rendered inside it with

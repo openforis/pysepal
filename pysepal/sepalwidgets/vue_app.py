@@ -8,11 +8,37 @@ import ipyvuetify as v
 import pandas as pd
 from ipywidgets import DOMWidget, link
 from ipywidgets.widgets.widget import widget_serialization
-from traitlets import Bool, Dict, HasTraits, Instance, Int, List, Unicode, observe
+from traitlets import (
+    Bool,
+    Dict,
+    HasTraits,
+    Instance,
+    Int,
+    List,
+    Unicode,
+    observe,
+    validate,
+)
 
 from pysepal.solara.theme import ThemeState, get_current_theme_state
 
 logger = logging.getLogger("sepalui.vue_app")
+
+
+def _with_content_lists(sections):
+    """Wrap a section's bare ``content`` widget in the list the templates iterate.
+
+    MapApp.vue and RightPanel.vue both ``v-for`` over ``content``. A lone widget
+    serializes to a model-id string, and Vue 2 iterates a string character by
+    character, so the section renders one empty container per character.
+    """
+    return [
+        {**section, "content": [section["content"]]}
+        if isinstance(section.get("content"), DOMWidget)
+        else section
+        for section in sections
+    ]
+
 
 _LOCALE_STATE_REMOVED = (
     "locale_state= was removed in pysepal 4.0: the locale is one Solara reactive per "
@@ -233,6 +259,11 @@ class MapApp(v.VuetifyTemplate):
         if language_selector is None:
             return []
         return [language_selector]
+
+    @validate("steps_data", "right_panel_content")
+    def _wrap_bare_section_content(self, proposal):
+        """Accept a bare widget where a section's ``content`` list is expected."""
+        return _with_content_lists(proposal["value"])
 
     # Mirror of MapApp.vue: viewports below this width dock the right
     # panel as a bottom sheet sized at NARROW_PANEL_HEIGHT_VH of the
@@ -517,6 +548,11 @@ class RightPanel(v.VuetifyTemplate):
         ),
         default_value=[],
     ).tag(sync=True, **widget_serialization)
+
+    @validate("content_data")
+    def _wrap_bare_section_content(self, proposal):
+        """Accept a bare widget where a section's ``content`` list is expected."""
+        return _with_content_lists(proposal["value"])
 
     def __init__(self, **kwargs):
         """Initialize RightPanel with event handlers."""

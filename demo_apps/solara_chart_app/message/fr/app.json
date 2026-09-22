@@ -1,0 +1,57 @@
+{
+  "app": {
+    "title": "Les graphiques et leurs conteneurs"
+  },
+  "page": {
+    "intro": "ECharts mesure son conteneur au moment du tracé, et plus jamais de lui-même. Chaque contexte dessine la même série deux fois — telle qu'ipecharts la monte, puis avec l'application qui la prévient que sa boîte a changé — pour voir quelles dispositions ont besoin d'être prévenues. Mesuré sur cette page : deux sur sept seulement. Les titres disent lesquelles, et pourquoi."
+  },
+  "buttons": {
+    "regenerate": "nouvelles données",
+    "open_map": "ouvrir la carte",
+    "wide": "pleine largeur",
+    "back": "retour à la page"
+  },
+  "chart": {
+    "raw": "tel qu'ipecharts le monte",
+    "nudged": "prévenu du changement de boîte"
+  },
+  "contexts": {
+    "column": {
+      "title": "1. Une colonne de page — correct",
+      "description": "Le cas témoin. Rien ne change la largeur de ce graphique sauf la fenêtre du navigateur, et c'est l'un des événements qu'ipecharts écoute déjà. Redimensionnez la fenêtre : les deux graphiques suivent."
+    },
+    "width": {
+      "title": "2. Un conteneur qui change de largeur — ÉCHOUE",
+      "description": "La carte passe de la demi-largeur à la pleine largeur sans que la fenêtre bouge : rien ne demande au graphique de mesurer à nouveau et il garde son ancien canevas. Le second est prévenu, mais après une pause : un avis envoyé dans le même lot que le changement de disposition redessine à l'ancienne largeur, car le navigateur n'a pas encore appliqué la nouvelle."
+    },
+    "panel": {
+      "title": "3. Dans un panneau replié — correct",
+      "description": "Celui-ci a l'air dangereux et ne l'est pas. Vuetify ne monte pas le contenu d'un panneau replié : le graphique est construit à l'ouverture, quand son conteneur a déjà une largeur.",
+      "header": "ouvrez-moi"
+    },
+    "tabs": {
+      "title": "4. Sur un onglet que personne n'a ouvert — correct",
+      "description": "La même histoire un cran plus haut : le contenu du second onglet est monté la première fois qu'on l'affiche, pas avec la page, donc le graphique ne mesure jamais une boîte cachée.",
+      "first": "premier onglet",
+      "first_body": "Passez au second onglet : le graphique est construit maintenant, pas au chargement de la page.",
+      "second": "second onglet"
+    },
+    "right_panel": {
+      "title": "5. Le panneau droit de MapApp — correct",
+      "description": "À la fermeture, le panneau glisse hors de vue sans changer de largeur : le graphique garde une boîte fiable. L'application observe tout de même les traits de MapApp, ce qu'il faudrait si le panneau changeait de largeur."
+    },
+    "dialog": {
+      "title": "6. Une étape en dialogue — correct"
+    },
+    "map": {
+      "card_title": "7. Sur la carte — ÉCHOUE"
+    }
+  },
+  "panel": {
+    "title": "Graphiques",
+    "description": "Les contextes 5 à 7 vivent ici. Ouvrez et fermez ce panneau, ouvrez l'étape en dialogue et le bouton graphique de la carte : celui de la carte est monté dans un menu déjà rendu, il mesure une boîte cachée et démarre à la mauvaise taille."
+  },
+  "toasts": {
+    "regenerated": "Nouvelle série tracée"
+  }
+}

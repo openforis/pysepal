@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import ipyvuetify as v
 import pytest
 import reacton
 import solara
@@ -227,3 +228,44 @@ def test_raw_mapapp_has_no_automatic_locale_component():
         assert app.language_selector == []
     finally:
         app.close()
+
+
+def test_a_bare_widget_step_content_is_wrapped_in_a_list() -> None:
+    """MapApp.vue iterates a step's content.
+
+    A lone widget serializes to a model-id string, which Vue 2 iterates character
+    by character -- one empty container per character instead of the widget.
+    """
+    card = v.Card()
+
+    app = MapApp(
+        steps_data=[
+            {"id": 1, "name": "AOI", "icon": "mdi-map", "display": "dialog", "content": card}
+        ]
+    )
+
+    assert app.steps_data[0]["content"] == [card]
+
+
+def test_a_list_of_step_content_widgets_is_left_alone() -> None:
+    """Content that already is a list must not be wrapped again."""
+    card = v.Card()
+
+    app = MapApp(
+        steps_data=[
+            {"id": 1, "name": "AOI", "icon": "mdi-map", "display": "dialog", "content": [card]}
+        ]
+    )
+
+    assert app.steps_data[0]["content"] == [card]
+
+
+def test_a_bare_widget_panel_section_content_is_wrapped_in_a_list() -> None:
+    """RightPanel.vue iterates a section's content the same way."""
+    card = v.Card()
+
+    app = MapApp(right_panel_content=[{"title": "Results", "icon": "mdi-cog", "content": card}])
+
+    assert app.right_panel_content[0]["content"] == [card]
+    # the child panel is what renders, and __init__ builds it from the raw kwargs
+    assert app.right_panel[0].content_data[0]["content"] == [card]

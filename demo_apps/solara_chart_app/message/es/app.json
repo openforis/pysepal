@@ -1,0 +1,57 @@
+{
+  "app": {
+    "title": "Los gráficos y sus contenedores"
+  },
+  "page": {
+    "intro": "ECharts mide su contenedor al dibujar y nunca más por su cuenta. Cada contexto dibuja la misma serie dos veces —una tal como la monta ipecharts y otra con la aplicación avisándole de que su caja cambió— para ver qué disposiciones necesitan el aviso. Medido en esta página: solo dos de las siete. Los títulos dicen cuáles y por qué."
+  },
+  "buttons": {
+    "regenerate": "datos nuevos",
+    "open_map": "abrir el mapa",
+    "wide": "ancho completo",
+    "back": "volver a la página"
+  },
+  "chart": {
+    "raw": "tal como lo monta ipecharts",
+    "nudged": "avisado del cambio de caja"
+  },
+  "contexts": {
+    "column": {
+      "title": "1. Una columna de página — correcto",
+      "description": "El caso de control. Nada cambia el ancho de este gráfico salvo la ventana del navegador, y ese es uno de los eventos que ipecharts ya escucha. Redimensione la ventana: los dos gráficos responden."
+    },
+    "width": {
+      "title": "2. Un contenedor que cambia de ancho — FALLA",
+      "description": "La tarjeta pasa de la mitad al ancho completo sin que la ventana cambie, así que nada le pide al gráfico volver a medir y conserva su lienzo anterior. Al segundo gráfico se le avisa, pero con una pausa: un aviso enviado en el mismo lote que el cambio de disposición redibuja con el ancho antiguo, porque el navegador aún no ha aplicado el nuevo."
+    },
+    "panel": {
+      "title": "3. Dentro de un panel plegado — correcto",
+      "description": "Este parece peligroso y no lo es. Vuetify no monta el contenido de un panel plegado, así que el gráfico se construye al abrirlo, cuando su contenedor ya tiene ancho.",
+      "header": "ábrame"
+    },
+    "tabs": {
+      "title": "4. En una pestaña que nadie abrió — correcto",
+      "description": "La misma historia un nivel más arriba: el contenido de la segunda pestaña se monta la primera vez que se muestra, no con la página, así que el gráfico nunca mide una caja oculta.",
+      "first": "primera pestaña",
+      "first_body": "Cambie a la segunda pestaña: el gráfico se construye ahora, no al cargar la página.",
+      "second": "segunda pestaña"
+    },
+    "right_panel": {
+      "title": "5. El panel derecho de MapApp — correcto",
+      "description": "Al cerrarse, el panel se desliza fuera de la vista sin cambiar de ancho, así que el gráfico conserva una caja fiable. Aun así la aplicación observa los traits de MapApp, que es lo que haría falta si el panel cambiara de ancho."
+    },
+    "dialog": {
+      "title": "6. Un paso en diálogo — correcto"
+    },
+    "map": {
+      "card_title": "7. Sobre el mapa — FALLA"
+    }
+  },
+  "panel": {
+    "title": "Gráficos",
+    "description": "Aquí viven los contextos 5 a 7. Abra y cierre este panel, abra el paso en diálogo y el botón de gráfico del mapa: el del mapa se monta dentro de un menú ya renderizado, mide una caja oculta y empieza con el tamaño equivocado."
+  },
+  "toasts": {
+    "regenerated": "Serie nueva dibujada"
+  }
+}

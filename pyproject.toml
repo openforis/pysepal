@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pysepal"
-version = "4.0.0rc2"
+version = "4.0.0"
 description = "UI toolkit for building ipyvuetify and Solara dashboards, with first-class SEPAL integration"
 keywords = ["UI", "Python", "widget", "sepal"]
 classifiers = [
@@ -53,7 +53,7 @@ dependencies = [
     "natsort",
     "typing-extensions",
     "pydantic",  # SepalHeaders validation and the PYSEPAL_DEV_AUTH interlock
-    "solara>=1.60,<2", # two private APIs are load-bearing: solara.scope.get_kernel_id and solara._using_solara_server
+    "solara>=1.60.3,<2", # changing this? read docs/guides/solara-upstream.md first
     "ee-client>=3.2.1,<4", # the assets cache survives a cancelled fetch (ee-client#43)
     "pysepal-api>=0.3.0,<0.4", # UI-free SEPAL HTTP client (SepalClient: files/tasks/recipes); 0.x: a minor is a breaking release, so cap it
     "colorlog",
@@ -80,6 +80,7 @@ Download = "https://github.com/openforis/pysepal/archive/v_${metadata:version}.t
 # needs the tippecanoe binary, which pip cannot provide: conda-forge has it.
 demos = [
     "vectortileserver>=0.2.1",
+    "ipecharts>=1.4", # the charting library the guides standardise on; solara_chart_app only
 ]
 dev = [
     "pre-commit>=2.18.0",
@@ -151,10 +152,14 @@ changelog_file = "CHANGELOG.md"
 changelog_incremental = true
 tag_format = "v$major.$minor.$patch$prerelease"
 update_changelog_on_bump = false
-version = "4.0.0rc2"
+version = "4.0.0"
 version_files = [
     "pyproject.toml:version",
-    "pysepal/__init__.py:__version__"
+    "pysepal/__init__.py:__version__",
+    ".claude-plugin/plugin.json:version",
+    ".claude-plugin/marketplace.json:version",
+    "skills/pysepal/SKILL.md:documents pysepal",
+    "skills/pysepal-app/SKILL.md:documents pysepal"
 ]
 
 [tool.pytest.ini_options]

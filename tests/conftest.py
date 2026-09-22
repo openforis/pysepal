@@ -2,6 +2,7 @@
 
 import atexit
 import json
+import logging
 import os
 import time
 import uuid
@@ -22,6 +23,23 @@ from pysepal.scripts.gee_interface import GEEInterface
 from tests._janitor import delete_recursive
 
 su.init_ee()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _sepalui_logs_reach_caplog():
+    """Keep a developer's ``logging_config.toml`` from blinding ``caplog``.
+
+    ``pysepal.logger`` applies that file at import if it sits beside the
+    package, and a config that sets ``propagate = false`` on ``sepalui`` stops
+    records reaching the root handler ``caplog`` installs. Every test that
+    asserts on a log record then fails on that machine alone.
+    """
+    log = logging.getLogger("sepalui")
+    previous = log.propagate
+    log.propagate = True
+    yield
+    log.propagate = previous
+
 
 _TERMINAL_FAILURES = ("FAILED", "CANCELLED", "CANCEL_REQUESTED")
 

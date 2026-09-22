@@ -70,6 +70,16 @@ DEMOS = [
         "tippecanoe on PATH; it tiles a generated grid unless "
         "`PYSEPAL_DEMO_VECTOR_DIR` points at a real `landcover.geojson`.",
     ),
+    (
+        "solara_chart_app",
+        "chart-app",
+        "Chart Contexts",
+        "The same ipecharts chart in every place a pysepal app mounts one: a page "
+        "column, a card that changes width, a collapsed panel, an unopened tab, "
+        "MapApp's right panel, a dialog step, and an overlay on the map. Each "
+        "context draws it twice -- untouched, and told when its box changed -- so "
+        "which layouts need telling is visible. No session and no credentials.",
+    ),
 ]
 
 

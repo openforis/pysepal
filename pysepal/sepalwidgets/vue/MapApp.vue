@@ -23,7 +23,11 @@
       class="step-content-container"
       :class="{ 'right-panel-open': rightPanelOpen }"
     >
-      <jupyter-widget :widget="activeStep.content"></jupyter-widget>
+      <jupyter-widget
+        v-for="(widget, i) in activeStep.content"
+        :key="`step-content-${i}`"
+        :widget="widget"
+      ></jupyter-widget>
     </div>
 
     <v-navigation-drawer
@@ -259,13 +263,18 @@
         <v-divider></v-divider>
 
         <v-card-text class="dialog-content pt-4">
-          <jupyter-widget
+          <template
             v-if="
               activeStep && activeStep.content && activeStep.content.length > 0
             "
-            :widget="activeStep.content"
-            class="jupyter-widget-container"
-          ></jupyter-widget>
+          >
+            <jupyter-widget
+              v-for="(widget, i) in activeStep.content"
+              :key="`dialog-content-${i}`"
+              :widget="widget"
+              class="jupyter-widget-container"
+            ></jupyter-widget>
+          </template>
         </v-card-text>
 
         <v-divider
@@ -517,30 +526,6 @@ export default {
   },
 
   watch: {
-    // Watch for steps data changes to auto-activate first step when no main map
-    steps_data: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
-    // Watch for main_map changes to handle auto-activation
-    main_map: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
-    // Watch for initial_step changes
-    initial_step: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
     // Watch for current_step changes from Python
     current_step(newValue) {
       if (newValue !== null && newValue !== this.activeStepId) {
@@ -625,6 +610,8 @@ export default {
 
   mounted() {
     window.addEventListener("resize", this.handleResize);
+    // Once, at mount: rerunning it when steps_data changes (a language switch
+    // renames the steps) would reopen a step the user has closed.
     this.autoActivateFirstStepIfNeeded();
     if (!this.is_pinned) {
       this.mini = true;
