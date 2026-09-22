@@ -111,19 +111,22 @@ Pass it inline with `--eval "(...)"` or from a file with `--eval @path/to/probe.
 
 ## Options
 
-| Flag                        | Meaning                                                                                                                                                 |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--url <url>`               | **required** — page to load                                                                                                                             |
-| `--eval <expr\|@file>`      | expression to evaluate (or `@file`); must return JSON-serializable data                                                                                 |
-| `--wait <selector>`         | poll until this selector exists (else `--timeout`)                                                                                                      |
-| `--settle <ms>`             | extra wait after ready, for layout/theme (default 2000)                                                                                                 |
-| `--click <x,y\|selector>`   | issue a **real (trusted)** click before `--eval` — coordinates, or the centre of a selector. Negative coordinates count back from the right/bottom edge |
-| `--resize <WxH>`            | resize the viewport before `--eval` (e.g. `1000x700`)                                                                                                   |
-| `--settle-after <ms>`       | wait after `--click`/`--resize` (default 1200)                                                                                                          |
-| `--timeout <ms>`            | readiness budget (default 30000)                                                                                                                        |
-| `--force-theme dark\|light` | set `:solara:theme.variant` in localStorage and reload (Solara only; Voila ignores it)                                                                  |
-| `--chrome <path>`           | Chrome binary (default: autodetect)                                                                                                                     |
-| `--keep-open`               | leave Chrome running (to debug the probe itself)                                                                                                        |
+| Flag                        | Meaning                                                                                                                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--url <url>`               | **required** — page to load                                                                                                                                                              |
+| `--eval <expr\|@file>`      | expression to evaluate (or `@file`); must return JSON-serializable data                                                                                                                  |
+| `--wait <selector>`         | poll until this selector exists (else `--timeout`)                                                                                                                                       |
+| `--settle <ms>`             | extra wait after ready, for layout/theme (default 2000)                                                                                                                                  |
+| `--click <x,y\|selector>`   | issue a **real (trusted)** click before `--eval` — coordinates, or the centre of a selector. Negative coordinates count back from the right/bottom edge. Repeatable; clicks run in order |
+| `--resize <WxH>`            | resize the viewport before `--eval` (e.g. `1000x700`)                                                                                                                                    |
+| `--scale <n>`               | device scale factor for `--resize` (default 1); `2` gives a retina-sharp `--screenshot`                                                                                                  |
+| `--settle-after <ms>`       | wait after each `--click`/`--resize` (default 1200)                                                                                                                                      |
+| `--wait-js <expr>`          | after the clicks, poll until this expression is truthy (same `--timeout` budget), e.g. until every leaflet tile has loaded                                                               |
+| `--screenshot <png>`        | write a PNG of the viewport after `--eval`                                                                                                                                               |
+| `--timeout <ms>`            | readiness budget (default 30000)                                                                                                                                                         |
+| `--force-theme dark\|light` | set the Solara and pysepal theme keys in localStorage and reload (Voila ignores them)                                                                                                    |
+| `--chrome <path>`           | Chrome binary (default: autodetect)                                                                                                                                                      |
+| `--keep-open`               | leave Chrome running (to debug the probe itself)                                                                                                                                         |
 
 ## Worked example: the Solara/Voila theme-parity hunt
 

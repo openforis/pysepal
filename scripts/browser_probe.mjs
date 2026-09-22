@@ -44,13 +44,21 @@
  *                        viewport coordinates or at the centre of a selector.
  *                        Negative coordinates count back from the right/bottom
  *                        edge, so `12,-12` is 12px in from the bottom-left.
+ *                        Repeatable; clicks run in order, each followed by
+ *                        --settle-after.
  *   --resize <WxH>       resize the viewport before --eval (e.g. 1000x700)
- *   --settle-after <ms>  wait after --click/--resize (default 1200). Widget
- *                        round-trips go through the python kernel, so a UI
- *                        change can take far longer than a repaint.
+ *   --scale <n>          device scale factor for --resize (default 1); 2 gives
+ *                        a retina-sharp --screenshot
+ *   --settle-after <ms>  wait after each --click/--resize (default 1200).
+ *                        Widget round-trips go through the python kernel, so a
+ *                        UI change can take far longer than a repaint.
+ *   --wait-js <expr>     after the clicks, poll until this expression is truthy
+ *                        (same --timeout budget), e.g. until every leaflet tile
+ *                        has loaded
+ *   --screenshot <png>   write a PNG of the viewport after --eval
  *   --timeout <ms>       readiness budget (default 30000)
- *   --force-theme <t>    set localStorage ':solara:theme.variant' to "dark" or
- *                        "light" and reload (Solara only — Voila ignores it)
+ *   --force-theme <t>    set the Solara and pysepal theme keys in localStorage
+ *                        to "dark" or "light" and reload (Voila ignores them)
  *   --chrome <path>      Chrome binary (default: autodetect)
  *   --keep-open          leave Chrome running (debugging the probe itself)
  *
@@ -78,13 +86,19 @@
  */
 import { spawn, execSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 function argVal(name, def) {
   const i = process.argv.indexOf(name);
   return i >= 0 && i + 1 < process.argv.length ? process.argv[i + 1] : def;
+}
+
+function argAll(name) {
+  return process.argv.flatMap((a, i) =>
+    a === name && i + 1 < process.argv.length ? [process.argv[i + 1]] : []
+  );
 }
 
 const URL = argVal("--url");
@@ -97,8 +111,11 @@ const SETTLE = parseInt(argVal("--settle", "2000"), 10);
 const TIMEOUT = parseInt(argVal("--timeout", "30000"), 10);
 const FORCE_THEME = argVal("--force-theme");
 const KEEP_OPEN = process.argv.includes("--keep-open");
-const CLICK = argVal("--click");
+const CLICKS = argAll("--click");
 const RESIZE = argVal("--resize");
+const SCALE = parseFloat(argVal("--scale", "1"));
+const WAIT_JS = argVal("--wait-js");
+const SCREENSHOT = argVal("--screenshot");
 const SETTLE_AFTER = parseInt(argVal("--settle-after", "1200"), 10);
 let EVAL = argVal("--eval");
 if (EVAL && EVAL.startsWith("@")) EVAL = readFileSync(EVAL.slice(1), "utf8");
@@ -253,24 +270,24 @@ async function main() {
   await send(ws, "Page.enable", {}, sessionId);
   await send(ws, "Runtime.enable", {}, sessionId);
 
-  const waitReady = async () => {
+  const waitFor = async (expr) => {
     const start = Date.now();
     while (Date.now() - start < TIMEOUT) {
       try {
-        const ready = WAIT
-          ? await evaluate(
-              ws,
-              sessionId,
-              `!!document.querySelector(${JSON.stringify(WAIT)})`
-            )
-          : await evaluate(ws, sessionId, `document.readyState === 'complete'`);
-        if (ready) return;
+        if (await evaluate(ws, sessionId, expr)) return;
       } catch {
         /* keep polling */
       }
       await sleep(500);
     }
+    throw new Error(`timed out after ${TIMEOUT}ms waiting for: ${expr}`);
   };
+  const waitReady = () =>
+    waitFor(
+      WAIT
+        ? `!!document.querySelector(${JSON.stringify(WAIT)})`
+        : `document.readyState === 'complete'`
+    );
 
   await waitReady();
   await sleep(SETTLE);
@@ -279,7 +296,8 @@ async function main() {
     await evaluate(
       ws,
       sessionId,
-      `localStorage.setItem(':solara:theme.variant', '"${FORCE_THEME}"'), true`
+      `localStorage.setItem(':solara:theme.variant', '"${FORCE_THEME}"'),
+       localStorage.setItem(':sepalUi:theme.variant', '"${FORCE_THEME}"'), true`
     );
     await send(ws, "Page.reload", {}, sessionId);
     await waitReady();
@@ -295,7 +313,7 @@ async function main() {
       {
         width: parseInt(m[1], 10),
         height: parseInt(m[2], 10),
-        deviceScaleFactor: 1,
+        deviceScaleFactor: SCALE,
         mobile: false,
       },
       sessionId
@@ -303,7 +321,7 @@ async function main() {
     await sleep(SETTLE_AFTER);
   }
 
-  if (CLICK) {
+  for (const CLICK of CLICKS) {
     // Resolve to viewport coordinates in the page, so the caller never has to
     // guess the headless viewport size.
     const point = await evaluate(
@@ -341,8 +359,21 @@ async function main() {
     await sleep(SETTLE_AFTER);
   }
 
+  if (WAIT_JS) await waitFor(WAIT_JS);
+
   const value = await evaluate(ws, sessionId, EVAL);
   console.log(JSON.stringify(value, null, 2));
+
+  if (SCREENSHOT) {
+    const { data } = await send(
+      ws,
+      "Page.captureScreenshot",
+      { format: "png", captureBeyondViewport: false },
+      sessionId
+    );
+    writeFileSync(SCREENSHOT, Buffer.from(data, "base64"));
+    console.error(`screenshot written to ${SCREENSHOT}`);
+  }
 
   try {
     await send(ws, "Target.closeTarget", { targetId });
