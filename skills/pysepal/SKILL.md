@@ -572,11 +572,12 @@ plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
 Pick by how many paths you need, not by where the files live — one component
 already covers both filesystems:
 
-| Need                              | Use                                                                         |
-| --------------------------------- | --------------------------------------------------------------------------- |
-| One path, either filesystem       | `FileInputComponent`                                                        |
-| Several paths, process filesystem | `solara.FileBrowserMultiple` (Solara 1.62), or `solara.FileBrowser` for one |
-| Several paths, the SEPAL sandbox  | nothing ships this yet — see "The gap" below                                |
+| Need          | Use                                                    |
+| ------------- | ------------------------------------------------------ |
+| One path      | `FileInputComponent`, on either filesystem             |
+| Several paths | not shipped yet — see "The gap" below ([#1067][i1067]) |
+
+[i1067]: https://github.com/openforis/pysepal/issues/1067
 
 `FileInputComponent` chooses its backend at runtime from whether a
 `sepal_client` was passed: `FileInput.load_files` calls `get_remote_files`
@@ -586,18 +587,20 @@ not, where `root` then defaults to `~`. So it is **not** a sandbox-only
 component, and a local app is a first-class use of it. Its value is a single
 path as a `str`.
 
-`solara.FileBrowserMultiple` returns `pathlib.Path` values, toggles on a single
-click, and opens or enters on a double click. It reads the process filesystem
-directly and takes no client, so it cannot be pointed at a sandbox. It also sits
-above pysepal's floor (`solara>=1.60.3`), so an app that wants it pins Solara
-itself. Recipe: `docs/guides/solara-upstream.md` § "Documented —
-`FileBrowserMultiple`".
+Do not reach for `solara.FileBrowser` or `solara.FileBrowserMultiple` in a
+pysepal app. They read the process filesystem through `pathlib` and take no
+client, so they cannot serve a sandbox, and an app built on them stops working
+the moment it is deployed to SEPAL. pysepal apps use `FileInputComponent`.
 
-**The gap.** Multi-select exists only for the process filesystem, single-select
-only carries a `str` while Solara speaks `Path`, and nothing in pysepal abstracts
-reading and writing over the two backends — so a component written against one
-cannot serve the other. Until that exists, an app needing several sandbox paths
-composes them from `FileInputComponent`, or talks to `SepalClient` itself.
+**The gap.** Nothing selects more than one path, and nothing in pysepal
+abstracts reading and writing over the two filesystems, so a component written
+against one cannot serve the other. Both are being tracked rather than worked
+around: multi-select on our own component in [#1067][i1067] (Solara's version is
+prior art there, not a dependency), and one filesystem interface in
+[#1066][i1066]. Until they land, an app needing several paths composes them from
+`FileInputComponent` or talks to `SepalClient` itself.
+
+[i1066]: https://github.com/openforis/pysepal/issues/1066
 
 ## Charts and Graphs
 
@@ -783,7 +786,8 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
 - [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
-- [ ] A Solara install below 1.60.3 (the `use_task` result store and the leak-free subscription lifecycle the notification bus depends on landed in 1.60.1–1.60.3), or an app using `solara.FileBrowserMultiple` without pinning `solara>=1.62` itself
+- [ ] A Solara install below 1.60.3 (the `use_task` result store and the leak-free subscription lifecycle the notification bus depends on landed in 1.60.1–1.60.3)
+- [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
 
 Read `docs/guides/migration-notes-v3.4.md` for the
 full breaking changes list.
