@@ -1,6 +1,6 @@
 ---
 name: pysepal
-description: Use when working with pysepal Solara components, debugging pysepal/Solara/GEE errors, auditing pysepal-based apps for stale patterns, or before modifying any code that imports from pysepal. Covers component discovery, GEE async patterns, translations with catalog() and msg(), known error fixes, and Solara best practices.
+description: Use when working with pysepal Solara components, debugging pysepal/Solara/GEE errors, auditing pysepal-based apps for stale patterns, or before modifying any code that imports from pysepal. Covers component discovery, GEE async patterns, translations with catalog() and msg(), known error fixes, and Solara best practices. Only for standalone SEPAL apps built on pysepal, never for the SEPAL platform codebase itself.
 ---
 
 # pysepal

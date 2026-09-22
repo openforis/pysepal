@@ -9,12 +9,27 @@ Claude Code skills for building SEPAL apps with pysepal.
 
 ## Install
 
-This repository is a Claude Code plugin marketplace. Add it once and both skills
-stay current: Claude Code checks installed plugins for updates once per session.
+This repository is a Claude Code plugin marketplace. Install the plugin at project
+scope, from inside the app repository:
 
 ```bash
-claude plugin marketplace add openforis/pysepal
-claude plugin install pysepal@pysepal
+claude plugin marketplace add openforis/pysepal --scope project
+claude plugin install pysepal@pysepal --scope project
+```
+
+That writes the marketplace and the plugin into the app's `.claude/settings.json`,
+so commit it: every developer who opens the repo gets the skills, Claude Code
+checks them for updates once per session, and no other repository sees them.
+These patterns are for standalone pysepal apps, not for the SEPAL platform
+codebase, so do not install the plugin at user scope.
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "pysepal": { "source": { "source": "github", "repo": "openforis/pysepal" } }
+  },
+  "enabledPlugins": { "pysepal@pysepal": true }
+}
 ```
 
 The skills load as `pysepal:pysepal` and `pysepal:pysepal-app`. The plugin version

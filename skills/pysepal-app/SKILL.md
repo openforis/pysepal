@@ -1,6 +1,6 @@
 ---
 name: pysepal-app
-description: Scaffold or update pysepal Solara and Voila apps using current pysepal architecture. Use when creating a new pysepal app, restructuring an existing app to follow pysepal patterns, mapping notebook logic into a pysepal app, choosing between local/Voila and GEE/container app layouts, wiring session-backed GEE flows, integrating MapApp, or adding user-facing notifications with NotificationProvider and use_notifications.
+description: Scaffold or update pysepal Solara and Voila apps using current pysepal architecture. Use when creating a new pysepal app, restructuring an existing app to follow pysepal patterns, mapping notebook logic into a pysepal app, choosing between local/Voila and GEE/container app layouts, wiring session-backed GEE flows, integrating MapApp, or adding user-facing notifications with NotificationProvider and use_notifications. Only for standalone SEPAL apps built on pysepal, never for the SEPAL platform codebase itself.
 ---
 
 # Pysepal App
