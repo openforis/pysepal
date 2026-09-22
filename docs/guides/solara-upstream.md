@@ -42,39 +42,6 @@ behind.
 [#1191]: https://github.com/widgetti/solara/pull/1191
 [#1192]: https://github.com/widgetti/solara/pull/1192
 
-### Skipped — `FileBrowserMultiple` (1.62)
-
-`solara.FileBrowserMultiple` selects several files and directories at once.
-Values are always `pathlib.Path` (it rejects a directory given as a string), a
-single click toggles a path, a double click opens a file or enters a directory
-and clears the selection, and `watch=True` follows changes on disk.
-
-pysepal apps do not use it. It browses **the filesystem of the process running
-the app** and takes no client, so it cannot be pointed at a SEPAL sandbox: an
-app built on it works locally and breaks on deployment. File selection in a
-pysepal app goes through `FileInputComponent`, and the missing multi-select is
-tracked as an extension of our own component in
-[#1067](https://github.com/openforis/pysepal/issues/1067), with the behaviour
-above as prior art.
-
-pysepal's `FileInputComponent` wraps `sepalwidgets.FileInput`, which serves both
-filesystems from one widget: `load_files` calls `get_remote_files`
-(`sepal_client.files.list`, over HTTP) when a `sepal_client` was passed and
-`get_local_files` (a `pathlib` glob) when it was not, with `root` defaulting to
-`~` in that case. What it does not do is carry more than one path, and its value
-is a `str` rather than a `Path`.
-
-So the two differ by cardinality and by reach, not by "sandbox versus local".
-Ours reaches both filesystems and carries one path; theirs carries many and
-reaches one filesystem. The combination nothing covers is several paths in the
-sandbox, which is why the gap is closed by extending `FileInput` rather than by
-depending on Solara here.
-
-The wider problem underneath — that every caller decides for itself whether it
-is reading the container or the user's workspace — is
-[#1066](https://github.com/openforis/pysepal/issues/1066). Multi-select should
-land on that interface rather than take a `sepal_client` of its own.
-
 ### Skipped — `solara.FigureEcharts` (1.62 guarded its option watcher, #1201)
 
 pysepal charts stay on `ipecharts`. The reasoning, and why the upstream fix does
