@@ -1,7 +1,7 @@
 {
   "name": "pysepal",
   "description": "Skills for building and maintaining SEPAL apps with pysepal: component discovery, Solara and Earth Engine patterns, app scaffolding.",
-  "version": "4.0.0rc2",
+  "version": "4.0.0",
   "author": {
     "name": "OpenForis"
   },

@@ -7,7 +7,7 @@ from pysepal.frontend.styles import SepalColor
 
 __author__ = """Pierrick Rambaud"""
 __email__ = "pierrick.rambaud49@gmail.com"
-__version__ = "4.0.0rc2"
+__version__ = "4.0.0"
 
 color = SepalColor()
 'color: the colors of sepal. members are in the following list: "main, darker, bg, primary, accent, secondary, success, info, warning, error, menu". They will render according to the selected theme.'
