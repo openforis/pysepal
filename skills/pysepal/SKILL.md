@@ -16,8 +16,21 @@ or `/pysepal audit` (stale pattern check).
 
 > Path conventions: paths in this skill without a leading `~` or `/` are
 > relative to the pysepal repo root (e.g. `docs/guides/...`,
-> `pysepal/templates/...`). When working in another project, substitute the
-> path of your local pysepal checkout.
+> `pysepal/templates/...`). Installed as a Claude Code plugin, that root is
+> `${CLAUDE_PLUGIN_ROOT}`; otherwise substitute the path of your local pysepal
+> checkout.
+
+## Version check
+
+This skill documents pysepal 4.0.0rc2. Compare that with the pysepal installed in
+the app's environment before relying on any API detail here:
+
+```bash
+python -c "import importlib.metadata as m; print(m.version('pysepal'))"
+```
+
+If the two differ, say so up front. Wherever this skill and the installed package
+disagree, the installed package's docstrings win. Suggest `claude plugin update pysepal` when the skill is behind, or upgrading pysepal when the app is behind.
 
 ## Source of truth
 
@@ -36,13 +49,15 @@ Two rules come before everything else:
 
 ## Before Anything: Discover Components
 
-Never assume which pysepal components exist. Run discovery first from the
-pysepal repo root:
+Never assume which pysepal components exist. Run discovery first. Without
+`--repo-root` the script inspects the pysepal installed in the current
+environment, which is the API the app actually runs against:
 
 ```bash
-python skills/pysepal-app/scripts/discover_pysepal_components.py \
-  --repo-root .
+python skills/pysepal-app/scripts/discover_pysepal_components.py
 ```
+
+Pass `--repo-root <checkout>` to inspect a checkout instead.
 
 Use the output as the only source of truth for component names and import
 paths. If the script fails, ask the user for the correct pysepal repo path.

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -115,6 +116,20 @@ def find_repo_root(start: Path) -> Path:
     )
 
 
+def installed_package_root() -> Path:
+    """Return the directory that contains the ``pysepal`` package importable right now.
+
+    For an editable install this is the checkout; otherwise it is ``site-packages``.
+    Either way it satisfies :func:`find_repo_root`.
+    """
+    spec = importlib.util.find_spec("pysepal")
+    if spec is None or spec.origin is None:
+        raise ModuleNotFoundError(
+            "pysepal is not installed in this environment; pass --repo-root <checkout>."
+        )
+    return find_repo_root(Path(spec.origin).parents[1])
+
+
 def render_markdown(modules: list[ModuleInfo], repo_root: Path) -> str:
     """Render the discovered modules as a Markdown summary."""
     lines = [
@@ -149,12 +164,15 @@ def render_markdown(modules: list[ModuleInfo], repo_root: Path) -> str:
 def main() -> None:
     """CLI entry point for the discovery script."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo-root", default=".", help="Path inside the pysepal repository")
+    parser.add_argument(
+        "--repo-root",
+        help="Path inside a pysepal checkout. Default: the pysepal installed in this environment.",
+    )
     parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
     parser.add_argument("--include-legacy", action="store_true")
     args = parser.parse_args()
 
-    repo_root = find_repo_root(Path(args.repo_root))
+    repo_root = find_repo_root(Path(args.repo_root)) if args.repo_root else installed_package_root()
     components_dir = repo_root / "pysepal" / "solara" / "components"
     modules = [
         inspect_module(path, repo_root)
