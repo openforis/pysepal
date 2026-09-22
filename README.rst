@@ -69,22 +69,29 @@ You can contribute to the translation effort on our `crowdin project <https://cr
 
 :code:`pysepal` is a UI toolkit for building `ipyvuetify <https://ipyvuetify.readthedocs.io/en/latest/introduction.html>`_ and `Solara <https://solara.dev/>`_ dashboards, with first-class integration for the `SEPAL platform <https://sepal.io/>`__. It ships components for mapping (`ipyleaflet <https://ipyleaflet.readthedocs.io/>`_), AOI selection, Google Earth Engine session handling, notifications, exports, theming, and i18n — usable in any Jupyter or Solara context, and tightly wired into SEPAL when you run there.
 
-The full documentation is available `here <https://sepal-ui.readthedocs.io/en/latest/>`__ and demo apps can be launched on Heroku following these links:
+The full documentation is available `here <https://pysepal.readthedocs.io/en/latest/>`__. Working demo apps live in `demo_apps/ <demo_apps>`__ and run under both Solara and Voila:
 
--   `Map style application <https://sepal-map-app.herokuapp.com>`__
--   `Panel style application <https://sepal-panel-app.herokuapp.com>`__
+.. code-block:: bash
+
+    ./run_solara.sh demo_apps/gallery.py --port 8901
 
 We are happy to receive feedback and we welcome any kind of contribution.
 
-+-----------+-------------+
-| |map-app| | |panel-app| |
-+-----------+-------------+
+.. list-table::
+   :widths: 50 50
 
-.. |map-app| image:: https://raw.githubusercontent.com/openforis/pysepal/main/docs/source/_image/demo-map-app.png
-    :width: 100%
+   * - |ndvi|
+     - |radar|
+   * - Sentinel-2 NDVI in the map demo, with its gradient legend, in the light and dark themes.
+     - Sentinel-1 VV / VH / VV−VH composite over the river confluence at Manaus.
 
-.. |panel-app| image:: https://raw.githubusercontent.com/openforis/pysepal/main/docs/source/_image/demo-panel-app.png
+.. |ndvi| image:: https://raw.githubusercontent.com/openforis/pysepal/main/docs/source/_image/readme-map-app-ndvi.jpg
     :width: 100%
+    :alt: Sentinel-2 NDVI in the map demo, light and dark theme
+
+.. |radar| image:: https://raw.githubusercontent.com/openforis/pysepal/main/docs/source/_image/readme-map-app-radar.jpg
+    :width: 100%
+    :alt: Sentinel-1 radar composite in the map demo, light and dark theme
 
 Contribute
 ----------
