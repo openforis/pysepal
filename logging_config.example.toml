@@ -33,10 +33,11 @@ stream    = "ext://sys.stderr"
 
 # ─── LOGGERS ────────────────────────────────────────────────
 
+# propagate stays on: turning it off detaches sepalui from the root handler,
+# which is what pytest's caplog and most host applications attach to.
 [loggers.sepalui]
 level     = "DEBUG"
 handlers  = ["file", "notebook"]
-propagate = false
 
 
 # ─── ROOT ───────────────────────────────────────────────────
