@@ -93,6 +93,18 @@ We are happy to receive feedback and we welcome any kind of contribution.
     :width: 100%
     :alt: Sentinel-1 radar composite in the map demo, light and dark theme
 
+Build apps with Claude Code
+---------------------------
+
+This repository is also a `Claude Code <https://code.claude.com/>`__ plugin marketplace that ships two skills: :code:`pysepal`, the library's patterns and known error fixes, and :code:`pysepal-app`, which scaffolds a SEPAL app. Install it at project scope from inside your app repository, then commit the :code:`.claude/settings.json` it writes so every developer of the app gets the same skills:
+
+.. code-block:: bash
+
+    claude plugin marketplace add openforis/pysepal --scope project
+    claude plugin install pysepal@pysepal --scope project
+
+The plugin version follows the pysepal release it documents and updates once per session. Details in `skills/README.md <skills/README.md>`__.
+
 Contribute
 ----------
 
