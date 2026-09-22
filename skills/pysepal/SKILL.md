@@ -582,11 +582,60 @@ All four `demo_apps/` are translated (en, es, fr); `solara_raster_app` shows
 plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
 `docs/guides/migration-v4.md` § 6.
 
+## File Selection
+
+Pick by how many paths you need, not by where the files live — one component
+already covers both filesystems:
+
+| Need          | Use                                                    |
+| ------------- | ------------------------------------------------------ |
+| One path      | `FileInputComponent`, on either filesystem             |
+| Several paths | not shipped yet — see "The gap" below ([#1067][i1067]) |
+
+[i1067]: https://github.com/openforis/pysepal/issues/1067
+
+`FileInputComponent` chooses its backend at runtime from whether a
+`sepal_client` was passed: `FileInput.load_files` calls `get_remote_files`
+(`sepal_client.files.list`, the user's sandbox over HTTP) when there is a client
+and `get_local_files` (a `pathlib` glob on the process filesystem) when there is
+not, where `root` then defaults to `~`. So it is **not** a sandbox-only
+component, and a local app is a first-class use of it. Its value is a single
+path as a `str`.
+
+Do not reach for `solara.FileBrowser` or `solara.FileBrowserMultiple` in a
+pysepal app. They read the process filesystem through `pathlib` and take no
+client, so they cannot serve a sandbox, and an app built on them stops working
+the moment it is deployed to SEPAL. pysepal apps use `FileInputComponent`.
+
+**The gap.** Nothing selects more than one path, and nothing in pysepal
+abstracts reading and writing over the two filesystems, so a component written
+against one cannot serve the other. Both are being tracked rather than worked
+around: multi-select on our own component in [#1067][i1067] (Solara's version is
+prior art there, not a dependency), and one filesystem interface in
+[#1066][i1066]. Until they land, an app needing several paths composes them from
+`FileInputComponent` or talks to `SepalClient` itself.
+
+[i1066]: https://github.com/openforis/pysepal/issues/1066
+
 ## Charts and Graphs
 
 **Always use `ipecharts`** for charts in pysepal apps — bar, line, pie,
 scatter, heatmap, 3D, network graphs, etc. Do not use matplotlib,
 plotly, or other charting libraries unless the user explicitly asks.
+
+`solara.FigureEcharts` is not an exception: it takes raw option dicts, fetches
+ECharts from a CDN at mount, and rebuilds the chart on every update. The guide's
+"Why not `solara.FigureEcharts`?" section holds the full comparison — read it
+before re-opening the question when an upstream release touches that component.
+
+A chart measures its container once and redraws only when something calls
+`resize()`. Measured across seven mount points in `demo_apps/solara_chart_app`,
+two go wrong: a container that changes width with no window resize, and a chart
+built inside a container that is in the DOM but hidden (a map `MenuControl`).
+Lazy containers — collapsed panels, unopened tabs, dialog steps — are fine.
+Telling the chart from Python only works after the browser has applied the
+layout; a nudge in the same batch redraws at the old width. Recipe:
+`docs/guides/ipecharts.md` § "Responsive Charts".
 
 Read `docs/guides/ipecharts.md` before creating any
 chart. It covers both approaches (`EChartsRawWidget` for quick prototypes,
@@ -688,17 +737,18 @@ Run discovery for the full current list — do not rely on this table.
 
 ### pysepal guides (`docs/guides/`)
 
-| Guide                     | When to read                                                        |
-| ------------------------- | ------------------------------------------------------------------- |
-| `solara-gee-patterns.md`  | Any GEE work in Solara                                              |
-| `solara-app-builder.md`   | Scaffolding or restructuring an app                                 |
-| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                 |
-| `solara-migration.md`     | Converting ipyvuetify widget to Solara                              |
-| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                           |
-| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps) |
-| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser     |
-| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                         |
-| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`              |
+| Guide                     | When to read                                                                      |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `solara-gee-patterns.md`  | Any GEE work in Solara                                                            |
+| `solara-app-builder.md`   | Scaffolding or restructuring an app                                               |
+| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                               |
+| `solara-migration.md`     | Converting ipyvuetify widget to Solara                                            |
+| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                                         |
+| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
+| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser                   |
+| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                                       |
+| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
+| `solara-upstream.md`      | What an upstream Solara release means for pysepal; why the pin sits where it does |
 
 Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
 plural nodes, `check()`.
@@ -751,6 +801,8 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
 - [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
+- [ ] A Solara install below 1.60.3 (the `use_task` result store and the leak-free subscription lifecycle the notification bus depends on landed in 1.60.1–1.60.3)
+- [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
 
 Read `docs/guides/migration-notes-v3.4.md` for the
 full breaking changes list.

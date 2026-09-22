@@ -3,13 +3,14 @@
 ## Table of Contents
 
 1. [Introduction](#introduction)
-2. [Installation](#installation)
-3. [Quick Start](#quick-start)
-4. [Two Approaches to Creating Charts](#two-approaches-to-creating-charts)
-5. [Core Components](#core-components)
-6. [Chart Examples](#chart-examples)
-7. [Advanced Features](#advanced-features)
-8. [Best Practices](#best-practices)
+2. [Why not `solara.FigureEcharts`?](#why-not-solarafigureecharts)
+3. [Installation](#installation)
+4. [Quick Start](#quick-start)
+5. [Two Approaches to Creating Charts](#two-approaches-to-creating-charts)
+6. [Core Components](#core-components)
+7. [Chart Examples](#chart-examples)
+8. [Advanced Features](#advanced-features)
+9. [Best Practices](#best-practices)
 
 ---
 
@@ -28,6 +29,34 @@
 - ✅ Event handling and chart actions
 - ✅ Custom themes and styling
 - ✅ JavaScript function support
+
+---
+
+## Why not `solara.FigureEcharts`?
+
+Solara ships its own ECharts component, `solara.FigureEcharts`. pysepal does not
+use it, and a new release touching it (1.62 guarded its option watcher, #1201) is
+not a reason to revisit that. The comparison, so nobody has to redo it:
+
+|                  | `solara.FigureEcharts`                                                                                              | `ipecharts`                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Python API       | none — a raw `option` dict; the docstring says "we do not support a Python API to create the figure data"           | typed `Option` / `XAxis` / series classes      |
+| ECharts delivery | fetched from a CDN at mount (`solara.settings.assets.cdn`), or served by `solara-assets` when `assets.proxy` is set | bundled with the widget                        |
+| Updates          | `setOption(option, true)` — `notMerge`, so every change rebuilds the chart and drops zoom and brush state           | mutate a series, partial update                |
+| Theme            | none                                                                                                                | `theme=`, plus the `theme_state` binding below |
+
+The CDN path is the one that would hurt on SEPAL: a chart that fetches its own
+JavaScript at render time fails wherever the sandbox network does, and the
+offline escape hatch — `solara-assets` — is capped at 1.58.2 on PyPI because the
+project hit its storage limit.
+
+The two fixes Solara made upstream have no analogue here. Its 1.62 guard exists
+because it imports ECharts asynchronously and the option watcher could fire
+first; `ipecharts` imports ECharts statically and initializes on `after-attach`,
+and every write already goes through `this._myChart?.setOption(...)`. Its
+`on_mouseover_enabled` flag exists because its handlers are always wired;
+`ipecharts` registers handlers on demand, so an event with no handler costs no
+kernel traffic.
 
 ---
 
@@ -653,6 +682,81 @@ num_categories = len(categories)
 height = max(200, 50 + 75 * num_categories)
 chart = EChartsWidget(option=option, height=f"{height}px")
 ```
+
+`width: 100%` stretches the container, but ECharts lays its canvas out once and
+only redraws when something calls `resize()`. `ipecharts` calls it on a window
+`resize` (debounced 100ms), on Lumino `resize` messages, on `after-attach`, and
+whenever `style` or the CSS classes change — see `baseWidgetView.ts`. It does
+**not** watch the container with a `ResizeObserver`.
+
+`demo_apps/solara_chart_app` mounts the same chart in seven places and measures
+each one. Two of the seven come out wrong:
+
+| Context                                                     | Result                                          |
+| ----------------------------------------------------------- | ----------------------------------------------- |
+| A container that changes width, no window resize            | **wrong**: 510px canvas in a 1020px box         |
+| A chart built inside a rendered but hidden menu             | **wrong**: 100px canvas in a 128px box          |
+| A collapsed expansion panel, an unopened tab, a dialog step | fine: the content mounts when it is shown       |
+| MapApp's right panel opening and closing                    | fine: the panel slides, its width never changes |
+| A plain page column                                         | fine: a window resize is a path it listens on   |
+
+The same table holds under Voila. Lumino sends its resize messages when its own
+layout changes, not when CSS moves something inside a single output, so running
+the component from `ui.ipynb` gets both cases wrong in the same way — measured,
+not assumed.
+
+So the rule is narrower than "charts break in panels": a chart is wrong when its
+box changes without a window resize, or when it is built inside a container that
+is in the DOM but not visible. Vuetify's own lazy containers save you from most
+of the second case.
+
+**Telling it takes a delay.** The widget has no resize API, and both levers that
+reach `resize()` from Python — swapping a CSS class, writing `style` — are
+applied the moment the trait lands, which can be before the browser has applied
+the layout change that prompted it. Measured: the class arrived on the element
+and the canvas still redrew at the old width. Wait for the layout first:
+
+```python
+@solara.component
+def PanelChart(option, resize_token: int):
+    """``resize_token`` is anything that changes when the chart's box changes."""
+    chart = EChartsWidget.element(option=option, style={"height": "300px"})
+    widget_ref = solara.use_ref(None)
+
+    def capture():
+        # get_widget needs a render context, which a task body does not have.
+        widget_ref.current = solara.get_widget(chart)
+
+    solara.use_effect(capture, [])
+
+    async def follow():
+        if widget_ref.current is None:
+            return
+        await asyncio.sleep(0.25)
+        # Any class change reaches update_classes, which calls chart.resize().
+        widget_ref.current.remove_class(f"chart-resize-{(resize_token + 1) % 2}")
+        widget_ref.current.add_class(f"chart-resize-{resize_token % 2}")
+
+    solara.lab.use_task(follow, dependencies=[resize_token], prefer_threaded=False)
+```
+
+Under `MapApp` the token comes from the shell itself: `right_panel_open`,
+`right_panel_width` and `step_open` are synced traits, so `solara.get_widget` on
+the `MapApp.element` and an `observe` on those three is all an app needs.
+
+**A window `resize` event fixes every chart on the page at once**, debounced and
+acted on by `ipecharts`. `MapApp.vue` already dispatches one inside a
+`$nextTick` when the bottom panel toggles, because leaflet has the same blind
+spot — that covers MapApp's own layout modes, and there is nothing further to
+extend there: `right_panel_width` is a static prop with no drag handle, and
+opening or closing the panel slides it without changing its width.
+
+Which leaves the two broken cases to the app, through the deferred nudge above.
+What would retire that workaround is a `ResizeObserver` on the chart element in
+`ipecharts`' `setupResizeListener`, catching both a container that changes width
+and an element that becomes visible. That is upstream work in
+[`ipecharts`](https://github.com/trungleduc/ipecharts), deliberately not taken on
+here: until it exists, tell the chart yourself and leave it a beat to settle.
 
 ### 6. Reusable Components
 
