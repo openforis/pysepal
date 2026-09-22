@@ -28,6 +28,11 @@ def gradient_legend(title: str, vis: dict) -> LegendData:
     )
 
 
+def band_legend(bands) -> LegendData:
+    """One chip per channel of an RGB composite, labelled with what the channel carries."""
+    return LegendData(items=[DiscreteEntry(msg(label_key), color) for label_key, color in bands])
+
+
 def _area_detail(area_km2: float, total_km2: float) -> str:
     """Format one legend detail cell as area plus share of the total."""
     share = (area_km2 / total_km2 * 100) if total_km2 else 0.0

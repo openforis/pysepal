@@ -16,7 +16,7 @@
     },
     "layers": {
       "title": "Capas",
-      "description": "Añada una capa de demostración independiente o una capa vectorial PMTiles, o limpie el mapa y sus leyendas. Ambas aparecen en el control de capas, arriba a la derecha."
+      "description": "Añada una capa de demostración independiente, una composición radar Sentinel-1 o una capa vectorial PMTiles, o limpie el mapa y sus leyendas. Todas aparecen en el control de capas, arriba a la derecha."
     },
     "export": {
       "title": "Exportar",
@@ -26,6 +26,7 @@
   "layers": {
     "ndvi": "NDVI Sentinel-2",
     "ndvi_short": "NDVI",
+    "radar": "Radar Sentinel-1",
     "pixel_area": "Área del píxel (m²)",
     "elevation": "Clases de altitud",
     "pmtiles": "Edificios de Nueva Zelanda"
@@ -35,10 +36,16 @@
     "upland": "Tierras altas (500-1500 m)",
     "highland": "Alta montaña (>= 1500 m)"
   },
+  "radar": {
+    "vv": "VV (rojo)",
+    "vh": "VH (verde)",
+    "ratio": "VV − VH (azul)"
+  },
   "buttons": {
     "process": "Ejecutar el procesamiento",
     "simulate": "Simular un error",
     "add_layer": "añadir una capa",
+    "add_radar": "añadir una capa radar",
     "add_pmtiles": "añadir una capa pmtiles",
     "remove_all": "eliminar todas las capas"
   },

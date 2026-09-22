@@ -16,7 +16,7 @@
     },
     "layers": {
       "title": "Couches",
-      "description": "Ajoutez une couche de démonstration autonome ou une couche vectorielle PMTiles, ou effacez la carte et ses légendes. Les deux apparaissent dans le contrôle des couches, en haut à droite."
+      "description": "Ajoutez une couche de démonstration autonome, une composition radar Sentinel-1 ou une couche vectorielle PMTiles, ou effacez la carte et ses légendes. Toutes apparaissent dans le contrôle des couches, en haut à droite."
     },
     "export": {
       "title": "Exporter",
@@ -26,6 +26,7 @@
   "layers": {
     "ndvi": "NDVI Sentinel-2",
     "ndvi_short": "NDVI",
+    "radar": "Radar Sentinel-1",
     "pixel_area": "Surface du pixel (m²)",
     "elevation": "Classes d'altitude",
     "pmtiles": "Bâtiments de Nouvelle-Zélande"
@@ -35,10 +36,16 @@
     "upland": "Moyenne montagne (500-1500 m)",
     "highland": "Haute montagne (>= 1500 m)"
   },
+  "radar": {
+    "vv": "VV (rouge)",
+    "vh": "VH (vert)",
+    "ratio": "VV − VH (bleu)"
+  },
   "buttons": {
     "process": "Lancer le traitement",
     "simulate": "Simuler une erreur",
     "add_layer": "ajouter une couche",
+    "add_radar": "ajouter une couche radar",
     "add_pmtiles": "ajouter une couche pmtiles",
     "remove_all": "supprimer toutes les couches"
   },
