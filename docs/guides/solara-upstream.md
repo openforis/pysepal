@@ -49,11 +49,18 @@ Values are always `pathlib.Path` (it rejects a directory given as a string), a
 single click toggles a path, a double click opens a file or enters a directory
 and clears the selection, and `watch=True` follows changes on disk.
 
-It browses **the filesystem of the process running the app**. pysepal's
-`FileInputComponent` wraps `sepalwidgets.FileInput`, which resolves paths
-through a `SepalClient` — the user's sandbox, reached over HTTP — and holds a
-single value. The two are not interchangeable, and `FileBrowserMultiple` is not
-a drop-in for container apps.
+It browses **the filesystem of the process running the app**, and takes no
+client, so it cannot be pointed at a SEPAL sandbox.
+
+pysepal's `FileInputComponent` wraps `sepalwidgets.FileInput`, which serves both
+filesystems from one widget: `load_files` calls `get_remote_files`
+(`sepal_client.files.list`, over HTTP) when a `sepal_client` was passed and
+`get_local_files` (a `pathlib` glob) when it was not, with `root` defaulting to
+`~` in that case. What it does not do is carry more than one path, and its value
+is a `str` rather than a `Path`.
+
+So the two differ by cardinality and by reach, not by "sandbox versus local" —
+and the combination nothing covers is several paths in the sandbox.
 
 Where it fits: local and Voila apps that pick several files at once, such as a
 batch over rasters or vectors. It needs `solara>=1.62`, above the pysepal floor,

@@ -569,19 +569,35 @@ plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
 
 ## File Selection
 
-Pick by where the files live, not by how the picker looks:
+Pick by how many paths you need, not by where the files live — one component
+already covers both filesystems:
 
-| Files live in                                                           | Use                                                                            |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| The user's SEPAL sandbox (any container / GEE app)                      | `FileInputComponent` — it resolves paths through a `SepalClient`, single value |
-| The filesystem of the process running the app (local, Voila, notebooks) | `solara.FileBrowser`, or `solara.FileBrowserMultiple` for several paths        |
+| Need                              | Use                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| One path, either filesystem       | `FileInputComponent`                                                        |
+| Several paths, process filesystem | `solara.FileBrowserMultiple` (Solara 1.62), or `solara.FileBrowser` for one |
+| Several paths, the SEPAL sandbox  | nothing ships this yet — see "The gap" below                                |
 
-`solara.FileBrowserMultiple` (Solara 1.62) returns `pathlib.Path` values, toggles
-on a single click, and opens or enters on a double click. It browses the process
-filesystem only, so it is **not** a drop-in for `FileInputComponent` in a
-container app. It also sits above pysepal's floor (`solara>=1.60.3`), so an app
-that wants it pins Solara itself. Recipe:
-`docs/guides/solara-upstream.md` § "Documented — `FileBrowserMultiple`".
+`FileInputComponent` chooses its backend at runtime from whether a
+`sepal_client` was passed: `FileInput.load_files` calls `get_remote_files`
+(`sepal_client.files.list`, the user's sandbox over HTTP) when there is a client
+and `get_local_files` (a `pathlib` glob on the process filesystem) when there is
+not, where `root` then defaults to `~`. So it is **not** a sandbox-only
+component, and a local app is a first-class use of it. Its value is a single
+path as a `str`.
+
+`solara.FileBrowserMultiple` returns `pathlib.Path` values, toggles on a single
+click, and opens or enters on a double click. It reads the process filesystem
+directly and takes no client, so it cannot be pointed at a sandbox. It also sits
+above pysepal's floor (`solara>=1.60.3`), so an app that wants it pins Solara
+itself. Recipe: `docs/guides/solara-upstream.md` § "Documented —
+`FileBrowserMultiple`".
+
+**The gap.** Multi-select exists only for the process filesystem, single-select
+only carries a `str` while Solara speaks `Path`, and nothing in pysepal abstracts
+reading and writing over the two backends — so a component written against one
+cannot serve the other. Until that exists, an app needing several sandbox paths
+composes them from `FileInputComponent`, or talks to `SepalClient` itself.
 
 ## Charts and Graphs
 
