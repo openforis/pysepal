@@ -737,18 +737,19 @@ Run discovery for the full current list — do not rely on this table.
 
 ### pysepal guides (`docs/guides/`)
 
-| Guide                     | When to read                                                                      |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `solara-gee-patterns.md`  | Any GEE work in Solara                                                            |
-| `solara-app-builder.md`   | Scaffolding or restructuring an app                                               |
-| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                               |
-| `solara-migration.md`     | Converting ipyvuetify widget to Solara                                            |
-| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                                         |
-| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
-| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser                   |
-| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                                       |
-| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
-| `solara-upstream.md`      | What an upstream Solara release means for pysepal; why the pin sits where it does |
+| Guide                     | When to read                                                                        |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `solara-gee-patterns.md`  | Any GEE work in Solara                                                              |
+| `solara-app-builder.md`   | Scaffolding or restructuring an app                                                 |
+| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                                 |
+| `solara-migration.md`     | Converting ipyvuetify widget to Solara                                              |
+| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                                           |
+| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps)                 |
+| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser                     |
+| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                                         |
+| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                              |
+| `solara-upstream.md`      | What an upstream Solara release means for pysepal; why the pin sits where it does   |
+| `solara-app-gotchas.md`   | An app misbehaves silently: blank widget, frozen kernel, wrong colour, missing icon |
 
 Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
 plural nodes, `check()`.
