@@ -1016,10 +1016,18 @@ export default {
   height: 100%;
 }
 
-/* Ensure interactive elements in the drawer can be clicked */
-.v-navigation-drawer .v-list-item,
-.v-navigation-drawer .v-btn,
-.v-navigation-drawer .v-select {
+/* Ensure interactive elements in the drawer can be clicked.
+
+   The :not() guards are load-bearing, not tidiness. Vuetify disables a
+   control with `.v-btn--disabled { pointer-events: none }` at specificity
+   0,1,0; the selectors below are 0,2,0 and so used to win, handing every
+   DISABLED button, list item and select in a drawer its pointer events back.
+   The control stayed unclickable (the `disabled` attribute still applies),
+   but it lit up on hover like a live one -- reported against the right
+   panel's footer bar, and true of the navigation drawer just as much. */
+.v-navigation-drawer .v-list-item:not(.v-list-item--disabled),
+.v-navigation-drawer .v-btn:not(.v-btn--disabled),
+.v-navigation-drawer .v-select:not(.v-input--is-disabled) {
   pointer-events: auto;
   transition: transform 0.3s ease;
 }

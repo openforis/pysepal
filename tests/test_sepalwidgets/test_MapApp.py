@@ -269,3 +269,114 @@ def test_a_bare_widget_panel_section_content_is_wrapped_in_a_list() -> None:
     assert app.right_panel_content[0]["content"] == [card]
     # the child panel is what renders, and __init__ builds it from the raw kwargs
     assert app.right_panel[0].content_data[0]["content"] == [card]
+
+
+def test_the_panel_footer_reaches_the_child_that_renders_it() -> None:
+    """The footer reaches the child widget that actually renders it.
+
+    ``right_panel_footer`` is handed to the ``RightPanel`` built in
+    ``__init__``, the same way config and content are -- the footer renders
+    from the child widget, not from ``MapApp``.
+    """
+    card = v.Card(children=["Next"])
+    app = MapApp(
+        right_panel_config={"title": "Tools", "width": 400},
+        right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}],
+        right_panel_footer=[card],
+    )
+
+    assert app.right_panel[0].footer_content == [card]
+
+
+def test_panel_footer_updates_survive_a_rerender() -> None:
+    """A re-render's new footer widgets reach the panel.
+
+    The footer needs the same parent -> child push config and content
+    already have. Without it a re-render that swapped the footer widgets --
+    a translated label, a button that just became enabled -- would leave the
+    panel rendering the ones it was born with.
+    """
+    app = MapApp(
+        right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}],
+        right_panel_footer=[v.Card(children=["Next"])],
+    )
+    panel = app.right_panel[0]
+
+    replacement = v.Card(children=["Siguiente"])
+    app.right_panel_footer = [replacement]
+
+    assert panel.footer_content == [replacement]
+
+
+def test_a_panel_with_no_footer_carries_an_empty_one() -> None:
+    """The footer is opt-in and absent by default.
+
+    The footer is opt-in: every existing app passes no ``right_panel_footer``
+    and must keep rendering exactly what it did, which ``RightPanel.vue``
+    achieves by drawing nothing at all (``v-if="hasFooter"``) rather than an
+    empty strip with a divider above it.
+    """
+    app = MapApp(right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}])
+
+    assert app.right_panel[0].footer_content == []
+
+
+def test_the_footer_renders_outside_the_scrolling_section_area() -> None:
+    """The footer sits outside the scroll area, not inside it.
+
+    The point of the slot, asserted against the template itself: the footer
+    has to be a SIBLING of ``.drawer-top`` (the element carrying
+    ``overflow-y: auto``), not a child of it. Nested inside, it would scroll
+    away with the sections and be no different from putting the widgets in
+    the last section.
+    """
+    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/RightPanel.vue").read_text()
+    scroll_area = template.index('class="drawer-top"')
+    footer = template.index('class="drawer-footer"')
+    closing_drawer = template.index("</v-navigation-drawer>")
+
+    assert scroll_area < footer < closing_drawer
+    # The scroll area's own div is closed before the footer opens.
+    assert template.count("</div>", scroll_area, footer) >= 3
+
+
+def test_the_drawer_click_rule_leaves_disabled_controls_alone() -> None:
+    """A disabled control in a drawer must keep Vuetify's ``pointer-events: none``.
+
+    ``.v-navigation-drawer .v-btn`` is specificity 0,2,0 and Vuetify's own
+    ``.v-btn--disabled`` is 0,1,0, so without the ``:not()`` guards the
+    drawer rule wins and hands every disabled button its pointer events back.
+    It stays unclickable -- the ``disabled`` attribute still applies -- but it
+    lights up on hover like a live control, which is how the bug was found.
+
+    Asserted against the stylesheet text because the cascade is the whole
+    bug: a version of this rule that merely LOOKS narrower (matching on the
+    wrong disabled class, say) would leave the symptom in place, so each
+    guard is named explicitly.
+    """
+    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/MapApp.vue").read_text()
+    rule = template.index(".v-navigation-drawer .v-list-item")
+    end = template.index("}", rule)
+    selectors = template[rule:end]
+
+    assert ".v-btn:not(.v-btn--disabled)" in selectors
+    assert ".v-list-item:not(.v-list-item--disabled)" in selectors
+    assert ".v-select:not(.v-input--is-disabled)" in selectors
+    # An unguarded selector anywhere in the group puts the bug back.
+    assert "pointer-events: auto" in template[rule : end + 80]
+
+
+def test_the_footer_adds_no_padding_of_its_own() -> None:
+    """The footer hands its widgets the full panel width.
+
+    A footer is most often a full-bleed action bar, and padding added by the
+    slot could not be removed from the outside -- a consumer that wants inset
+    content can bring its own, but one that wants edge-to-edge buttons could
+    not undo ours. Asserted against the template because it is a contract for
+    consumers, not a style detail.
+    """
+    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/RightPanel.vue").read_text()
+    footer = template.index('class="drawer-footer"')
+    end = template.index("</v-navigation-drawer>", footer)
+
+    assert 'class="pa-' not in template[footer:end]

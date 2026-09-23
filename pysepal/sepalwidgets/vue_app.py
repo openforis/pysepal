@@ -110,6 +110,21 @@ class MapApp(v.VuetifyTemplate):
         default_value=[],
     ).tag(sync=True, **widget_serialization)
 
+    right_panel_footer = List(Instance(DOMWidget), default_value=[]).tag(
+        sync=True, **widget_serialization
+    )
+    """Widgets pinned below the panel's scrolling sections.
+
+    A plain widget list, not the section dicts ``right_panel_content`` takes:
+    a footer is one strip of controls, not a stack of titled sections, and
+    giving it headings and dividers of its own would only invite it to grow
+    into a second body. It renders outside the scroll area, so it stays on
+    screen however far the sections above it scroll -- the place for a
+    persistent action bar (step navigation, a submit button) that would
+    otherwise be lost at the bottom of a long panel. Empty by default, and an
+    empty footer renders nothing at all, not an empty strip.
+    """
+
     steps_data = List(
         Dict(
             {
@@ -183,7 +198,11 @@ class MapApp(v.VuetifyTemplate):
             config = kwargs.get("right_panel_config", {})
             content_data = kwargs.get("right_panel_content", [])
 
-            right_panel = RightPanel(config=config, content_data=content_data)
+            right_panel = RightPanel(
+                config=config,
+                content_data=content_data,
+                footer_content=kwargs.get("right_panel_footer", []),
+            )
 
             # Check if right_panel_open was specified and apply it
             if "right_panel_open" in kwargs:
@@ -227,7 +246,10 @@ class MapApp(v.VuetifyTemplate):
             ],
         )
         self.observe(self._sync_map_theme_state, ["theme_toggle", "main_map"])
-        self.observe(self._sync_right_panel, ["right_panel_config", "right_panel_content"])
+        self.observe(
+            self._sync_right_panel,
+            ["right_panel_config", "right_panel_content", "right_panel_footer"],
+        )
         self._sync_map_insets()
         self._sync_map_theme_state()
 
@@ -452,6 +474,7 @@ class MapApp(v.VuetifyTemplate):
         panel = self.right_panel[0]
         panel.config = self.right_panel_config
         panel.content_data = self.right_panel_content
+        panel.footer_content = self.right_panel_footer
 
 
 class ThemeToggle(v.VuetifyTemplate):
@@ -548,6 +571,11 @@ class RightPanel(v.VuetifyTemplate):
         ),
         default_value=[],
     ).tag(sync=True, **widget_serialization)
+
+    footer_content = List(Instance(DOMWidget), default_value=[]).tag(
+        sync=True, **widget_serialization
+    )
+    """Widgets rendered below the scroll area -- see ``MapApp.right_panel_footer``."""
 
     @validate("content_data")
     def _wrap_bare_section_content(self, proposal):
