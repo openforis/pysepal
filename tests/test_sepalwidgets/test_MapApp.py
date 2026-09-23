@@ -269,3 +269,29 @@ def test_a_bare_widget_panel_section_content_is_wrapped_in_a_list() -> None:
     assert app.right_panel_content[0]["content"] == [card]
     # the child panel is what renders, and __init__ builds it from the raw kwargs
     assert app.right_panel[0].content_data[0]["content"] == [card]
+
+
+def test_the_drawer_click_rule_leaves_disabled_controls_alone() -> None:
+    """A disabled control in a drawer must keep Vuetify's ``pointer-events: none``.
+
+    ``.v-navigation-drawer .v-btn`` is specificity 0,2,0 and Vuetify's own
+    ``.v-btn--disabled`` is 0,1,0, so without the ``:not()`` guards the
+    drawer rule wins and hands every disabled button its pointer events back.
+    It stays unclickable -- the ``disabled`` attribute still applies -- but it
+    lights up on hover like a live control, which is how the bug was found.
+
+    Asserted against the stylesheet text because the cascade is the whole
+    bug: a version of this rule that merely LOOKS narrower (matching on the
+    wrong disabled class, say) would leave the symptom in place, so each
+    guard is named explicitly.
+    """
+    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/MapApp.vue").read_text()
+    rule = template.index(".v-navigation-drawer .v-list-item")
+    end = template.index("}", rule)
+    selectors = template[rule:end]
+
+    assert ".v-btn:not(.v-btn--disabled)" in selectors
+    assert ".v-list-item:not(.v-list-item--disabled)" in selectors
+    assert ".v-select:not(.v-input--is-disabled)" in selectors
+    # An unguarded selector anywhere in the group puts the bug back.
+    assert "pointer-events: auto" in template[rule : end + 80]
