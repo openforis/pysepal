@@ -113,16 +113,9 @@ class MapApp(v.VuetifyTemplate):
     right_panel_footer = List(Instance(DOMWidget), default_value=[]).tag(
         sync=True, **widget_serialization
     )
-    """Widgets pinned below the panel's scrolling sections.
+    """Widgets pinned below the scrolling sections, e.g. a persistent action bar.
 
-    A plain widget list, not the section dicts ``right_panel_content`` takes:
-    a footer is one strip of controls, not a stack of titled sections, and
-    giving it headings and dividers of its own would only invite it to grow
-    into a second body. It renders outside the scroll area, so it stays on
-    screen however far the sections above it scroll -- the place for a
-    persistent action bar (step navigation, a submit button) that would
-    otherwise be lost at the bottom of a long panel. Empty by default, and an
-    empty footer renders nothing at all, not an empty strip.
+    Shown only while the panel has sections; empty (the default) renders nothing.
     """
 
     steps_data = List(
