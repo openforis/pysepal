@@ -1,6 +1,10 @@
 """Test the MapApp widget."""
 
+import re
+from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
+from typing import Iterator, List, Optional
 
 import ipyvuetify as v
 import pytest
@@ -272,12 +276,7 @@ def test_a_bare_widget_panel_section_content_is_wrapped_in_a_list() -> None:
 
 
 def test_the_panel_footer_reaches_the_child_that_renders_it() -> None:
-    """The footer reaches the child widget that actually renders it.
-
-    ``right_panel_footer`` is handed to the ``RightPanel`` built in
-    ``__init__``, the same way config and content are -- the footer renders
-    from the child widget, not from ``MapApp``.
-    """
+    """``RightPanel``, not ``MapApp``, renders it, as with config and content."""
     card = v.Card(children=["Next"])
     app = MapApp(
         right_panel_config={"title": "Tools", "width": 400},
@@ -289,13 +288,7 @@ def test_the_panel_footer_reaches_the_child_that_renders_it() -> None:
 
 
 def test_panel_footer_updates_survive_a_rerender() -> None:
-    """A re-render's new footer widgets reach the panel.
-
-    The footer needs the same parent -> child push config and content
-    already have. Without it a re-render that swapped the footer widgets --
-    a translated label, a button that just became enabled -- would leave the
-    panel rendering the ones it was born with.
-    """
+    """Without the parent -> child push the panel keeps the footer it was born with."""
     app = MapApp(
         right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}],
         right_panel_footer=[v.Card(children=["Next"])],
@@ -309,74 +302,89 @@ def test_panel_footer_updates_survive_a_rerender() -> None:
 
 
 def test_a_panel_with_no_footer_carries_an_empty_one() -> None:
-    """The footer is opt-in and absent by default.
-
-    The footer is opt-in: every existing app passes no ``right_panel_footer``
-    and must keep rendering exactly what it did, which ``RightPanel.vue``
-    achieves by drawing nothing at all (``v-if="hasFooter"``) rather than an
-    empty strip with a divider above it.
-    """
+    """The footer is opt-in: an app that passes none gets an empty one."""
     app = MapApp(right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}])
 
     assert app.right_panel[0].footer_content == []
 
 
+#: A non-zero Vuetify padding helper: pa-4, px-2, pt-md-3...
+_PADDING_CLASS = re.compile(r"^p[atblrsexy]-(?:(?:sm|md|lg|xl)-)?[1-9]")
+
+
+@dataclass(eq=False)
+class _Node:
+    tag: str
+    classes: List[str]
+    style: str
+    parent: Optional["_Node"]
+
+    def ancestors(self) -> Iterator["_Node"]:
+        node = self.parent
+        while node is not None:
+            yield node
+            node = node.parent
+
+
+class _Template(HTMLParser):
+    """A pysepal ``.vue`` file parsed enough to ask what encloses what."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.text = (Path(pysepal.__file__).parent / "sepalwidgets/vue" / name).read_text()
+        self.nodes: List[_Node] = []
+        self._open: Optional[_Node] = None
+        self.feed(self.text[: self.text.index("<script>")])
+
+    def handle_starttag(self, tag, attrs) -> None:
+        attrs = dict(attrs)
+        classes = (attrs.get("class") or "").split()
+        self._open = _Node(tag, classes, attrs.get("style") or "", self._open)
+        self.nodes.append(self._open)
+
+    def handle_endtag(self, tag) -> None:
+        self._open = self._open.parent
+
+    def first(self, css_class: str) -> _Node:
+        return next(node for node in self.nodes if css_class in node.classes)
+
+    def css_rule(self, selector: str) -> str:
+        start = self.text.index(selector + " {", self.text.index("<style"))
+        return self.text[start : self.text.index("}", start)]
+
+
 def test_the_footer_renders_outside_the_scrolling_section_area() -> None:
-    """The footer sits outside the scroll area, not inside it.
+    """Inside ``.drawer-top`` it would scroll away with the sections."""
+    footer = _Template("RightPanel.vue").first("drawer-footer")
 
-    The point of the slot, asserted against the template itself: the footer
-    has to be a SIBLING of ``.drawer-top`` (the element carrying
-    ``overflow-y: auto``), not a child of it. Nested inside, it would scroll
-    away with the sections and be no different from putting the widgets in
-    the last section.
-    """
-    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/RightPanel.vue").read_text()
-    scroll_area = template.index('class="drawer-top"')
-    footer = template.index('class="drawer-footer"')
-    closing_drawer = template.index("</v-navigation-drawer>")
-
-    assert scroll_area < footer < closing_drawer
-    # The scroll area's own div is closed before the footer opens.
-    assert template.count("</div>", scroll_area, footer) >= 3
+    assert "v-navigation-drawer" in [node.tag for node in footer.ancestors()]
+    assert not [node for node in footer.ancestors() if "drawer-top" in node.classes]
 
 
 def test_the_drawer_click_rule_leaves_disabled_controls_alone() -> None:
     """A disabled control in a drawer must keep Vuetify's ``pointer-events: none``.
 
-    ``.v-navigation-drawer .v-btn`` is specificity 0,2,0 and Vuetify's own
-    ``.v-btn--disabled`` is 0,1,0, so without the ``:not()`` guards the
-    drawer rule wins and hands every disabled button its pointer events back.
-    It stays unclickable -- the ``disabled`` attribute still applies -- but it
-    lights up on hover like a live control, which is how the bug was found.
-
-    Asserted against the stylesheet text because the cascade is the whole
-    bug: a version of this rule that merely LOOKS narrower (matching on the
-    wrong disabled class, say) would leave the symptom in place, so each
-    guard is named explicitly.
+    Checked on the stylesheet: each guard must name the class Vuetify actually
+    sets on that control, or the rule only looks narrower.
     """
     template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/MapApp.vue").read_text()
     rule = template.index(".v-navigation-drawer .v-list-item")
-    end = template.index("}", rule)
-    selectors = template[rule:end]
+    selectors = [s.strip() for s in template[rule : template.index("{", rule)].split(",")]
 
-    assert ".v-btn:not(.v-btn--disabled)" in selectors
-    assert ".v-list-item:not(.v-list-item--disabled)" in selectors
-    assert ".v-select:not(.v-input--is-disabled)" in selectors
+    assert ".v-navigation-drawer .v-btn:not(.v-btn--disabled)" in selectors
+    assert ".v-navigation-drawer .v-list-item:not(.v-list-item--disabled)" in selectors
+    assert ".v-navigation-drawer .v-select:not(.v-input--is-disabled)" in selectors
     # An unguarded selector anywhere in the group puts the bug back.
-    assert "pointer-events: auto" in template[rule : end + 80]
+    assert all(":not(" in selector for selector in selectors)
+    assert "pointer-events: auto" in template[rule : template.index("}", rule)]
 
 
 def test_the_footer_adds_no_padding_of_its_own() -> None:
-    """The footer hands its widgets the full panel width.
+    """A full-bleed action bar could not remove padding added by the slot."""
+    template = _Template("RightPanel.vue")
+    footer = template.first("drawer-footer")
+    slot = [footer] + [node for node in template.nodes if footer in node.ancestors()]
 
-    A footer is most often a full-bleed action bar, and padding added by the
-    slot could not be removed from the outside -- a consumer that wants inset
-    content can bring its own, but one that wants edge-to-edge buttons could
-    not undo ours. Asserted against the template because it is a contract for
-    consumers, not a style detail.
-    """
-    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/RightPanel.vue").read_text()
-    footer = template.index('class="drawer-footer"')
-    end = template.index("</v-navigation-drawer>", footer)
-
-    assert 'class="pa-' not in template[footer:end]
+    assert not [c for node in slot for c in node.classes if _PADDING_CLASS.match(c)]
+    assert not [node for node in slot if "padding" in node.style]
+    assert "padding" not in template.css_rule(".drawer-footer")
