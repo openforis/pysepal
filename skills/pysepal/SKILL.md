@@ -174,6 +174,8 @@ MapApp.element(
          # Static guidance belongs here, not in a solara.Info alert.
          "description": "Shown under the section title."},
     ],
+    # Pinned under the scrolling sections, e.g. a persistent action bar.
+    right_panel_footer=[ActionBar()],
     right_panel_open=True,
 )
 ```
