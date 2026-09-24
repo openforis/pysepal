@@ -22,7 +22,7 @@ or `/pysepal audit` (stale pattern check).
 
 ## Version check
 
-This skill documents pysepal 4.0.0. Compare that with the pysepal installed in
+This skill documents pysepal 4.1.0. Compare that with the pysepal installed in
 the app's environment before relying on any API detail here:
 
 ```bash
@@ -174,6 +174,8 @@ MapApp.element(
          # Static guidance belongs here, not in a solara.Info alert.
          "description": "Shown under the section title."},
     ],
+    # Pinned under the scrolling sections, e.g. a persistent action bar.
+    right_panel_footer=[ActionBar()],
     right_panel_open=True,
 )
 ```

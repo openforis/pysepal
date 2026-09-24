@@ -110,6 +110,14 @@ class MapApp(v.VuetifyTemplate):
         default_value=[],
     ).tag(sync=True, **widget_serialization)
 
+    right_panel_footer = List(Instance(DOMWidget), default_value=[]).tag(
+        sync=True, **widget_serialization
+    )
+    """Widgets pinned below the scrolling sections, e.g. a persistent action bar.
+
+    Shown only while the panel has sections; empty (the default) renders nothing.
+    """
+
     steps_data = List(
         Dict(
             {
@@ -183,7 +191,11 @@ class MapApp(v.VuetifyTemplate):
             config = kwargs.get("right_panel_config", {})
             content_data = kwargs.get("right_panel_content", [])
 
-            right_panel = RightPanel(config=config, content_data=content_data)
+            right_panel = RightPanel(
+                config=config,
+                content_data=content_data,
+                footer_content=kwargs.get("right_panel_footer", []),
+            )
 
             # Check if right_panel_open was specified and apply it
             if "right_panel_open" in kwargs:
@@ -227,7 +239,10 @@ class MapApp(v.VuetifyTemplate):
             ],
         )
         self.observe(self._sync_map_theme_state, ["theme_toggle", "main_map"])
-        self.observe(self._sync_right_panel, ["right_panel_config", "right_panel_content"])
+        self.observe(
+            self._sync_right_panel,
+            ["right_panel_config", "right_panel_content", "right_panel_footer"],
+        )
         self._sync_map_insets()
         self._sync_map_theme_state()
 
@@ -452,6 +467,7 @@ class MapApp(v.VuetifyTemplate):
         panel = self.right_panel[0]
         panel.config = self.right_panel_config
         panel.content_data = self.right_panel_content
+        panel.footer_content = self.right_panel_footer
 
 
 class ThemeToggle(v.VuetifyTemplate):
@@ -548,6 +564,11 @@ class RightPanel(v.VuetifyTemplate):
         ),
         default_value=[],
     ).tag(sync=True, **widget_serialization)
+
+    footer_content = List(Instance(DOMWidget), default_value=[]).tag(
+        sync=True, **widget_serialization
+    )
+    """Widgets rendered below the scroll area -- see ``MapApp.right_panel_footer``."""
 
     @validate("content_data")
     def _wrap_bare_section_content(self, proposal):

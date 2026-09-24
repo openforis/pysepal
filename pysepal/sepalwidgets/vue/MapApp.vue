@@ -1016,10 +1016,12 @@ export default {
   height: 100%;
 }
 
-/* Ensure interactive elements in the drawer can be clicked */
-.v-navigation-drawer .v-list-item,
-.v-navigation-drawer .v-btn,
-.v-navigation-drawer .v-select {
+/* Ensure interactive elements in the drawer can be clicked. The :not()
+   guards leave disabled controls to Vuetify's `pointer-events: none`, which
+   these more specific selectors would otherwise override. */
+.v-navigation-drawer .v-list-item:not(.v-list-item--disabled),
+.v-navigation-drawer .v-btn:not(.v-btn--disabled),
+.v-navigation-drawer .v-select:not(.v-input--is-disabled) {
   pointer-events: auto;
   transition: transform 0.3s ease;
 }

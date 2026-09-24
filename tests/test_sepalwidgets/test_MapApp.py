@@ -1,6 +1,10 @@
 """Test the MapApp widget."""
 
+import re
+from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
+from typing import Iterator, List, Optional
 
 import ipyvuetify as v
 import pytest
@@ -269,3 +273,118 @@ def test_a_bare_widget_panel_section_content_is_wrapped_in_a_list() -> None:
     assert app.right_panel_content[0]["content"] == [card]
     # the child panel is what renders, and __init__ builds it from the raw kwargs
     assert app.right_panel[0].content_data[0]["content"] == [card]
+
+
+def test_the_panel_footer_reaches_the_child_that_renders_it() -> None:
+    """``RightPanel``, not ``MapApp``, renders it, as with config and content."""
+    card = v.Card(children=["Next"])
+    app = MapApp(
+        right_panel_config={"title": "Tools", "width": 400},
+        right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}],
+        right_panel_footer=[card],
+    )
+
+    assert app.right_panel[0].footer_content == [card]
+
+
+def test_panel_footer_updates_survive_a_rerender() -> None:
+    """Without the parent -> child push the panel keeps the footer it was born with."""
+    app = MapApp(
+        right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}],
+        right_panel_footer=[v.Card(children=["Next"])],
+    )
+    panel = app.right_panel[0]
+
+    replacement = v.Card(children=["Siguiente"])
+    app.right_panel_footer = [replacement]
+
+    assert panel.footer_content == [replacement]
+
+
+def test_a_panel_with_no_footer_carries_an_empty_one() -> None:
+    """The footer is opt-in: an app that passes none gets an empty one."""
+    app = MapApp(right_panel_content=[{"title": "Select AOI", "icon": "mdi-map", "content": []}])
+
+    assert app.right_panel[0].footer_content == []
+
+
+#: A non-zero Vuetify padding helper: pa-4, px-2, pt-md-3...
+_PADDING_CLASS = re.compile(r"^p[atblrsexy]-(?:(?:sm|md|lg|xl)-)?[1-9]")
+
+
+@dataclass(eq=False)
+class _Node:
+    tag: str
+    classes: List[str]
+    style: str
+    parent: Optional["_Node"]
+
+    def ancestors(self) -> Iterator["_Node"]:
+        node = self.parent
+        while node is not None:
+            yield node
+            node = node.parent
+
+
+class _Template(HTMLParser):
+    """A pysepal ``.vue`` file parsed enough to ask what encloses what."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.text = (Path(pysepal.__file__).parent / "sepalwidgets/vue" / name).read_text()
+        self.nodes: List[_Node] = []
+        self._open: Optional[_Node] = None
+        self.feed(self.text[: self.text.index("<script>")])
+
+    def handle_starttag(self, tag, attrs) -> None:
+        attrs = dict(attrs)
+        classes = (attrs.get("class") or "").split()
+        self._open = _Node(tag, classes, attrs.get("style") or "", self._open)
+        self.nodes.append(self._open)
+
+    def handle_endtag(self, tag) -> None:
+        self._open = self._open.parent
+
+    def first(self, css_class: str) -> _Node:
+        return next(node for node in self.nodes if css_class in node.classes)
+
+    def css_rule(self, selector: str) -> str:
+        start = self.text.index(selector + " {", self.text.index("<style"))
+        return self.text[start : self.text.index("}", start)]
+
+
+def test_the_footer_renders_outside_the_scrolling_section_area() -> None:
+    """Inside ``.drawer-top`` it would scroll away with the sections."""
+    footer = _Template("RightPanel.vue").first("drawer-footer")
+
+    assert "v-navigation-drawer" in [node.tag for node in footer.ancestors()]
+    assert not [node for node in footer.ancestors() if "drawer-top" in node.classes]
+
+
+def test_the_drawer_click_rule_leaves_disabled_controls_alone() -> None:
+    """A disabled control in a drawer must keep Vuetify's ``pointer-events: none``.
+
+    Checked on the stylesheet: each guard must name the class Vuetify actually
+    sets on that control, or the rule only looks narrower.
+    """
+    template = (Path(pysepal.__file__).parent / "sepalwidgets/vue/MapApp.vue").read_text()
+    rule = template.index(".v-navigation-drawer .v-list-item")
+    selectors = [s.strip() for s in template[rule : template.index("{", rule)].split(",")]
+
+    assert ".v-navigation-drawer .v-btn:not(.v-btn--disabled)" in selectors
+    assert ".v-navigation-drawer .v-list-item:not(.v-list-item--disabled)" in selectors
+    assert ".v-navigation-drawer .v-select:not(.v-input--is-disabled)" in selectors
+    # An unguarded selector anywhere in the group puts the bug back.
+    assert all(":not(" in selector for selector in selectors)
+    assert "pointer-events: auto" in template[rule : template.index("}", rule)]
+
+
+def test_the_footer_adds_no_padding_of_its_own() -> None:
+    """A full-bleed action bar could not remove padding added by the slot."""
+    template = _Template("RightPanel.vue")
+    footer = template.first("drawer-footer")
+    slot = [footer] + [node for node in template.nodes if footer in node.ancestors()]
+
+    assert not [c for node in slot for c in node.classes if _PADDING_CLASS.match(c)]
+    assert not [node for node in slot if "padding" in node.style]
+    assert "padding" not in template.css_rule(".drawer-footer")
