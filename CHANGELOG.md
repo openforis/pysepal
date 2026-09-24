@@ -1,3 +1,16 @@
+## v4.1.0 (2026-09-24)
+
+### Feat
+
+- **RightPanel**: add a footer slot below the scrolling sections (#1071)
+- **RightPanel**: add a footer slot below the scrolling sections
+
+### Fix
+
+- **SepalMap**: make AOI layers follow the map theme (#1072)
+- **SepalMap**: make AOI layers follow the map theme
+- **MapApp**: keep disabled drawer controls from regaining pointer events
+
 ## v4.0.0 (2026-09-22)
 
 ### Feat

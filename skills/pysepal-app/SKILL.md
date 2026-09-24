@@ -9,7 +9,7 @@ Use this skill when building or restructuring pysepal applications.
 
 ## Version check
 
-This skill documents pysepal 4.0.0. Compare that with the pysepal installed in
+This skill documents pysepal 4.1.0. Compare that with the pysepal installed in
 the app's environment before relying on any API detail here:
 
 ```bash
