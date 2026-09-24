@@ -66,9 +66,16 @@ def get_ipygeojson(
         f["properties"]["name"] = name
 
     # Apply default style if not provided
+    theme_style = None
     if style is None:
         style = json.loads((ss.JSON_DIR / "aoi.json").read_text())
         style.update(color=color.primary, fillColor=color.primary)
+        theme_style = {
+            is_dark: {"color": colors["primary"], "fillColor": colors["primary"]}
+            for is_dark, colors in ss.THEMES.items()
+        }
 
-    # Create and return the GeoJSON layer
-    return GeoJSON(data=data, style=style, name=name)
+    layer = GeoJSON(data=data, style=style, name=name)
+    layer.theme_style = theme_style
+
+    return layer

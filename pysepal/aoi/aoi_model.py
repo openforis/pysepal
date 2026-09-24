@@ -627,14 +627,20 @@ class AoiModel(Model):
             f["properties"]["name"] = self.name
 
         # adapt the style to the theme
+        theme_style = None
         if style is None:
             style = json.loads((ss.JSON_DIR / "aoi.json").read_text())
             style.update(color=color.primary, fillColor=color.primary)
+            theme_style = {
+                is_dark: {"color": colors["primary"], "fillColor": colors["primary"]}
+                for is_dark, colors in ss.THEMES.items()
+            }
 
         # create a GeoJSON object
         # attribution="SEPAL(c)" is not recognized yet
         # https://github.com/jupyter-widgets/ipyleaflet/issues/847
         self.ipygeojson = GeoJSON(data=data, style=style, name="aoi")
+        self.ipygeojson.theme_style = theme_style
 
         return self.ipygeojson
 

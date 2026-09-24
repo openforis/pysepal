@@ -86,17 +86,8 @@
           </div>
         </div>
 
-        <!-- Footer: outside .drawer-top, so it does not scroll with the
-             sections. Sized by its own content and never collapsed by the
-             flex parent (flex: 0 0 auto), which is what keeps it pinned to
-             the panel's bottom edge however long the content above grows.
-
-             Deliberately NO padding around the widgets: a footer is most
-             often a full-bleed action bar, and padding added here could not
-             be removed from the outside. A footer that wants inset content
-             brings its own -- the sections above cannot make that choice
-             either way, which is why .pa-4 lives inside .drawer-top rather
-             than around it. -->
+        <!-- Footer: outside .drawer-top so it stays put while the sections
+             scroll. No padding: a full-bleed bar could not remove it. -->
         <div v-if="hasFooter" class="drawer-footer">
           <v-divider class="ma-0 pa-0"></v-divider>
           <jupyter-widget
@@ -248,11 +239,7 @@ export default {
   margin-top: 8px;
 }
 
-/* Footer: a sibling of the scrolling .drawer-top inside the same flex
-   column, so it needs no background or z-index of its own -- it occupies
-   real space rather than overlaying the sections, and the content above it
-   scrolls in what is left. `flex: 0 0 auto` is what stops the flex parent
-   shrinking it when the sections grow. */
+/* Footer: never shrinks, so the sections scroll instead */
 .drawer-footer {
   flex: 0 0 auto;
 }
