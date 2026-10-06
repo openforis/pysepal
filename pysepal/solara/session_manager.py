@@ -172,6 +172,17 @@ def _current_plan() -> SessionPlan:
     return current_session_plan(has_sepal_headers=has_headers)
 
 
+def serves_many_users() -> bool:
+    """Whether this process serves the connections of many users.
+
+    True in an app-launcher container, where the process filesystem belongs to
+    none of them: user files live in each user's SEPAL workspace. Decided by the
+    same rule as session scoping, so ``PYSEPAL_DEV_AUTH`` shows a developer what
+    those users get.
+    """
+    return _is_scoped_per_connection(_current_plan())
+
+
 class SessionManager:
     """A singleton session manager for solara-sepal applications.
 

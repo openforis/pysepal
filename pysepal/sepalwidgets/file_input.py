@@ -12,9 +12,10 @@ import ipyvuetify as v
 from natsort import natsorted
 from pydantic import BaseModel
 from pysepal_api import SepalClient
-from traitlets import Bool, Int, List, Unicode
+from traitlets import Bool, Int, List, Unicode, validate
 
 from pysepal.logger import log
+from pysepal.message import msg
 from pysepal.sepalwidgets.widget import SepalWidget
 
 
@@ -36,6 +37,21 @@ class ListDirectoryResponse(BaseModel):
             self.files, key=lambda x: (0 if x.type == "directory" else 1, x.name.lower())
         )
         return ListDirectoryResponse(path=self.path, files=sorted_files)
+
+
+def local_files_allowed() -> bool:
+    """Whether this process's own filesystem belongs to the person using the app."""
+    from pysepal.solara.session_manager import serves_many_users
+
+    return not serves_many_users()
+
+
+def is_within(path: Union[str, Path], root: Union[str, Path]) -> bool:
+    """Whether ``path`` stays inside ``root`` once ``..`` and symlinks are resolved."""
+    try:
+        return Path(path).resolve().is_relative_to(Path(root).resolve())
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def get_local_files(folder: str = "/", extensions: List[str] = [], cache_dirs=None):
@@ -128,28 +144,30 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
             root: Maximum root directory that can be accessed.
             sepal_client: Sepal client to access the server.
         """
-        super().__init__(**kwargs)
+        self.client = sepal_client
+        self._local_access = sepal_client is not None or local_files_allowed()
 
-        self.initial_folder = str(initial_folder)
-        self.root = str(root)
+        super().__init__(**kwargs)
 
         log.debug("FileInput initialized")
 
-        self.client = sepal_client
         if sepal_client or initial_folder.startswith(str(Path.home())):
             self.initial_folder = initial_folder
         else:
             self.initial_folder = str(Path.home() / initial_folder)
         log.debug(f"Initial folder: {self.initial_folder}")
-        self.current_folder = self.initial_folder
         self.root = root if root else "" if sepal_client else str(Path.home())
-
         log.debug(f"Root folder: {self.root}")
 
-        if not Path(self.current_folder).is_relative_to(self.root):
+        within = is_within if self.client is None else lambda p, r: Path(p).is_relative_to(r)
+        if not within(self.initial_folder, self.root):
             raise ValueError(
-                f"Initial folder {self.current_folder} is not a subdirectory of {self.root}"
+                f"Initial folder {self.initial_folder} is not a subdirectory of {self.root}"
             )
+        self.current_folder = self.initial_folder
+
+        if not self._local_access:
+            self.error_messages = [msg("widgets.fileinput.no_local_files")]
 
         self.load_files()
         self.observe(self.load_files, "current_folder")
@@ -157,16 +175,42 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
         self.observe(lambda chg: setattr(self, "v_model", chg["new"]), "value")
         self.observe(lambda chg: setattr(self, "file", chg["new"]), "value")
 
+    def _allows(self, path: str) -> bool:
+        """Whether a path the browser sent may be listed or selected.
+
+        Remote paths are checked by the SEPAL API, which serves only the user's
+        own workspace. Local paths must resolve inside ``root``.
+        """
+        if self.client is not None:
+            return True
+        return self._local_access and is_within(path, self.root)
+
+    @validate("current_folder")
+    def _keep_folder_in_root(self, proposal):
+        if self._allows(proposal["value"]):
+            return proposal["value"]
+        return self.root
+
+    @validate("value", "v_model", "file")
+    def _keep_selection_in_root(self, proposal):
+        if not proposal["value"] or self._allows(proposal["value"]):
+            return proposal["value"]
+        return ""
+
+    def set_state(self, sync_data):
+        """Apply browser state, except ``root``: the bound is set in Python only."""
+        sync_data = {k: v for k, v in sync_data.items() if k != "root"}
+        super().set_state(sync_data)
+
     def load_files(self, *_):
         """Load the files in the current folder."""
         log.debug(f"Loading files in {self.current_folder} with root {self.root}")
+        if not self._local_access:
+            self.file_list = []
+            return
+
         try:
             self.loading = True
-
-            if not Path(self.current_folder).is_relative_to(self.root):
-                raise ValueError(
-                    f"current_folder {self.current_folder} is not a subdirectory of {self.root}"
-                )
 
             if self.client:
                 file_list = get_remote_files(

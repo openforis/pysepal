@@ -178,3 +178,19 @@ def test_a_single_identity_runtime_keeps_the_default():
 
     assert result.method == "DRAW"
     assert stubs.init_ee.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("plan", "offered"),
+    [(PER_CONNECTION, False), (PROCESS, True)],
+)
+def test_file_methods_follow_whose_disk_it_is(plan, offered):
+    """SHAPE and POINTS browse the process's disk, which is nobody's in a shared app."""
+    from pysepal.solara.components.aoi.aoi_view import resolve_methods
+
+    with patch.object(session_manager_module, "_current_plan", return_value=plan):
+        methods = resolve_methods("ALL", gee=True, map_=object())
+
+    assert ("SHAPE" in methods) is offered
+    assert ("POINTS" in methods) is offered
+    assert "ADMIN0" in methods
