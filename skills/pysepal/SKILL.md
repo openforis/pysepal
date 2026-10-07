@@ -180,6 +180,16 @@ MapApp.element(
 )
 ```
 
+To read or drive the active step, pass it as a controlled prop with its
+`on_` callback. `MapApp(model=...)` is deprecated: it binds only the model
+passed on the first render.
+
+```python
+step = solara.use_reactive(1)
+MapApp.element(..., current_step=step.value, on_current_step=step.set)
+# same pair for step_open / on_step_open
+```
+
 `MapAppComponent` — typed dataclass props, `with` syntax — is designed but
 **not shipped**: `pysepal.solara.components.layout` does not exist and the
 import raises `ImportError`. Check with
