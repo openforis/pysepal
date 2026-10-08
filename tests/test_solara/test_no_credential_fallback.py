@@ -72,3 +72,45 @@ def test_a_per_connection_session_is_read_from_the_registry():
         assert utils.get_current_gee_interface() == "the-users-gee"
         assert utils.get_current_drive_interface() == "the-users-drive"
         assert utils.get_current_sepal_client() == "the-users-client"
+
+
+def test_a_per_connection_runtime_reads_files_from_the_users_workspace():
+    """The container's disk is nobody's: files go through the user's client."""
+    from pysepal.scripts.filesystem import SandboxFileSystem
+
+    manager = SessionManager()
+    manager._registry.set(
+        {"sepal_clients": {"route_a": "the-users-client"}, "active_module_name": "route_a"},
+        "kernel-a",
+    )
+
+    with (
+        patch.object(sm, "_current_plan", return_value=_PER_CONNECTION),
+        patch.object(SessionManager, "get_scope_id", return_value="kernel-a"),
+    ):
+        fs = utils.get_current_filesystem()
+
+    assert isinstance(fs, SandboxFileSystem)
+    assert fs.client == "the-users-client"
+
+
+def test_a_per_connection_runtime_without_a_client_has_no_files():
+    """No fallback to the container's disk."""
+    with (
+        patch.object(sm, "_current_plan", return_value=_PER_CONNECTION),
+        patch.object(SessionManager, "get_scope_id", return_value="kernel-a"),
+    ):
+        with pytest.raises(SepalSessionError, match="with_sepal_sessions"):
+            utils.get_current_filesystem()
+
+
+def test_a_single_user_runtime_reads_its_own_disk():
+    """Voila, a notebook or a SEPAL sandbox: the home folder is the user's."""
+    from pathlib import Path, PurePosixPath
+
+    from pysepal.scripts.filesystem import LocalFileSystem
+
+    fs = utils.get_current_filesystem()
+
+    assert isinstance(fs, LocalFileSystem)
+    assert fs.root == PurePosixPath(Path.home())

@@ -4,8 +4,18 @@ from pathlib import Path
 
 import pytest
 
-from pysepal.sepalwidgets import file_input as file_input_module
+from pysepal.scripts.filesystem import (
+    FileDetails,
+    ListDirectoryResponse,
+    LocalFileSystem,
+    SandboxFileSystem,
+)
 from pysepal.sepalwidgets.file_input import FileInput
+from pysepal.solara import session_manager
+from pysepal.solara import utils as solara_utils
+from pysepal.solara._topology import SessionPlan, SessionSource
+
+PER_CONNECTION = SessionPlan(SessionSource.PER_CONNECTION, "test")
 
 
 def test_select_file_accepts_path(tmp_path: Path) -> None:
@@ -86,13 +96,51 @@ def test_root_is_not_writable_from_the_browser(jail: Path) -> None:
     assert file_input.root == str(jail)
 
 
-def test_no_local_files_in_a_shared_app(jail: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_files_in_a_shared_app_without_a_session(
+    jail: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Where one process serves many users, its disk is nobody's workspace."""
-    monkeypatch.setattr(file_input_module, "local_files_allowed", lambda: False)
+    monkeypatch.setattr(session_manager, "_current_plan", lambda: PER_CONNECTION)
     file_input = FileInput(initial_folder=str(jail), root=str(jail))
 
+    assert file_input.filesystem is None
     assert file_input.file_list == []
     assert file_input.error_messages
 
     file_input.value = str(jail / "inside.geojson")
     assert file_input.value == ""
+
+
+def test_a_shared_app_browses_the_users_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With a session, the default filesystem is the user's SEPAL workspace."""
+    workspace = SandboxFileSystem(client=None)
+    monkeypatch.setattr(session_manager, "_current_plan", lambda: PER_CONNECTION)
+    monkeypatch.setattr(solara_utils, "get_current_filesystem", lambda: workspace)
+    monkeypatch.setattr(
+        SandboxFileSystem,
+        "list",
+        lambda self, folder=None, extensions=None: ListDirectoryResponse(
+            path=str(folder),
+            files=[FileDetails(name="a.csv", path=f"{folder}/a.csv", type="file", size=1)],
+        ),
+    )
+
+    file_input = FileInput(initial_folder="data")
+
+    assert file_input.filesystem is workspace
+    assert file_input.root == "/home/sepal-user"
+    assert file_input.current_folder == "/home/sepal-user/data"
+    assert [f["name"] for f in file_input.file_list] == ["..", "a.csv"]
+
+    file_input.value = "/home/sepal-user/data/a.csv"
+    assert file_input.v_model == "/home/sepal-user/data/a.csv"
+    file_input.value = "/etc/passwd"
+    assert file_input.v_model == ""
+
+
+def test_an_explicit_filesystem_is_browsed(jail: Path) -> None:
+    """Any FileSystem can back the input."""
+    file_input = FileInput(filesystem=LocalFileSystem(jail))
+
+    assert file_input.root == str(jail)
+    assert [f["name"] for f in file_input.file_list] == ["inside.geojson"]
