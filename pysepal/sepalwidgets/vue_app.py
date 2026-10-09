@@ -148,6 +148,9 @@ class MapApp(v.VuetifyTemplate):
     current_step = Int(allow_none=True).tag(sync=True)
     step_open = Bool(False).tag(sync=True)
 
+    theme_state = Instance(ThemeState)
+    """Shared theme state driving the toggle and the embedded map (Python only)."""
+
     @classmethod
     def element(cls, **kwargs):
         """Let Reacton render the selector before constructing the widget shell."""
@@ -194,10 +197,10 @@ class MapApp(v.VuetifyTemplate):
         if model is not None:
             warnings.warn(_MODEL_DEPRECATED, DeprecationWarning, stacklevel=2)
 
-        self._theme_state = theme_state or get_current_theme_state()
+        kwargs["theme_state"] = theme_state = theme_state or get_current_theme_state()
         self._model = model
         self._model_links = []  # Store links for cleanup
-        kwargs["theme_toggle"] = self._coerce_theme_toggle(theme_toggle, self._theme_state)
+        kwargs["theme_toggle"] = self._coerce_theme_toggle(theme_toggle, theme_state)
 
         # Create right panel from parameters if content or config is provided
         right_panel = None
@@ -253,6 +256,7 @@ class MapApp(v.VuetifyTemplate):
             ],
         )
         self.observe(self._sync_map_theme_state, ["theme_toggle", "main_map"])
+        self.observe(self._rebind_theme_state, "theme_state")
         self.observe(
             self._sync_right_panel,
             ["right_panel_config", "right_panel_content", "right_panel_footer"],
@@ -336,13 +340,19 @@ class MapApp(v.VuetifyTemplate):
         if hasattr(map_widget, "bind_theme_state"):
             map_widget.bind_theme_state(self._resolve_theme_state())
 
+    def _rebind_theme_state(self, change):
+        """Point the toggle and the embedded map at a newly assigned theme state."""
+        if self.theme_toggle and hasattr(self.theme_toggle[0], "bind_theme_state"):
+            self.theme_toggle[0].bind_theme_state(change["new"])
+        self._sync_map_theme_state()
+
     def _resolve_theme_state(self) -> ThemeState:
         """Resolve the theme state from the mounted toggle when available."""
         if self.theme_toggle and hasattr(self.theme_toggle[0], "get_theme_state"):
             theme_state = self.theme_toggle[0].get_theme_state()
             if theme_state is not None:
                 return theme_state
-        return self._theme_state
+        return self.theme_state
 
     def vue_set_drawer_width(self, width):
         """Receive the real drawer pixel width from Vue on mount/mini-toggle."""

@@ -45,6 +45,32 @@ def test_mapapp_creates_toggle_bound_to_shared_theme_state() -> None:
     return
 
 
+def test_a_rerender_with_another_theme_state_rebinds_toggle_and_map() -> None:
+    """MapApp.element must follow a new theme_state, not keep the first one."""
+    first, second = ThemeState(mode="light", dark=False), ThemeState(mode="light", dark=False)
+    which = solara.reactive(0)
+    sepal_map = sm.SepalMap(gee=False)
+
+    @reacton.component
+    def Page():
+        return MapApp.element(main_map=[sepal_map], theme_state=[first, second][which.value])
+
+    _, rc = reacton.render(Page(), handle_error=False)
+    try:
+        app = rc.find(MapApp).widget
+        which.value = 1
+
+        assert rc.find(MapApp).widget is app
+        assert app.theme_toggle[0].get_theme_state() is second
+
+        second.set_dark(True)
+        assert sepal_map.layers[0].name == "SEPAL Dark"
+        first.set_dark(False)
+        assert sepal_map.layers[0].name == "SEPAL Dark"
+    finally:
+        rc.close()
+
+
 def test_theme_toggle_stays_unbound_without_theme_state() -> None:
     """A plain ThemeToggle should keep explicit values until bound explicitly."""
     toggle = ThemeToggle(dark=False)
