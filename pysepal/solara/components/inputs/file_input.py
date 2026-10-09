@@ -3,13 +3,13 @@
 Wraps the ipyvuetify FileInput widget in a Solara-native component.
 """
 
-from pathlib import Path
 from typing import Callable, List, Optional, Union
 
 import solara
 from pysepal_api import SepalClient
 
-from pysepal.sepalwidgets.file_input import FileInput
+from pysepal.scripts.filesystem import FileSystem, SandboxFileSystem
+from pysepal.sepalwidgets.file_input import FileInput, _default_filesystem
 
 
 @solara.component
@@ -22,18 +22,21 @@ def FileInputComponent(
     clearable: bool = True,
     value: Union[str, solara.Reactive[str]] = "",
     on_value: Optional[Callable[[str], None]] = None,
+    filesystem: Optional[FileSystem] = None,
 ):
     """Solara component wrapper for FileInput widget.
 
     Args:
         initial_folder: The initial folder to read files from.
         root: Maximum root directory that can be accessed.
-        sepal_client: Sepal client to access the server.
+        sepal_client: Browse this client's SEPAL workspace.
         extensions: List of file extensions to filter by.
         label: Label for the file selection button.
         clearable: Whether to show a clear button.
         value: Current selected file path (can be reactive).
         on_value: Callback function when value changes.
+        filesystem: Browse this filesystem. Takes precedence over ``sepal_client``.
+            By default the user's files for this runtime.
 
     Returns:
         FileInput element configured as a Solara component.
@@ -43,12 +46,24 @@ def FileInputComponent(
 
     is_syncing = solara.use_ref(False)
 
-    root = root if root else "" if sepal_client else str(Path.home())
+    def make_filesystem() -> Optional[FileSystem]:
+        if filesystem is not None:
+            return filesystem
+        if sepal_client is not None:
+            return SandboxFileSystem(sepal_client)
+        return _default_filesystem(root)
+
+    fs = solara.use_memo(make_filesystem, [filesystem, sepal_client, root])
+
+    # Resolved here, not in the widget: a re-render writes every prop back onto
+    # the widget, and an unresolved "" would reset its bound.
+    resolved_root = str(fs.resolve(root or fs.root)) if fs else ""
+    resolved_initial = str(fs.resolve(initial_folder or resolved_root)) if fs else ""
 
     file_input = FileInput.element(
-        initial_folder=initial_folder,
-        root=root,
-        sepal_client=sepal_client,
+        initial_folder=resolved_initial,
+        root=resolved_root,
+        filesystem=fs,
         extensions=extensions,
         label=label,
         clearable=clearable,

@@ -11,10 +11,12 @@ from pysepal_api import SepalClient
 
 from pysepal._runtime_context import current_scope_id
 from pysepal.scripts.drive_interface import GDriveInterface
+from pysepal.scripts.filesystem import FileSystem, LocalFileSystem, SandboxFileSystem
 from pysepal.scripts.gee_interface import GEEInterface
+from pysepal.solara.errors import SepalSessionError
 from pysepal.solara.session_info import SessionInfo, SessionsOverview
 
-from .session_manager import SessionManager
+from .session_manager import SessionManager, serves_many_users
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,55 @@ def get_current_drive_interface() -> GDriveInterface:
             Page component is missing ``@with_sepal_sessions``.
     """
     return SessionManager().get_drive_interface()
+
+
+def get_current_filesystem() -> FileSystem:
+    """Returns the filesystem holding the current user's files.
+
+    Under an app-launcher Solara server the process's disk belongs to no user,
+    so files go to the connection's SEPAL workspace through its client. A SEPAL
+    sandbox, Voila, plain Jupyter and plain scripts read their own home folder,
+    which on a sandbox is that same workspace.
+
+    Returns:
+        The filesystem for this runtime.
+
+    Raises:
+        SepalSessionError: A per-connection runtime has no SEPAL client, e.g. the
+            Page component is missing ``@with_sepal_sessions``.
+    """
+    if not serves_many_users():
+        return LocalFileSystem()
+
+    client = get_current_sepal_client()
+    if client is None:
+        raise SepalSessionError(
+            "No SEPAL client for this connection, so its files cannot be reached. "
+            "Decorate the Page component with @with_sepal_sessions."
+        )
+    return SandboxFileSystem(client)
+
+
+def _reader_filesystem(filesystem: Optional[FileSystem] = None) -> FileSystem:
+    """The filesystem to open a path an app hands to a reader.
+
+    On a single-user disk the path comes from the app itself, so it is not bound
+    to the home folder.
+    """
+    if filesystem is not None:
+        return filesystem
+    if not serves_many_users():
+        return LocalFileSystem("/")
+    return get_current_filesystem()
+
+
+def user_files_available() -> bool:
+    """Whether this runtime gives the current user any files to pick."""
+    try:
+        get_current_filesystem()
+    except SepalSessionError:
+        return False
+    return True
 
 
 def get_current_session_info() -> SessionInfo:

@@ -531,10 +531,10 @@ picker does not erase the app's selection.
 A spec naming a method the picker does not offer is refused with a warning, so an ASSET
 spec cannot be restored into a `gee=False` view.
 
-**Deployment note.** SHAPE and POINTS specs carry a file path on the machine that ran
-the picker. Those two methods are not safe in multi-user container apps (see
-"AOI Method Restrictions" in `solara-gee-patterns.md`), so a persisted path is only
-meaningful for local and Voila deployments.
+**Deployment note.** SHAPE and POINTS specs carry an absolute path in the user's files:
+the local disk, or the SEPAL workspace in a multi-user container app (see "AOI Method
+Restrictions" in `solara-gee-patterns.md`). On SEPAL both are under `/home/sepal-user`,
+so a persisted spec restores in either deployment.
 
 `demo_apps/solara_aoi_app/` is a runnable version of exactly this.
 

@@ -11,12 +11,14 @@ from tests._kernel_contexts import kernel_contexts  # noqa: F401
 @pytest.fixture
 def empty_file_browser(monkeypatch):
     """Keep picker tests from listing the developer's home directory."""
-    from pysepal.sepalwidgets import file_input
+    from pysepal.scripts.filesystem import ListDirectoryResponse, LocalFileSystem
 
     monkeypatch.setattr(
-        file_input,
-        "get_local_files",
-        lambda folder, **kwargs: file_input.ListDirectoryResponse(path=str(folder), files=[]),
+        LocalFileSystem,
+        "list",
+        lambda self, folder=None, extensions=None: ListDirectoryResponse(
+            path=str(folder), files=[]
+        ),
     )
 
 
