@@ -76,3 +76,4 @@ class TrackedTask:
     created_at: float = field(default_factory=time.time)
     error_message: Optional[str] = None
     completed_at: Optional[float] = None
+    progress_detail: Optional[str] = None

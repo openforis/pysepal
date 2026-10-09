@@ -1,0 +1,41 @@
+{
+  "app": {
+    "title": "Progression des tâches"
+  },
+  "panel": {
+    "title": "Progression des tâches",
+    "description": "Lancez une exécution et observez la pastille en bas de la carte, puis ouvrez son journal. Chaque exécution rend compte de sa progression d'une façon différente."
+  },
+  "section": {
+    "title": "Exécutions",
+    "description": "Étapes : des phases nommées, chacune écrite dans le journal. Fraction : set_progress(value) remplit l'anneau et n'écrit rien. Téléchargement : set_progress(value, detail=...) alterne le titre et la tuile en cours, et le journal ne garde que les étapes par couche."
+  },
+  "buttons": {
+    "steps": "Exécuter avec des étapes",
+    "fraction": "Exécuter avec une fraction",
+    "download": "Lancer un téléchargement par tuiles"
+  },
+  "tasks": {
+    "steps": {
+      "title": "Traitement",
+      "prepare": "Préparation des entrées",
+      "compute": "Calcul des statistiques",
+      "write": "Écriture des sorties",
+      "publish": "Publication des résultats",
+      "done": "Traitement terminé"
+    },
+    "fraction": {
+      "title": "Exportation",
+      "done": "Exportation terminée"
+    },
+    "download": {
+      "title": "Téléchargement des couches",
+      "waiting": "en attente d'un créneau de téléchargement",
+      "started": "Téléchargement de {layers} couches",
+      "layer": "Couche {index}/{total} : {layer}",
+      "tile": "{layer} — tuile {tile}/{total}",
+      "layer_done": "{layer} téléchargée",
+      "done": "Toutes les couches sont téléchargées"
+    }
+  }
+}

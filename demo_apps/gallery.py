@@ -80,6 +80,16 @@ DEMOS = [
         "context draws it twice -- untouched, and told when its box changed -- so "
         "which layouts need telling is visible. No session and no credentials.",
     ),
+    (
+        "solara_progress_app",
+        "progress-app",
+        "Task Progress",
+        "The three ways a tracked task reports progress in the notification pill: "
+        "named `step()` phases that each land in the log, a `set_progress()` "
+        "fraction that fills the ring, and a fraction with a `detail` -- a tiled "
+        "download whose pill alternates the layer title with the current tile. "
+        "No session and no credentials.",
+    ),
 ]
 
 

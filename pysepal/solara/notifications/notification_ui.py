@@ -69,6 +69,7 @@ def _serialize_tasks_from_list(tasks: list) -> list:
             "milestones": [{"message": m.message, "timestamp": m.timestamp} for m in t.milestones],
             "lastStep": t.milestones[-1].message if t.milestones else None,
             "progress": t.progress,
+            "progressDetail": t.progress_detail,
             "totalSteps": t.total_steps,
             "currentStep": t.current_step,
             "errorMessage": t.error_message,
