@@ -28,6 +28,7 @@ from pysepal import mapping as sm
 from pysepal.mapping import get_ipygeojson
 from pysepal.message import msg
 from pysepal.scripts import utils as su
+from pysepal.sepalwidgets.file_input import local_files_allowed
 from pysepal.solara.components.aoi.admin import (
     fetch_admin_bounds_async,
     process_admin,
@@ -86,6 +87,9 @@ def resolve_methods(
         gee: Whether Earth Engine is enabled. ASSET needs it.
         map_: The linked map. DRAW needs one.
 
+    SHAPE and POINTS browse this process's disk, so a shared app, where that
+    disk belongs to no user, does not offer them.
+
     Returns:
         The enabled subset of :data:`METHODS`, keyed by method name.
 
@@ -116,6 +120,9 @@ def resolve_methods(
         method_dict.pop("ASSET", None)
     if map_ is None:
         method_dict.pop("DRAW", None)
+    if not local_files_allowed():
+        method_dict.pop("SHAPE", None)
+        method_dict.pop("POINTS", None)
 
     return method_dict
 

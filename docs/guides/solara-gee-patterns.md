@@ -393,17 +393,19 @@ for cancellation and unmount behavior.
 AoiView's `methods` parameter controls which selection methods are available.
 Not all methods are safe in all deployment contexts.
 
-| Method       | Requires              | Safe in GEE/container apps          | Safe in local/Voila    |
-| ------------ | --------------------- | ----------------------------------- | ---------------------- |
-| `ADMIN0/1/2` | GEE (GAUL) or GADM    | Yes                                 | Yes                    |
-| `DRAW`       | Map + DrawControl     | Yes                                 | Yes                    |
-| `ASSET`      | GEE asset access      | Yes                                 | Yes (with credentials) |
-| `SHAPE`      | Local filesystem read | **No** — assumes server-local paths | Yes                    |
-| `POINTS`     | Local filesystem read | **No** — same as SHAPE              | Yes                    |
+| Method       | Requires              | Safe in GEE/container apps | Safe in local/Voila    |
+| ------------ | --------------------- | -------------------------- | ---------------------- |
+| `ADMIN0/1/2` | GEE (GAUL) or GADM    | Yes                        | Yes                    |
+| `DRAW`       | Map + DrawControl     | Yes                        | Yes                    |
+| `ASSET`      | GEE asset access      | Yes                        | Yes (with credentials) |
+| `SHAPE`      | Local filesystem read | **No** — not offered there | Yes                    |
+| `POINTS`     | Local filesystem read | **No** — not offered there | Yes                    |
 
 ### GEE / Container apps (multi-user, Docker)
 
-Restrict to methods that don't read local files:
+pysepal drops SHAPE and POINTS itself when one process serves many users, and
+the file pickers refuse to list or select the container's files there. Name the
+methods anyway, so the code says what the app offers:
 
 ```python
 AoiView(
@@ -426,9 +428,9 @@ AoiView(
 ```
 
 SHAPE and POINTS read files with `gpd.read_file` / `pd.read_csv` via
-`asyncio.to_thread`. While this no longer blocks the event loop, the file
-paths are server-local and may not resolve to the user's intended files in
-a multi-user container. Use ASSET for GEE-backed vector data instead.
+`asyncio.to_thread`, from the disk of the process. In a multi-user container
+that disk belongs to no user, so the methods are not offered there. Use ASSET
+for GEE-backed vector data instead.
 
 ### Local / Voila apps (single-user)
 
