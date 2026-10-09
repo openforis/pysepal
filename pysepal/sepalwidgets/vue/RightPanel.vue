@@ -85,6 +85,17 @@
             </div>
           </div>
         </div>
+
+        <!-- Footer: outside .drawer-top so it stays put while the sections
+             scroll. No padding: a full-bleed bar could not remove it. -->
+        <div v-if="hasFooter" class="drawer-footer">
+          <v-divider class="ma-0 pa-0"></v-divider>
+          <jupyter-widget
+            v-for="(widget, footerIndex) in footer_content"
+            :key="`footer-${footerIndex}`"
+            :widget="widget"
+          ></jupyter-widget>
+        </div>
       </div>
     </v-navigation-drawer>
 
@@ -129,6 +140,10 @@ export default {
       type: Array,
       default: () => [],
     },
+    footer_content: {
+      type: Array,
+      default: () => [],
+    },
     disabled: {
       type: Boolean,
       default: false,
@@ -144,6 +159,9 @@ export default {
   computed: {
     isExtraContentAvailable() {
       return this.content_data && this.content_data.length > 0;
+    },
+    hasFooter() {
+      return this.footer_content && this.footer_content.length > 0;
     },
   },
 
@@ -219,6 +237,11 @@ export default {
 .section-description {
   padding-left: 16px;
   margin-top: 8px;
+}
+
+/* Footer: never shrinks, so the sections scroll instead */
+.drawer-footer {
+  flex: 0 0 auto;
 }
 
 /* Right panel toggle tab */

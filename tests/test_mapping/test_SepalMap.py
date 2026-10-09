@@ -4,13 +4,17 @@ import json
 import math
 import random
 from pathlib import Path
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import ee
+import geopandas as gpd
 import ipyvuetify as v
 import pytest
 from ipyleaflet import GeoJSON
+from shapely.geometry import box
 
+from pysepal import aoi
 from pysepal import mapping as sm
 from pysepal.frontend import styles as ss
 from pysepal.mapping.basemaps import basemap_tiles, xyz_tiles
@@ -737,3 +741,140 @@ def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
     map_.close()
 
     assert not [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is map_]
+
+
+@pytest.fixture
+def square_gdf() -> gpd.GeoDataFrame:
+    """A small square around the Vatican."""
+    return gpd.GeoDataFrame(geometry=[box(12.445, 41.899, 12.459, 41.909)], crs="EPSG:4326")
+
+
+def _legacy_aoi_layer(gdf: gpd.GeoDataFrame) -> GeoJSON:
+    model = aoi.AoiModel(gee=False)
+    model.gdf, model.name = gdf, "square"
+    return model.get_ipygeojson()
+
+
+@pytest.mark.parametrize("build", [sm.get_ipygeojson, _legacy_aoi_layer])
+def test_a_geojson_aoi_follows_the_map_theme(build, square_gdf: gpd.GeoDataFrame) -> None:
+    """The AOI takes the theme the map is bound to, not the process-global palette."""
+    theme_state = ThemeState(mode="light")
+    m = sm.SepalMap(gee=False, theme_state=theme_state)
+    m.add_layer(build(square_gdf), key="aoi")
+    layer = m.find_layer("aoi")
+
+    assert layer.style["color"] == layer.style["fillColor"] == ss.LIGHT_THEME["primary"]
+
+    theme_state.set_mode("dark")
+    assert layer.style["color"] == layer.style["fillColor"] == ss.DARK_THEME["primary"]
+    assert layer.style["fillOpacity"] == 0.4
+
+
+def test_a_geojson_aoi_with_its_own_style_ignores_the_theme(square_gdf: gpd.GeoDataFrame) -> None:
+    theme_state = ThemeState(mode="light")
+    m = sm.SepalMap(gee=False, theme_state=theme_state)
+    style = {"color": "#ff0000", "fillColor": "#ff0000"}
+    m.add_layer(sm.get_ipygeojson(square_gdf, style=style), key="aoi")
+
+    theme_state.set_mode("dark")
+    assert m.find_layer("aoi").style == style
+
+
+def test_a_themed_layer_changes_before_the_basemap_swap() -> None:
+    """Replacing the basemap makes the frontend rebuild every layer view above it.
+
+    A view rebuilt before its new url arrives keeps the old tiles: ipyleaflet's
+    refresh skips tiles that are still loading.
+    """
+    theme_state = ThemeState(mode="light")
+    m = sm.SepalMap(gee=False, theme_state=theme_state)
+    layer = sm.EELayer(ee_object=None, url="light", theme_urls={False: "light", True: "dark"})
+    m.add_layer(layer, key="aoi")
+    events = []
+    layer.observe(lambda _: events.append("url"), "url")
+    m.observe(lambda _: events.append("layers"), "layers")
+
+    theme_state.set_mode("dark")
+
+    assert events.index("url") < events.index("layers")
+
+
+def _fake_map_id(image: ee.Image, vis_params: dict) -> dict:
+    """Stand in for getMapId: the URL records the colour the tiles were styled with."""
+    url = f"https://tiles.test/{vis_params.get('color')}/{{z}}/{{x}}/{{y}}"
+    return {"tile_fetcher": MagicMock(url_format=url)}
+
+
+def _tile_url(color: Optional[str]) -> str:
+    return f"https://tiles.test/{color}/{{z}}/{{x}}/{{y}}"
+
+
+def _offline_gee_map(theme_state: ThemeState) -> sm.SepalMap:
+    m = sm.SepalMap(theme_state=theme_state)
+    m.gee_interface.get_info = MagicMock(return_value=[])
+    m.gee_interface.get_info_async = AsyncMock(return_value=[])
+    m.gee_interface.get_map_id = MagicMock(side_effect=_fake_map_id)
+    m.gee_interface.get_map_id_async = AsyncMock(side_effect=_fake_map_id)
+    return m
+
+
+async def _add_ee_layer(m: sm.SepalMap, sync: bool, *args) -> None:
+    if sync:
+        m.add_ee_layer(*args)
+    else:
+        await m.add_ee_layer_async(*args)
+
+
+def _map_id_calls(m: sm.SepalMap, sync: bool) -> int:
+    mock = m.gee_interface.get_map_id if sync else m.gee_interface.get_map_id_async
+    return mock.call_count
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync", [True, False])
+async def test_an_ee_vector_in_the_default_colour_follows_the_map_theme(sync: bool) -> None:
+    """Earth Engine bakes the colour into the tiles, so the layer swaps renders."""
+    theme_state = ThemeState(mode="light")
+    m = _offline_gee_map(theme_state)
+    await _add_ee_layer(m, sync, ee.FeatureCollection(ee.Geometry.Point(0, 0)), {}, "aoi")
+    layer = m.find_layer("aoi")
+
+    assert layer.url == _tile_url(ss.LIGHT_THEME["primary"])
+
+    theme_state.set_mode("dark")
+    assert layer.url == _tile_url(ss.DARK_THEME["primary"])
+
+    theme_state.set_mode("light")
+    assert layer.url == _tile_url(ss.LIGHT_THEME["primary"])
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync", [True, False])
+async def test_an_ee_vector_with_its_own_colour_is_rendered_once(sync: bool) -> None:
+    theme_state = ThemeState(mode="light")
+    m = _offline_gee_map(theme_state)
+    fc = ee.FeatureCollection(ee.Geometry.Point(0, 0))
+    await _add_ee_layer(m, sync, fc, {"color": "#ff0000"}, "aoi")
+
+    theme_state.set_mode("dark")
+    assert m.find_layer("aoi").url == _tile_url("#ff0000")
+    assert _map_id_calls(m, sync) == 1
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync", [True, False])
+async def test_an_ee_image_is_rendered_once_without_a_colour(sync: bool) -> None:
+    """``color`` is a vector style: an image given one fails to render."""
+    theme_state = ThemeState(mode="light")
+    m = _offline_gee_map(theme_state)
+    await _add_ee_layer(m, sync, ee.Image(1), {"min": 0, "max": 1}, "image")
+
+    theme_state.set_mode("dark")
+    assert m.find_layer("image").url == _tile_url(None)
+    assert _map_id_calls(m, sync) == 1

@@ -5,6 +5,7 @@ all agree on, so they are declared once here.
 """
 
 NDVI_LAYER_ID = "demo_ndvi"
+RADAR_LAYER_ID = "demo_radar"
 PIXEL_AREA_LAYER_ID = "demo_pixel_area"
 ELEVATION_CLASS_LAYER_ID = "demo_elevation_class"
 PMTILES_LAYER_ID = "demo_pmtiles"
@@ -13,6 +14,18 @@ AOI_LAYER_IDS = (PIXEL_AREA_LAYER_ID, ELEVATION_CLASS_LAYER_ID)
 DEMO_CENTER = [4.75, -74.12]
 NDVI_VIS = {"min": -0.2, "max": 0.9, "palette": ["#d7191c", "#ffffbf", "#1a9641"]}
 PIXEL_AREA_VIS = {"min": 0, "max": 5000, "palette": ["#fff7bc", "#d95f0e"]}
+
+# Sentinel-1 false colour over the Rio Negro / Solimões confluence at Manaus:
+# open water scatters nothing back and reads black, forest and the city read
+# bright, so the composite needs no AOI to be legible.
+RADAR_CENTER = [-3.12, -59.98]
+RADAR_VIS = {"bands": ["VV", "VH", "ratio"], "min": [-18, -26, 2], "max": [0, -10, 14]}
+# (catalogue key, chip color) per composite channel, in RGB order, for the legend.
+RADAR_BANDS = (
+    ("radar.vv", "#d62828"),
+    ("radar.vh", "#2e9e44"),
+    ("radar.ratio", "#1e5bd6"),
+)
 
 # (pixel value, catalogue key, color) -- drives the EE reclassification, the map
 # palette and the legend chips from a single source. The middle field is a key,

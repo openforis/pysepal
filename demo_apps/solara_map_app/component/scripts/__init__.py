@@ -6,14 +6,21 @@ of Solara means it can be exercised without a kernel.
 """
 
 from .exports import export_sources
-from .legends import elevation_class_legend, gradient_legend, upsert_legends
-from .processing import build_outputs, ndvi_composite
+from .legends import (
+    band_legend,
+    elevation_class_legend,
+    gradient_legend,
+    upsert_legends,
+)
+from .processing import build_outputs, ndvi_composite, radar_composite
 
 __all__ = [
+    "band_legend",
     "build_outputs",
     "elevation_class_legend",
     "export_sources",
     "gradient_legend",
     "ndvi_composite",
+    "radar_composite",
     "upsert_legends",
 ]

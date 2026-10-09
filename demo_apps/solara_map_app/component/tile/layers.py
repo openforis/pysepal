@@ -20,8 +20,18 @@ from component.parameter import (
     PMTILES_LAYER_ID,
     PMTILES_STYLE,
     PMTILES_URL,
+    RADAR_BANDS,
+    RADAR_CENTER,
+    RADAR_LAYER_ID,
+    RADAR_VIS,
 )
-from component.scripts import gradient_legend, ndvi_composite, upsert_legends
+from component.scripts import (
+    band_legend,
+    gradient_legend,
+    ndvi_composite,
+    radar_composite,
+    upsert_legends,
+)
 from ipyleaflet import PMTilesLayer
 
 import pysepal.sepalwidgets as sw
@@ -60,10 +70,31 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
             )
         )
 
+    async def add_radar_layer():
+        """Add the Sentinel-1 composite; same loop rule as the NDVI layer."""
+        await sepal_map.add_ee_layer_async(
+            radar_composite(),
+            vis_params=RADAR_VIS,
+            name=msg("layers.radar"),
+            key=RADAR_LAYER_ID,
+        )
+        sepal_map.center = RADAR_CENTER
+        sepal_map.zoom = 11
+        layer_legends.set(
+            upsert_legends(
+                layer_legends.value,
+                LayerLegend(RADAR_LAYER_ID, msg("layers.radar"), band_legend(RADAR_BANDS)),
+            )
+        )
+
     ndvi_task = solara.lab.use_task(
         add_ndvi_layer, dependencies=None, raise_error=False, prefer_threaded=False
     )
     ndvi_btn_props = use_task_button(ndvi_task, on_start=ndvi_task)
+    radar_task = solara.lab.use_task(
+        add_radar_layer, dependencies=None, raise_error=False, prefer_threaded=False
+    )
+    radar_btn_props = use_task_button(radar_task, on_start=radar_task)
 
     def build_layer_buttons():
         """Build the sync ipyvuetify buttons once; they close over stable reactives."""
@@ -98,6 +129,9 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
     return [
         TaskButtonComponent(
             label=msg("buttons.add_layer"), **ndvi_btn_props, small=True, block=True
+        ),
+        TaskButtonComponent(
+            label=msg("buttons.add_radar"), **radar_btn_props, small=True, block=True
         ),
         btn_pmtiles,
         btn_remove,

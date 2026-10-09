@@ -526,30 +526,6 @@ export default {
   },
 
   watch: {
-    // Watch for steps data changes to auto-activate first step when no main map
-    steps_data: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
-    // Watch for main_map changes to handle auto-activation
-    main_map: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
-    // Watch for initial_step changes
-    initial_step: {
-      immediate: true,
-      handler() {
-        this.autoActivateFirstStepIfNeeded();
-      },
-    },
-
     // Watch for current_step changes from Python
     current_step(newValue) {
       if (newValue !== null && newValue !== this.activeStepId) {
@@ -634,6 +610,8 @@ export default {
 
   mounted() {
     window.addEventListener("resize", this.handleResize);
+    // Once, at mount: rerunning it when steps_data changes (a language switch
+    // renames the steps) would reopen a step the user has closed.
     this.autoActivateFirstStepIfNeeded();
     if (!this.is_pinned) {
       this.mini = true;
@@ -1038,10 +1016,12 @@ export default {
   height: 100%;
 }
 
-/* Ensure interactive elements in the drawer can be clicked */
-.v-navigation-drawer .v-list-item,
-.v-navigation-drawer .v-btn,
-.v-navigation-drawer .v-select {
+/* Ensure interactive elements in the drawer can be clicked. The :not()
+   guards leave disabled controls to Vuetify's `pointer-events: none`, which
+   these more specific selectors would otherwise override. */
+.v-navigation-drawer .v-list-item:not(.v-list-item--disabled),
+.v-navigation-drawer .v-btn:not(.v-btn--disabled),
+.v-navigation-drawer .v-select:not(.v-input--is-disabled) {
   pointer-events: auto;
   transition: transform 0.3s ease;
 }

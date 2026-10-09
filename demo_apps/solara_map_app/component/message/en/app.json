@@ -16,7 +16,7 @@
     },
     "layers": {
       "title": "Layers",
-      "description": "Add a standalone demo layer or a PMTiles vector layer, or clear the map and its legends. Both show up in the layer control, top right."
+      "description": "Add a standalone demo layer, a Sentinel-1 radar composite or a PMTiles vector layer, or clear the map and its legends. All show up in the layer control, top right."
     },
     "export": {
       "title": "Export",
@@ -26,6 +26,7 @@
   "layers": {
     "ndvi": "Sentinel-2 NDVI",
     "ndvi_short": "NDVI",
+    "radar": "Sentinel-1 radar",
     "pixel_area": "Pixel area (m²)",
     "elevation": "Elevation classes",
     "pmtiles": "NZ buildings"
@@ -35,10 +36,16 @@
     "upland": "Upland (500-1500 m)",
     "highland": "Highland (>= 1500 m)"
   },
+  "radar": {
+    "vv": "VV (red)",
+    "vh": "VH (green)",
+    "ratio": "VV − VH (blue)"
+  },
   "buttons": {
     "process": "Run processing",
     "simulate": "Simulate error",
     "add_layer": "add layer",
+    "add_radar": "add radar layer",
     "add_pmtiles": "add pmtiles layer",
     "remove_all": "remove all layers"
   },

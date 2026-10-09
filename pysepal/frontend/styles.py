@@ -122,6 +122,9 @@ DARK_THEME = {k: v for k, v in dark_theme_colors.__dict__["_trait_values"].items
 LIGHT_THEME = {k: v for k, v in light_theme_colors.__dict__["_trait_values"].items() if k in TYPES}
 "colors used for the light theme"
 
+THEMES = {True: DARK_THEME, False: LIGHT_THEME}
+"colors of each theme, keyed by whether it is dark"
+
 
 # override the default theme with the custom ones
 v.theme.themes.light = light_theme_colors

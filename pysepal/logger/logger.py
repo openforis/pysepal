@@ -1,9 +1,14 @@
-"""Logging configuration for the Sepal UI project.
+"""Logging configuration for pysepal.
 
-To use this logging configuration, set the environment variable
-SEPALUI_LOG_CFG to the path of the logging configuration file.
-The repo has a sample configuration file in the root directory.
+``setup_logging`` applies a TOML config through ``logging.config.dictConfig``
+and falls back to a ``NullHandler`` when the file is absent. At import it looks
+for ``logging_config.toml`` beside the installed package, which in an editable
+checkout is the repository root; ``logging_config.example.toml`` there is a
+starting point.
 
+``dictConfig`` reconfigures logging for the whole process, so a config that
+sets ``propagate = false`` detaches ``sepalui`` from whatever the host
+application -- or pytest's ``caplog`` -- attached to the root logger.
 """
 
 import logging

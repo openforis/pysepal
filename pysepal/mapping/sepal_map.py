@@ -244,6 +244,12 @@ class SepalMap(ipl.Map):
         layer_names = [layer.name for layer in self.layers]
         self._apply_theme_class(change["new"])
 
+        # Before the basemap swap: replacing layers[0] makes the frontend rebuild
+        # every layer view above it, and a view rebuilt ahead of its new url keeps
+        # the old tiles (ipyleaflet's refresh skips tiles that are still loading).
+        for layer in self.layers:
+            self._apply_layer_theme(layer, bool(change["new"]))
+
         if change["new"]:
             if light.name in layer_names:
                 idx = layer_names.index(light.name)
@@ -256,6 +262,26 @@ class SepalMap(ipl.Map):
                 layer = self.layers[idx]
                 self.remove_layer(layer, base=True, none_ok=True)
                 self.layers = self.layers[:idx] + (light,) + self.layers[idx:]
+
+    @staticmethod
+    def _apply_layer_theme(layer: ipl.Layer, is_dark: bool) -> None:
+        """Recolour a layer that follows the theme.
+
+        An ``EELayer`` swaps to the tiles rendered for the theme (``theme_urls``); a
+        layer with a ``style`` merges in ``theme_style``, its theme-dependent entries.
+        Both are keyed by whether the theme is dark.
+        """
+        theme_urls = getattr(layer, "theme_urls", None)
+        if theme_urls:
+            layer.url = theme_urls[is_dark]
+
+        theme_style = getattr(layer, "theme_style", None)
+        if theme_style:
+            layer.style = {**layer.style, **theme_style[is_dark]}
+
+    def _is_dark(self) -> bool:
+        """Whether the theme the map follows is dark."""
+        return self._theme_is_dark(self._theme_source or v.theme)
 
     def _apply_theme_class(self, is_dark: bool) -> None:
         """Keep a theme marker class on the map root for theme-aware CSS hooks."""
@@ -755,7 +781,7 @@ class SepalMap(ipl.Map):
 
         Args:
             ee_object: the ee OBject to draw on the map
-            vis_params: the visualization parameters set as in GEE
+            vis_params: the visualization parameters set as in GEE. A vector given no ``color`` is drawn in the primary colour of the map theme, and follows it when the theme changes.
             name: the name of the layer
             shown: either to show the layer or not, default to true (it is bugged in ipyleaflet)
             opacity: the opcity of the layer from 0 to 1, default to 1.
@@ -767,13 +793,21 @@ class SepalMap(ipl.Map):
         # get the own visualization parameters
         map_own_visualization = get_viz_params(ee_object, gee_interface=self.gee_interface)
 
-        image, obj, vis_params = process_vis_params(
-            ee_object,
-            vis_params=vis_params,
-            viz=map_own_visualization,
-            use_map_vis=use_map_vis,
-            viz_name=viz_name,
-        )
+        themes = self._theme_vis_params(ee_object, vis_params)
+        variants = themes or {None: vis_params}
+        processed = [
+            process_vis_params(
+                ee_object,
+                vis_params=params,
+                viz=map_own_visualization,
+                use_map_vis=use_map_vis,
+                viz_name=viz_name,
+            )
+            for params in variants.values()
+        ]
+        map_ids = [self.gee_interface.get_map_id(image, params) for image, _, params in processed]
+        urls = {key: map_id["tile_fetcher"].url_format for key, map_id in zip(variants, map_ids)}
+        obj = processed[0][1]
 
         # create the layer based on these new values
         if not name:
@@ -781,10 +815,10 @@ class SepalMap(ipl.Map):
             name = "Layer " + str(layer_count + 1)
 
         # create the colored image
-        map_id_dict = self.gee_interface.get_map_id(image, vis_params)
         tile_layer = EELayer(
             ee_object=obj,
-            url=map_id_dict["tile_fetcher"].url_format,
+            url=urls[self._is_dark() if themes else None],
+            theme_urls=urls if themes else None,
             attribution="Google Earth Engine",
             name=name,
             opacity=opacity,
@@ -823,7 +857,7 @@ class SepalMap(ipl.Map):
 
         Args:
             ee_object: the ee OBject to draw on the map
-            vis_params: the visualization parameters set as in GEE
+            vis_params: the visualization parameters set as in GEE. A vector given no ``color`` is drawn in the primary colour of the map theme, and follows it when the theme changes.
             name: the name of the layer
             shown: either to show the layer or not, default to true (it is bugged in ipyleaflet)
             opacity: the opcity of the layer from 0 to 1, default to 1.
@@ -838,13 +872,23 @@ class SepalMap(ipl.Map):
             gee_interface=self.gee_interface,
         )
 
-        image, obj, vis_params = process_vis_params(
-            ee_object,
-            vis_params=vis_params,
-            viz=map_own_visualization,
-            use_map_vis=use_map_vis,
-            viz_name=viz_name,
+        themes = self._theme_vis_params(ee_object, vis_params)
+        variants = themes or {None: vis_params}
+        processed = [
+            process_vis_params(
+                ee_object,
+                vis_params=params,
+                viz=map_own_visualization,
+                use_map_vis=use_map_vis,
+                viz_name=viz_name,
+            )
+            for params in variants.values()
+        ]
+        map_ids = await asyncio.gather(
+            *(self.gee_interface.get_map_id_async(image, params) for image, _, params in processed)
         )
+        urls = {key: map_id["tile_fetcher"].url_format for key, map_id in zip(variants, map_ids)}
+        obj = processed[0][1]
 
         # create the layer based on these new values
         if not name:
@@ -852,10 +896,10 @@ class SepalMap(ipl.Map):
             name = "Layer " + str(layer_count + 1)
 
         # create the colored image
-        map_id_dict = await self.gee_interface.get_map_id_async(image, vis_params)
         tile_layer = EELayer(
             ee_object=obj,
-            url=map_id_dict["tile_fetcher"].url_format,
+            url=urls[self._is_dark() if themes else None],
+            theme_urls=urls if themes else None,
             attribution="Google Earth Engine",
             name=name,
             opacity=opacity,
@@ -872,6 +916,25 @@ class SepalMap(ipl.Map):
         self.add_layer(tile_layer, key=key)
 
         return
+
+    @staticmethod
+    def _theme_vis_params(
+        ee_object: ee.ComputedObject, vis_params: dict
+    ) -> Optional[dict[bool, dict]]:
+        """Return the vis params of each theme for a vector left in the default colour.
+
+        That colour is the theme's primary, and Earth Engine bakes it into the
+        tiles: the layer is rendered once per theme so the map can swap renders
+        when the theme changes. ``None`` for anything else, rendered once as given.
+        """
+        vector = (ee.Geometry, ee.Feature, ee.FeatureCollection)
+        if not isinstance(ee_object, vector) or "color" in vis_params:
+            return None
+
+        return {
+            is_dark: {**vis_params, "color": colors["primary"]}
+            for is_dark, colors in ss.THEMES.items()
+        }
 
     @staticmethod
     def get_basemap_list() -> List[str]:
@@ -955,6 +1018,8 @@ class SepalMap(ipl.Map):
             layer.style = layer.style or default_style
             hover_style = default_hover_style if hover else layer.hover_style
             layer.hover_style = layer.hover_style or hover_style
+
+        self._apply_layer_theme(layer, self._is_dark())
 
         super().add(layer)
 
