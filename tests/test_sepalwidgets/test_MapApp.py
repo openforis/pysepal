@@ -10,6 +10,7 @@ import ipyvuetify as v
 import pytest
 import reacton
 import solara
+from traitlets import Bool, HasTraits, Int
 
 import pysepal
 from pysepal import mapping as sm
@@ -144,6 +145,58 @@ def test_mapapp_panel_updates_survive_a_rerender() -> None:
         title.value = "Herramientas"
         assert rc.find(MapApp).widget.right_panel[0].config["title"] == "Herramientas"
         assert panel.config["title"] == "Herramientas"
+    finally:
+        rc.close()
+
+
+class _StepModel(HasTraits):
+    current_step = Int(allow_none=True)
+    step_open = Bool(False)
+
+
+def test_model_kwarg_warns_but_still_binds() -> None:
+    model = _StepModel()
+
+    with pytest.warns(DeprecationWarning, match="current_step=step.value"):
+        app = MapApp(model=model)
+
+    model.current_step = 3
+    assert app.current_step == 3
+
+
+@pytest.mark.parametrize("method", ["set_model", "unlink_model"])
+def test_model_methods_are_deprecated(method: str) -> None:
+    app = MapApp()
+    args = (_StepModel(),) if method == "set_model" else ()
+
+    with pytest.warns(DeprecationWarning):
+        getattr(app, method)(*args)
+
+
+def test_step_props_drive_the_app_both_ways() -> None:
+    """The replacement for ``model=``: a controlled prop plus its ``on_`` callback."""
+    step = solara.reactive(1)
+    is_open = solara.reactive(False)
+
+    @solara.component
+    def Demo():
+        MapApp.element(
+            current_step=step.value,
+            on_current_step=step.set,
+            step_open=is_open.value,
+            on_step_open=is_open.set,
+        )
+
+    _, rc = reacton.render(Demo())
+    try:
+        app = rc.find(MapApp).widget
+        step.value = 3
+        is_open.value = True
+        assert (app.current_step, app.step_open) == (3, True)
+
+        app.current_step = 2
+        app.step_open = False
+        assert (step.value, is_open.value) == (2, False)
     finally:
         rc.close()
 
