@@ -1,11 +1,13 @@
 """Custom Map app layout for SEPAL ui Map interfaces."""
 
 import logging
+import warnings
 from pathlib import Path
 from typing import Iterable, Optional
 
 import ipyvuetify as v
 import pandas as pd
+from deprecated.sphinx import deprecated
 from ipywidgets import DOMWidget, link
 from ipywidgets.widgets.widget import widget_serialization
 from traitlets import (
@@ -44,6 +46,13 @@ _LOCALE_STATE_REMOVED = (
     "locale_state= was removed in pysepal 4.0: the locale is one Solara reactive per "
     "kernel. Read it with pysepal.i18n.current_locale() and write it with "
     "pysepal.i18n.set_locale()."
+)
+
+_MODEL_DEPRECATED = (
+    "MapApp(model=...) is deprecated and binds only the model passed on the first render. "
+    "Drive the steps with props instead: "
+    "MapApp.element(current_step=step.value, on_current_step=step.set), "
+    "and the same for step_open."
 )
 
 
@@ -173,12 +182,17 @@ class MapApp(v.VuetifyTemplate):
         initial_step : int, optional
             Initial step to display
         model : HasTraits, optional
-            Model to bind with. If provided, will automatically link matching traitlets
+            Deprecated. Links matching traitlets with this model, but only the
+            model given at construction: ``MapApp.element`` ignores a new one
+            on a later render. Pass ``current_step``/``on_current_step`` and
+            ``step_open``/``on_step_open`` instead.
         **kwargs
             Additional parameters
         """
         if "locale_state" in kwargs:
             raise TypeError(_LOCALE_STATE_REMOVED)
+        if model is not None:
+            warnings.warn(_MODEL_DEPRECATED, DeprecationWarning, stacklevel=2)
 
         self._theme_state = theme_state or get_current_theme_state()
         self._model = model
@@ -379,13 +393,18 @@ class MapApp(v.VuetifyTemplate):
             except Exception as e:
                 logger.warning(f"Could not link {trait_name}: {e}")
 
+    @deprecated(version="4.2.0", reason=_MODEL_DEPRECATED, category=DeprecationWarning)
     def unlink_model(self):
         """Remove all model links and cleanup."""
+        self._unlink_model()
+
+    def _unlink_model(self):
         for model_link in self._model_links:
             model_link.unlink()
         self._model_links.clear()
         self._model = None
 
+    @deprecated(version="4.2.0", reason=_MODEL_DEPRECATED, category=DeprecationWarning)
     def set_model(self, model: HasTraits):
         """Set or change the bound model.
 
@@ -395,7 +414,7 @@ class MapApp(v.VuetifyTemplate):
             New model to bind with
         """
         # Cleanup existing links
-        self.unlink_model()
+        self._unlink_model()
 
         # Set new model and create links
         self._model = model

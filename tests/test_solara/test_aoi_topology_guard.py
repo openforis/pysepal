@@ -18,6 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import ipywidgets
 import pytest
 import reacton
 
@@ -86,9 +87,16 @@ def _render(component):
     """Render a component to completion and return its root widget."""
 
     async def _runner():
-        root, rc = reacton.render(component, handle_error=False)
-        rc.close()
-        return root
+        # reacton.render returns no context when the render raises, so build it
+        # here: a refused render left open stays subscribed to reactives (the
+        # locale) and re-runs its effects in later tests, outside these stubs.
+        container = ipywidgets.VBox()
+        rc = reacton.core._RenderContext(component, container, handle_error=False)
+        try:
+            rc.render(component, container)
+        finally:
+            rc.close()
+        return container
 
     return asyncio.run(_runner())
 
