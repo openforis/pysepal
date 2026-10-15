@@ -1,6 +1,6 @@
 # Solara + pysepal gotchas
 
-Things the stack does silently: no error, no log, just a blank widget, a frozen
+Things the stack does quietly: no error on screen, just a blank widget, a frozen
 kernel or a wrong colour. Each entry is symptom, cause, fix. Check here before
 debugging from scratch.
 
@@ -16,8 +16,8 @@ sizes the map inside it, so the map keeps ipyleaflet's default height.
 
 **Cause:** `NotificationProvider` creates the bus during its own render. A
 component rendered before it finds no bus: `use_notifications()` raises
-`NotificationProviderError`, and with `required=False` it gets a `NoopNotifier`
-that drops every toast.
+`NotificationProviderError`, and with `required=False` it gets a `NoopNotifier`:
+its toasts are never shown, only logged at `WARNING`.
 
 **Fix:** mount the provider first, above everything that notifies.
 
@@ -38,14 +38,15 @@ they reconcile into one output, not a stack of duplicates.
 
 ## 4. The kernel freezes on one specific edit
 
-**Cause:** reacton compares old and new props with `==` on every render.
-`ee.ComputedObject.__eq__` compares the whole expression graph, and shared
-subtrees get re-walked once per path. Two _structurally equal_ `ee` objects can
-take many seconds to compare, while different ones short-circuit in
-microseconds, which is why only one edit hangs.
+**Cause:** reacton and Solara compare old and new values with `==`: props on
+every render, the dependency lists of `use_memo` and `use_effect`, and a
+`solara.reactive` on every `.set()`. `ee.ComputedObject.__eq__` compares the
+whole expression graph, and shared subtrees get re-walked once per path. Two
+_structurally equal_ `ee` objects can take many seconds to compare, while
+different ones short-circuit in microseconds, which is why only one edit hangs.
 
-**Fix:** never let reacton compare `ee` objects. Disable equality on anything
-that holds them, so comparison falls back to identity.
+**Fix:** never let them compare `ee` objects. Disable equality on anything that
+holds them, so comparison falls back to identity.
 
 ```python
 @dataclass(frozen=True, slots=True, eq=False)
@@ -53,24 +54,29 @@ class IndicatorMaps:
     soc: ee.Image
 ```
 
-## 5. An ECharts chart is tiny, or ignores a theme change
+## 5. An ECharts chart is the wrong size, or ignores dark mode
 
-**Cause:** `EChartsRawWidget` measures its canvas once, at construction. Built
-inside a collapsed panel or an inactive tab, it bakes in the 100×500 fallback
-and never recovers. It also reads `option` once, so restyling an existing widget
-changes nothing.
+**Cause:** ipecharts does not watch the chart's container, so the canvas keeps
+its first size until a window resize or a `style` or class change. Two cases
+get it wrong: a container that changes width without a window resize, and a
+chart built inside an element that is rendered but hidden, such as a menu.
+Collapsed panels, unopened tabs and dialog steps are fine; their content mounts
+when shown. Separately, the chart does not follow the app's theme unless you
+pass `theme`.
 
-**Fix:** memoise construction on the container being open and on the theme, so
-the widget is rebuilt rather than updated.
+**Fix:** pass the theme from `use_theme_dark()`. A `theme` change recreates the
+chart and an `option` change is applied in place, so there is no need to
+rebuild the widget.
 
 ```python
-def _build_chart():
-    if option.value is None or not is_open:
-        return None
-    return EChartsRawWidget(option=option.value)
-
-chart = solara.use_memo(_build_chart, [option.value, is_open, dark])
+dark = use_theme_dark()
+EChartsWidget.element(option=option, theme="dark" if dark else "light")
 ```
+
+For a widget built outside a component, bind it to `ThemeState` instead. For
+the two sizing cases, swap a CSS class on the chart after a short delay when its
+box changes. `ipecharts.md` covers both, under Custom Theme Integration and
+Responsive Charts.
 
 ## 6. A render test sees "nothing happened"
 
@@ -96,7 +102,8 @@ controller.selected_source_id.value = source_id
 ```
 
 The dialog also mounts a `use_task` at first render, which needs a running event
-loop. In a bare `solara.render()` test that raises `RuntimeError: no running event loop`, so stub the dialog host there.
+loop. A bare render in a test raises `RuntimeError: no running event loop`, so
+wrap it in `asyncio.run(...)`. See the testing section of `solara-export.md`.
 
 ## 8. A classified raster paints the whole globe
 
@@ -154,9 +161,11 @@ the user's toggle.
 `scripts/browser_probe.mjs` (see `browser-testing.md`):
 
 - Every invocation starts a fresh browser and a fresh kernel. Chain interactions
-  inside one invocation with repeated `--click` and `--wait-js`; nothing carries
-  over between invocations.
-- Vuetify's `v-select` only opens on a trusted click. Use `--click`, not
+  inside one invocation with repeated `--click` (each followed by
+  `--settle-after`) and a single `--wait-js`, which runs after the last click.
+  Nothing carries over between invocations.
+- Closing a dialog or menu by clicking outside it needs a trusted click, because
+  Vuetify's click-outside ignores untrusted events. Use `--click`, not
   `el.click()` from `--eval`.
 - The default viewport is 780×493. Always `--resize` to a desktop width, or you
   will debug a layout nobody has.
