@@ -437,7 +437,7 @@ def CustomExportsToolbar(sources):
 
     solara.Button(
         label="Export…",
-        icon_name="mdi-tray-arrow-down",
+        icon_name="mdi-download",
         on_click=controller.open_dialog,
     )
     ExportDialog(controller=controller, title="Export layers")
