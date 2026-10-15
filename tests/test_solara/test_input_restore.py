@@ -269,7 +269,9 @@ def test_external_clear_resets_selector_controls(kind, tmp_path, _no_live_ee):
     asyncio.run(run())
 
 
-def test_vector_reselecting_a_file_does_not_restore_its_old_filter():
+def test_vector_reselecting_a_file_does_not_restore_its_old_filter(monkeypatch):
+    # the picker's root defaults to the home folder, and refuses files outside it
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: VECTORS.parents[1]))
     held = solara.reactive({"pathname": str(VECTORS), "column": "region", "value": "north"})
 
     @solara.component

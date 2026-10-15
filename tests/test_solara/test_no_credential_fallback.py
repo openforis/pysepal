@@ -114,3 +114,16 @@ def test_a_single_user_runtime_reads_its_own_disk():
 
     assert isinstance(fs, LocalFileSystem)
     assert fs.root == PurePosixPath(Path.home())
+
+
+def test_a_single_user_reader_takes_relative_paths_from_the_working_directory(
+    tmp_path, monkeypatch
+):
+    """As ``open()`` does: an app hands readers paths relative to where it runs."""
+    from pathlib import PurePosixPath
+
+    monkeypatch.chdir(tmp_path)
+
+    resolved = utils._reader_filesystem().resolve("data/plots.csv")
+
+    assert resolved == PurePosixPath(tmp_path.resolve() / "data" / "plots.csv")

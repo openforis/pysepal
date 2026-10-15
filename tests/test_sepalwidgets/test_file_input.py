@@ -87,6 +87,45 @@ def test_selection_outside_root_is_refused(jail: Path, trait: str) -> None:
     assert getattr(file_input, trait) == str(jail / "inside.geojson")
 
 
+def test_a_symlink_then_dotdot_is_refused(jail: Path) -> None:
+    """The browser can't reach a file through ``link/..`` either."""
+    (jail.parent / "other" / "deep").mkdir(parents=True)
+    (jail.parent / "other" / "secret.csv").write_text("")
+    (jail / "link").symlink_to(jail.parent / "other" / "deep", target_is_directory=True)
+    file_input = FileInput(initial_folder=str(jail), root=str(jail))
+
+    file_input.set_state({"value": str(jail / "link" / ".." / "secret.csv")})
+
+    assert file_input.value == ""
+
+
+def test_the_root_bounds_a_wider_filesystem(jail: Path) -> None:
+    """A root narrower than the filesystem's is enforced by the input itself."""
+    (jail / "escape").symlink_to(jail.parent, target_is_directory=True)
+    file_input = FileInput(filesystem=LocalFileSystem(jail.parent), root=str(jail))
+
+    file_input.current_folder = str(jail / "escape")
+    assert file_input.current_folder == str(jail)
+
+    file_input.value = str(jail.parent / "outside.geojson")
+    assert file_input.value == ""
+
+
+def test_a_relative_initial_folder_is_taken_from_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Locally as on SEPAL, where the workspace root is the home folder."""
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    tasks = tmp_path / "module_results" / "app" / "tasks"
+    tasks.mkdir(parents=True)
+
+    file_input = FileInput(
+        initial_folder="module_results/app/tasks", root=str(tmp_path / "module_results" / "app")
+    )
+
+    assert file_input.current_folder == str(tasks)
+
+
 def test_root_is_not_writable_from_the_browser(jail: Path) -> None:
     """The browser can't widen the root through the widget state."""
     file_input = FileInput(initial_folder=str(jail), root=str(jail))
@@ -136,6 +175,34 @@ def test_a_shared_app_browses_the_users_workspace(monkeypatch: pytest.MonkeyPatc
     assert file_input.v_model == "/home/sepal-user/data/a.csv"
     file_input.value = "/etc/passwd"
     assert file_input.v_model == ""
+
+
+def test_a_root_outside_the_workspace_shows_no_files() -> None:
+    """A container path handed to a SEPAL workspace is not an error, just empty."""
+    file_input = FileInput(filesystem=SandboxFileSystem(client=None), root="/opt/app/data")
+
+    assert file_input.filesystem is None
+    assert file_input.file_list == []
+    assert file_input.error_messages
+
+
+def test_an_initial_folder_outside_the_root_opens_the_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A container path as the first folder falls back to the workspace root."""
+    monkeypatch.setattr(
+        SandboxFileSystem,
+        "list",
+        lambda self, folder=None, extensions=None: ListDirectoryResponse(
+            path=str(folder), files=[]
+        ),
+    )
+
+    file_input = FileInput(
+        filesystem=SandboxFileSystem(client=None), initial_folder="/opt/app/data"
+    )
+
+    assert file_input.current_folder == "/home/sepal-user"
 
 
 def test_an_explicit_filesystem_is_browsed(jail: Path) -> None:

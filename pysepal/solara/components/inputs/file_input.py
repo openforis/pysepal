@@ -8,8 +8,16 @@ from typing import Callable, List, Optional, Union
 import solara
 from pysepal_api import SepalClient
 
-from pysepal.scripts.filesystem import FileSystem, SandboxFileSystem
-from pysepal.sepalwidgets.file_input import FileInput, _default_filesystem
+from pysepal.scripts.filesystem import (
+    FileSystem,
+    PathOutsideRootError,
+    SandboxFileSystem,
+)
+from pysepal.sepalwidgets.file_input import (
+    FileInput,
+    _default_filesystem,
+    _resolve_bounds,
+)
 
 
 @solara.component
@@ -56,9 +64,14 @@ def FileInputComponent(
     fs = solara.use_memo(make_filesystem, [filesystem, sepal_client, root])
 
     # Resolved here, not in the widget: a re-render writes every prop back onto
-    # the widget, and an unresolved "" would reset its bound.
-    resolved_root = str(fs.resolve(root or fs.root)) if fs else ""
-    resolved_initial = str(fs.resolve(initial_folder or resolved_root)) if fs else ""
+    # the widget, and an unresolved "" would reset its bound. A root the
+    # filesystem refuses goes through as is, and the widget shows no files.
+    resolved_root, resolved_initial = root, initial_folder
+    if fs is not None:
+        try:
+            resolved_root, resolved_initial = _resolve_bounds(fs, root, initial_folder)
+        except PathOutsideRootError:
+            pass
 
     file_input = FileInput.element(
         initial_folder=resolved_initial,

@@ -5,6 +5,7 @@ GEE interface and SepalClient without having to manage sessions manually.
 """
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 from pysepal_api import SepalClient
@@ -100,6 +101,16 @@ def get_current_filesystem() -> FileSystem:
     return SandboxFileSystem(client)
 
 
+class _WholeDisk(LocalFileSystem):
+    """The whole local disk, where a relative path is taken from the working directory."""
+
+    def __init__(self):
+        super().__init__("/")
+
+    def resolve(self, path):
+        return super().resolve(Path(path).absolute())
+
+
 def _reader_filesystem(filesystem: Optional[FileSystem] = None) -> FileSystem:
     """The filesystem to open a path an app hands to a reader.
 
@@ -109,7 +120,7 @@ def _reader_filesystem(filesystem: Optional[FileSystem] = None) -> FileSystem:
     if filesystem is not None:
         return filesystem
     if not serves_many_users():
-        return LocalFileSystem("/")
+        return _WholeDisk()
     return get_current_filesystem()
 
 

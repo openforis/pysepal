@@ -55,6 +55,15 @@ def test_local_refuses_a_symlink_out_of_the_root(jail: Path) -> None:
     assert not LocalFileSystem(jail).contains(jail / "escape")
 
 
+def test_local_follows_a_symlink_before_climbing(jail: Path) -> None:
+    """``link/..`` is the parent of the link's target, not the root."""
+    (jail.parent / "other" / "deep").mkdir(parents=True)
+    (jail.parent / "other" / "secret.csv").write_text("")
+    (jail / "link").symlink_to(jail.parent / "other" / "deep", target_is_directory=True)
+
+    assert not LocalFileSystem(jail).contains(jail / "link" / ".." / "secret.csv")
+
+
 def test_local_list_gives_absolute_paths_folders_first(jail: Path) -> None:
     """Entries are absolute, hidden files are skipped and extensions filter files only."""
     listing = LocalFileSystem(jail).list(jail, extensions=[".csv"])

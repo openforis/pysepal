@@ -162,20 +162,22 @@ class LocalFileSystem(FileSystem):
 
     def __init__(self, root: Optional[PathLike] = None):
         """Bound the filesystem to ``root``, the home folder by default."""
-        root_path = Path(root) if root else Path.home()
-        self.root = PurePosixPath(os.path.normpath(root_path.absolute()))
-        self._resolved_root = root_path.resolve()
+        self.root = PurePosixPath((Path(root) if root else Path.home()).resolve())
 
     def resolve(self, path: PathLike) -> PurePosixPath:
-        """Return the absolute path; ``..`` and symlinks must stay inside the root."""
-        candidate = Path(os.path.normpath(Path(self.root) / Path(path)))
+        """Return the real path, with symlinks followed; it must stay inside the root.
+
+        The real path, not a lexical one: ``link/..`` is the parent of the link's
+        target to the OS, so normalising it away would check a different file
+        than the one later opened.
+        """
         try:
-            inside = candidate.resolve().is_relative_to(self._resolved_root)
+            real = PurePosixPath((Path(self.root) / Path(path)).resolve())
         except (OSError, RuntimeError):
-            inside = False
-        if not inside:
+            raise PathOutsideRootError(f"{path} cannot be resolved") from None
+        if not real.is_relative_to(self.root):
             raise PathOutsideRootError(f"{path} is outside {self.root}")
-        return PurePosixPath(candidate)
+        return real
 
     def list(
         self, folder: Optional[PathLike] = None, extensions: Optional[Sequence[str]] = None

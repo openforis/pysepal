@@ -5,7 +5,7 @@ Importing it from this module is deprecated.
 """
 
 from pathlib import Path, PurePosixPath
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import ipyvuetify as v
 from pysepal_api import SepalClient
@@ -44,7 +44,10 @@ def is_within(path: Union[str, Path], root: Union[str, Path]) -> bool:
 def _default_filesystem(root: str) -> Optional[FileSystem]:
     """The user's files when the caller names no filesystem, or None if there are none."""
     if local_files_allowed():
-        return LocalFileSystem(root or None)
+        # Rooted at home like the SEPAL workspace, so a relative path names the
+        # same folder in both; only a root outside home bounds its own filesystem.
+        home = LocalFileSystem()
+        return home if not root or home.contains(root) else LocalFileSystem(root)
 
     from pysepal.solara.errors import SepalSessionError
     from pysepal.solara.utils import get_current_filesystem
@@ -53,6 +56,24 @@ def _default_filesystem(root: str) -> Optional[FileSystem]:
         return get_current_filesystem()
     except SepalSessionError:
         return None
+
+
+def _resolve_bounds(filesystem: FileSystem, root: str, initial_folder: str) -> Tuple[str, str]:
+    """The absolute root and first folder of an input over ``filesystem``.
+
+    Raises :class:`PathOutsideRootError` when ``root`` is not in the filesystem,
+    e.g. a container path handed to a SEPAL workspace. A first folder outside the
+    root falls back to the root.
+    """
+    resolved_root = filesystem.resolve(root or filesystem.root)
+    try:
+        initial = filesystem.resolve(initial_folder or resolved_root)
+    except PathOutsideRootError:
+        initial = None
+    if initial is None or not initial.is_relative_to(resolved_root):
+        log.warning(f"Initial folder {initial_folder} is outside {resolved_root}, using the root")
+        initial = resolved_root
+    return str(resolved_root), str(initial)
 
 
 class FileInput(v.VuetifyTemplate, SepalWidget):
@@ -107,18 +128,20 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
 
         super().__init__(**kwargs)
 
+        if self.filesystem is not None:
+            try:
+                bounds = _resolve_bounds(self.filesystem, root, initial_folder)
+            except PathOutsideRootError as error:
+                log.warning(f"FileInput shows no files: {error}")
+                self.filesystem = None
+
         if self.filesystem is None:
             self.error_messages = [msg("widgets.fileinput.no_local_files")]
             self.file_list = []
             return
 
-        self.root = str(self.filesystem.resolve(root or self.filesystem.root))
-        self.initial_folder = str(self.filesystem.resolve(initial_folder or self.root))
+        self.root, self.initial_folder = bounds
         log.debug(f"FileInput root: {self.root}, initial folder: {self.initial_folder}")
-        if not self._allows(self.initial_folder):
-            raise ValueError(
-                f"Initial folder {self.initial_folder} is not a subdirectory of {self.root}"
-            )
         self.current_folder = self.initial_folder
 
         self.load_files()
