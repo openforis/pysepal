@@ -391,32 +391,26 @@ for cancellation and unmount behavior.
 ## AOI Method Restrictions
 
 AoiView's `methods` parameter controls which selection methods are available.
-Not all methods are safe in all deployment contexts.
+Some need something the deployment may not have.
 
-| Method       | Requires              | Safe in GEE/container apps | Safe in local/Voila    |
-| ------------ | --------------------- | -------------------------- | ---------------------- |
-| `ADMIN0/1/2` | GEE (GAUL) or GADM    | Yes                        | Yes                    |
-| `DRAW`       | Map + DrawControl     | Yes                        | Yes                    |
-| `ASSET`      | GEE asset access      | Yes                        | Yes (with credentials) |
-| `SHAPE`      | Local filesystem read | **No** — not offered there | Yes                    |
-| `POINTS`     | Local filesystem read | **No** — not offered there | Yes                    |
+| Method       | Requires           | Works in GEE/container apps | Works in local/Voila   |
+| ------------ | ------------------ | --------------------------- | ---------------------- |
+| `ADMIN0/1/2` | GEE (GAUL) or GADM | Yes                         | Yes                    |
+| `DRAW`       | Map + DrawControl  | Yes                         | Yes                    |
+| `ASSET`      | GEE asset access   | Yes                         | Yes (with credentials) |
+| `SHAPE`      | The user's files   | Yes, with a session         | Yes                    |
+| `POINTS`     | The user's files   | Yes, with a session         | Yes                    |
 
 ### GEE / Container apps (multi-user, Docker)
 
-pysepal drops SHAPE and POINTS itself when one process serves many users, and
-the file pickers refuse to list or select the container's files there. Name the
-methods anyway, so the code says what the app offers:
+SHAPE and POINTS browse and read through `get_current_filesystem()`. In a
+multi-user container that is the user's SEPAL workspace, reached through the
+connection's client, so the Page needs `@with_sepal_sessions`; without a session
+the methods are not offered, and the container's own disk is never shown. The
+selected path is an absolute workspace path, and the file is downloaded to a
+temporary folder to be read (a shapefile with its sidecars).
 
-```python
-AoiView(
-    value=aoi_data,
-    methods=["-SHAPE", "-POINTS"],  # exclude file-based methods
-    gee=True,
-    map_=sepal_map,
-)
-```
-
-Or explicitly include only what you need:
+Drop them only if the app should not offer them:
 
 ```python
 AoiView(
@@ -426,11 +420,6 @@ AoiView(
     map_=sepal_map,
 )
 ```
-
-SHAPE and POINTS read files with `gpd.read_file` / `pd.read_csv` via
-`asyncio.to_thread`, from the disk of the process. In a multi-user container
-that disk belongs to no user, so the methods are not offered there. Use ASSET
-for GEE-backed vector data instead.
 
 ### Local / Voila apps (single-user)
 

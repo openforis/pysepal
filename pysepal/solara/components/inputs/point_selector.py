@@ -12,9 +12,11 @@ import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.message import msg
+from pysepal.scripts.filesystem import FileSystem
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
+from pysepal.solara.utils import _reader_filesystem
 
 POINT_EXTENSIONS = [".csv", ".txt"]
 
@@ -53,6 +55,7 @@ def PointsSelectorComponent(
     initial_folder: str = "",
     value: Union[Optional[Dict], solara.Reactive[Optional[Dict]]] = None,
     on_value: Optional[Callable[[Optional[Dict]], None]] = None,
+    filesystem: Optional[FileSystem] = None,
 ):
     """Selector component for CSV/TXT files with point data.
 
@@ -65,6 +68,8 @@ def PointsSelectorComponent(
         initial_folder: Initial folder shown by the local file picker.
         value: Dict with {pathname, id_column, lat_column, lng_column} or None.
         on_value: Callback when selection changes.
+        filesystem: Where to browse and read. By default the user's files for
+            this runtime.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
@@ -87,7 +92,8 @@ def PointsSelectorComponent(
     async def load_columns():
         if not file_path:
             return []
-        table = await asyncio.to_thread(pd.read_csv, file_path, sep=None, engine="python", nrows=0)
+        async with _reader_filesystem(filesystem).local_copy_async(file_path) as local:
+            table = await asyncio.to_thread(pd.read_csv, local, sep=None, engine="python", nrows=0)
         return table.columns.tolist()
 
     column_task = solara.lab.use_task(
@@ -125,6 +131,7 @@ def PointsSelectorComponent(
             label=msg("widgets.table.label"),
             value=file_path,
             on_value=select_file,
+            filesystem=filesystem,
         )
 
         if file_path:

@@ -12,9 +12,11 @@ import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.message import msg
+from pysepal.scripts.filesystem import FileSystem
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
+from pysepal.solara.utils import _reader_filesystem
 
 VECTOR_EXTENSIONS = [".shp", ".geojson", ".gpkg", ".kml"]
 
@@ -57,6 +59,7 @@ def VectorSelectorComponent(
     initial_folder: str = "",
     value: Union[Optional[Dict], solara.Reactive[Optional[Dict]]] = None,
     on_value: Optional[Callable[[Optional[Dict]], None]] = None,
+    filesystem: Optional[FileSystem] = None,
 ):
     """Selector component for local vector files.
 
@@ -70,6 +73,8 @@ def VectorSelectorComponent(
         initial_folder: Initial folder shown by the local file picker.
         value: Dict with {pathname, column, value} or None.
         on_value: Callback when selection changes.
+        filesystem: Where to browse and read. By default the user's files for
+            this runtime.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
@@ -94,7 +99,8 @@ def VectorSelectorComponent(
     async def load_columns():
         if not file_path:
             return []
-        return await asyncio.to_thread(_read_columns_from_file, file_path)
+        async with _reader_filesystem(filesystem).local_copy_async(file_path) as local:
+            return await asyncio.to_thread(_read_columns_from_file, str(local))
 
     column_task = solara.lab.use_task(
         load_columns, dependencies=[file_path], raise_error=False, prefer_threaded=False
@@ -103,7 +109,8 @@ def VectorSelectorComponent(
     async def load_values():
         if not file_path or selected_column == "ALL":
             return []
-        return await asyncio.to_thread(_read_column_values, file_path, selected_column)
+        async with _reader_filesystem(filesystem).local_copy_async(file_path) as local:
+            return await asyncio.to_thread(_read_column_values, str(local), selected_column)
 
     value_task = solara.lab.use_task(
         load_values,
@@ -137,6 +144,7 @@ def VectorSelectorComponent(
             label=msg("widgets.vector.label"),
             value=file_path,
             on_value=select_file,
+            filesystem=filesystem,
         )
 
         if file_path:
