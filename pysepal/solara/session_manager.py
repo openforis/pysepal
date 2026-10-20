@@ -5,6 +5,7 @@ handling initialization, cleanup, and session tracking across different
 Solara applications.
 """
 
+import asyncio
 import logging
 import os
 import threading
@@ -15,7 +16,7 @@ from typing import Any, Callable, Deque, Dict, Optional, Tuple
 from eeclient.client import EESession
 from eeclient.models import SepalHeaders
 from pydantic import ValidationError
-from pysepal_api import SepalClient
+from pysepal_api import AsyncSepalClient, SepalClient
 from pysepal_api.errors import PysepalError
 from solara.lab.utils.headers import headers
 
@@ -223,6 +224,7 @@ class SessionManager:
             # their own lock -- taken inside the scope lock, see _reopen_scope.
             self._closed_scopes: Deque[str] = deque(maxlen=CLOSED_SCOPE_MEMORY)
             self._closed_lock = threading.Lock()
+            self._async_cleanup = set()
             # Last: is_initialized() reads this attribute without the lock, so
             # it must not vouch for state that does not exist yet.
             self._initialized = True
@@ -754,6 +756,117 @@ class SessionManager:
         name = module_name or session.get("active_module_name")
         return session.get("sepal_clients", {}).get(name)
 
+    def get_async_sepal_client(
+        self,
+        module_name: Optional[str] = None,
+        *,
+        expected_client: Optional[SepalClient] = None,
+    ) -> Optional[AsyncSepalClient]:
+        """Return this scope/module's async client on its owning event loop.
+
+        Call from a non-threaded async task. ``expected_client`` pins a render's
+        identity so a delayed callback cannot export as a replacement user.
+        """
+        loop = asyncio.get_running_loop()
+        plan = _current_plan()
+        per_connection = _is_scoped_per_connection(plan)
+        scope_id = self.get_scope_id() if per_connection else PROCESS_SCOPE
+        if per_connection and scope_id == PROCESS_SCOPE:
+            raise SepalSessionError("A connection cannot access the process session.")
+        with self._registry.scope_lock(scope_id):
+            with self._closed_lock:
+                if scope_id in self._closed_scopes:
+                    raise SessionScopeClosedError("The export session has closed.")
+            session = self._registry.get(scope_id)
+            if session is None:
+                if expected_client is not None or per_connection:
+                    raise SessionScopeClosedError("The export session has closed.")
+                session = self._ensure_process_session_locked(plan)
+            name = module_name or session["active_module_name"]
+            sync_client = session["sepal_clients"].get(name)
+            if expected_client is not None and sync_client is not expected_client:
+                raise SessionScopeClosedError("The export session identity has changed.")
+            if sync_client is None and not per_connection:
+                sync_client = self._process_sepal_client(session, name)
+            if sync_client is None:
+                return None
+            clients = session.setdefault("async_sepal_clients", {})
+            if name not in clients:
+                client = AsyncSepalClient(
+                    session_id=session["sepal_session_id"],
+                    module_name=name,
+                    auth_mode="auto" if session["sepal_session_id"] else "sandbox_file",
+                    base_url=sync_client.base_url,
+                    verify=sync_client.verify,
+                )
+                clients[name] = (client, loop)
+            client, owner_loop = clients[name]
+            if owner_loop is not loop:
+                raise SepalSessionError(
+                    "Use the session's AsyncSepalClient on its original event loop "
+                    "(prefer_threaded=False)."
+                )
+            return client
+
+    async def aclose_async_sepal_clients(self) -> None:
+        """Close this scope's async clients before a short-lived loop exits.
+
+        Persistent Solara loops use normal session teardown. Scripts using
+        ``asyncio.run`` must await this method inside that run's ``finally``.
+        Sync clients and the rest of the session remain available.
+        """
+        loop = asyncio.get_running_loop()
+        plan = _current_plan()
+        per_connection = _is_scoped_per_connection(plan)
+        scope_id = self.get_scope_id() if per_connection else PROCESS_SCOPE
+        if per_connection and scope_id == PROCESS_SCOPE:
+            raise SepalSessionError("A connection cannot access the process session.")
+        with self._registry.scope_lock(scope_id):
+            session = self._registry.get(scope_id)
+            if session is None:
+                return
+            clients = session.get("async_sepal_clients", {})
+            if any(owner is not loop for _, owner in clients.values()):
+                raise SepalSessionError("Close async clients on their original event loop.")
+            clients = session.pop("async_sepal_clients", {})
+        await asyncio.gather(*(client.aclose() for client, _ in clients.values()))
+
+    def _close_async_clients(self, session: Dict[str, Any]) -> None:
+        """Schedule HTTP cleanup on each client's loop, retaining pending futures."""
+        by_loop = {}
+        for client, loop in session.pop("async_sepal_clients", {}).values():
+            by_loop.setdefault(loop, []).append(client)
+        for loop, clients in by_loop.items():
+
+            async def close(clients=clients):
+                for client in clients:
+                    try:
+                        await client.aclose()
+                    except Exception:
+                        logger.exception("Error closing AsyncSepalClient")
+
+            if loop.is_closed():
+                logger.error(
+                    "AsyncSepalClient owner loop closed before session cleanup; "
+                    "await aclose_async_sepal_clients() before closing a short-lived loop"
+                )
+                continue
+            try:
+                current_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                current_loop = None
+            if not loop.is_running():
+                if current_loop is None:
+                    loop.run_until_complete(close())
+                    continue
+                future = _RESULTS_DIR_EXECUTOR.submit(loop.run_until_complete, close())
+            elif current_loop is loop:
+                future = loop.create_task(close())
+            else:
+                future = asyncio.run_coroutine_threadsafe(close(), loop)
+            self._async_cleanup.add(future)
+            future.add_done_callback(self._async_cleanup.discard)
+
     def cleanup_session(self, scope_id: str) -> None:
         """Close and forget the session for a scope, then tombstone the scope.
 
@@ -791,6 +904,7 @@ class SessionManager:
             scope_id: The scope the session belonged to, for logging.
             session: The session payload to close.
         """
+        self._close_async_clients(session)
         gee_interface = session.get("gee_interface")
         if gee_interface is not None:
             try:

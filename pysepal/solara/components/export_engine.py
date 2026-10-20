@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 from dataclasses import replace
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Callable, Optional, Sequence
 
 from googleapiclient.http import MediaIoBaseDownload
-from pysepal_api import SepalClient
+from pysepal_api import AsyncSepalClient, SepalClient
 
 from pysepal.mapping.visualization import set_viz_params
 from pysepal.scripts.drive_interface import GDriveInterface
@@ -19,6 +20,7 @@ from pysepal.scripts.gee_interface import GEEInterface
 from .export_models import (
     FAILED_TASK_STATES,
     SUCCESS_TASK_STATES,
+    ExportBackend,
     ExportRequest,
     ExportResult,
     _build_result_message,
@@ -304,14 +306,40 @@ async def submit_export_request(
     request: ExportRequest,
     *,
     gee_interface: GEEInterface,
-    drive_interface: GDriveInterface,
+    drive_interface: GDriveInterface | None,
     sepal_client: SepalClient | None,
+    async_sepal_client: AsyncSepalClient | None = None,
+    backend: ExportBackend = "auto",
     on_step: StatusCallback = None,
     on_update: StatusCallback = None,
     on_remote_submitted: RemoteSubmittedCallback = None,
 ) -> ExportResult:
     """Submit an export request without any Solara-specific behavior."""
     _notify(on_step, "Validating export settings")
+
+    if backend not in {"auto", "direct", "taskmanager"}:
+        raise ValueError(f"Unknown export backend: {backend}")
+    use_taskmanager = backend == "taskmanager" or (
+        backend == "auto"
+        and request.target == "sepal"
+        and (async_sepal_client is not None or os.getenv("PYSEPAL_TASKMANAGER_EXPORTS") == "1")
+    )
+    if use_taskmanager:
+        from .export_taskmanager import submit_taskmanager_export
+
+        if async_sepal_client is None:
+            raise ValueError("TaskManager exports require a session-backed AsyncSepalClient.")
+        return await submit_taskmanager_export(
+            request,
+            async_sepal_client,
+            on_step=on_step,
+            on_update=on_update,
+            on_remote_submitted=on_remote_submitted,
+        )
+    if request.target == "sepal" and sepal_client is None:
+        raise ValueError("SEPAL export requires a session-backed SepalClient.")
+    if request.target == "sepal" and drive_interface is None:
+        raise ValueError("Direct workspace exports require a Google Drive interface.")
 
     if request.target == "gee":
         _notify(on_step, "Preparing Earth Engine destination")
@@ -407,6 +435,7 @@ async def submit_export_request(
 
     result = ExportResult(
         target="sepal",
+        status="completed",
         export_kind=request.export_kind,
         name=request.name,
         task_id=task_id,

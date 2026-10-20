@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Callable, Optional, Sequence
 
 import solara
-from pysepal_api import SepalClient
+from pysepal_api import AsyncSepalClient, SepalClient
 
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.notifications.notifier import NoopNotifier
 from pysepal.solara.utils import (
+    get_current_async_sepal_client,
     get_current_drive_interface,
     get_current_gee_interface,
     get_current_sepal_client,
@@ -25,6 +27,7 @@ from .export_models import (
     DEFAULT_IMAGE_FILE_FORMAT,
     DEFAULT_TABLE_FILE_FORMAT,
     TARGET_LABELS,
+    ExportBackend,
     ExportKind,
     ExportRequest,
     ExportResult,
@@ -66,14 +69,15 @@ class _ExportDialogState:
     discovered_source_id: solara.Reactive[str]
     bands_loading: solara.Reactive[bool]
     gee_interface: GEEInterface
-    drive_interface: GDriveInterface
-    sepal_client: SepalClient | None
+    drive_interface: GDriveInterface | None
+    sepal_client: SepalClient | AsyncSepalClient | None
     notifications_enabled: bool
     poll_interval_seconds: float
     timeout_seconds: float
     cleanup_drive_after_sepal: bool
     cancel_reason_ref: Any = field(repr=False, compare=False)
     remote_submitted_ref: Any = field(repr=False, compare=False)
+    remote_task_id_ref: Any = field(repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,6 +394,8 @@ def use_export_dialog(
     gee_interface: GEEInterface | None = None,
     drive_interface: GDriveInterface | None = None,
     sepal_client: SepalClient | None = None,
+    async_sepal_client: AsyncSepalClient | None = None,
+    backend: ExportBackend = "auto",
 ) -> ExportDialogController:
     """Return controller state for a reusable export dialog."""
     sources_tuple = tuple(sources)
@@ -397,14 +403,14 @@ def use_export_dialog(
     usable_sources = _usable_sources(sources_tuple)
 
     gee_interface = gee_interface or get_current_gee_interface()
-    drive_interface = drive_interface or get_current_drive_interface()
     sepal_client = sepal_client or get_current_sepal_client()
+    workspace_client = sepal_client or async_sepal_client
 
     notifications = use_notifications(required=False)
     notifications_enabled = not isinstance(notifications, NoopNotifier)
 
     open_state = solara.use_reactive(False)
-    selected_target = solara.use_reactive(_coerce_default_target(default_target, sepal_client))
+    selected_target = solara.use_reactive(_coerce_default_target(default_target, workspace_client))
     selected_source_id = solara.use_reactive("")
     export_name = solara.use_reactive("")
     name_dirty = solara.use_reactive(False)
@@ -433,13 +439,14 @@ def use_export_dialog(
         bands_loading=solara.use_reactive(False),
         gee_interface=gee_interface,
         drive_interface=drive_interface,
-        sepal_client=sepal_client,
+        sepal_client=workspace_client,
         notifications_enabled=notifications_enabled,
         poll_interval_seconds=poll_interval_seconds,
         timeout_seconds=timeout_seconds,
         cleanup_drive_after_sepal=cleanup_drive_after_sepal,
         cancel_reason_ref=solara.use_ref(None),
         remote_submitted_ref=solara.use_ref(False),
+        remote_task_id_ref=solara.use_ref(None),
     )
 
     active_source = get_active_source(sources_tuple, selected_source_id.value)
@@ -726,23 +733,53 @@ def use_export_dialog(
         )
 
     async def run_export(request: ExportRequest) -> ExportResult:
+        if backend not in {"auto", "direct", "taskmanager"}:
+            raise ValueError(f"Unknown export backend: {backend}")
         tracker_title = f"Exporting {request.name} to {TARGET_LABELS[request.target]}"
         total_steps = _tracker_step_count(request)
 
         with notifications.track(tracker_title, total_steps=total_steps) as tracker:
             state.remote_submitted_ref.current = False
+            state.remote_task_id_ref.current = None
+            use_taskmanager = backend == "taskmanager" or (
+                backend == "auto"
+                and request.target == "sepal"
+                and (
+                    async_sepal_client is not None
+                    or os.getenv("PYSEPAL_TASKMANAGER_EXPORTS") == "1"
+                )
+            )
+            api = async_sepal_client
+            if use_taskmanager and api is None and sepal_client is not None:
+                api = get_current_async_sepal_client(
+                    sepal_client.module_name, expected_client=sepal_client
+                )
+            drive = state.drive_interface
+            if (
+                request.target == "sepal"
+                and not use_taskmanager
+                and sepal_client is not None
+                and drive is None
+            ):
+                drive = get_current_drive_interface()
+
+            def submitted(task_id):
+                state.remote_submitted_ref.current = True
+                service = "SEPAL" if use_taskmanager else "Earth Engine"
+                state.remote_task_id_ref.current = (
+                    f"{service} task `{task_id}`" if task_id else None
+                )
+
             return await submit_export_request(
                 request,
                 gee_interface=state.gee_interface,
-                drive_interface=state.drive_interface,
-                sepal_client=state.sepal_client,
+                drive_interface=drive,
+                sepal_client=sepal_client,
+                async_sepal_client=api,
+                backend="taskmanager" if use_taskmanager else "direct",
                 on_step=tracker.step,
                 on_update=tracker.update,
-                on_remote_submitted=lambda _task_id: setattr(
-                    state.remote_submitted_ref,
-                    "current",
-                    True,
-                ),
+                on_remote_submitted=submitted,
             )
 
     task = solara.lab.use_task(
@@ -781,10 +818,13 @@ def use_export_dialog(
         if task.cancelled:
             result.set(None)
             message = (
-                "Local waiting was cancelled. The remote Earth Engine export may still continue."
+                "Local monitoring stopped. The remote export may still continue."
                 if state.remote_submitted_ref.current
-                else "Export cancelled."
+                else "Local export work stopped. If submission was in progress, check remote "
+                "tasks before retrying; its outcome may be unknown."
             )
+            if state.remote_task_id_ref.current:
+                message += f" {state.remote_task_id_ref.current}."
             state.remote_submitted_ref.current = False
             _publish("cancel", message)
 
