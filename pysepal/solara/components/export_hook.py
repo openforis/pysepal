@@ -747,7 +747,11 @@ def use_export_dialog(
             region=resolved_export.region,
             scale=state.scale.value if export_kind == "image" else None,
             gee_asset_id=asset_id,
-            drive_folder=state.drive_folder.value.strip() or None,
+            drive_folder=(
+                state.drive_folder.value.strip() or None
+                if selected_target.value == "drive"
+                else None
+            ),
             sepal_folder=state.sepal_folder.value.strip() or None,
             table_file_format=state.table_file_format.value,
             image_file_format=resolved_export.image_file_format or DEFAULT_IMAGE_FILE_FORMAT,

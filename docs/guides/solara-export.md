@@ -138,7 +138,7 @@ ResolvedExport(
                                        # (e.g. projects/<project>/assets/my_module/<name>).
                                        # Pass an absolute "projects/.../assets/..." path
                                        # to override the root.
-    drive_folder="",                  # optional, Drive folder name
+    drive_folder="",                  # optional, Drive folder name (Drive target only)
     sepal_folder="exports",           # optional, relative to module_results
     table_file_format="SHP",         # canonical enum; see below
     image_file_format="GEO_TIFF",    # canonical enum; see below
@@ -392,8 +392,10 @@ The dialog offers three destinations, each enabled based on runtime state:
 - **SEPAL workspace** (`sepal`) — requires a SEPAL client. Waits for the
   TaskManager task to finish on enabled deployments. The legacy backend
   exports to Drive, downloads the files, and uploads them under
-  `<module_results>/<sepal_folder>/`. Disabled when neither a synchronous
-  nor asynchronous SEPAL client is available.
+  `<module_results>/<sepal_folder>/`. Shown as **Export name** + **SEPAL
+  folder**; the Drive staging folder is not user-editable, as in the SEPAL
+  UI. Disabled when neither a synchronous nor asynchronous SEPAL client is
+  available.
 
 Do not stage, copy, or rewrite user export files in the app container.
 TaskManager owns those operations for its exports; the legacy engine uses
@@ -471,7 +473,8 @@ To keep a layer visible but non-selectable (e.g., not ready yet), set
 
 When no asset is selected, the Destination radio and the target-appropriate
 input fields render but are disabled — Asset ID for the GEE target, Export
-name + Google Drive folder for Drive/SEPAL. The rationale is that users
+name + Google Drive folder for Drive, Export name + SEPAL folder for SEPAL.
+The rationale is that users
 should see the structure of the form before committing to a selection — it
 telegraphs which options exist.
 

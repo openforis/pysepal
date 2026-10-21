@@ -390,6 +390,9 @@ def ExportDialog(
                         ):
                             pass
 
+                    # Workspace exports only pass through Drive as staging;
+                    # like the SEPAL UI, the user never picks that folder.
+                    if controller.selected_target.value == "drive":
                         with rv.TextField(
                             label="Google Drive folder",
                             v_model=state.drive_folder.value,
