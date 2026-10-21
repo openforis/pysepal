@@ -299,7 +299,7 @@ def ExportDialog(
     )
     submit_disabled = active_source is None or bool(validation_message) or bands_loading
 
-    target_items = get_target_items(state.sepal_client)
+    target_items = get_target_items(state.sepal_client, available=state.available_targets)
     source_items = get_source_items(controller.sources)
     button_props = use_task_button(
         controller.task,

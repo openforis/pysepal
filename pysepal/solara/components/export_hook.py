@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Collection, Literal, Optional, Sequence
 
 import solara
 from pysepal_api import AsyncSepalClient, SepalClient
@@ -16,7 +15,6 @@ from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.notifications.notifier import NoopNotifier
 from pysepal.solara.utils import (
-    get_current_async_sepal_client,
     get_current_drive_interface,
     get_current_gee_interface,
     get_current_sepal_client,
@@ -38,6 +36,7 @@ from .export_models import (
     sanitize_export_name,
     validate_asset_id_under_root,
 )
+from .export_taskmanager import select_backend, taskmanager_opted_in, validate_backend
 
 # Longer than the 3s toast default so the asset path / task id stays copyable.
 EXPORT_SUCCESS_TOAST_TIMEOUT = 8.0
@@ -78,6 +77,7 @@ class _ExportDialogState:
     cancel_reason_ref: Any = field(repr=False, compare=False)
     remote_submitted_ref: Any = field(repr=False, compare=False)
     remote_task_id_ref: Any = field(repr=False, compare=False)
+    available_targets: frozenset[ExportTarget] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,11 +100,29 @@ class ExportDialogController:
     _state: _ExportDialogState = field(repr=False, compare=False)
 
 
+_TARGET_ORDER: tuple[ExportTarget, ...] = ("gee", "drive", "sepal")
+
+
+def _available_targets(
+    backend: ExportBackend,
+    sepal_client: SepalClient | None,
+    async_sepal_client: AsyncSepalClient | None,
+) -> frozenset[ExportTarget]:
+    """Destinations the backend can run with the clients at hand."""
+    has_client = sepal_client is not None or async_sepal_client is not None
+    if backend == "taskmanager":
+        return frozenset({"sepal"} if has_client else ())
+    workspace = sepal_client is not None if backend == "direct" else has_client
+    return frozenset({"gee", "drive", "sepal"} if workspace else {"gee", "drive"})
+
+
 def _coerce_default_target(
     default_target: ExportTarget,
-    sepal_client: SepalClient | None,
+    available: Collection[ExportTarget],
 ) -> ExportTarget:
-    return default_target if default_target != "sepal" or sepal_client else "gee"
+    if default_target in available or not available:
+        return default_target
+    return next(target for target in _TARGET_ORDER if target in available)
 
 
 def _usable_sources(sources: Sequence[ExportSource]) -> tuple[ExportSource, ...]:
@@ -176,16 +194,20 @@ def get_source_items(sources: Sequence[ExportSource]) -> list[dict[str, object]]
     return items
 
 
-def get_target_items(sepal_client: SepalClient | None) -> list[dict[str, object]]:
-    """Return the destination radio items; SEPAL is disabled when no client is available."""
+def get_target_items(
+    sepal_client: SepalClient | AsyncSepalClient | None,
+    *,
+    available: Collection[ExportTarget] | None = None,
+) -> list[dict[str, object]]:
+    """Return the destination radio items, disabling those that cannot run.
+
+    Without ``available``, SEPAL is disabled when no client is available.
+    """
+    if available is None:
+        available = _available_targets("auto", sepal_client, None)
     return [
-        {"text": TARGET_LABELS["gee"], "value": "gee"},
-        {"text": TARGET_LABELS["drive"], "value": "drive"},
-        {
-            "text": TARGET_LABELS["sepal"],
-            "value": "sepal",
-            "disabled": sepal_client is None,
-        },
+        {"text": TARGET_LABELS[target], "value": target, "disabled": target not in available}
+        for target in _TARGET_ORDER
     ]
 
 
@@ -231,11 +253,13 @@ def get_controller_source_state(
     return active_source, resolved_export, export_kind, resolve_error
 
 
-def _tracker_step_count(request: ExportRequest) -> int:
+def _tracker_step_count(request: ExportRequest, backend: Literal["direct", "taskmanager"]) -> int:
     if request.target == "gee":
         return 3
     if request.target == "drive":
         return 2
+    if backend == "taskmanager":
+        return 3
     return 5 if request.cleanup_drive_after_sepal else 4
 
 
@@ -402,15 +426,17 @@ def use_export_dialog(
     source_signature = tuple((source.id, source.disabled) for source in sources_tuple)
     usable_sources = _usable_sources(sources_tuple)
 
+    validate_backend(backend)
     gee_interface = gee_interface or get_current_gee_interface()
     sepal_client = sepal_client or get_current_sepal_client()
     workspace_client = sepal_client or async_sepal_client
+    available_targets = _available_targets(backend, sepal_client, async_sepal_client)
 
     notifications = use_notifications(required=False)
     notifications_enabled = not isinstance(notifications, NoopNotifier)
 
     open_state = solara.use_reactive(False)
-    selected_target = solara.use_reactive(_coerce_default_target(default_target, workspace_client))
+    selected_target = solara.use_reactive(_coerce_default_target(default_target, available_targets))
     selected_source_id = solara.use_reactive("")
     export_name = solara.use_reactive("")
     name_dirty = solara.use_reactive(False)
@@ -447,6 +473,7 @@ def use_export_dialog(
         cancel_reason_ref=solara.use_ref(None),
         remote_submitted_ref=solara.use_ref(False),
         remote_task_id_ref=solara.use_ref(None),
+        available_targets=available_targets,
     )
 
     active_source = get_active_source(sources_tuple, selected_source_id.value)
@@ -506,10 +533,10 @@ def use_export_dialog(
     solara.use_effect(_reconcile_selected_source, [source_signature, selected_source_id.value])
 
     def _reconcile_target() -> None:
-        if selected_target.value == "sepal" and state.sepal_client is None:
-            selected_target.set("gee")
+        if available_targets and selected_target.value not in available_targets:
+            selected_target.set(_coerce_default_target(default_target, available_targets))
 
-    solara.use_effect(_reconcile_target, [selected_target.value, state.sepal_client is None])
+    solara.use_effect(_reconcile_target, [selected_target.value, available_targets])
 
     async def _load_asset_root() -> None:
         try:
@@ -684,11 +711,13 @@ def use_export_dialog(
             raise ValueError("No exportable layers available.")
         if resolved_export is None or export_kind is None:
             raise ValueError(resolve_error or "Unable to resolve the selected export source.")
-        if selected_target.value == "sepal" and state.sepal_client is None:
-            raise ValueError(
-                "SEPAL export requires a session-backed SepalClient. "
-                "Use @with_sepal_sessions in the host page."
-            )
+        if selected_target.value not in available_targets:
+            if selected_target.value == "sepal":
+                raise ValueError(
+                    "SEPAL export requires a session-backed SepalClient. "
+                    "Use @with_sepal_sessions in the host page."
+                )
+            raise ValueError("The TaskManager backend currently supports SEPAL workspace only.")
 
         if selected_target.value == "gee":
             asset_id = state.gee_asset_id.value.strip()
@@ -733,39 +762,31 @@ def use_export_dialog(
         )
 
     async def run_export(request: ExportRequest) -> ExportResult:
-        if backend not in {"auto", "direct", "taskmanager"}:
-            raise ValueError(f"Unknown export backend: {backend}")
+        selected = select_backend(
+            backend,
+            request,
+            sepal_client=sepal_client,
+            async_sepal_client=async_sepal_client,
+            opted_in=taskmanager_opted_in(),
+        )
         tracker_title = f"Exporting {request.name} to {TARGET_LABELS[request.target]}"
-        total_steps = _tracker_step_count(request)
+        total_steps = _tracker_step_count(request, selected)
 
         with notifications.track(tracker_title, total_steps=total_steps) as tracker:
             state.remote_submitted_ref.current = False
             state.remote_task_id_ref.current = None
-            use_taskmanager = backend == "taskmanager" or (
-                backend == "auto"
-                and request.target == "sepal"
-                and (
-                    async_sepal_client is not None
-                    or os.getenv("PYSEPAL_TASKMANAGER_EXPORTS") == "1"
-                )
-            )
-            api = async_sepal_client
-            if use_taskmanager and api is None and sepal_client is not None:
-                api = get_current_async_sepal_client(
-                    sepal_client.module_name, expected_client=sepal_client
-                )
             drive = state.drive_interface
             if (
                 request.target == "sepal"
-                and not use_taskmanager
+                and selected == "direct"
                 and sepal_client is not None
                 and drive is None
             ):
                 drive = get_current_drive_interface()
+            service = "SEPAL" if selected == "taskmanager" else "Earth Engine"
 
             def submitted(task_id):
                 state.remote_submitted_ref.current = True
-                service = "SEPAL" if use_taskmanager else "Earth Engine"
                 state.remote_task_id_ref.current = (
                     f"{service} task `{task_id}`" if task_id else None
                 )
@@ -775,8 +796,8 @@ def use_export_dialog(
                 gee_interface=state.gee_interface,
                 drive_interface=drive,
                 sepal_client=sepal_client,
-                async_sepal_client=api,
-                backend="taskmanager" if use_taskmanager else "direct",
+                async_sepal_client=async_sepal_client,
+                backend=selected,
                 on_step=tracker.step,
                 on_update=tracker.update,
                 on_remote_submitted=submitted,
@@ -826,6 +847,7 @@ def use_export_dialog(
             if state.remote_task_id_ref.current:
                 message += f" {state.remote_task_id_ref.current}."
             state.remote_submitted_ref.current = False
+            state.remote_task_id_ref.current = None
             _publish("cancel", message)
 
     solara.use_effect(
@@ -867,6 +889,10 @@ def use_export_dialog(
 
     def submit_export() -> None:
         state.cancel_reason_ref.current = None
+        # A cancel can land before run_export starts; it must not report the
+        # previous export's remote task.
+        state.remote_submitted_ref.current = False
+        state.remote_task_id_ref.current = None
         _clear_inline()
 
         try:

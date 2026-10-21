@@ -320,26 +320,30 @@ multiple named visualizations on the same image, write them eagerly via
 
 Enable `PYSEPAL_TASKMANAGER_EXPORTS=1` only on deployments supporting the
 `ee.export` TaskManager operation. The client library does not expose a
-capability probe. With `backend="auto"` (the default), this flag routes
-workspace exports through TaskManager; other deployments retain the legacy
-Drive-to-workspace path. GEE and Drive destinations still submit directly
-through GEEInterface in this first phase. Standalone use remains direct.
+capability probe. With `backend="auto"` (the default), this flag routes the
+dialog's workspace exports through TaskManager; other deployments retain the
+legacy Drive-to-workspace path. GEE and Drive destinations still submit
+directly through GEEInterface in this first phase. The flag does not affect
+`submit_export_request`, whose auto mode considers TaskManager only when given
+an `async_sepal_client`.
 
 `ExportLauncher`, `use_export_dialog`, and `submit_export_request` also accept
-`backend="direct"` or `backend="taskmanager"`. The latter currently supports
-workspace exports only. A supplied `async_sepal_client` enables TaskManager
-for workspace exports in auto mode and remains owned by the caller.
-The launcher otherwise gets a session-owned `AsyncSepalClient`, isolated by
-user and module, on the non-threaded task's event loop. Session teardown and
-identity replacement schedule its cleanup on that same loop.
-Scripts using a short-lived `asyncio.run` must await
-`pysepal.solara.utils.close_current_async_sepal_clients()` in their coroutine's
-`finally` block before the loop exits. A session client cannot be moved between
-event loops.
+`backend="direct"` or `backend="taskmanager"`. The latter supports workspace
+exports only, so the dialog then offers only the SEPAL workspace destination.
+A supplied `async_sepal_client` enables TaskManager for workspace exports in
+auto mode and remains owned by the caller. Otherwise each export creates its
+own `AsyncSepalClient` from the session's `SepalClient` (same user, module and
+host) and closes it when the export ends, so nothing outlives the export's
+event loop. If the session closes, submission is refused and monitoring stops.
 
-Selection happens before submission. A failed or interrupted submission is
-never retried through another backend. If its response is lost, check SEPAL's
-task list before retrying: the remote task may already exist.
+Selection happens before submission. In auto mode a request using an option
+TaskManager rejects (see below) stays on the direct backend when a
+`SepalClient` is available. A failed or interrupted submission is never
+retried through another backend. A 4xx response means SEPAL rejected the
+export and no task was created; a 400 or 404 usually means the deployment does
+not support TaskManager exports. If the response is lost (network error,
+timeout, 5xx), check SEPAL's task list before retrying: the remote task may
+already exist.
 
 TaskManager compatibility:
 
@@ -347,6 +351,8 @@ TaskManager compatibility:
 - Table `GEO_JSON` is sent as `GeoJSON`.
 - `priority` is rejected explicitly. Table `max_vertices` is also rejected
   for workspace exports: the backend supports that option only for Drive.
+  Auto mode avoids both errors by keeping such requests on the direct backend
+  when it can.
 - `sepal_folder` remains relative to the module results directory. Absolute
   paths under `/home/sepal-user` are accepted and converted to home-relative
   paths for submission. Paths outside that home and `..` traversal are rejected.
@@ -368,7 +374,8 @@ The dialog's cancel button stops local monitoring. It does not cancel the
 remote export or delete staging files. A timeout likewise leaves remote work
 running. For explicit remote cancellation use
 `await cancel_taskmanager_export(client, sepal_task_id)` from
-`pysepal.solara.components.export`, or SEPAL's task UI. Cancellation acceptance
+`pysepal.solara.components.export` (with a `SepalClient` or an
+`AsyncSepalClient`), or SEPAL's task UI. Cancellation acceptance
 does not mean the task has reached its final `CANCELED` state.
 
 The dialog offers three destinations, each enabled based on runtime state:

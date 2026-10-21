@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import io
-import os
 from dataclasses import replace
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -30,6 +29,7 @@ from .export_models import (
     resolve_sepal_folder,
     validate_asset_id_under_root,
 )
+from .export_taskmanager import select_backend, submit_taskmanager_export
 
 StatusCallback = Optional[Callable[[str], None]]
 RemoteSubmittedCallback = Optional[Callable[[Optional[str]], None]]
@@ -314,24 +314,26 @@ async def submit_export_request(
     on_update: StatusCallback = None,
     on_remote_submitted: RemoteSubmittedCallback = None,
 ) -> ExportResult:
-    """Submit an export request without any Solara-specific behavior."""
+    """Submit an export request without any Solara-specific behavior.
+
+    ``backend="auto"`` considers TaskManager only when ``async_sepal_client``
+    is given (see ``select_backend``); the ``PYSEPAL_TASKMANAGER_EXPORTS`` flag
+    applies to the dialog only.
+    """
     _notify(on_step, "Validating export settings")
 
-    if backend not in {"auto", "direct", "taskmanager"}:
-        raise ValueError(f"Unknown export backend: {backend}")
-    use_taskmanager = backend == "taskmanager" or (
-        backend == "auto"
-        and request.target == "sepal"
-        and (async_sepal_client is not None or os.getenv("PYSEPAL_TASKMANAGER_EXPORTS") == "1")
+    selected = select_backend(
+        backend,
+        request,
+        sepal_client=sepal_client,
+        async_sepal_client=async_sepal_client,
+        opted_in=False,
     )
-    if use_taskmanager:
-        from .export_taskmanager import submit_taskmanager_export
-
-        if async_sepal_client is None:
-            raise ValueError("TaskManager exports require a session-backed AsyncSepalClient.")
+    if selected == "taskmanager":
         return await submit_taskmanager_export(
             request,
             async_sepal_client,
+            sepal_client=sepal_client,
             on_step=on_step,
             on_update=on_update,
             on_remote_submitted=on_remote_submitted,
@@ -392,9 +394,6 @@ async def submit_export_request(
             message="",
         )
         return replace(result, message=_build_result_message(result))
-
-    if sepal_client is None:
-        raise ValueError("SEPAL export requires a session-backed SepalClient.")
 
     _notify(on_step, "Waiting for Earth Engine export to finish")
     await _wait_for_remote_completion(

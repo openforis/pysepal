@@ -7,7 +7,7 @@ GEE interface and SepalClient without having to manage sessions manually.
 import logging
 from typing import Optional
 
-from pysepal_api import AsyncSepalClient, SepalClient
+from pysepal_api import SepalClient
 
 from pysepal._runtime_context import current_scope_id
 from pysepal.scripts.drive_interface import GDriveInterface
@@ -38,9 +38,7 @@ def get_current_gee_interface() -> GEEInterface:
     return SessionManager().get_gee_interface()
 
 
-def get_current_sepal_client(
-    module_name: Optional[str] = None,
-) -> Optional[SepalClient]:
+def get_current_sepal_client(module_name: Optional[str] = None) -> Optional[SepalClient]:
     """Returns a SepalClient for the current runtime's session.
 
     One session holds one client per module name; without ``module_name`` you
@@ -56,20 +54,6 @@ def get_current_sepal_client(
         SEPAL sandbox, where file I/O goes to the local filesystem).
     """
     return SessionManager().get_sepal_client(module_name=module_name)
-
-
-def get_current_async_sepal_client(
-    module_name: Optional[str] = None, *, expected_client: Optional[SepalClient] = None
-) -> Optional[AsyncSepalClient]:
-    """Get the scope/module client from a task using ``prefer_threaded=False``."""
-    return SessionManager().get_async_sepal_client(
-        module_name=module_name, expected_client=expected_client
-    )
-
-
-async def close_current_async_sepal_clients() -> None:
-    """Release async clients before leaving a script's short-lived event loop."""
-    await SessionManager().aclose_async_sepal_clients()
 
 
 def get_current_drive_interface() -> GDriveInterface:
