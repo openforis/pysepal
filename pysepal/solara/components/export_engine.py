@@ -10,7 +10,7 @@ from pathlib import PurePosixPath
 from typing import Callable, Optional, Sequence
 
 from googleapiclient.http import MediaIoBaseDownload
-from pysepal_api import SepalClient
+from pysepal_api import AsyncSepalClient, SepalClient
 
 from pysepal.mapping.visualization import set_viz_params
 from pysepal.scripts.drive_interface import GDriveInterface
@@ -19,6 +19,7 @@ from pysepal.scripts.gee_interface import GEEInterface
 from .export_models import (
     FAILED_TASK_STATES,
     SUCCESS_TASK_STATES,
+    ExportBackend,
     ExportRequest,
     ExportResult,
     _build_result_message,
@@ -28,6 +29,7 @@ from .export_models import (
     resolve_sepal_folder,
     validate_asset_id_under_root,
 )
+from .export_taskmanager import select_backend, submit_taskmanager_export
 
 StatusCallback = Optional[Callable[[str], None]]
 RemoteSubmittedCallback = Optional[Callable[[Optional[str]], None]]
@@ -304,14 +306,42 @@ async def submit_export_request(
     request: ExportRequest,
     *,
     gee_interface: GEEInterface,
-    drive_interface: GDriveInterface,
+    drive_interface: GDriveInterface | None,
     sepal_client: SepalClient | None,
+    async_sepal_client: AsyncSepalClient | None = None,
+    backend: ExportBackend = "auto",
     on_step: StatusCallback = None,
     on_update: StatusCallback = None,
     on_remote_submitted: RemoteSubmittedCallback = None,
 ) -> ExportResult:
-    """Submit an export request without any Solara-specific behavior."""
+    """Submit an export request without any Solara-specific behavior.
+
+    ``backend="auto"`` considers TaskManager only when ``async_sepal_client``
+    is given (see ``select_backend``); the ``PYSEPAL_TASKMANAGER_EXPORTS`` flag
+    applies to the dialog only.
+    """
     _notify(on_step, "Validating export settings")
+
+    selected = select_backend(
+        backend,
+        request,
+        sepal_client=sepal_client,
+        async_sepal_client=async_sepal_client,
+        opted_in=False,
+    )
+    if selected == "taskmanager":
+        return await submit_taskmanager_export(
+            request,
+            async_sepal_client,
+            sepal_client=sepal_client,
+            on_step=on_step,
+            on_update=on_update,
+            on_remote_submitted=on_remote_submitted,
+        )
+    if request.target == "sepal" and sepal_client is None:
+        raise ValueError("SEPAL export requires a session-backed SepalClient.")
+    if request.target == "sepal" and drive_interface is None:
+        raise ValueError("Direct workspace exports require a Google Drive interface.")
 
     if request.target == "gee":
         _notify(on_step, "Preparing Earth Engine destination")
@@ -365,9 +395,6 @@ async def submit_export_request(
         )
         return replace(result, message=_build_result_message(result))
 
-    if sepal_client is None:
-        raise ValueError("SEPAL export requires a session-backed SepalClient.")
-
     _notify(on_step, "Waiting for Earth Engine export to finish")
     await _wait_for_remote_completion(
         gee_interface,
@@ -407,6 +434,7 @@ async def submit_export_request(
 
     result = ExportResult(
         target="sepal",
+        status="completed",
         export_kind=request.export_kind,
         name=request.name,
         task_id=task_id,
