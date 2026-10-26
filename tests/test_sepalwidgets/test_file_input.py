@@ -1,6 +1,7 @@
 """Test the FileInput widget in pysepal.sepalwidgets.file_input."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,6 +85,34 @@ def test_root_is_not_writable_from_the_browser(jail: Path) -> None:
     file_input.set_state({"root": "/"})
 
     assert file_input.root == str(jail)
+
+
+def test_remote_selection_stays_within_a_narrow_root() -> None:
+    """The SEPAL workspace bound does not replace the picker's narrower root."""
+    root = "/home/sepal-user/allowed"
+    files = SimpleNamespace(
+        list=lambda folder, extensions=None: SimpleNamespace(path=folder, files=[])
+    )
+    file_input = FileInput(
+        initial_folder=root,
+        root=root,
+        sepal_client=SimpleNamespace(files=files),
+    )
+
+    file_input.set_state({"current_folder": "/home/sepal-user/private"})
+    assert file_input.current_folder == root
+
+    file_input.set_state({"value": "/home/sepal-user/private/secret.csv"})
+    assert file_input.value == ""
+
+    file_input.set_state({"value": "../private/secret.csv"})
+    assert file_input.value == ""
+
+    file_input.set_state({"value": f"{root}/visible.csv"})
+    assert file_input.value == f"{root}/visible.csv"
+
+    file_input.set_state({"value": "allowed/visible.csv"})
+    assert file_input.value == "allowed/visible.csv"
 
 
 def test_no_local_files_in_a_shared_app(jail: Path, monkeypatch: pytest.MonkeyPatch) -> None:

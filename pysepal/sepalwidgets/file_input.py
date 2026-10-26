@@ -4,7 +4,7 @@ Note: FileInputComponent has moved to pysepal.solara.components.inputs.file_inpu
 Importing it from this module is deprecated.
 """
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List as ListType
 from typing import Literal, Optional, Union
 
@@ -12,6 +12,7 @@ import ipyvuetify as v
 from natsort import natsorted
 from pydantic import BaseModel
 from pysepal_api import SepalClient
+from pysepal_api.paths import BASE_REMOTE_PATH
 from traitlets import Bool, Int, List, Unicode, validate
 
 from pysepal.logger import log
@@ -178,11 +179,23 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
     def _allows(self, path: str) -> bool:
         """Whether a path the browser sent may be listed or selected.
 
-        Remote paths are checked by the SEPAL API, which serves only the user's
-        own workspace. Local paths must resolve inside ``root``.
+        Remote paths are rooted at the user's SEPAL workspace before checking
+        the picker's bound. Local paths resolve symlinks before that check.
         """
         if self.client is not None:
-            return True
+            workspace = PurePosixPath(BASE_REMOTE_PATH)
+            candidate = PurePosixPath(path)
+            bound = PurePosixPath(self.root or workspace)
+            if not candidate.is_absolute():
+                candidate = workspace / candidate
+            if not bound.is_absolute():
+                bound = workspace / bound
+            return (
+                ".." not in candidate.parts
+                and ".." not in bound.parts
+                and candidate.is_relative_to(workspace)
+                and candidate.is_relative_to(bound)
+            )
         return self._local_access and is_within(path, self.root)
 
     @validate("current_folder")
