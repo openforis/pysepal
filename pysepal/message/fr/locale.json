@@ -4,7 +4,8 @@
   "widgets": {
     "fileinput": {
       "label": "chercher un fichier",
-      "placeholder": "Fichier sélectionné"
+      "placeholder": "Fichier sélectionné",
+      "no_local_files": "Les fichiers de ce serveur ne sont pas disponibles dans une application partagée."
     },
     "table": {
       "label": "Fichier de tableau",

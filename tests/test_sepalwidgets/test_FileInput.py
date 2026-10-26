@@ -186,6 +186,67 @@ def test_root(file_input: sw.FileInput, root_dir: Path) -> None:
     return
 
 
+@pytest.fixture
+def jail(tmp_path: Path) -> Path:
+    """A root folder holding one vector file, next to a file outside it."""
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "inside.geojson").write_text("{}")
+    (tmp_path / "outside.geojson").write_text("{}")
+    return root
+
+
+def test_browser_cannot_leave_root(jail: Path) -> None:
+    """Folders and files written by the browser are checked against the resolved root.
+
+    Args:
+        jail: a root folder with a sibling file outside it
+    """
+    file_input = sw.FileInput(folder=jail, root=jail)
+
+    # the list group v_model is what a click in the menu writes
+    file_input.file_list.children[0].v_model = str(jail / ".." / "..")
+    assert file_input.folder == jail
+
+    for trait in ["v_model", "file"]:
+        setattr(file_input, trait, str(jail.parent / "outside.geojson"))
+        assert getattr(file_input, trait) == ""
+
+    file_input.v_model = str(jail / "inside.geojson")
+    assert file_input.v_model == str(jail / "inside.geojson")
+
+
+def test_root_is_not_writable_from_the_browser(jail: Path) -> None:
+    """The browser can't widen the root through the widget state.
+
+    Args:
+        jail: a root folder with a sibling file outside it
+    """
+    file_input = sw.FileInput(folder=jail, root=jail)
+
+    file_input.set_state({"root": ""})
+
+    assert file_input.root == str(jail)
+
+
+def test_no_local_files_in_a_shared_app(jail: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Where one process serves many users, its disk is nobody's workspace.
+
+    Args:
+        jail: a root folder with a sibling file outside it
+        monkeypatch: pytest monkeypatch fixture
+    """
+    from pysepal.sepalwidgets import file_input as file_input_module
+
+    monkeypatch.setattr(file_input_module, "local_files_allowed", lambda: False)
+    file_input = sw.FileInput(folder=jail)
+
+    assert get_names(file_input) == []
+
+    file_input.v_model = str(jail / "inside.geojson")
+    assert file_input.v_model == ""
+
+
 @pytest.fixture(scope="function")
 def file_input(root_dir: Path) -> sw.FileInput:
     """Create a default file_input in the root_dir.

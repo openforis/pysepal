@@ -4,7 +4,8 @@
   "widgets": {
     "fileinput": {
       "label": "",
-      "placeholder": ""
+      "placeholder": "",
+      "no_local_files": "ملفات هذا الخادم غير متاحة في تطبيق مشترك."
     },
     "table": {
       "label": "",

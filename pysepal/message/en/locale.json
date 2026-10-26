@@ -4,7 +4,8 @@
   "widgets": {
     "fileinput": {
       "label": "search file",
-      "placeholder": "Selected file"
+      "placeholder": "Selected file",
+      "no_local_files": "Files on this server are not available in a shared app."
     },
     "table": {
       "label": "Table file",

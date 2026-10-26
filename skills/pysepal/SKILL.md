@@ -465,9 +465,11 @@ Button Convention" for the canonical pattern, rules, and cancel semantics.
 
 ### AOI Method Restrictions
 
-GEE/container apps must exclude SHAPE and POINTS methods — they read local
-files and assume server-local paths. Use `methods=["-SHAPE", "-POINTS"]`
-or an explicit allowlist. Read
+SHAPE and POINTS read the process's own disk. In a multi-user container that
+disk belongs to no user, so pysepal does not offer them there, and its file
+pickers refuse the container's files. Still write `methods=["-SHAPE", "-POINTS"]`
+or an explicit allowlist in GEE/container apps, so the code says what the app
+offers. Read
 `docs/guides/solara-gee-patterns.md` § "AOI Method
 Restrictions" for the full matrix.
 
@@ -797,7 +799,7 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] Blocking sync work in `use_thread` instead of `use_task` + `asyncio.to_thread`
 - [ ] Bare `task.value` truthiness instead of `task.value is not None`
 - [ ] `use_effect` with incomplete dependency list (must include pending, finished, error, cancelled)
-- [ ] `methods="ALL"` in GEE/container apps (must exclude SHAPE and POINTS)
+- [ ] `methods="ALL"` in GEE/container apps (pysepal drops SHAPE and POINTS there; name the methods so the code says so)
 - [ ] Blocking file I/O (`gpd.read_file`, `pd.read_csv`) directly in `use_effect` (use `use_task` + `asyncio.to_thread`)
 - [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for user feedback (use `use_notifications()` + `NotificationProvider`)
 - [ ] A component published for reuse calling `use_notifications()` without `required=False` (it raises when rendered outside an app shell)

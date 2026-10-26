@@ -299,7 +299,9 @@ def test_vector_reselecting_a_file_does_not_restore_its_old_filter():
     asyncio.run(run())
 
 
-def test_points_keeps_an_incomplete_draft_after_autodetecting_columns(tmp_path):
+def test_points_keeps_an_incomplete_draft_after_autodetecting_columns(tmp_path, monkeypatch):
+    # the picker's root defaults to the home folder, and refuses files outside it
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     table = tmp_path / "plots.csv"
     table.write_text("id,lat,lon\n1,0,0\n")
     held = solara.reactive(None)

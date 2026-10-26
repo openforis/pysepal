@@ -36,6 +36,7 @@ from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.scripts.gee_task import GEETask, TaskState
+from pysepal.sepalwidgets import file_input as fi
 from pysepal.sepalwidgets.btn import Btn
 from pysepal.sepalwidgets.sepalwidget import SepalWidget
 
@@ -256,6 +257,9 @@ class FileInput(v.Flex, SepalWidget):
             label=msg("widgets.fileinput.placeholder"),
             class_="ml-5 mt-5",
             v_model="",
+            error_messages=(
+                [] if fi.local_files_allowed() else [msg("widgets.fileinput.no_local_files")]
+            ),
         )
 
         self.loading = v.ProgressLinear(
@@ -368,19 +372,36 @@ class FileInput(v.Flex, SepalWidget):
 
         return self
 
+    def _allows(self, path: Union[str, Path]) -> bool:
+        """Whether a path the browser sent may be listed or selected.
+
+        An empty ``root`` leaves the whole disk to a single-user app.
+        """
+        if not fi.local_files_allowed():
+            return False
+        return not self.root or fi.is_within(path, self.root)
+
+    @t.validate("file", "v_model")
+    def _keep_selection_in_root(self, proposal):
+        if not proposal["value"] or self._allows(proposal["value"]):
+            return proposal["value"]
+        return ""
+
+    def set_state(self, sync_data):
+        """Apply browser state, except ``root``: the bound is set in Python only."""
+        sync_data = {k: v for k, v in sync_data.items() if k != "root"}
+        super().set_state(sync_data)
+
     def _on_file_select(self, change: dict) -> Self:
         """Dispatch the behavior between file selection and folder change."""
-        if not change["new"]:
+        if not change["new"] or not self._allows(change["new"]):
             return self
 
         new_value = Path(change["new"])
 
         if new_value.is_dir():
             self.folder = new_value
-
-            # don't change folder if the folder is the parent of the root
-            if not self.folder == Path(self.root).parent:
-                self._change_folder()
+            self._change_folder()
 
         elif new_value.is_file():
             self.file = str(new_value)
@@ -409,6 +430,8 @@ class FileInput(v.Flex, SepalWidget):
             list of items inside the selected folder
         """
         folder = self.folder
+        if not self._allows(folder):
+            return []
 
         list_dir = [el for el in folder.glob("*") if not el.name.startswith(".")]
 

@@ -4,7 +4,8 @@
   "widgets": {
     "fileinput": {
       "label": "buscar archivos",
-      "placeholder": "Archivo seleccionado"
+      "placeholder": "Archivo seleccionado",
+      "no_local_files": "Los archivos de este servidor no están disponibles en una aplicación compartida."
     },
     "table": {
       "label": "Tabla de archivos",
