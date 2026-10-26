@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
+from threading import Barrier
 from types import SimpleNamespace
 from typing import Dict, List
 
@@ -90,6 +92,35 @@ def test_local_round_trip(jail: Path) -> None:
         fs.write("out/nested/spec.json", b"{}")
     fs.write("out/nested/spec.json", b"{}", overwrite=True)
     assert fs.read_json("out/nested/spec.json") == {}
+
+
+def test_local_write_without_overwrite_is_exclusive(
+    jail: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Concurrent creates cannot silently replace each other's contents."""
+    fs = LocalFileSystem(jail)
+    target = jail / "shared.txt"
+    exists = Path.exists
+    both_checked = Barrier(2)
+
+    def synchronized_exists(path: Path) -> bool:
+        result = exists(path)
+        if path == target:
+            both_checked.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(Path, "exists", synchronized_exists)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(fs.write, "shared.txt", content) for content in ("a", "b")]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append(future.result())
+            except FileExistsError:
+                outcomes.append("exists")
+
+    assert sum(outcome == "exists" for outcome in outcomes) == 1
+    assert fs.read_text("shared.txt") in ("a", "b")
 
 
 def test_local_copy_is_the_file_itself(jail: Path) -> None:

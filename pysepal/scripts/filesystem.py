@@ -217,10 +217,9 @@ class LocalFileSystem(FileSystem):
     ) -> PurePosixPath:
         """Write a file in an existing folder."""
         target = Path(self.resolve(path))
-        if target.exists() and not overwrite:
-            raise FileExistsError(str(target))
         payload = content.encode("utf-8") if isinstance(content, str) else content
-        target.write_bytes(payload)
+        with target.open("wb" if overwrite else "xb") as destination:
+            destination.write(payload)
         return PurePosixPath(target)
 
     def mkdir(self, path: PathLike, parents: bool = True) -> PurePosixPath:
