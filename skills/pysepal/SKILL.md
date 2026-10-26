@@ -465,11 +465,11 @@ Button Convention" for the canonical pattern, rules, and cancel semantics.
 
 ### AOI Method Restrictions
 
-SHAPE and POINTS read the process's own disk. In a multi-user container that
-disk belongs to no user, so pysepal does not offer them there, and its file
-pickers refuse the container's files. Still write `methods=["-SHAPE", "-POINTS"]`
-or an explicit allowlist in GEE/container apps, so the code says what the app
-offers. Read
+SHAPE and POINTS read the user's files through `get_current_filesystem()`: the
+local disk, or in a multi-user container the user's SEPAL workspace through the
+session's client. A container app without `@with_sepal_sessions` has no files,
+so pysepal does not offer them there. Drop them with an explicit allowlist only
+when the app should not offer them. Read
 `docs/guides/solara-gee-patterns.md` § "AOI Method
 Restrictions" for the full matrix.
 
@@ -608,28 +608,36 @@ already covers both filesystems:
 
 [i1067]: https://github.com/openforis/pysepal/issues/1067
 
-`FileInputComponent` chooses its backend at runtime from whether a
-`sepal_client` was passed: `FileInput.load_files` calls `get_remote_files`
-(`sepal_client.files.list`, the user's sandbox over HTTP) when there is a client
-and `get_local_files` (a `pathlib` glob on the process filesystem) when there is
-not, where `root` then defaults to `~`. So it is **not** a sandbox-only
-component, and a local app is a first-class use of it. Its value is a single
-path as a `str`.
+Read and write user files through `get_current_filesystem()` (from
+`pysepal.solara`), never `pathlib` or `SepalClient.files` directly. It returns a
+`LocalFileSystem` (the home folder) in Voila, notebooks and a SEPAL sandbox, and
+a `SandboxFileSystem` (the user's workspace through their client) in a shared
+app-launcher container, where the process disk belongs to no user. Both speak
+the same absolute paths under `fs.root` (`/home/sepal-user` on SEPAL), refuse
+paths outside it, and offer `list`, `read_bytes`/`read_text`/`read_json`,
+`write`, `mkdir` and `local_copy` (a local path for readers like
+`gpd.read_file`; a shapefile brings its sidecars), each with an `*_async` twin:
+
+```python
+fs = get_current_filesystem()  # in the render, or at the start of a task
+spec = await fs.read_json_async("module_results/my_app/aoi.json")
+async with fs.local_copy_async(path) as local:
+    gdf = await asyncio.to_thread(gpd.read_file, local)
+```
+
+`FileInputComponent` browses that same filesystem by default (pass
+`filesystem=` to pick another). Its value is a single absolute path as a `str`;
+read it through the filesystem, not `open()`.
 
 Do not reach for `solara.FileBrowser` or `solara.FileBrowserMultiple` in a
 pysepal app. They read the process filesystem through `pathlib` and take no
 client, so they cannot serve a sandbox, and an app built on them stops working
 the moment it is deployed to SEPAL. pysepal apps use `FileInputComponent`.
 
-**The gap.** Nothing selects more than one path, and nothing in pysepal
-abstracts reading and writing over the two filesystems, so a component written
-against one cannot serve the other. Both are being tracked rather than worked
-around: multi-select on our own component in [#1067][i1067] (Solara's version is
-prior art there, not a dependency), and one filesystem interface in
-[#1066][i1066]. Until they land, an app needing several paths composes them from
-`FileInputComponent` or talks to `SepalClient` itself.
-
-[i1066]: https://github.com/openforis/pysepal/issues/1066
+**The gap.** Nothing selects more than one path yet: multi-select on our own
+component is [#1067][i1067] (Solara's version is prior art there, not a
+dependency). Until it lands, an app needing several paths composes them from
+`FileInputComponent`.
 
 ## Charts and Graphs
 
@@ -799,7 +807,7 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] Blocking sync work in `use_thread` instead of `use_task` + `asyncio.to_thread`
 - [ ] Bare `task.value` truthiness instead of `task.value is not None`
 - [ ] `use_effect` with incomplete dependency list (must include pending, finished, error, cancelled)
-- [ ] `methods="ALL"` in GEE/container apps (pysepal drops SHAPE and POINTS there; name the methods so the code says so)
+- [ ] User files read with `pathlib`, `open()` or `SepalClient.files` instead of `get_current_filesystem()` (breaks in one of the two deployments)
 - [ ] Blocking file I/O (`gpd.read_file`, `pd.read_csv`) directly in `use_effect` (use `use_task` + `asyncio.to_thread`)
 - [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for user feedback (use `use_notifications()` + `NotificationProvider`)
 - [ ] A component published for reuse calling `use_notifications()` without `required=False` (it raises when rendered outside an app shell)

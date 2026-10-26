@@ -24,6 +24,7 @@ import reacton
 
 import pysepal.solara.components.aoi.asset as asset_mod
 from pysepal.scripts import utils as su
+from pysepal.scripts.filesystem import LocalFileSystem
 from pysepal.solara import session_manager as session_manager_module
 from pysepal.solara._topology import SessionPlan, SessionSource
 from pysepal.solara.components.aoi.aoi_view import AoiView
@@ -115,7 +116,7 @@ def test_a_per_connection_runtime_refuses_process_draw():
 def test_a_per_connection_runtime_refuses_process_shape():
     with _topology(PER_CONNECTION) as stubs:
         with pytest.raises(SepalSessionError, match="platform service account"):
-            asyncio.run(process_shape(str(GEOJSON), gee=True))
+            asyncio.run(process_shape(str(GEOJSON), gee=True, filesystem=LocalFileSystem("/")))
 
     assert stubs.init_ee.call_count == 0
 
@@ -130,6 +131,7 @@ def test_a_per_connection_runtime_refuses_process_points():
                     lat_column="latitude",
                     lng_column="longitude",
                     gee=True,
+                    filesystem=LocalFileSystem("/"),
                 )
             )
 
@@ -189,16 +191,42 @@ def test_a_single_identity_runtime_keeps_the_default():
 
 
 @pytest.mark.parametrize(
-    ("plan", "offered"),
-    [(PER_CONNECTION, False), (PROCESS, True)],
+    ("plan", "client", "offered"),
+    [(PER_CONNECTION, None, False), (PER_CONNECTION, "a-client", True), (PROCESS, None, True)],
 )
-def test_file_methods_follow_whose_disk_it_is(plan, offered):
-    """SHAPE and POINTS browse the process's disk, which is nobody's in a shared app."""
+def test_file_methods_need_the_users_files(plan, client, offered):
+    """A shared app reads the user's workspace, so it needs that user's client."""
     from pysepal.solara.components.aoi.aoi_view import resolve_methods
 
-    with patch.object(session_manager_module, "_current_plan", return_value=plan):
+    with (
+        patch.object(session_manager_module, "_current_plan", return_value=plan),
+        patch.object(
+            session_manager_module.SessionManager, "get_sepal_client", return_value=client
+        ),
+    ):
         methods = resolve_methods("ALL", gee=True, map_=object())
 
     assert ("SHAPE" in methods) is offered
     assert ("POINTS" in methods) is offered
     assert "ADMIN0" in methods
+
+
+def test_a_shared_app_reads_the_shape_from_the_users_workspace():
+    """The vector file is downloaded through the user's client, not opened on this disk."""
+    from pysepal.scripts.filesystem import SandboxFileSystem
+
+    client = SimpleNamespace(
+        files=SimpleNamespace(read_bytes=MagicMock(return_value=GEOJSON.read_bytes()))
+    )
+
+    result = asyncio.run(
+        process_shape(
+            "/home/sepal-user/aoi/manual.geojson",
+            gee=False,
+            filesystem=SandboxFileSystem(client),
+        )
+    )
+
+    client.files.read_bytes.assert_called_once_with("/home/sepal-user/aoi/manual.geojson")
+    assert result.spec.pathname == "/home/sepal-user/aoi/manual.geojson"
+    assert len(result.gdf) > 0

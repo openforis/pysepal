@@ -28,7 +28,6 @@ from pysepal import mapping as sm
 from pysepal.mapping import get_ipygeojson
 from pysepal.message import msg
 from pysepal.scripts import utils as su
-from pysepal.sepalwidgets.file_input import local_files_allowed
 from pysepal.solara.components.aoi.admin import (
     fetch_admin_bounds_async,
     process_admin,
@@ -50,7 +49,7 @@ from pysepal.solara.components.inputs.vector_selector import VectorSelectorCompo
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.notifications.notifier import NoopNotifier
-from pysepal.solara.utils import get_current_gee_interface
+from pysepal.solara.utils import get_current_gee_interface, user_files_available
 
 __all__ = ["AoiResult", "AoiView", "MethodSelect"]
 
@@ -87,8 +86,9 @@ def resolve_methods(
         gee: Whether Earth Engine is enabled. ASSET needs it.
         map_: The linked map. DRAW needs one.
 
-    SHAPE and POINTS browse this process's disk, so a shared app, where that
-    disk belongs to no user, does not offer them.
+    SHAPE and POINTS read the user's files: the local disk, or in a shared app
+    the user's SEPAL workspace. A shared app without a session has neither and
+    does not offer them.
 
     Returns:
         The enabled subset of :data:`METHODS`, keyed by method name.
@@ -120,7 +120,7 @@ def resolve_methods(
         method_dict.pop("ASSET", None)
     if map_ is None:
         method_dict.pop("DRAW", None)
-    if not local_files_allowed():
+    if not user_files_available():
         method_dict.pop("SHAPE", None)
         method_dict.pop("POINTS", None)
 

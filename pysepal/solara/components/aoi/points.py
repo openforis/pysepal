@@ -12,9 +12,11 @@ import geopandas as gpd
 import pandas as pd
 
 from pysepal.scripts import utils as su
+from pysepal.scripts.filesystem import FileSystem
 from pysepal.scripts.gee_interface import refuse_ambient_session_per_connection
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
+from pysepal.solara.utils import _reader_filesystem
 
 
 async def process_points(
@@ -24,6 +26,7 @@ async def process_points(
     lng_column: str,
     gee: bool = True,
     gee_interface: Optional[Any] = None,
+    filesystem: Optional[FileSystem] = None,
 ) -> AoiResult:
     """Process a CSV/TXT file with point data into an AoiResult.
 
@@ -39,6 +42,8 @@ async def process_points(
         gee: If True, create Earth Engine FeatureCollection.
         gee_interface: The session's interface. Omitting it is only accepted
             where the process serves a single identity.
+        filesystem: Where ``pathname`` lives. By default the local disk, or the
+            user's SEPAL workspace in a shared app.
 
     Returns:
         AoiResult with point geometries.
@@ -56,7 +61,8 @@ async def process_points(
     if len(cols) != len(set(cols)):
         raise ValueError("Duplicate column selected — each column must be different")
 
-    df = await asyncio.to_thread(pd.read_csv, pathname, sep=None, engine="python")
+    async with _reader_filesystem(filesystem).local_copy_async(pathname) as local:
+        df = await asyncio.to_thread(pd.read_csv, local, sep=None, engine="python")
 
     missing = [c for c in cols if c not in df.columns]
     if missing:
