@@ -391,11 +391,14 @@ The dialog offers three destinations, each enabled based on runtime state:
   **Google Drive folder** fields.
 - **SEPAL workspace** (`sepal`) — requires a SEPAL client. Waits for the
   TaskManager task to finish on enabled deployments. The legacy backend
-  exports to Drive, downloads the files, and uploads them under
+  exports to a new Drive folder `SEPAL/exports/<name>_<timestamp>` (as the
+  SEPAL UI does), downloads the files, and uploads them under
   `<module_results>/<sepal_folder>/`. Shown as **Export name** + **SEPAL
-  folder**; the Drive staging folder is not user-editable, as in the SEPAL
-  UI. Disabled when neither a synchronous nor asynchronous SEPAL client is
-  available.
+  folder**; the Drive staging folder is not user-editable. With
+  `cleanup_drive_after_sepal` the staging folder is deleted after the copy
+  or when the Earth Engine task fails; it is kept after a timeout or cancel,
+  since the task may still write to it. Disabled when neither a synchronous
+  nor asynchronous SEPAL client is available.
 
 Do not stage, copy, or rewrite user export files in the app container.
 TaskManager owns those operations for its exports; the legacy engine uses

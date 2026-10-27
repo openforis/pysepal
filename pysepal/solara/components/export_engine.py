@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
+import threading
 from dataclasses import replace
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -34,16 +36,20 @@ from .export_taskmanager import select_backend, submit_taskmanager_export
 StatusCallback = Optional[Callable[[str], None]]
 RemoteSubmittedCallback = Optional[Callable[[Optional[str]], None]]
 
+_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
+_DRIVE_STAGING_ROOT = ("SEPAL", "exports")
+# Parallel exports in one process would otherwise race to create duplicate
+# SEPAL/exports parents.
+_drive_staging_lock = threading.Lock()
+
 
 def _notify(callback: StatusCallback, message: str) -> None:
     if callback is not None:
         callback(message)
 
 
-def _parse_drive_timestamp(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+class _RemoteExportFailed(RuntimeError):
+    """The Earth Engine task ended in a failed state and will write nothing more."""
 
 
 async def _ensure_asset_folder_exists(
@@ -99,7 +105,7 @@ async def _wait_for_remote_completion(
         if state in SUCCESS_TASK_STATES:
             return
         if state in FAILED_TASK_STATES:
-            raise RuntimeError(
+            raise _RemoteExportFailed(
                 f"Earth Engine export `{description}` finished with state `{state}`."
             )
         await asyncio.sleep(poll_interval_seconds)
@@ -109,16 +115,43 @@ def _escape_drive_query(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _find_drive_items_by_prefix(
+def _find_drive_child_folder(service, name: str, parent_id: str) -> Optional[str]:
+    query = (
+        f"name = '{_escape_drive_query(name)}' and mimeType = '{_DRIVE_FOLDER_MIME}' "
+        f"and '{parent_id}' in parents and trashed = false"
+    )
+    response = service.files().list(q=query, pageSize=1, fields="files(id)").execute()
+    files = response.get("files", [])
+    return files[0]["id"] if files else None
+
+
+def _create_drive_folder(service, name: str, parent_id: str) -> str:
+    body = {"name": name, "mimeType": _DRIVE_FOLDER_MIME, "parents": [parent_id]}
+    return service.files().create(body=body, fields="id").execute()["id"]
+
+
+def _create_drive_staging_folder(drive_interface: GDriveInterface, name: str) -> str:
+    """Create ``SEPAL/exports/<name>`` in Drive, as SEPAL does, and return its id."""
+    service = drive_interface.service
+    parent_id = "root"
+    with _drive_staging_lock:
+        for part in _DRIVE_STAGING_ROOT:
+            parent_id = _find_drive_child_folder(service, part, parent_id) or _create_drive_folder(
+                service, part, parent_id
+            )
+    return _create_drive_folder(service, name, parent_id)
+
+
+def _find_drive_items(
     drive_interface: GDriveInterface,
     prefix: str,
-    modified_after: Optional[datetime] = None,
+    folder_id: str,
 ) -> list[dict]:
-    """Find Drive files that belong to an export prefix."""
+    """Find the export's files in its staging folder."""
     items: list[dict] = []
     page_token = None
-    query = f"trashed = false and name contains '{_escape_drive_query(prefix)}'"
-    fields = "nextPageToken, files(id, name, mimeType, modifiedTime)"
+    query = f"'{folder_id}' in parents and trashed = false"
+    fields = "nextPageToken, files(id, name, mimeType)"
 
     while True:
         response = (
@@ -136,18 +169,7 @@ def _find_drive_items_by_prefix(
         if not page_token:
             break
 
-    matched = []
-    for item in items:
-        filename = item.get("name", "")
-        if not matches_drive_export_prefix(filename, prefix):
-            continue
-
-        modified = _parse_drive_timestamp(item.get("modifiedTime"))
-        if modified_after and modified and modified < modified_after:
-            continue
-
-        matched.append(item)
-
+    matched = [item for item in items if matches_drive_export_prefix(item.get("name", ""), prefix)]
     return sorted(matched, key=lambda item: item["name"])
 
 
@@ -165,22 +187,17 @@ async def _wait_for_drive_items(
     drive_interface: GDriveInterface,
     *,
     prefix: str,
-    modified_after: datetime,
+    folder_id: str,
     poll_interval_seconds: float,
     timeout_seconds: float,
     on_update: StatusCallback = None,
 ) -> list[dict]:
-    """Wait until Drive files for an export prefix become visible."""
+    """Wait until the export's files become visible in its staging folder."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
 
     while True:
-        items = await asyncio.to_thread(
-            _find_drive_items_by_prefix,
-            drive_interface,
-            prefix,
-            modified_after,
-        )
+        items = await asyncio.to_thread(_find_drive_items, drive_interface, prefix, folder_id)
         if items:
             return items
 
@@ -211,9 +228,8 @@ def _copy_drive_items_to_sepal(
     return tuple(uploaded_paths)
 
 
-def _delete_drive_items(drive_interface: GDriveInterface, items: Sequence[dict]) -> None:
-    for item in items:
-        drive_interface.service.files().delete(fileId=item["id"]).execute()
+def _delete_drive_folder(drive_interface: GDriveInterface, folder_id: str) -> None:
+    drive_interface.service.files().delete(fileId=folder_id).execute()
 
 
 def _apply_viz_to_image(request: ExportRequest) -> object:
@@ -252,6 +268,7 @@ async def _submit_export(
     request: ExportRequest,
     *,
     asset_id: Optional[str] = None,
+    drive_folder: Optional[str] = None,
 ) -> object:
     """Dispatch the export submission through ``GEEInterface``."""
     if request.export_kind == "image":
@@ -271,7 +288,7 @@ async def _submit_export(
         return await gee_interface.export_image_to_drive_async(
             image=image_to_export,
             description=request.name,
-            folder=request.drive_folder or None,
+            folder=drive_folder,
             filename_prefix=request.name,
             region=request.region,
             scale=request.scale,
@@ -293,7 +310,7 @@ async def _submit_export(
     return await gee_interface.export_table_to_drive_async(
         collection=request.ee_object,
         description=request.name,
-        folder=request.drive_folder or None,
+        folder=drive_folder,
         filename_prefix=request.name,
         file_format=request.table_file_format,
         selectors=list(request.selectors) if request.selectors else None,
@@ -379,12 +396,12 @@ async def submit_export_request(
         return replace(result, message=_build_result_message(result))
 
     _notify(on_step, "Submitting Google Drive export")
-    started_at = datetime.now().astimezone()
-    submission = await _submit_export(gee_interface, request)
-    task_id = extract_task_id(submission)
-    _notify(on_remote_submitted, task_id)
-
     if request.target == "drive":
+        submission = await _submit_export(
+            gee_interface, request, drive_folder=request.drive_folder or None
+        )
+        task_id = extract_task_id(submission)
+        _notify(on_remote_submitted, task_id)
         result = ExportResult(
             target="drive",
             export_kind=request.export_kind,
@@ -395,21 +412,37 @@ async def submit_export_request(
         )
         return replace(result, message=_build_result_message(result))
 
-    _notify(on_step, "Waiting for Earth Engine export to finish")
-    await _wait_for_remote_completion(
-        gee_interface,
-        task_id=task_id,
-        description=request.name,
-        poll_interval_seconds=request.poll_interval_seconds,
-        timeout_seconds=request.timeout_seconds,
-        on_update=on_update,
+    # Earth Engine writes into an existing Drive folder with the given name, so
+    # a unique, pre-created leaf keeps lookup and cleanup inside it.
+    staging_name = f"{request.name}_{datetime.now():%Y-%m-%d_%H:%M:%S.%f}"
+    staging_id = await asyncio.to_thread(
+        _create_drive_staging_folder, drive_interface, staging_name
     )
+    submission = await _submit_export(gee_interface, request, drive_folder=staging_name)
+    task_id = extract_task_id(submission)
+    _notify(on_remote_submitted, task_id)
+
+    _notify(on_step, "Waiting for Earth Engine export to finish")
+    try:
+        await _wait_for_remote_completion(
+            gee_interface,
+            task_id=task_id,
+            description=request.name,
+            poll_interval_seconds=request.poll_interval_seconds,
+            timeout_seconds=request.timeout_seconds,
+            on_update=on_update,
+        )
+    except _RemoteExportFailed:
+        if request.cleanup_drive_after_sepal:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(_delete_drive_folder, drive_interface, staging_id)
+        raise
 
     _notify(on_step, "Copying Drive files into SEPAL")
     drive_items = await _wait_for_drive_items(
         drive_interface,
         prefix=request.name,
-        modified_after=started_at,
+        folder_id=staging_id,
         poll_interval_seconds=request.poll_interval_seconds,
         timeout_seconds=request.timeout_seconds,
         on_update=on_update,
@@ -428,7 +461,7 @@ async def submit_export_request(
     if request.cleanup_drive_after_sepal:
         _notify(on_step, "Cleaning up Google Drive staging files")
         try:
-            await asyncio.to_thread(_delete_drive_items, drive_interface, drive_items)
+            await asyncio.to_thread(_delete_drive_folder, drive_interface, staging_id)
         except Exception as exc:  # pragma: no cover - defensive cleanup path
             cleanup_warning = str(exc)
 
@@ -438,7 +471,7 @@ async def submit_export_request(
         export_kind=request.export_kind,
         name=request.name,
         task_id=task_id,
-        drive_folder=request.drive_folder,
+        drive_folder=str(PurePosixPath(*_DRIVE_STAGING_ROOT, staging_name)),
         drive_items=tuple(item["name"] for item in drive_items),
         sepal_paths=sepal_paths,
         message="",
