@@ -44,7 +44,8 @@
       "no_access": "Il semble que vous n'ayez pas accès à l'Asset selectionné ou qu'il n'existe pas.",
       "wrong_type": "Le type de l'asset selectioné ({asset_type}) ne correspond pas aux type autorisés par le widget ({allowed}).",
       "placeholder": "",
-      "no_assets": ""
+      "no_assets": "",
+      "list_failed": "La liste des assets n'a pas pu être chargée : {error}"
     },
     "load_table": {
       "too_small": "Le fichier fourni comporte moins de 3 colonnes. Veuillez fournir un fichier de points complet avec au moins les colonnes ID, lattitude et longitude."

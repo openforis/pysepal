@@ -741,6 +741,7 @@ class AssetSelect(v.Combobox, SepalWidget):
 
         self._loaded = False
         self.valid = False
+        self._list_error: Optional[str] = None
         # Use provided gee_interface or create new one from session
         if gee_interface:
             self.gee_interface = gee_interface
@@ -808,7 +809,7 @@ class AssetSelect(v.Combobox, SepalWidget):
         self._tasks["get_items"] = self.gee_interface.create_task(
             func=self._get_items_async,
             key="get_items",
-            on_error=lambda x: self.alert.add_msg(f"Failed to add layer. {x}", type_="error"),
+            on_error=self._on_get_items_error,
             on_finally=on_finally_get_items,
         )
 
@@ -904,6 +905,15 @@ class AssetSelect(v.Combobox, SepalWidget):
         self.asset_info = {}
         # Loading will be reset by on_finally_validate
 
+    def _on_get_items_error(self, error: Exception) -> None:
+        """Show a failed asset listing on the widget itself."""
+        log.error(
+            f"[{id(self)}] Failed to list the assets of {self.folder}: {error}", exc_info=error
+        )
+        self._list_error = msg("widgets.asset_select.list_failed", error=str(error))
+        self.error_messages = self._list_error
+        # Loading will be reset by on_finally_get_items
+
     # @sd.switch("loading", "disabled")
     async def _get_items_async(self, *args, gee_assets: List[dict] = None) -> Self:
 
@@ -939,8 +949,11 @@ class AssetSelect(v.Combobox, SepalWidget):
                     asset_info = await self.gee_interface.get_asset_async(default)
                     if asset_info["type"] in self.types:
                         filtered_defaults.append(default)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(
+                        f"[{id(self)}] Dropped default asset {default}, its lookup failed: "
+                        f"{type(e).__name__}: {e}"
+                    )
 
             if filtered_defaults:
                 self.v_model = filtered_defaults[0]
@@ -955,6 +968,11 @@ class AssetSelect(v.Combobox, SepalWidget):
         # get the list of user asset
         # get_assets_async can return None for an empty/inaccessible folder; keep it iterable
         raw_assets = gee_assets or await self.gee_interface.get_assets_async(self.folder) or []
+
+        # error_messages also carries validation errors, which a reload must not clear
+        if self._list_error is not None and self.error_messages == self._list_error:
+            self.error_messages = None
+        self._list_error = None
 
         log.debug(
             f"[{id(self)}] {text} || [[[{id(self)} ]]]Already awaited for get_assets_async, current v_model is {self.v_model}"
