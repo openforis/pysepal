@@ -60,7 +60,9 @@ def clean_gee_assets(session):
 @nox.session(name="dead-fixtures", reuse_venv=True)
 def dead_fixtures(session):
     """Check for dead fixtures items."""
-    session.install(".[test]")
+    # pytest-deadfixtures 3.1.0 reads FixtureManager._arg2fixturedefs, which
+    # pytest 9.2 renamed; drop the cap once upstream PR #61 is released.
+    session.install(".[test]", "pytest<9.2")
     test_files = session.posargs or ["tests"]
     # Clear addopts ("-m 'not gee'") so the scan covers both test lanes;
     # otherwise every GEE fixture reports as unused.
