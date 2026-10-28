@@ -63,13 +63,16 @@
       <div v-else class="pill-row">
         <div v-if="displayTask" class="pill-container">
           <v-progress-circular
-            indeterminate
+            :indeterminate="pillProgress == null"
+            :value="pillProgress == null ? 0 : pillProgress * 100"
             :size="14"
             :width="2"
-            class="mr-2"
-            color="white"
+            class="mr-2 pill-ring"
           />
-          <span class="pill-text">{{ pillText }}</span>
+          <span v-if="pillPct" class="pill-pct">{{ pillPct }}</span>
+          <span :key="pillFrameB" class="pill-text pill-swap">{{
+            pillText
+          }}</span>
         </div>
 
         <v-btn
@@ -100,6 +103,7 @@ export default {
       logOpen: false,
       logFollowing: true, // Auto-scroll to bottom when new entries arrive
       transitionsEnabled: false, // Gated so the pill doesn't slide in on mount
+      pillFrameB: false, // Alternation frame: false = title, true = progress detail
     };
   },
   computed: {
@@ -118,9 +122,37 @@ export default {
       // Finished tasks disappear — the user can open the log for history.
       return this.runningTask;
     },
+    pillProgress() {
+      const t = this.displayTask;
+      return t && t.progress != null ? t.progress : null;
+    },
+    pillHasDetail() {
+      // A detail is shown whenever it is set, including on an
+      // indeterminate task (no numeric progress yet — e.g. a wait reason).
+      const t = this.displayTask;
+      return !!(t && t.progressDetail);
+    },
+    pillPct() {
+      // Leading percentage, shown only on the progress-detail frame, and
+      // only once progress is known — an indeterminate task's detail
+      // stands alone, with no bogus percentage in front of it.
+      if (
+        !this.pillFrameB ||
+        !this.pillHasDetail ||
+        this.pillProgress == null
+      ) {
+        return null;
+      }
+      return Math.round(this.pillProgress * 100) + "%";
+    },
     pillText() {
       if (!this.displayTask) return "Task log";
       const t = this.displayTask;
+      // Progress-publishing tasks alternate between the run position
+      // (title) and the current item's own progress (progressDetail).
+      if (this.pillHasDetail) {
+        return this.pillFrameB ? t.progressDetail : t.title;
+      }
       let label = t.title;
       if (t.lastStep) {
         label += " — " + t.lastStep;
@@ -224,11 +256,18 @@ export default {
     setTimeout(() => {
       this.transitionsEnabled = true;
     }, 400);
+    // Alternate the pill between its title and progress-detail frames.
+    // The timer always ticks (cheap); the flag only flips while a task
+    // actually carries a detail, so detail-less tasks never alternate.
+    this._pillFrameTimer = setInterval(() => {
+      this.pillFrameB = this.pillHasDetail ? !this.pillFrameB : false;
+    }, 2500);
   },
   beforeDestroy() {
     for (const id of Object.keys(this.dismissTimers)) {
       clearTimeout(this.dismissTimers[id]);
     }
+    clearInterval(this._pillFrameTimer);
   },
   methods: {
     _syncToastTimers(newToasts) {
@@ -523,6 +562,42 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 420px;
+}
+
+/* Progress ring inherits the pill foreground (was hardcoded white, which
+ * disappeared on the light pill).  v-progress-circular strokes with
+ * currentColor when no color prop is given. */
+.pill-ring {
+  color: var(--pill-fg);
+}
+
+/* Leading percentage on the progress-detail frame */
+.pill-pct {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+/* Quick fade when the pill alternates frames, so the swap reads as
+ * intentional rather than flickering */
+.pill-swap {
+  animation: pill-frame-fade 0.35s ease;
+}
+
+@keyframes pill-frame-fade {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill-swap {
+    animation: none;
+  }
 }
 
 /* Always-visible log button (v-btn icon, square override)

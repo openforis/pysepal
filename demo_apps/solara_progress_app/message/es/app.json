@@ -1,0 +1,41 @@
+{
+  "app": {
+    "title": "Progreso de tareas"
+  },
+  "panel": {
+    "title": "Progreso de tareas",
+    "description": "Inicie una ejecución y observe la píldora al pie del mapa; luego abra su registro. Cada ejecución informa el progreso de una forma distinta."
+  },
+  "section": {
+    "title": "Ejecuciones",
+    "description": "Pasos: fases con nombre, cada una escrita en el registro. Fracción: set_progress(value) llena el anillo y no escribe nada. Descarga: set_progress(value, detail=...) alterna el título con la tesela actual, y el registro solo guarda los pasos por capa."
+  },
+  "buttons": {
+    "steps": "Ejecutar con pasos",
+    "fraction": "Ejecutar con una fracción",
+    "download": "Ejecutar una descarga por teselas"
+  },
+  "tasks": {
+    "steps": {
+      "title": "Procesando",
+      "prepare": "Preparando entradas",
+      "compute": "Calculando estadísticas",
+      "write": "Escribiendo salidas",
+      "publish": "Publicando resultados",
+      "done": "Procesamiento terminado"
+    },
+    "fraction": {
+      "title": "Exportando",
+      "done": "Exportación terminada"
+    },
+    "download": {
+      "title": "Descargando capas",
+      "waiting": "esperando un hueco de descarga libre",
+      "started": "Descargando {layers} capas",
+      "layer": "Capa {index}/{total}: {layer}",
+      "tile": "{layer} — tesela {tile}/{total}",
+      "layer_done": "{layer} descargada",
+      "done": "Todas las capas descargadas"
+    }
+  }
+}
