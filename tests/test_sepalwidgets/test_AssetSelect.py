@@ -1,5 +1,6 @@
 """Test the AssetSelect widget."""
 
+import logging
 import time
 from pathlib import Path
 from typing import Callable, List
@@ -9,6 +10,10 @@ import pytest
 
 from pysepal import sepalwidgets as sw
 from pysepal.message import msg
+from pysepal.scripts.gee_interface import GEEInterface
+
+LOGGER = "sepalui.sepalwidgets.inputs"
+FOLDER = "projects/tester/assets"
 
 
 def wait_for_async(asset_select: sw.AssetSelect, action: Callable, timeout: float = 10) -> None:
@@ -173,6 +178,113 @@ def test_get_items(asset_select: sw.AssetSelect, gee_user_dir: Path) -> None:
     asset_select.items = []
     wait_for_async(asset_select, lambda: asset_select.fire_event("click:prepend-inner", None))
     assert str(gee_user_dir / "image") in asset_select.items
+
+
+class _FakeGeeInterface(GEEInterface):
+    """A real task loop whose asset calls answer from memory or raise on demand."""
+
+    def __init__(self, assets=(), list_error=None, lookups=None):
+        super().__init__()
+        self.assets = list(assets)
+        self.list_error = list_error
+        self.lookups = lookups or {}
+
+    async def get_assets_async(self, folder=""):
+        if self.list_error is not None:
+            raise self.list_error
+        return self.assets
+
+    async def get_asset_async(self, asset_id, not_exists_ok=False):
+        answer = self.lookups[asset_id]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+@pytest.fixture
+def fake_gee(monkeypatch):
+    """Build fake interfaces for an AssetSelect that needs no Earth Engine credentials."""
+    monkeypatch.setattr("pysepal.scripts.gee.init_ee", lambda: None)
+    monkeypatch.setattr(ee.data, "is_initialized", lambda: True)
+    interfaces = []
+
+    def make(**kwargs):
+        interfaces.append(_FakeGeeInterface(**kwargs))
+        return interfaces[-1]
+
+    yield make
+    for interface in interfaces:
+        interface.close()
+
+
+def _wait_until(predicate: Callable[[], bool], timeout: float = 5) -> None:
+    start_time = time.time()
+    while not predicate():
+        if time.time() - start_time > timeout:
+            raise TimeoutError("AssetSelect did not reach the expected state in time.")
+        time.sleep(0.05)
+
+
+def test_a_failed_listing_is_shown_on_the_widget(fake_gee, caplog) -> None:
+    """The user must see why the list is empty, and the error must reach the log."""
+    gee = fake_gee(list_error=RuntimeError("Earth Engine is unreachable"))
+
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        asset_select = sw.AssetSelect(folder=FOLDER, gee_interface=gee)
+        _wait_until(lambda: not asset_select.loading)
+
+    assert asset_select.error_messages == msg(
+        "widgets.asset_select.list_failed", error="Earth Engine is unreachable"
+    )
+    assert asset_select.disabled is False
+    logged = [r.getMessage() for r in caplog.records if r.name == LOGGER]
+    assert any("Earth Engine is unreachable" in m for m in logged), logged
+
+
+def test_a_successful_reload_clears_the_listing_failure(fake_gee) -> None:
+    gee = fake_gee(
+        assets=[{"id": f"{FOLDER}/image", "type": "IMAGE"}],
+        list_error=RuntimeError("Earth Engine is unreachable"),
+    )
+    asset_select = sw.AssetSelect(folder=FOLDER, gee_interface=gee)
+    _wait_until(lambda: not asset_select.loading)
+    assert asset_select.error_messages is not None
+
+    gee.list_error = None
+    asset_select.fire_event("click:prepend-inner", None)
+    _wait_until(lambda: asset_select._loaded)
+
+    assert asset_select.error_messages is None
+    assert f"{FOLDER}/image" in asset_select.items
+
+
+def test_a_failed_default_lookup_is_logged(fake_gee, caplog) -> None:
+    """A lookup that raises drops the default with a warning; a wrong type drops it quietly."""
+    denied, table, image = (f"{FOLDER}/denied", f"{FOLDER}/table", f"{FOLDER}/image")
+    gee = fake_gee(
+        lookups={
+            denied: PermissionError("caller does not have permission"),
+            table: {"type": "TABLE"},
+            image: {"type": "IMAGE"},
+        }
+    )
+    asset_select = sw.AssetSelect(folder=FOLDER, types=["IMAGE"], gee_interface=gee)
+    _wait_until(lambda: asset_select._loaded)
+
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        asset_select.default_asset = [denied, table, image]
+        _wait_until(lambda: asset_select._loaded)
+
+    assert asset_select.v_model == image
+    assert image in asset_select.items
+    assert denied not in asset_select.items
+    assert table not in asset_select.items
+    warnings = [
+        r.getMessage() for r in caplog.records if r.name == LOGGER and r.levelno >= logging.WARNING
+    ]
+    assert len(warnings) == 1, warnings
+    assert denied in warnings[0]
+    assert "caller does not have permission" in warnings[0]
 
 
 @pytest.fixture(scope="session")
