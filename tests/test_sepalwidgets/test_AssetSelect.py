@@ -317,3 +317,20 @@ def asset_select(gee_dir: Path) -> sw.AssetSelect:
         time.sleep(0.1)
 
     return asset_select
+
+
+@pytest.mark.parametrize("as_list", [True, False], ids=["list", "str"])
+def test_a_default_asset_given_to_the_constructor_is_loaded(fake_gee, as_list) -> None:
+    image = f"{FOLDER}/image"
+    gee = fake_gee(
+        assets=[{"id": image, "type": "IMAGE"}],
+        lookups={image: {"type": "IMAGE"}},
+    )
+
+    asset_select = sw.AssetSelect(
+        folder=FOLDER, default_asset=[image] if as_list else image, gee_interface=gee
+    )
+    _wait_until(lambda: asset_select._loaded)
+
+    assert asset_select.v_model == image
+    assert image in asset_select.items

@@ -788,10 +788,9 @@ class AssetSelect(v.Combobox, SepalWidget):
             debounced.subscribe(lambda value: setattr(self, "v_model", value or None))
             self.on_event("update:search-input", lambda w, e, d: subject.on_next(d))
 
-        # Start the initial task only if no default_asset is set
-        # If default_asset is set, the observer will trigger _get_items
-        if not self.default_asset:
-            self._get_items()
+        # Also with a default_asset: it was set before its observer was added, and
+        # _get_items_async reads it.
+        self._get_items()
 
     def _configure_tasks(self) -> None:
         def on_finally_get_items():
