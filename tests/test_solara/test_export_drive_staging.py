@@ -4,7 +4,9 @@ import asyncio
 import re
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from eeclient.exceptions import EERestException
 
 from pysepal.solara.components import export_engine
 from pysepal.solara.components.export_engine import submit_export_request
@@ -176,3 +178,32 @@ def test_timed_out_workspace_export_keeps_its_staging_folder(written):
 
     # Earth Engine may still write there; removing it would scatter output in the root.
     assert any(i["name"] == gee.folders[0] for i in drive.items.values())
+
+
+class _RejectingGee(_FakeGee):
+    def __init__(self, drive, error):
+        super().__init__(drive)
+        self.error = error
+
+    async def export_image_to_drive_async(self, *, folder, **_):
+        self.folders.append(folder)
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    ("error", "kept"),
+    [
+        (ValueError("bad region"), False),
+        (EERestException({"code": 400, "message": "Invalid argument"}), False),
+        (EERestException({"code": 503, "message": "Unavailable"}), True),
+        (httpx.ReadTimeout("read timed out"), True),
+    ],
+)
+def test_failed_submission_keeps_staging_only_when_outcome_is_unknown(written, error, kept):
+    drive = _FakeDrive()
+    gee = _RejectingGee(drive, error)
+
+    with pytest.raises(type(error)):
+        _export(drive, gee, written)
+
+    assert any(i["name"] == gee.folders[0] for i in drive.items.values()) is kept

@@ -95,6 +95,8 @@ def test_table_geojson_and_selectors():
     assert payload["selectors"] == ["name"]
     with pytest.raises(ValueError, match="max_vertices"):
         asyncio.run(submit(replace(req, max_vertices=100), api))
+    with pytest.raises(ValueError, match="TF_RECORD_TABLE"):
+        asyncio.run(submit(replace(req, table_file_format="TF_RECORD_TABLE"), api))
     assert api.ee_exports.submit_table.await_count == 1
 
 
@@ -237,6 +239,13 @@ def sync_client(**kwargs):
         # TaskManager rejects priority; the direct path still honours it.
         ("auto", {"priority": 100}, ("sync",), True, "direct"),
         ("auto", {"priority": 100}, ("async",), False, "taskmanager"),
+        (
+            "auto",
+            {"export_kind": "table", "table_file_format": "TF_RECORD_TABLE"},
+            ("sync",),
+            True,
+            "direct",
+        ),
         ("direct", {}, ("async",), True, "direct"),
         ("taskmanager", {"target": "gee"}, ("sync",), False, "taskmanager"),
     ],

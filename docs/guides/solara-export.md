@@ -351,8 +351,9 @@ TaskManager compatibility:
 - Table `GEO_JSON` is sent as `GeoJSON`.
 - `priority` is rejected explicitly. Table `max_vertices` is also rejected
   for workspace exports: the backend supports that option only for Drive.
-  Auto mode avoids both errors by keeping such requests on the direct backend
-  when it can.
+  Table formats other than CSV, GeoJSON, KML, KMZ and SHP (such as
+  `TF_RECORD_TABLE`) are rejected too. Auto mode avoids these errors by
+  keeping such requests on the direct backend when it can.
 - `sepal_folder` remains relative to the module results directory. Absolute
   paths under `/home/sepal-user` are accepted and converted to home-relative
   paths for submission. Paths outside that home and `..` traversal are rejected.
@@ -395,9 +396,10 @@ The dialog offers three destinations, each enabled based on runtime state:
   SEPAL UI does), downloads the files, and uploads them under
   `<module_results>/<sepal_folder>/`. Shown as **Export name** + **SEPAL
   folder**; the Drive staging folder is not user-editable. With
-  `cleanup_drive_after_sepal` the staging folder is deleted after the copy
-  or when the Earth Engine task fails; it is kept after a timeout or cancel,
-  since the task may still write to it. Disabled when neither a synchronous
+  `cleanup_drive_after_sepal` the staging folder is deleted after the copy,
+  when Earth Engine rejects the submission, or when its task fails. It is
+  kept after a timeout, a cancel or a submission with an unknown outcome,
+  since a task may still write to it. Disabled when neither a synchronous
   nor asynchronous SEPAL client is available.
 
 Do not stage, copy, or rewrite user export files in the app container.

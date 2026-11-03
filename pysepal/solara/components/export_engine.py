@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Callable, Optional, Sequence
 
+import httpx
+from eeclient.exceptions import EERestException
 from googleapiclient.http import MediaIoBaseDownload
 from pysepal_api import AsyncSepalClient, SepalClient
 
@@ -232,6 +234,23 @@ def _delete_drive_folder(drive_interface: GDriveInterface, folder_id: str) -> No
     drive_interface.service.files().delete(fileId=folder_id).execute()
 
 
+async def _discard_drive_folder(drive_interface: GDriveInterface, folder_id: str) -> None:
+    """Delete a staging folder on a failure path without masking the failure."""
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(_delete_drive_folder, drive_interface, folder_id)
+
+
+def _created_no_task(exc: Exception) -> bool:
+    """Whether a failed Earth Engine submission certainly created no task.
+
+    Transport errors, timeouts and 5xx responses leave the outcome unknown. Any
+    other error is a 4xx rejection or failed locally before the request.
+    """
+    if isinstance(exc, EERestException):
+        return isinstance(exc.code, int) and 400 <= exc.code < 500
+    return not isinstance(exc, (httpx.HTTPError, OSError, asyncio.TimeoutError))
+
+
 def _apply_viz_to_image(request: ExportRequest) -> object:
     """Return the export image with SEPAL visualization properties embedded.
 
@@ -418,7 +437,12 @@ async def submit_export_request(
     staging_id = await asyncio.to_thread(
         _create_drive_staging_folder, drive_interface, staging_name
     )
-    submission = await _submit_export(gee_interface, request, drive_folder=staging_name)
+    try:
+        submission = await _submit_export(gee_interface, request, drive_folder=staging_name)
+    except Exception as exc:
+        if request.cleanup_drive_after_sepal and _created_no_task(exc):
+            await _discard_drive_folder(drive_interface, staging_id)
+        raise
     task_id = extract_task_id(submission)
     _notify(on_remote_submitted, task_id)
 
@@ -434,8 +458,7 @@ async def submit_export_request(
         )
     except _RemoteExportFailed:
         if request.cleanup_drive_after_sepal:
-            with contextlib.suppress(Exception):
-                await asyncio.to_thread(_delete_drive_folder, drive_interface, staging_id)
+            await _discard_drive_folder(drive_interface, staging_id)
         raise
 
     _notify(on_step, "Copying Drive files into SEPAL")

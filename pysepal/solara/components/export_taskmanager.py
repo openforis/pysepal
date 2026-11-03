@@ -27,6 +27,8 @@ from .export_models import (
 TASKMANAGER_ENV_FLAG = "PYSEPAL_TASKMANAGER_EXPORTS"
 EXPORT_BACKENDS = ("auto", "direct", "taskmanager")
 _FAILED_STATES = frozenset({"FAILED", "CANCELED"})
+# SEPAL's ee.export refuses any other table format for workspace exports.
+_TABLE_FORMATS = frozenset({"CSV", "GEO_JSON", "KML", "KMZ", "SHP"})
 _UNKNOWN_OUTCOME = (
     "SEPAL export submission outcome is unknown. Check SEPAL tasks before retrying; "
     "no alternate backend was used."
@@ -52,6 +54,8 @@ def taskmanager_rejection(request: ExportRequest) -> Optional[str]:
         return "TaskManager does not support export priority."
     if request.export_kind == "table" and request.max_vertices is not None:
         return "TaskManager table max_vertices is supported only for Drive."
+    if request.export_kind == "table" and request.table_file_format not in _TABLE_FORMATS:
+        return f"TaskManager does not support the {request.table_file_format} table format."
     return None
 
 
