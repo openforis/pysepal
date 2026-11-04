@@ -1,7 +1,7 @@
 """Cascading administrative level selector for AOI selection."""
 
 from functools import partial
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Collection, Optional, Tuple, Union
 
 import reacton.ipyvuetify as rv
 import solara
@@ -11,6 +11,7 @@ from pysepal.message import msg
 
 
 @solara.component
+@versionchanged(version="4.2", reason="Add countries; every level filters as the user types")
 @versionchanged(version="4.0", reason="The cascade is held as one tuple of codes")
 @versionadded(version="3.4", reason="Self-contained admin level selector")
 def AdminLevelSelector(
@@ -20,6 +21,7 @@ def AdminLevelSelector(
     on_value: Optional[Callable[[Optional[str]], None]] = None,
     codes: Union[Tuple[str, ...], solara.Reactive[Tuple[str, ...]]] = (),
     on_codes: Optional[Callable[[Tuple[str, ...]], None]] = None,
+    countries: Optional[Collection[str]] = None,
 ):
     """Administrative level selector with cascading dropdowns.
 
@@ -36,6 +38,9 @@ def AdminLevelSelector(
             setting it does not move the dropdowns, because a single code cannot
             name its parents.
         on_value: Callback when the final admin code changes.
+        countries: The GAUL level-0 codes the country list offers. None offers
+            every country. It limits what the user can pick, not ``codes``: a
+            restored cascade is shown as given.
 
     Returns:
         None. The cascade is passed through codes/on_codes and the final code
@@ -76,6 +81,7 @@ def AdminLevelSelector(
     target_level = {"ADMIN0": 0, "ADMIN1": 1, "ADMIN2": 2}.get(method, 0)
 
     picked = reactive_codes.value
+    allowed = None if countries is None else {str(code) for code in countries}
 
     def _code_at(level: int) -> Optional[str]:
         return picked[level] if len(picked) > level else None
@@ -115,19 +121,23 @@ def AdminLevelSelector(
 
     solara.use_effect(_publish_final_code, [picked, target_level])
 
+    country_items = items_0.value
+    if allowed is not None:
+        country_items = [item for item in country_items if item["value"] in allowed]
+
     levels = (
-        (0, items_0, loading_0, True),
-        (1, items_1, loading_1, bool(_code_at(0))),
-        (2, items_2, loading_2, bool(_code_at(1))),
+        (0, country_items, loading_0, True),
+        (1, items_1.value, loading_1, bool(_code_at(0))),
+        (2, items_2.value, loading_2, bool(_code_at(1))),
     )
 
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         for level, items, loading, enabled in levels:
             if level > target_level:
                 continue
-            with rv.Select(
+            with rv.Autocomplete(
                 label=msg(f"aoi_sel.adm.{level}"),
-                items=items.value,
+                items=items,
                 v_model=_code_at(level),
                 clearable=True,
                 dense=True,
