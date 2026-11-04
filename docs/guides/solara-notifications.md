@@ -138,6 +138,10 @@ Toast methods:
 - `cancel(message)`
 - `dismiss(toast_id)`
 
+Toasts close after 3 s, except error toasts, which stay open until the user
+clicks them. Pass `timeout=` to override one toast, or edit
+`TOAST_TIMEOUT_DEFAULTS` to change a type's default.
+
 If no provider is mounted, `use_notifications()` returns a `NoopNotifier`.
 That means toast calls are silently dropped unless the component provides its own
 fallback UX.
