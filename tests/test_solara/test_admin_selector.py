@@ -98,3 +98,42 @@ def test_admin0_publishes_the_country_code(monkeypatch):
     _render(_Harness)
 
     assert picked.value == "206"
+
+
+def test_every_level_filters_as_the_user_types(monkeypatch):
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+
+    @solara.component
+    def _Harness():
+        AdminLevelSelector(method="ADMIN2", gee=False, codes=("101", "1001"))
+
+    root = _render(_Harness)
+
+    for level in range(3):
+        assert type(find_by_label(root, msg(f"aoi_sel.adm.{level}"))).__name__ == "Autocomplete"
+
+
+def test_countries_limits_the_country_list(monkeypatch):
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+
+    @solara.component
+    def _Harness():
+        AdminLevelSelector(method="ADMIN1", gee=False, countries=["206"])
+
+    root = _render(_Harness)
+
+    items = find_by_label(root, msg("aoi_sel.adm.0")).items
+    assert [item["value"] for item in items] == ["206"]
+
+
+def test_countries_leaves_the_lower_levels_alone(monkeypatch):
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+
+    @solara.component
+    def _Harness():
+        AdminLevelSelector(method="ADMIN1", gee=False, codes=("101",), countries={"101"})
+
+    root = _render(_Harness)
+
+    items = find_by_label(root, msg("aoi_sel.adm.1")).items
+    assert [item["value"] for item in items] == ["1001"]

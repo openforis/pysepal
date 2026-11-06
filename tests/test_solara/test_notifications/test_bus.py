@@ -388,3 +388,22 @@ def test_get_current_bus_does_not_swallow_programming_errors(clean_bus_registry)
     with patch.object(scope_registry, "current_scope_id", side_effect=TypeError("boom")):
         with pytest.raises(TypeError):
             get_current_bus()
+
+
+def test_a_new_task_closes_the_error_toast(bus):
+    bus.add_toast(Toast(message="boom", type=ToastType.ERROR))
+    bus.add_toast(Toast(message="note", type=ToastType.INFO))
+
+    bus.add_task(TrackedTask(title="retry"))
+
+    assert [t.message for t in bus.toasts.value] == ["note"]
+
+
+def test_a_task_update_keeps_the_error_toast(bus):
+    task = TrackedTask(title="run")
+    bus.add_task(task)
+    bus.add_toast(Toast(message="boom", type=ToastType.ERROR))
+
+    bus.update_task(task.id, status=TaskStatus.FAILED)
+
+    assert [t.message for t in bus.toasts.value] == ["boom"]

@@ -2,7 +2,9 @@
 
 Three buttons, one per path through :meth:`~pysepal.mapping.SepalMap.add_raster`:
 a continuous colormap, exact per-class colors, and a raster large enough that
-preparing it has to happen off the event loop.
+preparing it has to happen off the event loop. A fourth points at a file that is
+not there, to show a failed task: its error toast stays until it is closed or
+another task starts.
 
 Set ``PYSEPAL_DEMO_RASTER_DIR`` to a directory holding ``aa_test_congo.tif`` and
 ``hansen_bolivia.tif`` to run against real class maps; without it the demo
@@ -40,6 +42,9 @@ setup_solara_server(extra_asset_locations=[])
 
 #: Points the demo at real class maps instead of the generated stand-in.
 RASTER_DIR_ENV_VAR = "PYSEPAL_DEMO_RASTER_DIR"
+
+#: A path with no file behind it, so the "missing raster" task fails.
+MISSING_RASTER = Path(__file__).parent / "missing_raster.tif"
 
 #: Catalogs, but no importable package: ``gallery.py`` puts every demo directory
 #: on ``sys.path``, so a second demo shipping ``component/`` would resolve to
@@ -184,6 +189,14 @@ def RasterPanel():
             )
         notifications.success(msg("toasts.large"))
 
+    async def add_missing():
+        """Fail the way a real task does, to show what the user sees then."""
+        with notifications.track(msg("tasks.missing")) as task:
+            task.step(msg("tasks.preparing"))
+            await sepal_map.add_raster_async(
+                MISSING_RASTER, layer_name=msg("tasks.missing"), key="missing"
+            )
+
     continuous_task = solara.lab.use_task(
         add_continuous, dependencies=None, raise_error=False, prefer_threaded=False
     )
@@ -193,10 +206,14 @@ def RasterPanel():
     large_task = solara.lab.use_task(
         add_large, dependencies=None, raise_error=False, prefer_threaded=False
     )
+    missing_task = solara.lab.use_task(
+        add_missing, dependencies=None, raise_error=False, prefer_threaded=False
+    )
 
     continuous_props = use_task_button(continuous_task, on_start=continuous_task)
     classes_props = use_task_button(classes_task, on_start=classes_task)
     large_props = use_task_button(large_task, on_start=large_task)
+    missing_props = use_task_button(missing_task, on_start=missing_task)
 
     def build_clear_button():
         """A plain ipyvuetify button, handed to MapApp intact with its handler."""
@@ -254,7 +271,17 @@ def RasterPanel():
                 "description": msg(
                     "section.description", source=source, env_var=RASTER_DIR_ENV_VAR
                 ),
-            }
+            },
+            {
+                "title": msg("errors.title"),
+                "icon": "mdi-alert-circle-outline",
+                "content": [
+                    TaskButtonComponent(
+                        label=msg("buttons.missing"), **missing_props, small=True, block=True
+                    ),
+                ],
+                "description": msg("errors.description"),
+            },
         ],
         right_panel_open=True,
         theme_state=theme_state,

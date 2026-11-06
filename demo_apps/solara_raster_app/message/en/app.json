@@ -10,6 +10,10 @@
     "title": "Local rasters",
     "description": "Drawing {source}. A continuous ramp stretched across sparse class codes renders them near-black; class_colors draws each one exactly. Set {env_var} to use real products."
   },
+  "errors": {
+    "title": "A failed task",
+    "description": "This button points at a raster that is not there, so its task fails. The error toast stays until you close it or start another task, and the log keeps the failure."
+  },
   "source": {
     "synthetic": "generated stand-ins",
     "real": "real class maps"
@@ -18,7 +22,8 @@
     "continuous": "continuous ramp",
     "classes": "class colors",
     "large": "large raster",
-    "clear_rasters": "clear rasters"
+    "clear_rasters": "clear rasters",
+    "missing": "missing raster"
   },
   "layers": {
     "continuous": "Classes (continuous)",
@@ -30,7 +35,8 @@
     "classes": "Class colors",
     "large": "Large raster",
     "preparing": "preparing COG...",
-    "preparing_overviews": "preparing COG with overviews..."
+    "preparing_overviews": "preparing COG with overviews...",
+    "missing": "Missing raster"
   },
   "toasts": {
     "continuous": "Continuous ramp added",

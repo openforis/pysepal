@@ -18,11 +18,11 @@ Usage:
             print(f"Selected: {aoi.value.name}")
 """
 
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
 import reacton.ipyvuetify as rv
 import solara
-from deprecated.sphinx import versionadded
+from deprecated.sphinx import versionadded, versionchanged
 
 from pysepal import mapping as sm
 from pysepal.mapping import get_ipygeojson
@@ -179,6 +179,7 @@ def MethodSelect(
 
 
 @solara.component
+@versionchanged(version="4.2", reason="Add countries and notify_success")
 @versionadded(version="3.1", reason="Pure Solara AOI selection component")
 def AoiView(
     value: Union[AoiResult, solara.Reactive[Optional[AoiResult]]] = None,
@@ -194,6 +195,8 @@ def AoiView(
     spec: Union[AoiSpec, solara.Reactive[Optional[AoiSpec]], None] = None,
     on_spec: Optional[Callable[[Optional[AoiSpec]], None]] = None,
     autoselect: bool = True,
+    countries: Optional[Collection[str]] = None,
+    notify_success: bool = True,
 ):
     """Solara-native component for AOI (Area of Interest) selection.
 
@@ -227,6 +230,11 @@ def AoiView(
         autoselect: Whether a restored spec is processed immediately, so ``value``
             holds a usable ``AoiResult`` and the map shows the AOI. Set False to
             fill the form and leave the run to the user.
+        countries: The GAUL level-0 codes the admin methods offer. None offers every
+            country. A restored admin spec in another country is refused with a
+            warning.
+        notify_success: Whether to announce a successful selection. Set False when
+            the map already shows the AOI.
 
     Note:
         A restore is driven by three refs, because the picker's state lives in the
@@ -308,6 +316,8 @@ def AoiView(
     points_data = solara.use_reactive(None)
     asset_data = solara.use_reactive(None)
     asset_loading = solara.use_reactive(False)
+    has_drawing = solara.use_reactive(False)
+    allowed_countries = None if countries is None else {str(code) for code in countries}
 
     # Restore and unmount bookkeeping; see Note in the docstring.
     applied_spec = solara.use_ref(None)
@@ -572,9 +582,9 @@ def AoiView(
                 applied_spec.current = result.spec
                 reactive_spec.set(result.spec)
                 reactive_value.set(result)
-                if has_notifications:
+                if notify_success and has_notifications:
                     notifications.success(msg("aoi_sel.complete"))
-                else:
+                elif notify_success:
                     fallback_message.set(msg("aoi_sel.complete"))
                     fallback_level.set("success")
         elif task.error:
@@ -622,6 +632,17 @@ def AoiView(
             notifications.warning(
                 f"Cannot restore a {incoming.method} AOI here: this picker does not "
                 f"offer that method."
+            )
+            return
+        if (
+            allowed_countries is not None
+            and incoming.method in ADMIN_METHODS
+            and incoming.admin_codes
+            and incoming.admin_codes[0] not in allowed_countries
+        ):
+            notifications.warning(
+                f"Cannot restore {incoming.name or 'this AOI'} here: this picker does not "
+                f"offer its country."
             )
             return
         applied_spec.current = incoming
@@ -687,6 +708,29 @@ def AoiView(
 
     solara.use_effect(_cleanup, [id(map_) if map_ else None])
 
+    def _watch_drawing():
+        if aoi_dc is None:
+            return None
+
+        def on_data(change):
+            has_drawing.set(bool(change["new"]))
+
+        has_drawing.set(bool(aoi_dc.data))
+        aoi_dc.observe(on_data, names="data")
+        return lambda: aoi_dc.unobserve(on_data, names="data")
+
+    solara.use_effect(_watch_drawing, [id(aoi_dc) if aoi_dc else None])
+
+    # The selectors publish None until their form is complete.
+    method = selected_method.value
+    selections = {"SHAPE": shape_data, "POINTS": points_data, "ASSET": asset_data}
+    if method in ADMIN_METHODS:
+        form_complete = bool(admin_code.value)
+    elif method == "DRAW":
+        form_complete = has_drawing.value
+    else:
+        form_complete = method in selections and bool(selections[method].value)
+
     # Prepare task button props (called unconditionally to satisfy hooks validator)
     btn_props = use_task_button(task, on_start=start_process)
 
@@ -707,6 +751,7 @@ def AoiView(
                 gee=gee,
                 value=admin_code,
                 codes=admin_codes,
+                countries=countries,
             )
 
         elif selected_method.value == "SHAPE":
@@ -744,14 +789,13 @@ def AoiView(
             )
 
         # Action buttons
-        if selected_method.value:
-            TaskButtonComponent(
-                label=msg("aoi_sel.btn"),
-                **btn_props,
-                external_busy=asset_loading.value,
-                small=True,
-                block=True,
-            )
+        TaskButtonComponent(
+            label=msg("aoi_sel.btn"),
+            **btn_props,
+            external_busy=asset_loading.value or not form_complete,
+            small=True,
+            block=True,
+        )
 
         # Fallback inline feedback (only when no NotificationProvider is mounted)
         if fallback_message.value:

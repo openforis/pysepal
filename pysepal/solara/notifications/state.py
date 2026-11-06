@@ -17,11 +17,13 @@ class ToastType(Enum):
     CANCEL = "cancel"
 
 
+# Seconds before a toast closes on its own. None keeps it open until it is clicked:
+# an error may need reading or copying, so it must not vanish first.
 TOAST_TIMEOUT_DEFAULTS: dict[ToastType, Optional[float]] = {
     ToastType.SUCCESS: 3.0,
     ToastType.INFO: 3.0,
     ToastType.WARNING: 3.0,
-    ToastType.ERROR: 3.0,
+    ToastType.ERROR: None,
     ToastType.CANCEL: 3.0,
 }
 

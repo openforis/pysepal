@@ -127,8 +127,15 @@ class NotificationBus:
         self._publish()
 
     def add_task(self, task: TrackedTask) -> None:
-        """Add a tracked task. Prunes oldest finished tasks beyond MAX_TASK_HISTORY."""
+        """Add a tracked task. Prunes oldest finished tasks beyond MAX_TASK_HISTORY.
+
+        Starting a task also closes the error toast. Errors stay until clicked, so
+        without this a retry would run under the error it is retrying; a failed
+        task's message is still in the log.
+        """
         with self._lock:
+            if any(t.type == ToastType.ERROR for t in self._toasts):
+                self._toasts = [t for t in self._toasts if t.type != ToastType.ERROR]
             current = [*self._tasks, task]
             if len(current) > MAX_TASK_HISTORY:
                 # Keep running/pending tasks, prune oldest finished
