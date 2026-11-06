@@ -1,0 +1,41 @@
+{
+  "app": {
+    "title": "Task progress"
+  },
+  "panel": {
+    "title": "Task progress",
+    "description": "Start a run and watch the pill at the bottom of the map, then open its log. Each run reports progress a different way."
+  },
+  "section": {
+    "title": "Runs",
+    "description": "Steps: named phases, each one written to the log. Fraction: set_progress(value) fills the ring and writes nothing. Download: set_progress(value, detail=...) alternates the title with the current tile, and the log keeps only the per-layer steps."
+  },
+  "buttons": {
+    "steps": "Run with steps",
+    "fraction": "Run with a fraction",
+    "download": "Run a tiled download"
+  },
+  "tasks": {
+    "steps": {
+      "title": "Processing",
+      "prepare": "Preparing inputs",
+      "compute": "Computing statistics",
+      "write": "Writing outputs",
+      "publish": "Publishing results",
+      "done": "Processing finished"
+    },
+    "fraction": {
+      "title": "Exporting",
+      "done": "Export finished"
+    },
+    "download": {
+      "title": "Downloading layers",
+      "waiting": "waiting for a free download slot",
+      "started": "Downloading {layers} layers",
+      "layer": "Layer {index}/{total}: {layer}",
+      "tile": "{layer} — tile {tile}/{total}",
+      "layer_done": "{layer} downloaded",
+      "done": "All layers downloaded"
+    }
+  }
+}

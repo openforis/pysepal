@@ -167,6 +167,34 @@ def StatsPanel():
             return result
 ```
 
+For work with a known fraction complete (a download, a tiled export),
+report continuous progress instead of milestone steps with
+`task.set_progress(value, detail=None)`:
+
+```python
+with notifications.track("Downloading") as task:
+    for i, tile in enumerate(tiles):
+        fetch(tile)
+        task.set_progress((i + 1) / len(tiles), detail=f"tile {i + 1}/{len(tiles)}")
+```
+
+`value` is a 0.0-1.0 fraction, or `None` to reset the task to indeterminate
+— useful between items in a per-item run so a finished item's 100% ring
+doesn't linger. When `value` is a number, the pill's ring becomes
+determinate. When a call also passes `detail`, the pill's text alternates
+every 2.5s between the task title and `{pct}% {detail}` (there's no
+`{pct}%` while `value` is still `None` — the detail can stand alone on an
+indeterminate ring, e.g. a reason the task is waiting); a task with a
+detail drops the usual " — lastStep" suffix from its title frame. Tasks
+that never pass `detail` keep showing their existing title (plus last
+step) text, with no timer-driven alternation.
+
+Unlike `step()`, `set_progress()` never writes to the milestone log, so
+it won't flood it with per-item updates. It still replaces the whole task
+list and pushes it to the browser on every call, so throttle a
+high-frequency source (for example, only on a whole-percent change)
+rather than calling it for every item.
+
 Use task tracking when:
 
 - the work is async or long-running
