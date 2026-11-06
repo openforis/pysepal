@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import Callable, Optional, Sequence, Union
 
 import solara
-from pysepal_api import SepalClient
+from pysepal_api import AsyncSepalClient, SepalClient
 
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 
 from .export_dialog import ExportDialog, InlineExportFeedback
 from .export_hook import ExportDialogController, use_export_dialog
-from .export_models import ExportResult, ExportSource, ExportTarget
+from .export_models import ExportBackend, ExportResult, ExportSource, ExportTarget
 
 
 @solara.component
@@ -35,6 +35,8 @@ def ExportLauncher(
     gee_interface: GEEInterface | None = None,
     drive_interface: GDriveInterface | None = None,
     sepal_client: SepalClient | None = None,
+    async_sepal_client: AsyncSepalClient | None = None,
+    backend: ExportBackend = "auto",
 ):
     """Render the default export launcher UX."""
     reactive_value = solara.use_reactive(value, on_value)
@@ -48,6 +50,8 @@ def ExportLauncher(
         gee_interface=gee_interface,
         drive_interface=drive_interface,
         sepal_client=sepal_client,
+        async_sepal_client=async_sepal_client,
+        backend=backend,
     )
     has_usable_sources = any(not source.disabled for source in controller.sources)
     disabled_tooltip = "No exportable layers available" if not has_usable_sources else ""

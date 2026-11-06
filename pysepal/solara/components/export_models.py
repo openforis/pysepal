@@ -12,6 +12,7 @@ from pysepal_api import SepalClient
 
 ExportTarget = Literal["gee", "drive", "sepal"]
 ExportKind = Literal["image", "table"]
+ExportBackend = Literal["auto", "direct", "taskmanager"]
 
 TABLE_FILE_FORMATS = [
     {"text": "CSV", "value": "CSV"},
@@ -125,6 +126,15 @@ class ExportResult:
     drive_folder: Optional[str] = None
     drive_items: tuple[str, ...] = ()
     sepal_paths: tuple[str, ...] = ()
+    backend: Literal["direct", "taskmanager"] = "direct"
+    status: Literal["submitted", "completed"] = "submitted"
+    sepal_task_id: Optional[str] = None
+    output_directory: Optional[str] = None
+
+    @property
+    def ee_task_id(self) -> Optional[str]:
+        """Explicit alias for the legacy ``task_id`` (never a SEPAL task ID)."""
+        return self.task_id
 
 
 def sanitize_export_name(value: str) -> str:
@@ -292,6 +302,8 @@ def extract_task_id(task_or_id: object) -> Optional[str]:
 
 
 def _build_result_message(result: ExportResult) -> str:
+    if result.target == "sepal" and result.output_directory:
+        return f"Export completed in SEPAL: `{result.output_directory}`."
     if result.target == "gee" and result.asset_id:
         return f"Earth Engine export submitted to `{result.asset_id}`."
     if result.target == "drive":
@@ -311,6 +323,7 @@ __all__ = [
     "SUCCESS_TASK_STATES",
     "TABLE_FILE_FORMATS",
     "TARGET_LABELS",
+    "ExportBackend",
     "ExportKind",
     "ExportRequest",
     "ExportResult",
