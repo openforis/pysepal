@@ -7,6 +7,7 @@
         :key="toast.id"
         :type="toast.kind !== 'cancel' ? toast.color : undefined"
         :value="true"
+        :dismissible="!toast.timeout"
         dense
         dark
         elevation="4"

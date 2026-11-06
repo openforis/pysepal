@@ -104,3 +104,11 @@ def test_theme_is_driven_by_prop_not_dom_scan():
     assert "querySelectorAll" not in content, "DOM theme scan still present"
     assert "MutationObserver" not in content, "theme MutationObserver still present"
     assert "themeVersion" not in content, "themeVersion reactivity hack still present"
+
+
+def test_a_toast_that_stays_open_shows_a_close_button():
+    """A toast with no timeout only closes on a click, so it must show where to click."""
+    content = _TEMPLATE_PATH.read_text()
+    alert = re.search(r"<v-alert\b(?P<attrs>.*?)>", content, re.DOTALL)
+    assert alert, "Missing the toast v-alert"
+    assert ':dismissible="!toast.timeout"' in alert.group("attrs")
