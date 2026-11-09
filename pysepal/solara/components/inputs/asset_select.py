@@ -53,7 +53,8 @@ def AssetSelectComponent(
         types: Asset types to list. Defaults to ["IMAGE", "TABLE"].
         folder: GEE folder to list assets from. Defaults to user's root folder.
             The list is shared with every field of the session listing the same
-            folder (see :func:`use_gee_assets`); the sync icon lists it again.
+            folder (see :func:`use_gee_assets`). The sync icon lists the assets
+            again for every field of the session.
         value: Dict with {asset_id, type, column, value} or None.
         on_value: Callback when selection changes.
         loading: Whether the component is busy (loading assets, validating, etc.).

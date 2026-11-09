@@ -2,8 +2,8 @@
 
 Listing walks every folder under the root and sends one request per folder, so
 each asset field listing on its own mount made a form slow to open. The list now
-lives in a per-kernel store: a page load lists it once, and only the refresh icon
-(``GeeAssets.reload``) lists it again.
+lives in a per-kernel store: a page load lists it once, and only a reload (the
+refresh icon, or :func:`reload_gee_assets`) lists it again.
 """
 
 import asyncio
@@ -16,7 +16,7 @@ from deprecated.sphinx import versionadded
 
 from pysepal.solara.utils import get_current_gee_interface
 
-__all__ = ["GeeAssets", "use_gee_assets"]
+__all__ = ["GeeAssets", "reload_gee_assets", "use_gee_assets"]
 
 _Key = Tuple[int, str]
 
@@ -33,7 +33,7 @@ class GeeAssets:
             until the first listing resolves it.
         loading: Whether a listing is running.
         error: Why the last listing failed, or None.
-        reload: Lists the folder again, for every reader of it in this session.
+        reload: :func:`reload_gee_assets`, for a refresh icon.
     """
 
     assets: Tuple[Dict[str, Any], ...] = ()
@@ -54,8 +54,8 @@ class _Listings:
 
 _listings = solara.toestand.KernelStoreFactory(_Listings)
 
-#: Reload count per key. Every reader depends on it, so a reload re-runs them all.
-_revisions = solara.Reactive(solara.toestand.KernelStoreFactory(dict))
+#: Reload count of the session. Every reader depends on it, so a reload re-runs them all.
+_revision = solara.Reactive(solara.toestand.KernelStoreFactory(int))
 
 
 async def _list(gee_interface: Any, folder: str) -> Tuple[str, Tuple[Dict[str, Any], ...]]:
@@ -87,12 +87,19 @@ async def _shared_listing(gee_interface: Any, folder: str) -> Tuple[str, Tuple[D
     return await asyncio.shield(task)
 
 
-def _reload(gee_interface: Any, folder: str) -> None:
-    key = (id(gee_interface), folder)
-    _listings.get().tasks.pop(key, None)
-    revisions = dict(_revisions.peek())
-    revisions[key] = revisions.get(key, 0) + 1
-    _revisions.set(revisions)
+@versionadded(version="4.2", reason="Refresh every asset field of the session")
+def reload_gee_assets() -> None:
+    """List the assets again, for every asset field of this session.
+
+    Every folder the session has listed is listed again, so a field on a
+    subfolder never shows an older list than a field on the root. Call it from a
+    callback or a task of the session.
+
+    An export to an asset creates the asset only when its Earth Engine task
+    completes. Reload then, not when the export starts.
+    """
+    _listings.get().tasks.clear()
+    _revision.set(_revision.peek() + 1)
 
 
 @versionadded(version="4.2", reason="One asset list per session, shared by every field")
@@ -117,12 +124,12 @@ def use_gee_assets(folder: str = "", gee_interface: Any = None) -> GeeAssets:
             listing = use_gee_assets()
             ids = [a["id"] for a in listing.assets if a["type"] == "IMAGE_COLLECTION"]
             solara.Select("Collection", values=ids, value=value)
-            solara.Button("Refresh", on_click=listing.reload, disabled=listing.loading)
+            solara.Button("Refresh", on_click=reload_gee_assets, disabled=listing.loading)
         ```
     """
     gee_interface = gee_interface or get_current_gee_interface()
     key = (id(gee_interface), folder)
-    revision = _revisions.value.get(key, 0)
+    revision = _revision.value
 
     async def fetch():
         # Returned, not raised: solara leaves a raised exception unretrieved on
@@ -137,9 +144,6 @@ def use_gee_assets(folder: str = "", gee_interface: Any = None) -> GeeAssets:
         fetch, dependencies=[key, revision], raise_error=False, prefer_threaded=False
     )
 
-    def reload() -> None:
-        _reload(gee_interface, folder)
-
     loading = not (task.finished or task.error or task.cancelled)
     listed, error = task.latest if task.latest is not None else (None, None)
     folder_path, assets = listed if listed is not None else (folder, ())
@@ -148,5 +152,5 @@ def use_gee_assets(folder: str = "", gee_interface: Any = None) -> GeeAssets:
         folder=folder_path,
         loading=loading,
         error=None if loading else error,
-        reload=reload,
+        reload=reload_gee_assets,
     )

@@ -5,7 +5,11 @@ import asyncio
 import reacton
 import solara
 
-from pysepal.solara.components.inputs import AssetSelectComponent, use_gee_assets
+from pysepal.solara.components.inputs import (
+    AssetSelectComponent,
+    reload_gee_assets,
+    use_gee_assets,
+)
 
 from ._harness import of_type, wait_until
 
@@ -197,3 +201,42 @@ def test_the_hook_reload_lists_again():
         assert gee.calls == 2
 
     _session(_AppField, scenario)
+
+
+def test_the_sync_icon_reloads_every_folder():
+    gee = _FakeGee()
+
+    @solara.component
+    def _Harness():
+        AssetSelectComponent(gee_interface=gee, folder="users/tester/a")
+        AssetSelectComponent(gee_interface=gee, folder="users/tester/b")
+
+    async def scenario(root):
+        first, second = of_type(root, "Combobox")
+        await wait_until(lambda: _asset_ids(first) and _asset_ids(second))
+        before = _asset_ids(second)
+
+        first.fire_event("click:prepend-inner", None)
+        await wait_until(lambda: _asset_ids(second) != before)
+        assert gee.calls == 4
+
+    _session(_Harness, scenario)
+
+
+def test_reload_gee_assets_refreshes_every_field():
+    gee = _FakeGee()
+
+    @solara.component
+    def _Harness():
+        AssetSelectComponent(gee_interface=gee)
+        AssetSelectComponent(gee_interface=gee)
+
+    async def scenario(root):
+        first, second = of_type(root, "Combobox")
+        await wait_until(lambda: _asset_ids(first) and _asset_ids(second))
+
+        reload_gee_assets()
+        await wait_until(lambda: _asset_ids(first) == _asset_ids(second) == ["users/tester/img2"])
+        assert gee.calls == 2
+
+    _session(_Harness, scenario)
