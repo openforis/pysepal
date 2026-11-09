@@ -14,7 +14,7 @@ if not hasattr(solara.toestand, "KernelStoreFactory"):
         "per virtual kernel through it, and solara's public reactive() hands "
         "every kernel the same default object: without it each connection "
         "would share one theme. Install a solara that provides it "
-        "(pysepal pins solara>=1.64.1,<2)."
+        "(see the solara requirement of pysepal)."
     )
 
 

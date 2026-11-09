@@ -5,7 +5,7 @@ adopted, what we only documented, what we deliberately skipped, and what stays
 blocked. Add an entry whenever the pin moves or a release touches something we
 rely on.
 
-The pin lives in `pyproject.toml`: `solara>=1.64.1,<2`. Three private APIs are
+The pin lives in `pyproject.toml`. Three private APIs are
 load-bearing — `solara.scope.get_kernel_id`, `solara._using_solara_server` and
 `solara.toestand.KernelStoreFactory` — so upstream releases get read rather than
 trusted, and the major is capped.
