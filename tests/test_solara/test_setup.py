@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import solara.server.settings
+import solara.util
 
 import pysepal.scripts.scratch as scratch
 import pysepal.solara.setup as setup
@@ -95,3 +96,13 @@ def test_the_merged_folder_is_removed_at_exit(scratch_root, monkeypatch):
     cleanup()
 
     assert not folder.exists()
+
+
+def test_a_dropped_page_gets_time_to_reconnect(scratch_root, monkeypatch):
+    # With "0s" a dropped websocket shuts the kernel down before the page can
+    # reconnect; a closed page is freed by Solara's close beacon instead.
+    monkeypatch.setattr(solara.server.settings.kernel, "cull_timeout", "24h")
+    setup.setup_solara_server()
+
+    timeout = solara.util.parse_timedelta(solara.server.settings.kernel.cull_timeout)
+    assert timeout == 300

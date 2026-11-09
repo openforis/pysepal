@@ -823,7 +823,7 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
 - [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
-- [ ] A Solara install below 1.60.3 (the `use_task` result store and the leak-free subscription lifecycle the notification bus depends on landed in 1.60.1–1.60.3)
+- [ ] A Solara install below 1.64.1 (1.63.0 reverted the 1.60.3 subscription lifecycle change, and 1.63.0–1.64.1 fix reconnects, which the 5-minute kernel cull timeout relies on)
 - [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
 
 Read `docs/guides/migration-notes-v3.4.md` for the
