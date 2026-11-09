@@ -94,6 +94,9 @@ class ExportDialogController:
     submit_export: Callable[[], None]
     cancel_export: Callable[[], None]
     _state: _ExportDialogState = field(repr=False, compare=False)
+    _source_state: tuple[
+        ExportSource | None, ResolvedExport | None, ExportKind | None, str | None
+    ] = field(default=(None, None, None, None), repr=False, compare=False)
 
 
 def _coerce_default_target(
@@ -222,9 +225,7 @@ def get_controller_source_state(
     controller: ExportDialogController,
 ) -> tuple[ExportSource | None, ResolvedExport | None, ExportKind | None, str | None]:
     """Return ``(active_source, resolved, kind, error)`` for the controller's selection."""
-    active_source = get_active_source(controller.sources, controller.selected_source_id.value)
-    resolved_export, export_kind, resolve_error = resolve_source_state(active_source)
-    return active_source, resolved_export, export_kind, resolve_error
+    return controller._source_state
 
 
 def _tracker_step_count(request: ExportRequest) -> int:
@@ -410,6 +411,7 @@ def use_export_dialog(
     name_dirty = solara.use_reactive(False)
     loading = solara.use_reactive(False)
     result = solara.use_reactive(None)
+    open_count = solara.use_reactive(0)
 
     state = _ExportDialogState(
         scale=solara.use_reactive(30),
@@ -443,7 +445,18 @@ def use_export_dialog(
     )
 
     active_source = get_active_source(sources_tuple, selected_source_id.value)
-    resolved_export, export_kind, resolve_error = resolve_source_state(active_source)
+    # Resolve once per selection. Reacton compares functions by code and captured
+    # values, so a resolve rebuilt each render with the same inputs is not re-run.
+    # Each open of the dialog resolves again, for state the closure does not capture.
+    resolve_key = (
+        None
+        if active_source is None
+        else (active_source.id, active_source.label, active_source.kind, active_source.resolve)
+    )
+    resolved_export, export_kind, resolve_error = solara.use_memo(
+        lambda: resolve_source_state(active_source),
+        dependencies=[resolve_key, open_count.value],
+    )
     active_source_id = active_source.id if active_source is not None else ""
     default_name = (
         sanitize_export_name(resolved_export.default_name) if resolved_export is not None else ""
@@ -616,9 +629,13 @@ def use_export_dialog(
 
     solara.lab.use_task(
         _sync_discovered_bands,
-        # Keyed on source id, not the ee.Image identity (resolve() returns a
-        # fresh object each render, which would refetch every time). See the guide.
-        dependencies=[active_source_id, export_kind, declared_bands],
+        dependencies=[
+            active_source_id,
+            export_kind,
+            declared_bands,
+            resolved_export,
+            open_count.value,
+        ],
         raise_error=False,
         prefer_threaded=False,
     )
@@ -815,6 +832,7 @@ def use_export_dialog(
         state.discovered_bands.set(())
         state.discovered_source_id.set("")
         state.bands_loading.set(False)
+        open_count.set(open_count.value + 1)
         open_state.set(True)
 
     def close_dialog() -> None:
@@ -860,6 +878,7 @@ def use_export_dialog(
         submit_export=submit_export,
         cancel_export=cancel_export,
         _state=state,
+        _source_state=(active_source, resolved_export, export_kind, resolve_error),
     )
 
 
