@@ -13,7 +13,7 @@ def test_init() -> None:
     expected = "<div>\n\n</div>"
     assert isinstance(mkd_widget, v.Layout)
     assert isinstance(mkd_widget.children[0], v.Flex)
-    assert mkd_widget.children[0].children[0].template == expected
+    assert mkd_widget.children[0].children[0].html == expected
 
     return
 
@@ -24,7 +24,7 @@ def test_init_exhaustive() -> None:
     txt = "toto"
     expected = f"<div>\n<p>{txt}</p>\n</div>"
     mkd_widget = sw.Markdown(txt)
-    assert mkd_widget.children[0].children[0].template == expected
+    assert mkd_widget.children[0].children[0].html == expected
 
     return
 
@@ -37,16 +37,19 @@ def test_init_link() -> None:
     txt = f"[{link_name}]({link})"
     expected = f'<div>\n<p><a target="_blank" href="{link}">{link_name}</a></p>\n</div>'
     mkd_widget = sw.Markdown(txt)
-    assert mkd_widget.children[0].children[0].template == expected
+    assert mkd_widget.children[0].children[0].html == expected
 
     return
 
 
 def test_set_mkd_str() -> None:
-    """Setting the text rebuilds the HTML."""
+    """Setting the text rebuilds the HTML and keeps the template."""
     mkd_widget = sw.Markdown("toto")
+    template = mkd_widget.children[0].children[0].template
     mkd_widget.mkd_str = "tutu"
-    assert mkd_widget.children[0].children[0].template == "<div>\n<p>tutu</p>\n</div>"
+    assert mkd_widget.children[0].children[0].html == "<div>\n<p>tutu</p>\n</div>"
+    # a new template makes the frontend build all the widgets around it again
+    assert mkd_widget.children[0].children[0].template == template
 
     return
 
@@ -64,7 +67,7 @@ def test_element_rerender_updates_html() -> None:
         mkd_widget = rc.find(sw.Markdown).widget
         text.value = "tutu"
         assert rc.find(sw.Markdown).widget is mkd_widget
-        assert mkd_widget.children[0].children[0].template == "<div>\n<p>tutu</p>\n</div>"
+        assert mkd_widget.children[0].children[0].html == "<div>\n<p>tutu</p>\n</div>"
     finally:
         rc.close()
 
