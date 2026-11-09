@@ -53,7 +53,7 @@ dependencies = [
     "natsort",
     "typing-extensions",
     "pydantic",  # SepalHeaders validation and the PYSEPAL_DEV_AUTH interlock
-    "solara>=1.60.3,<2", # changing this? read docs/guides/solara-upstream.md first
+    "solara>=1.64.1,<2", # changing this? read docs/guides/solara-upstream.md first
     "ee-client>=3.2.1,<4", # the assets cache survives a cancelled fetch (ee-client#43)
     "pysepal-api>=0.3.0,<0.4", # UI-free SEPAL HTTP client (SepalClient: files/tasks/recipes); 0.x: a minor is a breaking release, so cap it
     "colorlog",

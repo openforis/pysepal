@@ -20,7 +20,9 @@ from .asset_merger import merge_asset_files
 logger = logging.getLogger("sepalui.solara.setup")
 
 DEFAULT_FONT_AWESOME = "/@fortawesome/fontawesome-free@6.7.2/css/all.min.css"
-DEFAULT_CULL_TIMEOUT = "0s"
+# A closed page closes its kernel at once through Solara's close beacon. The cull
+# only runs for a dropped connection, so it waits for the page to reconnect.
+DEFAULT_CULL_TIMEOUT = "5m"
 
 # Shared stylesheet consumed by BOTH runtimes; merged into the Solara assets
 # ahead of the Solara override sheet. The Voila runtime loads the same file via
@@ -75,7 +77,7 @@ def setup_solara_server(
     Always includes:
     - FontAwesome 6.7.2
     - pysepal common assets (CSS, JS)
-    - No kernel timeout ("0s") (helps to kill sessions once the page is closed)
+    - A kernel cull timeout of 5 minutes, so a page can reconnect after a dropped connection
 
     Solara serves extra assets from one location, so the CSS and JS of pysepal
     and of every extra location are merged into one folder. That folder is
