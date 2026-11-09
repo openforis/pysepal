@@ -248,12 +248,14 @@ AssetSelectComponent(
 `AssetSelectComponent` lists the user's assets once per session and shares the
 list with every other field. A custom asset field reads the same list with
 `use_gee_assets(folder)` from `pysepal.solara.components.inputs`, rather than
-calling `get_assets_async` on each mount:
+calling `get_assets_async` on each mount. `reload_gee_assets()` lists every
+folder of the session again and refreshes every field; the sync icon calls it.
+Call it once an export to an asset has finished, not when it starts:
 
 ```python
 listing = use_gee_assets()
 ids = [a["id"] for a in listing.assets if a["type"] == "IMAGE_COLLECTION"]
-# listing.loading, listing.error, listing.reload() for a refresh icon
+# listing.loading and listing.error; reload_gee_assets() for a refresh
 ```
 
 ### Notification System
@@ -283,7 +285,7 @@ from pysepal.solara.notifications import use_notifications
 def MyComponent():
     notifications = use_notifications()
 
-    # Toasts (auto-dismiss after 3s, click to dismiss; errors stay until clicked)
+    # Toasts (auto-dismiss after 3s, click to dismiss; errors stay until closed or a new task starts)
     notifications.success("Done!")
     notifications.error("Failed!")
     notifications.warning("Check config")
