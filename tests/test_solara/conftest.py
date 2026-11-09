@@ -3,6 +3,7 @@
 import pytest
 
 from pysepal.solara import dev_auth as _dev_auth
+from pysepal.solara.components.inputs.gee_assets import _listings
 from pysepal.solara.session_manager import SessionManager
 from pysepal.solara.theme import _theme_store
 from tests._kernel_contexts import kernel_contexts  # noqa: F401
@@ -24,13 +25,15 @@ def empty_file_browser(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _clean_ui_state():
-    """Keep this scope's theme and locale from leaking across tests."""
+    """Keep this scope's theme, locale and asset list from leaking across tests."""
     from pysepal.i18n import set_locale
 
     _theme_store.clear()
+    _listings.clear()
     set_locale("en")
     yield
     _theme_store.clear()
+    _listings.clear()
     set_locale("en")
 
 

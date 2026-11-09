@@ -47,14 +47,17 @@ def _drive(scenario):
 
     async def main():
         gee = _FakeGeeInterface()
-        box, _ = solara.render(
+        box, rc = solara.render(
             asset_select_mod.AssetSelectComponent(gee_interface=gee),
             handle_error=False,
         )
-        assert await _wait_for(lambda: gee.calls >= 1), "initial asset load never ran"
-        combobox = _find_combobox(box)
-        assert combobox is not None, "AssetSelectComponent rendered no Combobox"
-        return await scenario(combobox, gee)
+        try:
+            assert await _wait_for(lambda: gee.calls >= 1), "initial asset load never ran"
+            combobox = _find_combobox(box)
+            assert combobox is not None, "AssetSelectComponent rendered no Combobox"
+            return await scenario(combobox, gee)
+        finally:
+            rc.close()
 
     return asyncio.run(main())
 
