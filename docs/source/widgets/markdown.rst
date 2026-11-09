@@ -30,6 +30,16 @@ Overview
     - No tabulation must be applied in the multi-line :code:`str`.
     - Don't forget to escape the "`" character, it will be interpreted as code mark
 
+Change the text
+---------------
+
+:code:`mkd_str` is a trait: set it to display a new text. In a Solara component, :code:`sw.Markdown.element(mkd_str=...)` updates the same widget when the text changes, for example after a language change.
+
+.. code-block:: python
+
+    mkd = sw.Markdown("**I am a title**")
+    mkd.mkd_str = "**I am a new title**"
+
 Include multi-line markdown in the translation tool
 ---------------------------------------------------
 
