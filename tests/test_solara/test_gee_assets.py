@@ -13,9 +13,6 @@ from pysepal.solara.components.inputs import (
 
 from ._harness import of_type, wait_until
 
-# Each test builds its own fake: the cache is keyed by interface, so no test
-# reads a list another test left behind.
-
 
 class _FakeGee:
     """Counts listings; the asset names carry the listing number."""
@@ -238,5 +235,32 @@ def test_reload_gee_assets_refreshes_every_field():
         reload_gee_assets()
         await wait_until(lambda: _asset_ids(first) == _asset_ids(second) == ["users/tester/img2"])
         assert gee.calls == 2
+
+    _session(_Harness, scenario)
+
+
+def test_a_new_interface_on_every_render_does_not_list_again():
+    listed = []
+
+    class _FreshGee(_FakeGee):
+        async def get_assets_async(self, folder):
+            listed.append(folder)
+            return await super().get_assets_async(folder)
+
+    tick = solara.reactive(0)
+
+    @solara.component
+    def _Harness():
+        tick.value
+        AssetSelectComponent(gee_interface=_FreshGee())
+        AssetSelectComponent(gee_interface=_FreshGee())
+
+    async def scenario(root):
+        boxes = of_type(root, "Combobox")
+        await wait_until(lambda: all(_asset_ids(box) for box in boxes))
+        for count in range(1, 4):
+            tick.set(count)
+            await asyncio.sleep(0.05)
+        assert len(listed) == 1
 
     _session(_Harness, scenario)

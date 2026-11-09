@@ -18,8 +18,6 @@ from pysepal.solara.utils import get_current_gee_interface
 
 __all__ = ["GeeAssets", "reload_gee_assets", "use_gee_assets"]
 
-_Key = Tuple[int, str]
-
 
 @dataclass(frozen=True)
 class GeeAssets:
@@ -44,12 +42,15 @@ class GeeAssets:
 
 
 class _Listings:
-    """One kernel's listings, keyed by interface and folder."""
+    """One kernel's listings, keyed by folder.
+
+    A kernel serves one user, so the folder is the whole key. Keying by the
+    interface too would make an app that builds one on each render list again on
+    each render.
+    """
 
     def __init__(self) -> None:
-        # The interface is held next to its task so its id cannot be reused by
-        # another interface while the entry lives.
-        self.tasks: Dict[_Key, Tuple[Any, asyncio.Task]] = {}
+        self.tasks: Dict[str, asyncio.Task] = {}
 
 
 _listings = solara.toestand.KernelStoreFactory(_Listings)
@@ -63,9 +64,7 @@ async def _list(gee_interface: Any, folder: str) -> Tuple[str, Tuple[Dict[str, A
     return folder_path, tuple(await gee_interface.get_assets_async(folder_path))
 
 
-def _reusable(task: Optional[asyncio.Task]) -> bool:
-    if task is None:
-        return False
+def _reusable(task: asyncio.Task) -> bool:
     if task.done():
         # A failure is not kept: the next reader tries again.
         return not task.cancelled() and task.exception() is None
@@ -75,12 +74,10 @@ def _reusable(task: Optional[asyncio.Task]) -> bool:
 
 async def _shared_listing(gee_interface: Any, folder: str) -> Tuple[str, Tuple[Dict, ...]]:
     tasks = _listings.get().tasks
-    key = (id(gee_interface), folder)
-    held = tasks.get(key)
-    task = held[1] if held else None
-    if not _reusable(task):
+    task = tasks.get(folder)
+    if task is None or not _reusable(task):
         task = asyncio.get_running_loop().create_task(_list(gee_interface, folder))
-        tasks[key] = (gee_interface, task)
+        tasks[folder] = task
     if task.done():
         return task.result()
     # Shielded: a reader that unmounts must not cancel the listing for the others.
@@ -112,7 +109,9 @@ def use_gee_assets(folder: str = "", gee_interface: Any = None) -> GeeAssets:
 
     Args:
         folder: The GEE folder to list. Defaults to the user's root folder.
-        gee_interface: The interface to list with. Defaults to the session's.
+        gee_interface: The interface to list with. Defaults to the session's. The
+            list is shared by folder only: every field of the session reads the
+            same list, whichever interface it passes.
 
     Returns:
         The listing, which re-renders the caller when it changes.
@@ -128,7 +127,6 @@ def use_gee_assets(folder: str = "", gee_interface: Any = None) -> GeeAssets:
         ```
     """
     gee_interface = gee_interface or get_current_gee_interface()
-    key = (id(gee_interface), folder)
     revision = _revision.value
 
     async def fetch():
@@ -141,7 +139,7 @@ def use_gee_assets(folder: str = "", gee_interface: Any = None) -> GeeAssets:
 
     # Keep session-backed GEE coroutines on Solara's current event loop.
     task = solara.lab.use_task(
-        fetch, dependencies=[key, revision], raise_error=False, prefer_threaded=False
+        fetch, dependencies=[folder, revision], raise_error=False, prefer_threaded=False
     )
 
     loading = not (task.finished or task.error or task.cancelled)
