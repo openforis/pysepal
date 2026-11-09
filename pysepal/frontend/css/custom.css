@@ -12,19 +12,6 @@ main.v-content {
   padding-top: 0px !important;
 }
 
-/* Solara's Markdown emits the JupyterLab `jp-RenderedHTMLCommon` class, whose
- * text color comes from the `--jp-content-font-color*` variables.  Under
- * `solara run` Solara's own theme CSS themes those vars; under Voila the
- * (light) JupyterLab theme owns them, so markdown renders dark text on
- * pysepal's dark shell.  Force it to inherit the surrounding Vuetify theme
- * color instead.  Harmless under Solara — it already resolves to the themed
- * color. */
-.solara-markdown.jp-RenderedHTMLCommon,
-.solara-markdown.jp-RenderedHTMLCommon
-  :where(p, h1, h2, h3, h4, h5, h6, li, strong, em, code, blockquote, td, th) {
-  color: inherit;
-}
-
 /* Lift selects/menus above the fullscreen map. Voila-only: the Solara runtime
  * handles this stacking itself, so base.css keeps only the shared max-width. */
 .v-menu__content {

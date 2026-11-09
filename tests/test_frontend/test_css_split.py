@@ -27,12 +27,13 @@ SHARED_SELECTORS = [
     ".leaflet-pm-toolbar",  # geoman toolbar block
     ".right-panel .drawer-top .v-sheet",
     "header.v-app-bar",
+    ".solara-markdown.jp-RenderedHTMLCommon",
 ]
 
 # Deliberately Voila-only. `.v-menu__content` z-index was forked off for Solara
-# in PR #968; `.solara-markdown` / `main.v-content` were only ever in the Voila
-# sheet. None of these may leak into the shared base or the Solara sheet.
-VOILA_ONLY_MARKERS = ["z-index: 902", ".solara-markdown", "main.v-content"]
+# in PR #968; `main.v-content` was only ever in the Voila sheet. None of these
+# may leak into the shared base or the Solara sheet.
+VOILA_ONLY_MARKERS = ["z-index: 902", "main.v-content"]
 
 
 def _voila_css() -> str:
@@ -66,5 +67,15 @@ def test_solara_stylesheet_includes_base_but_excludes_voila_only_rules() -> None
     css = _solara_css()
     for selector in SHARED_SELECTORS:
         assert selector in css, f"Solara sheet dropped shared rule {selector!r}"
-    for marker in ["z-index: 902", ".solara-markdown"]:
+    for marker in VOILA_ONLY_MARKERS:
         assert marker not in css, f"Voila-only rule {marker!r} leaked into Solara sheet"
+
+
+def test_markdown_color_rule_is_shared_once() -> None:
+    """Markdown takes its container's color (e.g. an alert's) in both runtimes (#1094)."""
+    rule = ".solara-markdown.jp-RenderedHTMLCommon,"
+    assert BASE_CSS.read_text().count(rule) == 1
+    assert rule not in (ss.CSS_DIR / "custom.css").read_text()
+    assert rule not in (SOLARA_COMMON_ASSETS / "custom.css").read_text()
+    for css in (_voila_css(), _solara_css()):
+        assert css.count(rule) == 1

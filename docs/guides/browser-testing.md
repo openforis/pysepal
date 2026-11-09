@@ -136,6 +136,8 @@ between `solara run` and Voila. The probes proved, in order:
 1. `getComputedStyle('.solara-markdown').color` was near-black in Voila dark mode
    but themed correctly under Solara → JupyterLab's base CSS owns the
    `--jp-content-*` vars in Voila (fix: `.solara-markdown { color: inherit }`).
+   The rule is in the shared `base.css`: under Solara the same vars ignore the
+   container, so Markdown in an `rv.Alert` needs it to take the alert colour.
 2. The notification pill's resolved `--pill-bg` was the _light_ value even though
    its own root was `theme-dark` → the culprit ancestor was
    `document.body` carrying JupyterLab's single-dash **`theme-light`** class,

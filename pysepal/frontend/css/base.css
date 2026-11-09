@@ -23,6 +23,17 @@
   background-color: transparent;
 }
 
+/* Solara's Markdown carries JupyterLab's `jp-RenderedHTMLCommon` class, whose
+ * color is the page-wide `--jp-content-font-color1`, not the color of its
+ * container. Under Voila that var comes from the light JupyterLab theme (dark
+ * text on pysepal's dark shell); under Solara it ignores the container (theme
+ * text color inside an `rv.Alert`). Inherit the container's color in both. */
+.solara-markdown.jp-RenderedHTMLCommon,
+.solara-markdown.jp-RenderedHTMLCommon
+  :where(p, h1, h2, h3, h4, h5, h6, li, strong, em, code, blockquote, td, th) {
+  color: inherit;
+}
+
 /*  ---------------------------------------------------------------------------
  *  LAYERING CONTRACT
  *
