@@ -26,6 +26,10 @@ __all__ = ["Markdown", "CopyToClip", "StateIcon"]
 
 
 class Markdown(v.Layout, SepalWidget):
+
+    mkd_str: t.Unicode = t.Unicode("")
+    "the markdown text to display; setting it rebuilds the HTML"
+
     def __init__(self, mkd_str: str = "", **kwargs) -> None:
         """Custom Layout based on the markdown text given.
 
@@ -33,28 +37,32 @@ class Markdown(v.Layout, SepalWidget):
             mkd_str: the text to display using the markdown convention. multi-line string are also interpreted
             kwargs: Any parameter from a v.Layout. If set, 'children' will be overwritten
         """
+        self._html = v.VuetifyTemplate(template=self._to_html(""))
+
+        # set default parameters
+        kwargs.setdefault("row", True)
+        kwargs.setdefault("class_", "pa-5")
+        kwargs.setdefault("align_center", True)
+        kwargs["children"] = [v.Flex(xs12=True, children=[self._html])]
+
+        # call the constructor
+        super().__init__(mkd_str=mkd_str, **kwargs)
+
+    @staticmethod
+    def _to_html(mkd_str: str) -> str:
+        """Convert the markdown text to the HTML template of the widget."""
         mkd = markdown(mkd_str, extensions=["fenced_code", "sane_lists"])
 
         # need to be nested in a div to be displayed
         mkd = "<div>\n" + mkd + "\n</div>"
 
         # make every link to point to target black (to avoid nested iframe in sepal)
-        mkd = mkd.replace("<a", '<a target="_blank"')
+        return mkd.replace("<a", '<a target="_blank"')
 
-        # create a Html widget
-        class MyHTML(v.VuetifyTemplate):
-            template = t.Unicode(mkd).tag(sync=True)
-
-        content = MyHTML()
-
-        # set default parameters
-        kwargs.setdefault("row", True)
-        kwargs.setdefault("class_", "pa-5")
-        kwargs.setdefault("align_center", True)
-        kwargs["children"] = [v.Flex(xs12=True, children=[content])]
-
-        # call the constructor
-        super().__init__(**kwargs)
+    @observe("mkd_str")
+    def _update_html(self, change: dict) -> None:
+        """Rebuild the HTML when the markdown text changes."""
+        self._html.template = self._to_html(change["new"])
 
 
 @versionadded(version="2.2.0", reason="New clipping widget")

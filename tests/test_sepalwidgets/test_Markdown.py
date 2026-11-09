@@ -1,6 +1,7 @@
 """Test the Markdown widget."""
 
 import ipyvuetify as v
+import solara
 
 from pysepal import sepalwidgets as sw
 
@@ -37,5 +38,34 @@ def test_init_link() -> None:
     expected = f'<div>\n<p><a target="_blank" href="{link}">{link_name}</a></p>\n</div>'
     mkd_widget = sw.Markdown(txt)
     assert mkd_widget.children[0].children[0].template == expected
+
+    return
+
+
+def test_set_mkd_str() -> None:
+    """Setting the text rebuilds the HTML."""
+    mkd_widget = sw.Markdown("toto")
+    mkd_widget.mkd_str = "tutu"
+    assert mkd_widget.children[0].children[0].template == "<div>\n<p>tutu</p>\n</div>"
+
+    return
+
+
+def test_element_rerender_updates_html() -> None:
+    """A re-render with a new text updates the same widget."""
+    text = solara.reactive("toto")
+
+    @solara.component
+    def Page():
+        sw.Markdown.element(mkd_str=text.value)
+
+    _, rc = solara.render(Page(), handle_error=False)
+    try:
+        mkd_widget = rc.find(sw.Markdown).widget
+        text.value = "tutu"
+        assert rc.find(sw.Markdown).widget is mkd_widget
+        assert mkd_widget.children[0].children[0].template == "<div>\n<p>tutu</p>\n</div>"
+    finally:
+        rc.close()
 
     return
