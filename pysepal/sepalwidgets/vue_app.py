@@ -75,6 +75,7 @@ class MapApp(v.VuetifyTemplate):
     app_icon = Unicode("mdi-earth").tag(sync=True)
     repo_url = Unicode("").tag(sync=True)
     docs_url = Unicode("").tag(sync=True)
+    "Target of the Documentation link. Empty (the default) hides the link."
 
     dialog_width = Int(800).tag(sync=True)
     dialog_fullscreen = Bool(False).tag(sync=True)

@@ -453,11 +453,15 @@ export default {
           icon: "mdi-code-braces",
           url: this.repo_url,
         },
-        {
-          title: "Documentation",
-          icon: "mdi-book-open-page-variant",
-          url: this.docs_url || `${this.repo_url}/blob/main/doc/en.rst`,
-        },
+        ...(this.docs_url
+          ? [
+              {
+                title: "Documentation",
+                icon: "mdi-book-open-page-variant",
+                url: this.docs_url,
+              },
+            ]
+          : []),
         {
           title: "Report Bug",
           icon: "mdi-bug",
