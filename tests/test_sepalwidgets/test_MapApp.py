@@ -1,6 +1,9 @@
 """Test the MapApp widget."""
 
+import json
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -441,3 +444,34 @@ def test_the_footer_adds_no_padding_of_its_own() -> None:
     assert not [c for node in slot for c in node.classes if _PADDING_CLASS.match(c)]
     assert not [node for node in slot if "padding" in node.style]
     assert "padding" not in template.css_rule(".drawer-footer")
+
+
+def _drawer_links(**props) -> List[dict]:
+    harness = Path(__file__).parents[1] / "js" / "mapapp_links.mjs"
+    vue = Path(pysepal.__file__).parent / "sepalwidgets/vue/MapApp.vue"
+    result = subprocess.run(
+        ["node", str(harness), str(vue), json.dumps(props)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_no_documentation_link_without_docs_url() -> None:
+    """A guessed path in the repository can be an old guide or a 404."""
+    links = _drawer_links(repo_url="https://github.com/org/app", docs_url="")
+
+    assert [link["title"] for link in links] == ["Source Code", "Report Bug"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_documentation_link_opens_docs_url() -> None:
+    links = _drawer_links(repo_url="https://github.com/org/app", docs_url="https://docs.example")
+
+    assert [(link["title"], link["url"]) for link in links] == [
+        ("Source Code", "https://github.com/org/app"),
+        ("Documentation", "https://docs.example"),
+        ("Report Bug", "https://github.com/org/app/issues/new"),
+    ]
