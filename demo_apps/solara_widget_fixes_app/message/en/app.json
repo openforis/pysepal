@@ -1,0 +1,72 @@
+{
+  "app": {
+    "title": "Widget fixes"
+  },
+  "panel": {
+    "title": "Fixes to try",
+    "description": "One section per fix of the pysepal PRs #1100 to #1103. The fourth fix, the alert colours (#1094), is the step of the same name in the app drawer on the left. Each one says what to do and what you should see."
+  },
+  "docs": {
+    "title": "Documentation link (#1092)",
+    "description": "Look at the links at the bottom of the app drawer on the left. With the switch on, they are Source Code, Documentation and Report Bug. Set the switch off: MapApp gets an empty docs_url, and the Documentation link goes away. It no longer opens an old guide in the repository.",
+    "switch": "Give MapApp a docs_url",
+    "hint_on": "docs_url is {url}",
+    "hint_off": "docs_url is empty"
+  },
+  "markdown": {
+    "title": "sw.Markdown follows its text (#1093)",
+    "description": "The text below is sw.Markdown.element(mkd_str=msg(...)), with no key. Select another language at the bottom of the app drawer, or push the button: the text changes immediately. Before the fix, it kept its first text.",
+    "next": "Show the next text",
+    "texts": {
+      "first": "**Text 1 of 3**, in English. It has a [link](https://github.com/openforis/pysepal) and `code`.",
+      "second": "**Text 2 of 3**, in English. A list:\n\n- first item\n- second item",
+      "third": "**Text 3 of 3**, in English. *Italic* text and a [link](https://github.com/openforis/pysepal)."
+    }
+  },
+  "alerts": {
+    "title": "Markdown takes the alert colour (#1094)",
+    "description": "Each alert holds a solara.Markdown with no style. Its text, bold text and code must have the colour of the alert, in the filled, tinted and outlined variants. The last Markdown is outside all alerts and keeps the theme text colour. Change the theme at the bottom of the app drawer: the colours change with it.",
+    "sample": "**{type}**, {variant}: this text and `code` have the alert colour.",
+    "outside": "Outside an alert, this Markdown has the theme text colour.",
+    "types": {
+      "success": "Success",
+      "info": "Info",
+      "warning": "Warning",
+      "error": "Error"
+    },
+    "variants": {
+      "filled": "filled",
+      "tinted": "tinted",
+      "outlined": "outlined"
+    },
+    "close": "Close"
+  },
+  "export": {
+    "title": "Export resolves once per selection (#1103)",
+    "description": "The two sources are SRTM elevation and slope, clipped to a buffer around the summit of Kilimanjaro. The log below counts each call of resolve. Open the dialog and select a source: one call. Change the scale or the asset name, or push the re-render button: no call. Select the other source, or open the dialog again and select a source: one call each. Select a different buffer: one call, also with the dialog closed, because the dialog keeps its last source. A different language also gives one call, because the source label changes. resolve runs during a render, where it must not set Solara state, so it writes the log directly to a plain widget.",
+    "buffer": "Buffer around the summit (km), captured by resolve",
+    "rerender": "Re-render the page ({renders})",
+    "launcher": "Export",
+    "dialog_title": "Export a terrain layer",
+    "sources": {
+      "elevation": {
+        "label": "SRTM elevation",
+        "description": "Elevation in metres, 30 m"
+      },
+      "slope": {
+        "label": "Slope",
+        "description": "Slope in degrees, from SRTM"
+      }
+    },
+    "log": {
+      "empty": "resolve was not called yet. Open the dialog and select a source.",
+      "count": {
+        "one": "resolve was called {count} time:",
+        "other": "resolve was called {count} times:"
+      },
+      "entry": "#{n}: {source}, buffer {km} km"
+    },
+    "no_gee": "Earth Engine is not available, so this section cannot run. The other sections work without it. Reason: {reason}",
+    "no_credentials": "no Earth Engine credentials on this machine"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "app": {
+    "title": "Corrections de widgets"
+  },
+  "panel": {
+    "title": "Corrections à essayer",
+    "description": "Une section par correction des PR pysepal #1100 à #1103. La quatrième correction, les couleurs des alertes (#1094), est l'étape du même nom dans le menu latéral à gauche. Chacune dit quoi faire et ce que vous devez voir."
+  },
+  "docs": {
+    "title": "Lien vers la documentation (#1092)",
+    "description": "Regardez les liens en bas du menu latéral à gauche. Interrupteur activé, ce sont Source Code, Documentation et Report Bug. Désactivez l'interrupteur : MapApp reçoit un docs_url vide et le lien Documentation disparaît. Il n'ouvre plus un ancien guide du dépôt.",
+    "switch": "Donner un docs_url à MapApp",
+    "hint_on": "docs_url vaut {url}",
+    "hint_off": "docs_url est vide"
+  },
+  "markdown": {
+    "title": "sw.Markdown suit son texte (#1093)",
+    "description": "Le texte ci-dessous est sw.Markdown.element(mkd_str=msg(...)), sans key. Choisissez une autre langue en bas du menu latéral, ou appuyez sur le bouton : le texte change aussitôt. Avant la correction, il gardait son premier texte.",
+    "next": "Afficher le texte suivant",
+    "texts": {
+      "first": "**Texte 1 sur 3**, en français. Il contient un [lien](https://github.com/openforis/pysepal) et du `code`.",
+      "second": "**Texte 2 sur 3**, en français. Une liste :\n\n- premier élément\n- deuxième élément",
+      "third": "**Texte 3 sur 3**, en français. Du texte en *italique* et un [lien](https://github.com/openforis/pysepal)."
+    }
+  },
+  "alerts": {
+    "title": "Le Markdown prend la couleur de l'alerte (#1094)",
+    "description": "Chaque alerte contient un solara.Markdown sans style. Son texte, le gras et le code doivent avoir la couleur de l'alerte, dans les variantes pleine, teintée et à bordure. Le dernier Markdown est hors des alertes et garde la couleur de texte du thème. Changez le thème en bas du menu latéral : les couleurs suivent.",
+    "sample": "**{type}**, {variant} : ce texte et le `code` ont la couleur de l'alerte.",
+    "outside": "Hors d'une alerte, ce Markdown a la couleur de texte du thème.",
+    "types": {
+      "success": "Succès",
+      "info": "Information",
+      "warning": "Avertissement",
+      "error": "Erreur"
+    },
+    "variants": {
+      "filled": "pleine",
+      "tinted": "teintée",
+      "outlined": "à bordure"
+    },
+    "close": "Fermer"
+  },
+  "export": {
+    "title": "L'export résout une fois par sélection (#1103)",
+    "description": "Les deux sources sont l'altitude SRTM et la pente, découpées dans une zone tampon autour du sommet du Kilimandjaro. Le journal ci-dessous compte chaque appel à resolve. Ouvrez la boîte de dialogue et choisissez une source : un appel. Changez l'échelle ou le nom de l'asset, ou appuyez sur le bouton de nouveau rendu : aucun appel. Choisissez l'autre source, ou rouvrez la boîte de dialogue et choisissez une source : un appel à chaque fois. Choisissez une autre zone tampon : un appel, même boîte de dialogue fermée, car elle garde sa dernière source. Une autre langue donne aussi un appel, car le libellé de la source change. resolve s'exécute pendant un rendu, où il ne doit pas modifier l'état Solara ; il écrit donc le journal directement dans un widget simple.",
+    "buffer": "Zone tampon autour du sommet (km), capturée par resolve",
+    "rerender": "Refaire le rendu de la page ({renders})",
+    "launcher": "Exporter",
+    "dialog_title": "Exporter une couche de terrain",
+    "sources": {
+      "elevation": {
+        "label": "Altitude SRTM",
+        "description": "Altitude en mètres, 30 m"
+      },
+      "slope": {
+        "label": "Pente",
+        "description": "Pente en degrés, d'après SRTM"
+      }
+    },
+    "log": {
+      "empty": "resolve n'a pas encore été appelé. Ouvrez la boîte de dialogue et choisissez une source.",
+      "count": {
+        "one": "resolve a été appelé {count} fois :",
+        "many": "resolve a été appelé {count} fois :",
+        "other": "resolve a été appelé {count} fois :"
+      },
+      "entry": "n° {n} : {source}, zone tampon de {km} km"
+    },
+    "no_gee": "Earth Engine n'est pas disponible, cette section ne peut donc pas fonctionner. Les autres sections fonctionnent sans lui. Raison : {reason}",
+    "no_credentials": "aucun identifiant Earth Engine sur cette machine"
+  }
+}

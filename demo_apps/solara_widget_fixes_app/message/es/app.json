@@ -1,0 +1,73 @@
+{
+  "app": {
+    "title": "Correcciones de widgets"
+  },
+  "panel": {
+    "title": "Correcciones para probar",
+    "description": "Una sección por cada corrección de los PR de pysepal #1100 a #1103. La cuarta corrección, los colores de las alertas (#1094), es el paso del mismo nombre en el menú lateral de la izquierda. Cada una dice qué hacer y qué debe ver."
+  },
+  "docs": {
+    "title": "Enlace a la documentación (#1092)",
+    "description": "Mire los enlaces de la parte inferior del menú lateral de la izquierda. Con el interruptor activado, son Source Code, Documentation y Report Bug. Desactive el interruptor: MapApp recibe un docs_url vacío y el enlace Documentation desaparece. Ya no abre una guía antigua del repositorio.",
+    "switch": "Dar un docs_url a MapApp",
+    "hint_on": "docs_url es {url}",
+    "hint_off": "docs_url está vacío"
+  },
+  "markdown": {
+    "title": "sw.Markdown sigue su texto (#1093)",
+    "description": "El texto de abajo es sw.Markdown.element(mkd_str=msg(...)), sin key. Elija otro idioma en la parte inferior del menú lateral, o pulse el botón: el texto cambia de inmediato. Antes de la corrección, conservaba su primer texto.",
+    "next": "Mostrar el texto siguiente",
+    "texts": {
+      "first": "**Texto 1 de 3**, en español. Tiene un [enlace](https://github.com/openforis/pysepal) y `código`.",
+      "second": "**Texto 2 de 3**, en español. Una lista:\n\n- primer elemento\n- segundo elemento",
+      "third": "**Texto 3 de 3**, en español. Texto en *cursiva* y un [enlace](https://github.com/openforis/pysepal)."
+    }
+  },
+  "alerts": {
+    "title": "Markdown toma el color de la alerta (#1094)",
+    "description": "Cada alerta contiene un solara.Markdown sin estilo. Su texto, la negrita y el código deben tener el color de la alerta, en las variantes rellena, tintada y con borde. El último Markdown está fuera de las alertas y conserva el color de texto del tema. Cambie el tema en la parte inferior del menú lateral: los colores cambian con él.",
+    "sample": "**{type}**, {variant}: este texto y el `código` tienen el color de la alerta.",
+    "outside": "Fuera de una alerta, este Markdown tiene el color de texto del tema.",
+    "types": {
+      "success": "Éxito",
+      "info": "Información",
+      "warning": "Aviso",
+      "error": "Error"
+    },
+    "variants": {
+      "filled": "rellena",
+      "tinted": "tintada",
+      "outlined": "con borde"
+    },
+    "close": "Cerrar"
+  },
+  "export": {
+    "title": "La exportación resuelve una vez por selección (#1103)",
+    "description": "Las dos fuentes son la elevación SRTM y la pendiente, recortadas a un búfer alrededor de la cima del Kilimanjaro. El registro de abajo cuenta cada llamada a resolve. Abra el diálogo y elija una fuente: una llamada. Cambie la escala o el nombre del asset, o pulse el botón de volver a renderizar: ninguna llamada. Elija la otra fuente, o abra de nuevo el diálogo y elija una fuente: una llamada cada vez. Elija otro búfer: una llamada, también con el diálogo cerrado, porque el diálogo conserva su última fuente. Otro idioma también da una llamada, porque cambia la etiqueta de la fuente. resolve se ejecuta durante un render, donde no debe cambiar el estado de Solara, así que escribe el registro directamente en un widget simple.",
+    "buffer": "Búfer alrededor de la cima (km), capturado por resolve",
+    "rerender": "Volver a renderizar la página ({renders})",
+    "launcher": "Exportar",
+    "dialog_title": "Exportar una capa de terreno",
+    "sources": {
+      "elevation": {
+        "label": "Elevación SRTM",
+        "description": "Elevación en metros, 30 m"
+      },
+      "slope": {
+        "label": "Pendiente",
+        "description": "Pendiente en grados, a partir de SRTM"
+      }
+    },
+    "log": {
+      "empty": "resolve aún no se ha llamado. Abra el diálogo y elija una fuente.",
+      "count": {
+        "one": "resolve se llamó {count} vez:",
+        "many": "resolve se llamó {count} veces:",
+        "other": "resolve se llamó {count} veces:"
+      },
+      "entry": "#{n}: {source}, búfer de {km} km"
+    },
+    "no_gee": "Earth Engine no está disponible, así que esta sección no puede funcionar. Las otras secciones funcionan sin él. Motivo: {reason}",
+    "no_credentials": "no hay credenciales de Earth Engine en esta máquina"
+  }
+}

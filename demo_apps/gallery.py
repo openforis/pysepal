@@ -80,6 +80,16 @@ DEMOS = [
         "context draws it twice -- untouched, and told when its box changed -- so "
         "which layouts need telling is visible. No session and no credentials.",
     ),
+    (
+        "solara_widget_fixes_app",
+        "widget-fixes",
+        "Widget Fixes",
+        "Four fixes to try by hand: the Documentation link shows only with a "
+        "`docs_url`, `sw.Markdown` follows its text with no key, Markdown in an "
+        "`rv.Alert` takes the alert colour, and `ExportLauncher` calls `resolve` "
+        "once per selection. The export section needs credentials in `.env`; "
+        "without them it says so and the other sections still work.",
+    ),
 ]
 
 
