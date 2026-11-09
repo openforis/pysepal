@@ -72,7 +72,7 @@ gee_interface = get_current_gee_interface()
 
 # Call async methods directly — no asyncio.to_thread for GEE
 result = await gee_interface.get_info_async(ee_object)
-assets = await gee_interface.get_assets_async(folder)
+assets = await gee_interface.get_assets_async(folder)  # in a component: use_gee_assets()
 asset  = await gee_interface.get_asset_async(asset_id)
 map_id = await gee_interface.get_map_id_async(image, vis)
 
@@ -245,6 +245,19 @@ AssetSelectComponent(
 )
 ```
 
+`AssetSelectComponent` lists the user's assets once per session and shares the
+list with every other field. A custom asset field reads the same list with
+`use_gee_assets(folder)` from `pysepal.solara.components.inputs`, rather than
+calling `get_assets_async` on each mount. `reload_gee_assets()` lists every
+folder of the session again and refreshes every field; the sync icon calls it.
+Call it once an export to an asset has finished, not when it starts:
+
+```python
+listing = use_gee_assets()
+ids = [a["id"] for a in listing.assets if a["type"] == "IMAGE_COLLECTION"]
+# listing.loading and listing.error; reload_gee_assets() for a refresh
+```
+
 ### Notification System
 
 All user feedback (success, error, warnings, task progress) goes through
@@ -272,7 +285,7 @@ from pysepal.solara.notifications import use_notifications
 def MyComponent():
     notifications = use_notifications()
 
-    # Toasts (auto-dismiss after 3s, click to dismiss)
+    # Toasts (auto-dismiss after 3s, click to dismiss; errors stay until closed or a new task starts)
     notifications.success("Done!")
     notifications.error("Failed!")
     notifications.warning("Check config")

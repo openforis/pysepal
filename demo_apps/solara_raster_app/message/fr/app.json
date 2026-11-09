@@ -10,6 +10,10 @@
     "title": "Rasters locaux",
     "description": "Affichage de {source}. Une rampe continue étirée sur des codes de classe épars les rend presque noirs ; class_colors dessine chacun avec sa couleur exacte. Définissez {env_var} pour utiliser de vrais produits."
   },
+  "errors": {
+    "title": "Une tâche en échec",
+    "description": "Ce bouton pointe vers un raster absent, donc sa tâche échoue. Le message d'erreur reste affiché jusqu'à ce que vous le fermiez ou lanciez une autre tâche, et le journal garde l'échec."
+  },
   "source": {
     "synthetic": "substituts générés",
     "real": "vraies cartes de classes"
@@ -18,7 +22,8 @@
     "continuous": "rampe continue",
     "classes": "couleurs par classe",
     "large": "raster volumineux",
-    "clear_rasters": "effacer les rasters"
+    "clear_rasters": "effacer les rasters",
+    "missing": "raster manquant"
   },
   "layers": {
     "continuous": "Classes (continu)",
@@ -30,7 +35,8 @@
     "classes": "Couleurs par classe",
     "large": "Raster volumineux",
     "preparing": "préparation du COG...",
-    "preparing_overviews": "préparation du COG avec aperçus..."
+    "preparing_overviews": "préparation du COG avec aperçus...",
+    "missing": "Raster manquant"
   },
   "toasts": {
     "continuous": "Rampe continue ajoutée",
