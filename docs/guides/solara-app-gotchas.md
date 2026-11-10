@@ -156,7 +156,23 @@ not pysepal's per-kernel `ThemeState`.
 **Fix:** read `pysepal.solara.use_theme_dark()` for anything that must follow
 the user's toggle.
 
-## 12. Probe limits
+## 12. Kernel memory grows a little on every render
+
+**Cause:** reacton sets every argument of a widget element again on each render
+of its component, also the arguments that did not change. A widget-valued trait
+given as a dict, such as `layout={"height": "260px"}`, builds a new `Layout`
+widget from that dict every time. The old one stays open in the kernel's widget
+registry until the kernel closes. Strings (`style_`, `class_`) and plain dict
+traits are not affected.
+
+**Fix:** build the widget once and pass it.
+
+```python
+layout = solara.use_memo(lambda: ipywidgets.Layout(height="260px"), [])
+sm.SepalMap.element(gee=False, layout=layout)
+```
+
+## 13. Probe limits
 
 `scripts/browser_probe.mjs` (see `browser-testing.md`):
 
