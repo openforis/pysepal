@@ -72,6 +72,8 @@
             <v-list-item
               v-for="(item, index) in filteredItems"
               :key="item.path"
+              :input-value="isSelected(item)"
+              color="primary"
               @click="!isKeyboardNavigation && onFileSelect(item)"
               :class="{
                 'pysepal-file-input-item--active': selectedIndex === index,
@@ -79,8 +81,14 @@
               :style="getItemStyle(index)"
             >
               <v-list-item-action>
-                <v-icon :color="getIconColor(item)">
-                  {{ getIconName(item) }}
+                <v-icon
+                  :color="isSelected(item) ? 'primary' : getIconColor(item)"
+                >
+                  {{
+                    isSelected(item)
+                      ? "fa-solid fa-square-check"
+                      : getIconName(item)
+                  }}
                 </v-icon>
               </v-list-item-action>
               <v-list-item-content>
@@ -117,6 +125,7 @@
     </v-menu>
 
     <v-text-field
+      v-if="!multiple"
       v-model="value"
       readonly
       label="Selected file"
@@ -132,6 +141,55 @@
         </v-btn>
       </template>
     </v-text-field>
+
+    <!-- One count chip; its menu lists the selected paths, a click removes one -->
+    <v-select
+      v-else
+      :value="selectedPaths"
+      :items="selectedPaths"
+      multiple
+      label="Selected files"
+      no-data-text="No file selected"
+      class="ml-2 pysepal-file-input-field"
+      :menu-props="{ offsetY: true, closeOnContentClick: false }"
+      :error-messages="getErrorMessages"
+      @change="setSelection"
+    >
+      <template v-slot:selection="{ index }">
+        <v-chip v-if="index === 0" small color="primary">
+          {{ countLabel }}
+        </v-chip>
+      </template>
+      <template v-slot:item="{ item }">
+        <v-list-item-content>
+          <v-list-item-title :title="item">{{ item }}</v-list-item-title>
+        </v-list-item-content>
+        <v-list-item-action>
+          <v-icon small title="Remove">fa-solid fa-times</v-icon>
+        </v-list-item-action>
+      </template>
+      <template v-slot:append>
+        <v-btn
+          v-if="clearable"
+          icon
+          color="primary"
+          @click.stop="reset"
+          @mousedown.stop
+          @mouseup.stop
+        >
+          <v-icon>fa-solid fa-times</v-icon>
+        </v-btn>
+        <v-btn
+          icon
+          color="primary"
+          @click.stop="reloadFiles"
+          @mousedown.stop
+          @mouseup.stop
+        >
+          <v-icon>fa-solid fa-sync-alt</v-icon>
+        </v-btn>
+      </template>
+    </v-select>
   </v-row>
 </template>
 
@@ -157,8 +215,12 @@ export default {
       default: "Select File",
     },
     value: {
-      type: String,
+      type: [String, Array],
       default: "",
+    },
+    multiple: {
+      type: Boolean,
+      default: false,
     },
     clearable: {
       type: Boolean,
@@ -196,6 +258,7 @@ export default {
       searchQuery: "",
       selectedIndex: null,
       isKeyboardNavigation: false,
+      enteredFolderAt: 0,
     };
   },
 
@@ -284,6 +347,16 @@ export default {
 
     getErrorMessages() {
       return this.error_messages;
+    },
+
+    selectedPaths() {
+      return this.multiple && Array.isArray(this.value) ? this.value : [];
+    },
+
+    countLabel() {
+      const count = this.selectedPaths.length;
+      if (!count) return "";
+      return count === 1 ? "1 file" : `${count} files`;
     },
   },
 
@@ -385,7 +458,7 @@ export default {
     },
 
     reset() {
-      this.value = "";
+      this.value = this.multiple ? [] : "";
       this.error_messages = [];
       this.reset_prop += 1;
     },
@@ -444,17 +517,45 @@ export default {
       if (item.type === "directory") {
         // Navigate to folder
         this.current_folder = item.path;
+        this.enteredFolderAt = Date.now();
         // Clear search and selection, refocus
         this.searchQuery = "";
         this.selectedIndex = null;
         this.focusSearchField();
+      } else if (this.multiple) {
+        // The second click of a double click on a folder can land on the
+        // listing that replaced it; it must not pick a file there.
+        const recent = Date.now() - this.enteredFolderAt < 400;
+        if (recent && !this.isKeyboardNavigation) return;
+        this.toggleFile(this.fullPath(item));
       } else {
         // File selected - set value and close menu
-        this.value = this.base_path
-          ? this.base_path + "/" + item.path
-          : item.path;
+        this.value = this.fullPath(item);
         this.showFileMenu = false;
       }
+    },
+
+    fullPath(item) {
+      return this.base_path ? this.base_path + "/" + item.path : item.path;
+    },
+
+    isSelected(item) {
+      return (
+        item.type === "file" && this.selectedPaths.includes(this.fullPath(item))
+      );
+    },
+
+    // Assign a new array: Python only sees a replaced value, not a mutated one.
+    setSelection(paths) {
+      this.value = [...paths];
+    },
+
+    toggleFile(path) {
+      this.setSelection(
+        this.selectedPaths.includes(path)
+          ? this.selectedPaths.filter((p) => p !== path)
+          : [...this.selectedPaths, path]
+      );
     },
 
     getItemStyle(index) {

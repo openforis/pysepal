@@ -28,9 +28,10 @@ def FileInputComponent(
     extensions: List[str] = [],
     label: str = "Select a file",
     clearable: bool = True,
-    value: Union[str, solara.Reactive[str]] = "",
-    on_value: Optional[Callable[[str], None]] = None,
+    value: Union[str, List[str], solara.Reactive[str], solara.Reactive[List[str]]] = "",
+    on_value: Optional[Callable[[Union[str, List[str]]], None]] = None,
     filesystem: Optional[FileSystem] = None,
+    multiple: bool = False,
 ):
     """Solara component wrapper for FileInput widget.
 
@@ -41,16 +42,28 @@ def FileInputComponent(
         extensions: List of file extensions to filter by.
         label: Label for the file selection button.
         clearable: Whether to show a clear button.
-        value: Current selected file path (can be reactive).
+        value: Current selected file path (can be reactive), or the list of
+            selected paths with ``multiple=True``.
         on_value: Callback function when value changes.
         filesystem: Browse this filesystem. Takes precedence over ``sepal_client``.
             By default the user's files for this runtime.
+        multiple: Select several files, possibly from several folders. The value
+            is then a ``list[str]``, and ``""`` is read as ``[]``.
 
     Returns:
         FileInput element configured as a Solara component.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
+
+    def current_value() -> Union[str, List[str]]:
+        selection = reactive_value.value
+        if not multiple:
+            # a list left from multiple mode, after the app turned it off
+            return "" if isinstance(selection, list) else selection
+        if isinstance(selection, str):
+            return [selection] if selection else []
+        return list(selection or [])
 
     is_syncing = solara.use_ref(False)
 
@@ -80,7 +93,8 @@ def FileInputComponent(
         extensions=extensions,
         label=label,
         clearable=clearable,
-        value=reactive_value.value,
+        multiple=multiple,
+        value=current_value(),
         on_v_model=lambda v: None,
     )
 
@@ -89,13 +103,14 @@ def FileInputComponent(
         if real_widget is None:
             return
 
-        if reactive_value.value and real_widget.v_model != reactive_value.value:
-            real_widget.v_model = reactive_value.value
+        if reactive_value.value and real_widget.v_model != current_value():
+            real_widget.v_model = current_value()
 
         def on_widget_change(change):
             if not is_syncing.current:
                 is_syncing.current = True
-                reactive_value.set(change["new"])
+                new = change["new"]
+                reactive_value.set(list(new) if isinstance(new, list) else new)
                 is_syncing.current = False
 
         real_widget.observe(on_widget_change, "v_model")
@@ -112,9 +127,9 @@ def FileInputComponent(
         if real_widget is None:
             return
 
-        if real_widget.v_model != reactive_value.value:
+        if real_widget.v_model != current_value():
             is_syncing.current = True
-            real_widget.v_model = reactive_value.value
+            real_widget.v_model = current_value()
             is_syncing.current = False
 
     solara.use_effect(sync_to_widget, [reactive_value.value])
