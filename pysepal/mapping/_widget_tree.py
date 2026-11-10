@@ -9,6 +9,15 @@ from ipywidgets import Widget
 _PART_TRAITS = ("children", "v_slots", "widget", "layout", "style")
 
 
+def is_open(widget) -> bool:
+    """Whether a widget exists and is not closed yet.
+
+    Reacton closes every widget built with an element before the element
+    itself, so a close path can meet parts that are already closed.
+    """
+    return widget is not None and widget.comm is not None
+
+
 def _parts(widget: Widget) -> List:
     # _trait_values, not getattr: reading an unset trait would build its default,
     # and a control whose __init__ failed is still closed by Widget.__del__.

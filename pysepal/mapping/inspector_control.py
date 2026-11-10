@@ -12,7 +12,7 @@ from shapely import geometry as sg
 from traitlets import Bool
 
 from pysepal import sepalwidgets as sw
-from pysepal.mapping._widget_tree import close_tree
+from pysepal.mapping._widget_tree import close_tree, is_open
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
@@ -93,13 +93,13 @@ class InspectorControl(MenuControl):
         """Stop reading the map, then close the content and the marker."""
         if self.m is not None:
             self.m.on_interaction(self.read_data, remove=True)
-            # a closed map is not displayed anymore, leave its layers as they are
-            if self.m.comm is not None and self.marker in self.m.layers:
+            # removing reads the model_id of every layer, all must still be open
+            layers = self.m.layers
+            if is_open(self.m) and self.marker in layers and all(map(is_open, layers)):
                 self.m.remove(self.marker)
         # an open map may still display the last style
         style, self._style = self._style, None
-        m = self.m
-        in_use = m is not None and m.comm is not None and m.default_style is style
+        in_use = is_open(self.m) and self.m.default_style is style
         if style is not None and not in_use:
             style.close()
         close_tree(self.text, self._title, self.w_loading, self.marker)

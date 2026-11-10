@@ -253,3 +253,34 @@ def test_the_inspector_keeps_the_style_of_its_caller(kernel) -> None:
 
     m.close()
     assert style.comm is not None
+
+
+def _unmount(use_first: bool) -> None:
+    """Render a map behind a reactive bool, then unmount it."""
+    import solara
+
+    from pysepal.solara.theme import ThemeState
+
+    mounted = solara.reactive(True)
+    theme_state = ThemeState()
+
+    @solara.component
+    def Harness():
+        if mounted.value:
+            sm.SepalMap.element(gee=False, vinspector=True, statebar=True, theme_state=theme_state)
+
+    _box, rc = solara.render(Harness(), handle_error=False)
+    try:
+        if use_first:
+            m = rc.find(sm.SepalMap).widget
+            m.v_inspector.menu.v_model = True  # shows the marker
+            m.add_layer(ipl.TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="used"))
+        mounted.set(False)
+    finally:
+        rc.close()
+
+
+@pytest.mark.parametrize("use_first", [False, True], ids=["fresh", "used"])
+def test_unmounting_a_map_element_does_not_raise(kernel, use_first) -> None:
+    """Reacton closes the widgets built with the map, like the marker, before the map."""
+    _unmount(use_first)
