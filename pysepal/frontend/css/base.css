@@ -379,9 +379,11 @@ header.theme--light.v-app-bar.v-toolbar.v-sheet {
 }
 
 /* Right-panel cards sit on the drawer's own themed surface; drop the v-sheet's
- * default background so they don't paint an extra panel behind the content. */
+ * default background so they don't paint an extra panel behind the content.
+ * No !important: Vuetify's colour classes (a filled `type="error"` alert, a
+ * `color="primary"` card) set theirs with !important and must keep it. */
 .right-panel .drawer-top .v-sheet {
-  background-color: transparent !important;
+  background-color: transparent;
 }
 
 /* The legend and the open logger both float over the bottom of the map and

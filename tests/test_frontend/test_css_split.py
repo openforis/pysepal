@@ -12,6 +12,7 @@ These tests pin the split so the two sheets cannot silently drift apart again
 diverged them, and parity had to be chased by hand).
 """
 
+import re
 from pathlib import Path
 
 import pysepal.frontend.styles as ss
@@ -79,3 +80,15 @@ def test_markdown_color_rule_is_shared_once() -> None:
     assert rule not in (SOLARA_COMMON_ASSETS / "custom.css").read_text()
     for css in (_voila_css(), _solara_css()):
         assert css.count(rule) == 1
+
+
+def test_right_panel_transparency_leaves_coloured_sheets_alone() -> None:
+    """A filled alert or a coloured card in the right panel keeps its colour.
+
+    Colour classes (``type="error"``, ``color="primary"``) set the background with
+    ``!important``. An ``!important`` on this more specific rule would beat them.
+    """
+    body = re.search(r"\.right-panel \.drawer-top \.v-sheet \{([^}]*)\}", BASE_CSS.read_text())
+
+    assert "transparent" in body.group(1)
+    assert "!important" not in body.group(1)
