@@ -70,6 +70,8 @@ class FullScreenControl(WidgetControl):
         Toggle the fullscreen state of the map by sending the required javascript method,
         changing the w_btn icons and the zoomed state of the control.
         """
+        if self.m is None:
+            return
         # change the zoom state
         self.zoomed = not self.zoomed
 

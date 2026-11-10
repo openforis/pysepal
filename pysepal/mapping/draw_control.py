@@ -43,6 +43,8 @@ class DrawControl(ipl.DrawControl):
 
     def show(self) -> None:
         """Show the drawing control on the map. and clear it's content."""
+        if self.m is None:
+            return
         self.clear()
         self in self.m.controls or self.m.add(self)
 
@@ -50,6 +52,8 @@ class DrawControl(ipl.DrawControl):
 
     def hide(self) -> None:
         """Hide the drawing control from the map, and clear it's content."""
+        if self.m is None:
+            return
         self.clear()
         self not in self.m.controls or self.m.remove(self)
 
@@ -143,6 +147,8 @@ class GeomanDrawControl(ipl.GeomanDrawControl):
 
     def show(self) -> None:
         """Show the drawing control on the map and clear its content."""
+        if self.m is None:
+            return
         self.clear()
         self in self.m.controls or self.m.add(self)
 
@@ -150,6 +156,8 @@ class GeomanDrawControl(ipl.GeomanDrawControl):
 
     def hide(self) -> None:
         """Hide the drawing control from the map and clear its content."""
+        if self.m is None:
+            return
         self.clear()
         self not in self.m.controls or self.m.remove(self)
 

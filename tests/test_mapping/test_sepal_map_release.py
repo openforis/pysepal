@@ -7,7 +7,9 @@ in a real kernel context and check what a closed map leaves behind.
 
 import gc
 import weakref
+from unittest.mock import MagicMock
 
+import ee
 import ipyleaflet as ipl
 import ipywidgets.widgets.widget as widget_module
 import pytest
@@ -190,3 +192,64 @@ def test_a_closed_menu_keeps_the_content_of_its_caller(kernel) -> None:
 def test_a_control_that_failed_to_build_can_be_closed(control_class) -> None:
     """Widget.__del__ closes a control even when its __init__ raised."""
     control_class.__new__(control_class).close()
+
+
+def _after_close(control_name: str):
+    """Return a control of a closed map."""
+    m = _full_map()
+    controls = {
+        "dc": m.dc,
+        "zoom": next(c for c in m.controls if isinstance(c, sm.ZoomControl)),
+        "fullscreen": next(c for c in m.controls if isinstance(c, sm.FullScreenControl)),
+        "inspector": m.v_inspector,
+        "layers": next(c for c in m.controls if isinstance(c, sm.LayersControl)),
+        "aoi": sm.AoiControl(m),
+    }
+    control = controls[control_name]
+    m.close()
+    # the map closes the controls it built, the caller closes its own
+    controls["aoi"].close()
+    return control
+
+
+@pytest.mark.parametrize(
+    "control_name, call",
+    [
+        ("dc", lambda c: c.show()),
+        ("dc", lambda c: c.hide()),
+        ("zoom", lambda c: c.zoom(c.plus)),
+        ("fullscreen", lambda c: c.toggle_fullscreen()),
+        ("inspector", lambda c: c.toggle_cursor()),
+        ("inspector", lambda c: c.read_data(type="click", coordinates=[0, 0])),
+        ("inspector", lambda c: c._from_eelayer.__wrapped__(c, MagicMock(spec=ee.Image), [0, 0])),
+        ("inspector", lambda c: c._from_raster("missing.tif", [0, 0])),
+        ("layers", lambda c: c.update_table({})),
+        ("aoi", lambda c: c.zoom(MagicMock(value=(0, 0, 1, 1)))),
+        ("aoi", lambda c: c.click_btn()),
+        ("aoi", lambda c: c.add_aoi.__wrapped__(c, "x", MagicMock(spec=ee.Geometry))),
+    ],
+)
+def test_a_control_of_a_closed_map_does_nothing(kernel, control_name, call) -> None:
+    """A task can finish after its map unmounted and still call a control."""
+    call(_after_close(control_name))
+
+
+def test_a_toggle_row_of_a_closed_map_does_nothing(kernel) -> None:
+    m = sm.SepalMap(gee=False)
+    control = next(c for c in m.controls if isinstance(c, sm.LayersControl))
+    row = sm.layers_control.ToggleRow(ipl.Layer(name="x"), control, 0)
+    m.close()
+
+    row._toggle_layer()
+
+
+def test_the_inspector_keeps_the_style_of_its_caller(kernel) -> None:
+    style = ipl.MapStyle(cursor="grab")
+    m = sm.SepalMap(gee=False, vinspector=True, default_style=style)
+
+    m.v_inspector.menu.v_model = True
+    m.v_inspector.menu.v_model = False
+    assert style.comm is not None
+
+    m.close()
+    assert style.comm is not None

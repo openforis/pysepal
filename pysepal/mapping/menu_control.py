@@ -117,6 +117,8 @@ class MenuControl(WidgetControl):
         The card content and title belong to the caller and stay open.
         """
         close_parts(self, keep=self._caller_parts)
+        # a task may still call the control after its map unmounted: methods
+        # of the map controls return early once m is None
         self.m = None
         super().close()
 

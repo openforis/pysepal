@@ -65,6 +65,8 @@ class AoiControl(MenuControl):
 
     def click_btn(self, *args) -> None:
         """Zoom to the total area of all AOIs in :code:`self.aoi_bounds`. Use the whole world if empty."""
+        if self.m is None:
+            return
         # set the bounds to the world if the list is empty
         if len(self.aoi_bounds) == 0:
             self.m.center = [0, 0]
@@ -88,6 +90,8 @@ class AoiControl(MenuControl):
             item: the item to use to compute the bounds. It need to be a shapely geometry or an ee object.
         """
         if isinstance(item, ee.ComputedObject):
+            if self.map_ is None:
+                return
             bounds = self.map_.gee_interface.get_bounds(item)
 
         elif isinstance(item, sg.base.BaseGeometry):
@@ -123,6 +127,8 @@ class AoiControl(MenuControl):
         Args:
             widget: the clicked widget containing the bounds
         """
+        if self.m is None:
+            return
         # the widget store the bounding box in value
         # a tuple of the bounds of the geometry (minx, miny, maxx, maxy)
         self.m.zoom_bounds(widget.value)

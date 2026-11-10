@@ -188,7 +188,9 @@ class SepalMap(ipl.Map):
         # the widgets this map built, closed with it
         self._owned = []
         parts = ("layout", "style", "default_style", "dragging_style")
-        self._owned_parts = [n for n in parts if not isinstance(kwargs.get(n), widgets.Widget)]
+        self._owned_parts = [
+            getattr(self, n) for n in parts if not isinstance(kwargs.get(n), widgets.Widget)
+        ]
 
         # init ee
         self.gee = gee
@@ -335,7 +337,7 @@ class SepalMap(ipl.Map):
         super().close()
         owned, self._owned = self._owned, []
         close_tree(*owned)
-        close_tree(*(getattr(self, name) for name in self._owned_parts))
+        close_tree(*self._owned_parts)
 
     def _close_owned(self, widget) -> None:
         """Close a widget this map built and no longer uses."""

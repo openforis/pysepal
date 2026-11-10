@@ -61,6 +61,8 @@ class ZoomControl(WidgetControl):
 
     def zoom(self, widget: MapBtn, *args) -> None:
         """update the zoom according to the clicked btn."""
+        if self.m is None:
+            return
         # read min and max zoom
         max_zoom = self.m.max_zoom or 24
         min_zoom = self.m.min_zoom or 0

@@ -214,6 +214,8 @@ class ToggleRow(sw.Html):
 
     def _toggle_layer(self, *args) -> None:
         """Add or remove the layer from the map."""
+        if self.control.m is None:
+            return
         # the registry drives the rebuild triggered by the map, so update it first
         if self.w_checkbox.v_model:
             self.control.hidden.pop(self.layer, None)
@@ -293,6 +295,8 @@ class LayersControl(MenuControl):
 
     def update_table(self, change: dict) -> None:
         """Update the table content."""
+        if self.m is None:
+            return
         # create the vector line
         vectors = [lyr for lyr in reversed(self.m.layers) if isinstance(lyr, GeoJSON)]
 
