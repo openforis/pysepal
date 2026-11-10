@@ -417,6 +417,20 @@ def test_the_footer_renders_outside_the_scrolling_section_area() -> None:
     assert not [node for node in footer.ancestors() if "drawer-top" in node.classes]
 
 
+def test_right_panel_styles_use_no_vuetify3_theme_variables() -> None:
+    """Vuetify 2 defines no ``--v-*`` variables, so their light fallbacks always win (#1061)."""
+    template = _Template("RightPanel.vue")
+
+    assert "var(--v-" not in template.text[template.text.index("<style") :]
+
+
+@pytest.mark.parametrize("selector", [".section-header", ".panel-description"])
+def test_right_panel_colours_follow_the_dark_theme(selector: str) -> None:
+    rule = _Template("RightPanel.vue").css_rule(f".right-panel.theme--dark {selector}")
+
+    assert "rgba(255, 255, 255" in rule
+
+
 def test_the_drawer_click_rule_leaves_disabled_controls_alone() -> None:
     """A disabled control in a drawer must keep Vuetify's ``pointer-events: none``.
 
