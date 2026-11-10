@@ -403,6 +403,14 @@ class GEEInterface:
         """Asynchronously get a task by its ID."""
         return await self.session.tasks.get_task_async(task_id)
 
+    async def cancel_task_async(self, task_id: str) -> None:
+        """Asynchronously request the cancellation of a task by its ID.
+
+        Earth Engine only accepts the request: the task reads
+        ``CANCEL_REQUESTED`` until it stops.
+        """
+        await self.session.tasks.cancel_task_async(task_id)
+
     async def create_folder_async(self, folder_path: str) -> Dict:
         """Asynchronously create a folder in Earth Engine assets."""
         asset_root = await self.get_folder_async()
@@ -536,6 +544,10 @@ class GEEInterface:
     def get_task(self, task_id: str) -> Optional[Task]:
         """Get a task by its ID, blocking until done."""
         return self._run_async_blocking(self.get_task_async(task_id))
+
+    def cancel_task(self, task_id: str) -> None:
+        """Request the cancellation of a task by its ID, blocking until done."""
+        return self._run_async_blocking(self.cancel_task_async(task_id))
 
     def export_table_to_asset(
         self,
