@@ -106,3 +106,88 @@ def test_list_stale_permission_error_is_reraised():
             dt.timedelta(0),
             list_fn=list_fn,
         )
+
+
+class _FakeAssets:
+    """In-memory stand-in for the ``ee.data`` asset calls used by delete_recursive.
+
+    ``deleteAsset`` refuses a folder that still has children, as GEE does.
+    ``late`` maps a folder to children that appear after its first listing.
+    """
+
+    def __init__(self, assets: dict[str, str], late=None):
+        self.assets = dict(assets)
+        self.late = dict(late or {})
+
+    def _children(self, parent: str) -> list[str]:
+        return sorted(n for n in self.assets if n.rpartition("/")[0] == parent)
+
+    def getAsset(self, name: str) -> dict:
+        return {"name": name, "type": self.assets[name]}
+
+    def listAssets(self, params: dict) -> dict:
+        parent = params["parent"]
+        response = {"assets": [{"name": n, "type": self.assets[n]} for n in self._children(parent)]}
+        for name, kind in self.late.pop(parent, {}).items():
+            self.assets[name] = kind
+        return response
+
+    def deleteAsset(self, name: str) -> None:
+        if self._children(name):
+            raise ee.EEException(f"Before trying to delete an asset, delete its children: '{name}'")
+        del self.assets[name]
+
+
+@pytest.fixture
+def fake_assets(monkeypatch):
+    """Patch ``ee.data`` with a fake asset store and return a factory for it."""
+    monkeypatch.setattr(_janitor.time, "sleep", lambda _: None)
+
+    def _install(*args, **kwargs) -> _FakeAssets:
+        fake = _FakeAssets(*args, **kwargs)
+        for name in ("getAsset", "listAssets", "deleteAsset"):
+            monkeypatch.setattr(ee.data, name, getattr(fake, name))
+        return fake
+
+    return _install
+
+
+def test_delete_recursive_lists_again_when_a_child_appears(fake_assets):
+    root = "projects/x/assets/pysepal-tests/sepal-ui-aaa"
+    fake = fake_assets(
+        {root: "FOLDER", f"{root}/table": "TABLE"},
+        late={root: {f"{root}/image": "IMAGE"}},
+    )
+
+    _janitor.delete_recursive(root)
+
+    assert fake.assets == {}
+
+
+def test_delete_recursive_gives_up_after_bounded_attempts(fake_assets, monkeypatch):
+    root = "projects/x/assets/pysepal-tests/sepal-ui-aaa"
+    fake = fake_assets({root: "FOLDER"})
+    # a child that every listing misses, so the folder can never be deleted
+    hidden = f"{root}/hidden"
+    fake.assets[hidden] = "TABLE"
+    monkeypatch.setattr(ee.data, "listAssets", lambda params: {"assets": []})
+
+    with pytest.raises(RuntimeError, match="still has children"):
+        _janitor.delete_recursive(root)
+
+    assert root in fake.assets
+
+
+def test_delete_recursive_reraises_other_errors(fake_assets, monkeypatch):
+    root = "projects/x/assets/pysepal-tests/sepal-ui-aaa"
+    fake = fake_assets({root: "FOLDER"})
+
+    def _denied(name: str) -> None:
+        raise ee.EEException("Permission denied")
+
+    monkeypatch.setattr(ee.data, "deleteAsset", _denied)
+
+    with pytest.raises(ee.EEException, match="Permission denied"):
+        _janitor.delete_recursive(root)
+
+    assert root in fake.assets
