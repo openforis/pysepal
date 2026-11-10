@@ -36,6 +36,11 @@ class DrawControl(ipl.DrawControl):
 
         super().__init__(**kwargs)
 
+    def close(self) -> None:
+        """Release the map before closing the control."""
+        self.m = None
+        super().close()
+
     def show(self) -> None:
         """Show the drawing control on the map. and clear it's content."""
         self.clear()
@@ -130,6 +135,11 @@ class GeomanDrawControl(ipl.GeomanDrawControl):
         self.m = m
 
         super().__init__(**kwargs)
+
+    def close(self) -> None:
+        """Release the map before closing the control."""
+        self.m = None
+        super().close()
 
     def show(self) -> None:
         """Show the drawing control on the map and clear its content."""

@@ -8,6 +8,7 @@ from ipyleaflet import Map
 from shapely import geometry as sg
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.scripts import decorator as sd
 
@@ -55,6 +56,12 @@ class AoiControl(MenuControl):
 
         # add js behaviours
         self.menu.v_slots[0]["children"].on_event("click", self.click_btn)
+
+    def close(self) -> None:
+        """Close the list of AOIs and release the map."""
+        close_tree(self.aoi_list)
+        self.map_ = None
+        super().close()
 
     def click_btn(self, *args) -> None:
         """Zoom to the total area of all AOIs in :code:`self.aoi_bounds`. Use the whole world if empty."""
@@ -133,6 +140,8 @@ class AoiControl(MenuControl):
             children.append(item)
             item.on_event("click", self.zoom)
 
+        previous = self.aoi_list.children
         self.aoi_list.children = children
+        close_tree(*previous)
 
         return

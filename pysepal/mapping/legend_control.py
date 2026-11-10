@@ -8,6 +8,7 @@ from ipywidgets import HTML
 from traitlets import observe
 
 import pysepal.sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_parts, close_tree
 from pysepal.message import msg
 from pysepal.scripts import utils as su
 
@@ -133,9 +134,17 @@ class LegendControl(WidgetControl):
             # Flat nested list
             elements = [e for row in elements for e in row]
 
+        # the previous rows are discarded
+        previous = self._html_table.children
         self._html_table.children = elements
+        close_tree(*previous)
 
         return
+
+    def close(self) -> None:
+        """Close the legend card with the control."""
+        close_parts(self)
+        super().close()
 
     @observe("title")
     def _update_title(self, change: dict) -> None:
@@ -163,15 +172,11 @@ class LegendControl(WidgetControl):
         w = size
         h = size / 2
 
-        return [
-            HTML(
-                f"""
+        return [HTML(f"""
                     <th>
                         <svg width='{w}' height='{h}'>
                         <rect width='{w}' height='{h}' style='fill:{su.to_colors(color)};
                         stroke-width:1;stroke:rgb(255,255,255)'/>
                         </svg>
                     </th>
-                """
-            )
-        ]
+                """)]

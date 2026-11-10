@@ -1,9 +1,11 @@
 """Customized ``Control`` to zoom in and out on the map."""
+
 from typing import Optional
 
 from ipyleaflet import Map, WidgetControl
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_parts
 from pysepal.mapping.map_btn import MapBtn
 
 
@@ -50,6 +52,12 @@ class ZoomControl(WidgetControl):
         # add js behaviour
         self.plus.on_event("click", self.zoom)
         self.minus.on_event("click", self.zoom)
+
+    def close(self) -> None:
+        """Close the buttons and release the map."""
+        close_parts(self)
+        self.m = None
+        super().close()
 
     def zoom(self, widget: MapBtn, *args) -> None:
         """update the zoom according to the clicked btn."""

@@ -7,6 +7,7 @@ from ipyleaflet import GeoJSON, Layer, Map, TileLayer
 from ipywidgets import link
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
 
@@ -25,7 +26,23 @@ class HeaderRow(sw.Html):
         super().__init__(tag="tr", class_="v-no-hover", children=[head])
 
 
-class BaseRow(sw.Html):
+class _LinkedRow(sw.Html):
+    """A row whose widgets are linked to the traits of a layer."""
+
+    _links: tuple = ()
+
+    def close(self) -> None:
+        """Unlink the layer before closing the row.
+
+        A link observes both ends, so the layer would keep the row alive.
+        """
+        links, self._links = self._links, ()
+        for item in links:
+            item.unlink()
+        super().close()
+
+
+class BaseRow(_LinkedRow):
 
     w_radio: Optional[sw.SimpleCheckbox] = None
     "the radio to hide/show the layer"
@@ -56,10 +73,10 @@ class BaseRow(sw.Html):
         super().__init__(tag="tr", children=[label_cell, empty_cell, radio_cell])
 
         # add js behavior
-        link((layer, "visible"), (self.w_radio, "active"))
+        self._links = (link((layer, "visible"), (self.w_radio, "active")),)
 
 
-class LayerRow(sw.Html):
+class LayerRow(_LinkedRow):
 
     w_checkbox: Optional[sw.SimpleCheckbox] = None
     "the ckeckbox to hide/show the layer"
@@ -98,8 +115,10 @@ class LayerRow(sw.Html):
 
         # add js behavior
         self.w_checkbox.observe(self._toggle_slider, "v_model")
-        link((layer, "opacity"), (self.w_slider, "v_model"))
-        link((layer, "visible"), (self.w_checkbox, "v_model"))
+        self._links = (
+            link((layer, "opacity"), (self.w_slider, "v_model")),
+            link((layer, "visible"), (self.w_checkbox, "v_model")),
+        )
 
     def _toggle_slider(self, *args) -> None:
         """Toggle the modification of the slider."""
@@ -108,7 +127,7 @@ class LayerRow(sw.Html):
         return
 
 
-class VectorRow(sw.Html):
+class VectorRow(_LinkedRow):
 
     w_checkbox: Optional[sw.SimpleCheckbox] = None
     "the ckeckbox to hide/show the layer"
@@ -142,7 +161,7 @@ class VectorRow(sw.Html):
         super().__init__(tag="tr", children=[label_cell, empty_cell, checkbox_cell])
 
         # add js behavior
-        link((layer, "visible"), (self.w_checkbox, "v_model"))
+        self._links = (link((layer, "visible"), (self.w_checkbox, "v_model")),)
 
 
 class ToggleRow(sw.Html):
@@ -217,6 +236,12 @@ class LayersControl(MenuControl):
     group: Optional[sw.RadioGroup] = None
     "As radio button cannot behave individually we add an extra GroupRadio to wrap the table"
 
+    tile: Optional[sw.Tile] = None
+    "the tile holding the table"
+
+    w_loading: Optional[sw.ProgressLinear] = None
+    "a progress bar, not displayed"
+
     def __init__(self, m: Map, **kwargs) -> None:
         """Richer layerControl to add some controls over the lyers displayed on the map.
 
@@ -256,6 +281,15 @@ class LayersControl(MenuControl):
 
         # add js behavior
         self.m.observe(self.update_table, "layers")
+
+    def close(self) -> None:
+        """Stop following the map and close the table."""
+        if self.m is not None:
+            self.m.unobserve(self.update_table, "layers")
+        # nest() keeps the title out of the tile children
+        close_tree(self.tile, getattr(self.tile, "title", None), self.w_loading)
+        self.hidden = {}
+        super().close()
 
     def update_table(self, change: dict) -> None:
         """Update the table content."""
@@ -311,7 +345,9 @@ class LayersControl(MenuControl):
         table = sw.SimpleTable(children=[tbody], dense=True, class_="v-no-border")
         self.group = sw.RadioGroup(v_model=current.name, children=[table])
 
-        # set the table as children of the widget
+        # set the table as children of the widget, the previous one is discarded
+        previous = self.tile.children
         self.tile.children = [self.group]
+        close_tree(*previous)
 
         return

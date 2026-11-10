@@ -6,6 +6,7 @@ import ipyvuetify as v
 from ipyleaflet import Map, WidgetControl
 
 from pysepal.frontend.resize_trigger import rt
+from pysepal.mapping._widget_tree import close_parts
 from pysepal.mapping.map_btn import MapBtn
 
 
@@ -83,3 +84,9 @@ class FullScreenControl(WidgetControl):
         rt.resize()
 
         return
+
+    def close(self) -> None:
+        """Close the button and release the map."""
+        close_parts(self)
+        self.m = None
+        super().close()

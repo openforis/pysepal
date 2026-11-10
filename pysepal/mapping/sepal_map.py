@@ -51,6 +51,7 @@ from typing_extensions import Self
 from pysepal import color as scolors
 from pysepal import sepalwidgets as sw
 from pysepal.frontend import styles as ss
+from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.basemaps import basemap_tiles
 from pysepal.mapping.draw_control import GeomanDrawControl
 from pysepal.mapping.inspector_control import InspectorControl
@@ -179,8 +180,15 @@ class SepalMap(ipl.Map):
         if fullscreen:
             self.add_class("full-screen-map")
 
+        # not an ipyleaflet trait, it only asks for the control below
+        fullscreen_control = kwargs.pop("fullscreen_control", False)
+
         super().__init__(**kwargs)
         self._theme_source = None
+        # the widgets this map built, closed with it
+        self._owned = []
+        parts = ("layout", "style", "default_style", "dragging_style")
+        self._owned_parts = [n for n in parts if not isinstance(kwargs.get(n), widgets.Widget)]
 
         # init ee
         self.gee = gee
@@ -193,7 +201,8 @@ class SepalMap(ipl.Map):
                 self.gee_interface = GEEInterface(session=gee_session)
             su.init_ee()
 
-        # add the basemaps
+        # add the basemaps, ipyleaflet's default one is discarded
+        self._owned.extend([] if "layers" in kwargs else self.layers)
         self.clear()
         theme_source = self._resolve_theme_source(theme_state, theme_toggle)
         default_basemap = "SEPAL_DARK" if self._theme_is_dark(theme_source) else "SEPAL_LIGHT"
@@ -209,13 +218,17 @@ class SepalMap(ipl.Map):
         self.layers[0].visible = True
 
         # add the base controls
-        self.add(ZoomControl(self))
-        self.add(LayersControl(self, group=-1))
-        self.add(ipl.AttributionControl(position="bottomleft", prefix="SEPAL"))
-        self.add(ipl.ScaleControl(position="bottomleft", imperial=False))
-
-        if kwargs.get("fullscreen_control", False):
-            self.add(FullScreenControl(self))
+        base_controls = [
+            ZoomControl(self),
+            LayersControl(self, group=-1),
+            ipl.AttributionControl(position="bottomleft", prefix="SEPAL"),
+            ipl.ScaleControl(position="bottomleft", imperial=False),
+        ]
+        if fullscreen_control:
+            base_controls.append(FullScreenControl(self))
+        for control in base_controls:
+            self._owned.append(control)
+            self.add(control)
 
         # specific drawing control
         self.dc = GeomanDrawControl(self)
@@ -229,6 +242,9 @@ class SepalMap(ipl.Map):
         self.state = LayerStateControl(self)
         not statebar or self.add(self.state)
 
+        # built even when hidden, and each one holds the map
+        self._owned.extend([self.dc, self.v_inspector, self.state])
+
         # create a proxy ID to the element
         # this id should be unique and will be used by mutators to identify this map
         self._id = map_id or "".join(random.choice(string.ascii_lowercase) for i in range(6))
@@ -237,10 +253,6 @@ class SepalMap(ipl.Map):
 
     def _on_theme_change(self, change) -> None:
         """Change the basemap layer."""
-        # This is the way to make it work in solara do not ask me why
-        light = eval(str(basemap_tiles["SEPAL_LIGHT"]))
-        dark = eval(str(basemap_tiles["SEPAL_DARK"]))
-
         layer_names = [layer.name for layer in self.layers]
         self._apply_theme_class(change["new"])
 
@@ -250,18 +262,19 @@ class SepalMap(ipl.Map):
         for layer in self.layers:
             self._apply_layer_theme(layer, bool(change["new"]))
 
-        if change["new"]:
-            if light.name in layer_names:
-                idx = layer_names.index(light.name)
-                layer = self.layers[idx]
-                self.remove_layer(layer, base=True, none_ok=True)
-                self.layers = self.layers[:idx] + (dark,) + self.layers[idx:]
-        else:
-            if dark.name in layer_names:
-                idx = layer_names.index(dark.name)
-                layer = self.layers[idx]
-                self.remove_layer(layer, base=True, none_ok=True)
-                self.layers = self.layers[:idx] + (light,) + self.layers[idx:]
+        current, target = ("SEPAL_LIGHT", "SEPAL_DARK")
+        if not change["new"]:
+            current, target = target, current
+
+        if basemap_tiles[current].name in layer_names:
+            idx = layer_names.index(basemap_tiles[current].name)
+            layer = self.layers[idx]
+            # This is the way to make it work in solara do not ask me why
+            new_layer = eval(str(basemap_tiles[target]))
+            self.remove_layer(layer, base=True, none_ok=True)
+            self.layers = self.layers[:idx] + (new_layer,) + self.layers[idx:]
+            self._owned.append(new_layer)
+            self._close_owned(layer)
 
     @staticmethod
     def _apply_layer_theme(layer: ipl.Layer, is_dark: bool) -> None:
@@ -311,9 +324,24 @@ class SepalMap(ipl.Map):
             pass
 
     def close(self) -> None:
-        """Release the theme source before closing the widget."""
+        """Close the map with every widget it built.
+
+        Its controls hold the map, and the kernel holds every widget left open,
+        so a control left open keeps the whole map alive. Layers and controls
+        added by the caller stay open.
+        """
         self._unbind_theme_source()
+        # closed first so that releasing the controls sends nothing to the frontend
         super().close()
+        owned, self._owned = self._owned, []
+        close_tree(*owned)
+        close_tree(*(getattr(self, name) for name in self._owned_parts))
+
+    def _close_owned(self, widget) -> None:
+        """Close a widget this map built and no longer uses."""
+        if any(widget is item for item in self._owned):
+            self._owned = [item for item in self._owned if item is not widget]
+            close_tree(widget)
 
     def _bind_theme_source(self, source) -> None:
         """Bind the map to the resolved source used to drive dark/light changes."""
@@ -756,6 +784,7 @@ class SepalMap(ipl.Map):
             output.clear_output()
             plt.show()
 
+        self._owned.append(colormap_ctrl)
         self.add(colormap_ctrl)
 
         return
@@ -1036,7 +1065,9 @@ class SepalMap(ipl.Map):
             msg = f"Basemap can only be one of the following:\n{keys}"
             raise ValueError(msg)
 
-        self.add_layer(eval(str(basemap_tiles[basemap])))
+        layer = eval(str(basemap_tiles[basemap]))
+        self._owned.append(layer)
+        self.add_layer(layer)
 
         return
 
@@ -1159,6 +1190,7 @@ class SepalMap(ipl.Map):
 
         # Define as class member so it can be accessed from outside.
         self.legend = LegendControl(legend_dict, title=title, vertical=vertical, position=position)
+        self._owned.append(self.legend)
 
         return self.add(self.legend)
 

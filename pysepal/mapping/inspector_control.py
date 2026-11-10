@@ -12,6 +12,7 @@ from shapely import geometry as sg
 from traitlets import Bool
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
@@ -39,6 +40,9 @@ class InspectorControl(MenuControl):
     marker: Optional[Marker] = None
     "The marker of the last visited point"
 
+    _title: Optional[v.CardTitle] = None
+    "The title of the card"
+
     def __init__(self, m: Map, open_tree: bool = True, **kwargs) -> None:
         """Widget control displaying a btn on the map.
 
@@ -62,7 +66,7 @@ class InspectorControl(MenuControl):
         )
 
         # set up the content
-        title = sw.CardTitle(children=[msg("inspector_control.title")])
+        self._title = title = sw.CardTitle(children=[msg("inspector_control.title")])
         self.text = sw.CardText(children=[msg("inspector_control.landing")])
 
         # create the menu widget
@@ -82,14 +86,34 @@ class InspectorControl(MenuControl):
         self.menu.observe(self.toggle_cursor, "v_model")
         self.m.on_interaction(self.read_data)
 
+    def close(self) -> None:
+        """Stop reading the map, then close the content and the marker."""
+        if self.m is not None:
+            self.m.on_interaction(self.read_data, remove=True)
+            # a closed map is not displayed anymore, leave its layers as they are
+            if self.m.comm is not None and self.marker in self.m.layers:
+                self.m.remove(self.marker)
+        close_tree(self.text, self._title, self.w_loading, self.marker)
+        super().close()
+
+    def _set_cursor(self, cursor: str) -> None:
+        """Set the map cursor and close the style it replaces.
+
+        ``default_style`` builds a new ``MapStyle`` widget from each dict.
+        """
+        previous = self.m.default_style
+        self.m.default_style = {"cursor": cursor}
+        if previous is not self.m.default_style:
+            previous.close()
+
     def toggle_cursor(self, *args) -> None:
         """Toggle the cursor and marker display.
 
         Toggle the cursor on the map to notify to the user that the inspector
         mode is activated. also activate previous marker if the inspector already include data.
         """
-        cursors = [{"cursor": "grab"}, {"cursor": "crosshair"}]
-        self.m.default_style = cursors[self.menu.v_model]
+        cursors = ["grab", "crosshair"]
+        self._set_cursor(cursors[self.menu.v_model])
         self.marker.visible = self.menu.v_model
 
         return
@@ -109,7 +133,7 @@ class InspectorControl(MenuControl):
         # set the loading mode. Cannot be done as a decorator to avoid
         # flickering while moving the cursor on the map
         self.w_loading.indeterminate = True
-        self.m.default_style = {"cursor": "wait"}
+        self._set_cursor("wait")
 
         # init the text children
         children = []
@@ -152,15 +176,17 @@ class InspectorControl(MenuControl):
         tree_view.items = items
         tree_view.open_ = "0" if self.open_tree else ""
 
-        # set them in the card
+        # set them in the card, the previous ones are discarded
+        previous = self.text.children
         self.text.children = children
+        close_tree(*previous)
 
         # place a marker on the right coordinates
         self.marker.location = [lat, lng]
 
         # set back the cursor to crosshair
         self.w_loading.indeterminate = False
-        self.m.default_style = {"cursor": "crosshair"}
+        self._set_cursor("crosshair")
 
         # one last flicker to replace the menu next to the btn
         # if not it goes below the map
