@@ -91,7 +91,7 @@ def Page():
 | `theme_state`           | `Optional[ThemeState]`            | Defaults to `get_current_theme_state()`.                                                            |
 | `locales`               | `Optional[Iterable[str]]`         | Codes the locale selector offers. Not a `Translator`: it subclasses `dict`, which reacton flattens. |
 | `external_links`        | `Sequence[ExternalLink]`          | Drawer footer link tiles.                                                                           |
-| `repo_url` / `docs_url` | `str`                             | Auto-derived Source / Docs / Bug links. No Docs link while `docs_url` is empty.                     |
+| `repo_url` / `docs_url` | `str`                             | Auto-derived links. No Source / Bug link without `repo_url`, no Docs link without `docs_url`.       |
 | `dialog_width`          | `int`                             | Default width for `display="dialog"` steps.                                                         |
 | `dialog_fullscreen`     | `bool`                            | Force dialog steps to render full-screen.                                                           |
 | `on_step_action`        | `Callable[[int, str], None]`      | Fires when a dialog footer button is clicked.                                                       |

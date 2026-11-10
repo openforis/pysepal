@@ -489,3 +489,16 @@ def test_the_documentation_link_opens_docs_url() -> None:
         ("Documentation", "https://docs.example"),
         ("Report Bug", "https://github.com/org/app/issues/new"),
     ]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_no_repository_links_without_repo_url() -> None:
+    """Without a repository, Source Code has no target and Report Bug opens ``/issues/new``."""
+    links = _drawer_links(repo_url="", docs_url="https://docs.example")
+
+    assert [link["title"] for link in links] == ["Documentation"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_no_drawer_links_without_any_url() -> None:
+    assert _drawer_links(repo_url="", docs_url="") == []

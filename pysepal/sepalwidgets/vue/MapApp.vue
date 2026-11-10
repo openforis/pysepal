@@ -165,7 +165,10 @@
               <span>{{ link.title }}</span>
             </v-tooltip>
 
-            <v-divider class="mt-2 mb-4"></v-divider>
+            <v-divider
+              v-if="externalLinks.length"
+              class="mt-2 mb-4"
+            ></v-divider>
 
             <!-- configuration: theme + language -->
             <template v-if="!mini">
@@ -447,27 +450,29 @@ export default {
     },
 
     externalLinks() {
-      return [
-        {
+      const links = [];
+      if (this.repo_url) {
+        links.push({
           title: "Source Code",
           icon: "mdi-code-braces",
           url: this.repo_url,
-        },
-        ...(this.docs_url
-          ? [
-              {
-                title: "Documentation",
-                icon: "mdi-book-open-page-variant",
-                url: this.docs_url,
-              },
-            ]
-          : []),
-        {
+        });
+      }
+      if (this.docs_url) {
+        links.push({
+          title: "Documentation",
+          icon: "mdi-book-open-page-variant",
+          url: this.docs_url,
+        });
+      }
+      if (this.repo_url) {
+        links.push({
           title: "Report Bug",
           icon: "mdi-bug",
           url: `${this.repo_url}/issues/new`,
-        },
-      ];
+        });
+      }
+      return links;
     },
 
     dialogWidthComputed() {

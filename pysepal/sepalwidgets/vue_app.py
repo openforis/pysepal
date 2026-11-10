@@ -74,6 +74,7 @@ class MapApp(v.VuetifyTemplate):
     app_title = Unicode("Map Application").tag(sync=True)
     app_icon = Unicode("mdi-earth").tag(sync=True)
     repo_url = Unicode("").tag(sync=True)
+    "Target of the Source Code and Report Bug links. Empty (the default) hides both."
     docs_url = Unicode("").tag(sync=True)
     "Target of the Documentation link. Empty (the default) hides the link."
 
