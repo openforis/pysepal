@@ -195,3 +195,18 @@ def test_a_closed_disclaimer_stops_following_its_theme_toggle() -> None:
 
     observers = theme_toggle._trait_notifiers.get("dark", {}).get("change", [])
     assert not [h for h in observers if getattr(h, "__self__", None) is tile]
+
+
+def test_a_btn_does_not_reach_the_next_tile() -> None:
+    """The btn and alert go to this tile only, not to the default inputs."""
+    sw.Tile("first", "title", btn=sw.Btn(), alert=sw.Alert())
+    tile = sw.Tile("second", "title")
+
+    assert len(tile.children[0].children) == 2  # the title and one input
+
+
+def test_the_inputs_of_the_caller_are_not_changed() -> None:
+    inputs = [""]
+    sw.Tile("tile", "title", inputs=inputs, btn=sw.Btn())
+
+    assert inputs == [""]
