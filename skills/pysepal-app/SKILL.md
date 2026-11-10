@@ -32,6 +32,7 @@ For app architecture:
 - `docs/guides/solara-notifications.md` when the app has async work, task progress, toasts, or `MapApp`
 - `docs/guides/solara-export.md` when the app produces `ee.Image` or `ee.FeatureCollection` layers users can export
 - `docs/guides/ipyvuetify-widgets.md` when creating or extending `VuetifyTemplate`/Vue-backed widgets
+- `docs/guides/solara-app-gotchas.md` when something renders blank, hangs or ignores the theme with no error
 
 For repo-specific defaults and scaffold workflow:
 
