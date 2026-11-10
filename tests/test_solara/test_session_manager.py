@@ -66,3 +66,62 @@ def test_getters_still_raise_when_headers_exist_but_session_is_missing():
         ):
             with pytest.raises(RuntimeError, match="Session manager is active"):
                 getter()
+
+
+class _SyncExecutor:
+    """Run submitted work inline so the test can assert on it deterministically."""
+
+    def submit(self, fn):
+        fn()
+
+
+def _create_session_with(client):
+    """Run create_session with every external dependency stubbed out."""
+    from types import SimpleNamespace
+
+    from pysepal.solara import session_manager as sm
+
+    manager = SessionManager()
+    manager._sessions.clear()
+    sepal_headers = SimpleNamespace(
+        sepal_user=SimpleNamespace(username="alice"),
+        cookies={"SEPAL-SESSIONID": "sid"},
+    )
+    with (
+        patch.object(sm, "get_current_runtime_id", return_value="solara:kernel-rd"),
+        patch.object(sm, "headers", SimpleNamespace(value={"cookie": "x"})),
+        patch.object(sm.SepalHeaders, "model_validate", return_value=sepal_headers),
+        patch.object(sm.EESession, "from_sepal_headers", return_value=object()),
+        patch.object(sm, "GEEInterface"),
+        patch.object(sm, "GDriveInterface"),
+        patch.object(sm, "ThemeState"),
+        patch.object(sm.SepalClient, "create", return_value=client),
+        patch.object(sm, "_RESULTS_DIR_EXECUTOR", _SyncExecutor()),
+    ):
+        manager.create_session(module_name="se.plan")
+    manager._sessions.clear()
+
+
+def test_create_session_creates_the_module_results_dir():
+    """pysepal-api >= 0.3 made SepalClient.create() pure, so the session must ask for it."""
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    _create_session_with(client)
+    client.ensure_results_dir.assert_called_once_with()
+
+
+def test_create_session_survives_results_dir_failure():
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    client.ensure_results_dir.side_effect = RuntimeError("SEPAL down")
+    _create_session_with(client)  # must not raise
+
+
+def test_create_session_skips_results_dir_on_pysepal_api_0_2():
+    """pysepal-api 0.2 has no ensure_results_dir; its create() already made the dir."""
+    from unittest.mock import MagicMock
+
+    client = MagicMock(spec=["close"])
+    _create_session_with(client)  # must not raise
