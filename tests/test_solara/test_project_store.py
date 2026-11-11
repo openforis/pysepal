@@ -39,6 +39,18 @@ def test_describe_none_skips_and_raise_marks_unreadable(tmp_path):
     assert [(i.name, i.readable) for i in infos] == [("b", False), ("c", True)]
 
 
+def test_unreadable_project_is_logged(tmp_path, caplog):
+    _make(tmp_path, "b")
+
+    class S(ProjectStore):
+        def describe(self, name, folder):
+            raise ValueError("corrupt")
+
+    S(tmp_path).infos()
+    [record] = [r for r in caplog.records if r.exc_info]
+    assert record.levelname == "WARNING" and "corrupt" in str(record.exc_info[1])
+
+
 @pytest.mark.parametrize(
     "name,code",
     [("", "empty"), ("  ", "empty"), ("a/b", "chars"), ("..", "chars"), ("ALPHA", "exists"), ("new one_2-x", None)],

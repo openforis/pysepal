@@ -448,6 +448,44 @@ def test_refresh_reads_the_list_again(tmp_path):
     _session(store, scenario)
 
 
+def test_failed_read_shows_in_the_panel_and_keeps_the_list(tmp_path, caplog):
+    class Flaky(ProjectStore):
+        fail = False
+
+        def infos(self):
+            if self.fail:
+                raise OSError("share offline")
+            return super().infos()
+
+    store = _store(tmp_path, Flaky)
+
+    async def scenario(root, ns):
+        await _loaded(root, "recent")
+        store.fail = True
+        ns.refresh.set(1)
+        await wait_until(lambda: "share offline" in _texts(root, True))
+        assert "recent" in _texts(root, True)
+        assert msg("project.manage", count=2) in _texts(root, True)
+        assert any(r.exc_info and "share offline" in str(r.exc_info[1]) for r in caplog.records)
+
+    _session(store, scenario)
+
+
+def test_failing_close_after_an_action_is_logged(tmp_path, caplog):
+    def on_close():
+        raise RuntimeError("close broke")
+
+    def logged():
+        return any(r.exc_info and "close broke" in str(r.exc_info[1]) for r in caplog.records)
+
+    async def scenario(root, ns):
+        await _loaded(root, "recent")
+        _click(_button(root, msg("project.continue"), True))
+        await wait_until(logged)
+
+    _session(_store(tmp_path), scenario, on_close=on_close)
+
+
 def test_status_and_extra_actions_render(tmp_path):
     async def scenario(root, ns):
         await _loaded(root)

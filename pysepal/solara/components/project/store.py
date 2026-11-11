@@ -1,5 +1,6 @@
 """Folder-per-project storage: one subfolder of ``root`` per project, each with a manifest file."""
 
+import logging
 import os
 import re
 import shutil
@@ -7,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger("sepalui.project")
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9 _-]+$")
 
@@ -48,6 +51,7 @@ class ProjectStore:
             try:
                 info = self.describe(name, self.folder(name))
             except Exception:
+                logger.warning("cannot describe project %r", name, exc_info=True)
                 infos.append(ProjectInfo(name, readable=False))
                 continue
             if info is not None:

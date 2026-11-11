@@ -24,7 +24,7 @@ from .dialogs import (
     NameForm,
     _icon_button,
 )
-from .store import ProjectStore
+from .store import ProjectStore, logger
 
 T = TypeVar("T")
 MaybeAwaitable = Union[T, Awaitable[T]]
@@ -107,7 +107,13 @@ def ProjectPanel(
 
     # A newer read cancels the one it overtakes, so an older list never lands.
     async def _read():
-        set_infos(await asyncio.to_thread(store.infos))
+        try:
+            found = await asyncio.to_thread(store.infos)
+        except Exception as exc:  # the list on screen stays as it was
+            logger.warning("cannot list the projects", exc_info=True)
+            set_error(("panel", str(exc)))
+            return
+        set_infos(found)
 
     solara.lab.use_task(
         _read, dependencies=[refresh, current, bump], prefer_threaded=False, raise_error=False
