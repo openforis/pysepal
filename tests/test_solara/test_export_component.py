@@ -2116,7 +2116,7 @@ def test_source_select_items_reach_the_widget_in_the_installed_shape():
             {"type": "subheader", "title": "Images"},
             {"title": "Image", "value": "img"},
             {"title": "Disabled", "value": "off", "props": {"disabled": True}},
-            {"type": "divider"},
+            {"type": "divider", "title": ""},
             {"type": "subheader", "title": "Feature collections"},
             {"title": "Table", "value": "tbl"},
         ]
