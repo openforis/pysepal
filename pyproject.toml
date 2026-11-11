@@ -21,10 +21,10 @@ dependencies = [
     # building widgets
     "tomli",
     "ipykernel",
-    # 3.0 drops widgets sepalwidgets subclasses (CalendarDaily); below 1.8 there is
-    # no _version.semver, which pysepal imports at startup. A cap alone lets a
-    # crowded solve fall through to 0.1.x.
-    "ipyvuetify>=1.8,<3",
+    # 1.x (Vuetify 2) and 3.x (Vuetify 3) side by side, see pysepal/_vuetify.py;
+    # sepalwidgets needs 1.x. Below 1.8 there is no _version.semver, which pysepal
+    # imports at startup, and a cap alone lets a crowded solve fall to 0.1.x.
+    "ipyvuetify>=1.8,<4",
     "markdown",
     "ipyleaflet>=0.14.0",  # to have access to data member in edition
     # earthengine management

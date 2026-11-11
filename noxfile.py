@@ -15,10 +15,14 @@ def lint(session):
     session.run("pre-commit", "run", "--all-files", *session.posargs)
 
 
+IPYVUETIFY_PINS = {"1": "ipyvuetify>=1.8,<3", "3": "ipyvuetify>=3,<4"}
+
+
 @nox.session(reuse_venv=False)
-def test(session):
+@nox.parametrize("ipyvuetify", list(IPYVUETIFY_PINS))
+def test(session, ipyvuetify):
     """Run all the test using the environment variable of the running machine."""
-    session.install(".[test]")
+    session.install(".[test]", IPYVUETIFY_PINS[ipyvuetify])
     session.run("pip", "list")
 
     # if we are in the sepal-venv, force earthengine api fork
