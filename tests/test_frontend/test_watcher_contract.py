@@ -18,6 +18,18 @@ import ipyvuetify as v
 import pytest
 
 import pysepal
+from pysepal._vuetify import IPYVUETIFY_V3
+
+# The deprecated widget layer cannot be imported on ipyvuetify 3.
+LEGACY_MODULES = (
+    "pysepal.sepalwidgets",
+    "pysepal.aoi.aoi_tile",
+    "pysepal.aoi.aoi_view",
+    "pysepal.planetapi.planet_view",
+    "pysepal.planetapi.planet_widgets",
+    "pysepal.mapping.aoi_control",
+    "pysepal.scripts.thread_controller",
+)
 
 WATCH_START = re.compile(r"^  watch: \{$")
 BLOCK_END = re.compile(r"^  \},?$")
@@ -26,10 +38,9 @@ OBJECT_WATCHER = re.compile(r"^    ['\"]?([\w.]+)['\"]?: \{")
 
 def _template_widgets():
     """Every pysepal VuetifyTemplate subclass with its template file."""
-    for module in pkgutil.walk_packages(pysepal.__path__, "pysepal."):
-        if module.name.startswith("pysepal.templates"):
-            continue
-        importlib.import_module(module.name)
+    skipped = ("pysepal.templates", *(LEGACY_MODULES if IPYVUETIFY_V3 else ()))
+    for name in _module_names(pysepal.__path__, "pysepal.", skipped):
+        importlib.import_module(name)
 
     seen, stack = [], list(v.VuetifyTemplate.__subclasses__())
     while stack:
@@ -42,6 +53,17 @@ def _template_widgets():
         if isinstance(template, str) and template.endswith(".vue"):
             seen.append(cls)
             yield pytest.param(cls, Path(template), id=cls.__name__)
+
+
+def _module_names(path, prefix: str, skipped: tuple):
+    """Walk the package like ``pkgutil.walk_packages`` without importing skipped ones."""
+    for info in pkgutil.iter_modules(path, prefix):
+        if info.name.startswith(skipped):
+            continue
+        yield info.name
+        if info.ispkg:
+            package = importlib.import_module(info.name)
+            yield from _module_names(package.__path__, info.name + ".", skipped)
 
 
 def _object_watchers(vue_file: Path) -> set:
@@ -64,6 +86,7 @@ def test_synced_traits_are_watched_with_plain_functions(cls, vue_file):
     assert _object_watchers(vue_file) & synced == set()
 
 
+@pytest.mark.skipif(IPYVUETIFY_V3, reason="the legacy MapApp needs ipyvuetify 1")
 def test_the_scan_finds_the_map_app_watchers():
     """The parser reads the object form it is meant to reject."""
     mapapp = next(p for p in _template_widgets() if p.id == "MapApp")
