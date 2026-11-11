@@ -2,7 +2,7 @@
 
 Python cannot read the window size or the colour-scheme preference, nor write on
 ``document.documentElement``; these two templates do it for the shell. They are
-plain Vue with no Vuetify tags, so they run unchanged on both ipyvuetify majors.
+plain Vue with no Vuetify tags.
 """
 
 from typing import Callable, Dict, Optional

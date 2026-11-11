@@ -3,7 +3,6 @@
 </template>
 
 <script>
-// Plain Vue only (no Vuetify tags), so the same file runs on Vue 2 and Vue 3.
 module.exports = {
   mounted() {
     this.appliedVars = [];
@@ -14,9 +13,6 @@ module.exports = {
     this.onResize();
     this.applyVars(this.css_vars);
     this.applyBodyClass(this.body_class);
-  },
-  beforeDestroy() {
-    this.teardown();
   },
   beforeUnmount() {
     this.teardown();

@@ -6,9 +6,7 @@ import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal._vuetify import IPYVUETIFY_V3, btn_variant, size
-
-from ._ui import IconButton, as_children, text_class
+from ._ui import IconButton, as_children
 
 
 def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optional[int]):
@@ -36,11 +34,13 @@ def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optio
 def ActionButton(action: Mapping, on_click: Callable[[Mapping], None]):
     """Render one footer button of a dialog step: outlined to cancel, filled otherwise."""
     cancel = bool(action.get("cancel"))
-    # Vuetify 3 card actions make their buttons text-style unless asked otherwise.
-    style = (
-        btn_variant(outlined=True) if cancel else ({"variant": "elevated"} if IPYVUETIFY_V3 else {})
+    # Card actions make their buttons text-style unless asked otherwise.
+    btn = rv.Btn(
+        color="primary",
+        children=[action.get("label", "")],
+        variant="outlined" if cancel else "elevated",
+        size="small",
     )
-    btn = rv.Btn(color="primary", children=[action.get("label", "")], **style, **size("small"))
     ipyvue.use_event(btn, "click", lambda *_: on_click(action))
     return btn
 
@@ -77,7 +77,7 @@ def StepDialog(
     ) as main:
         card_style = f"height: {height}px" if height else ""
         with rv.Card(class_="dialog-card", style_=card_style):
-            with rv.CardTitle(class_=text_class("headline", "d-flex", "justify-space-between")):
+            with rv.CardTitle(class_="text-h5 d-flex justify-space-between"):
                 rv.Html(tag="span", children=[step.get("name", "") if step else ""])
                 IconButton(icon="mdi-close", on_click=on_close)
             rv.Divider()

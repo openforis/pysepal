@@ -12,15 +12,13 @@ import solara
 
 import pysepal
 from pysepal._locale import match_offered_locale, normalize_locale
-from pysepal._vuetify import IPYVUETIFY_V3, compose_vue
 from pysepal.i18n import current_locale, set_locale
 from pysepal.solara.components._locale_widget import VUE_DIR, LocaleSelectWidget
 from pysepal.solara.components.locale_select import LocaleSelectComponent
 
 FIXTURE = Path(__file__).parent / "fixtures" / "locale_matching.json"
 CASES = json.loads(FIXTURE.read_text())
-SCRIPT = VUE_DIR / "LocaleSelect.js"
-MARKUPS = {"v2": VUE_DIR / "LocaleSelect.v2.vue", "v3": VUE_DIR / "LocaleSelect.v3.vue"}
+TEMPLATE = VUE_DIR / "LocaleSelect.vue"
 HARNESS = Path(__file__).parent / "js" / "locale_parity.mjs"
 LIFECYCLE = Path(__file__).parent / "js" / "locale_lifecycle.mjs"
 
@@ -63,7 +61,7 @@ def test_the_first_offered_spelling_wins_a_normalisation_tie():
 def test_the_vue_transcription_agrees_with_python():
     """The browser resolves a locale before Python can, so it needs its own copy."""
     run = subprocess.run(
-        ["node", str(HARNESS), str(SCRIPT), str(FIXTURE)],
+        ["node", str(HARNESS), str(TEMPLATE), str(FIXTURE)],
         capture_output=True,
         text=True,
         check=True,
@@ -72,28 +70,26 @@ def test_the_vue_transcription_agrees_with_python():
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-@pytest.mark.parametrize("major", MARKUPS)
-def test_browser_resolution_persistence_and_remounts(major):
-    """Both majors' markup must mark the selected row the way the script expects."""
+def test_browser_resolution_persistence_and_remounts():
+    """The markup must mark the selected row the way the script expects."""
     subprocess.run(
-        ["node", str(LIFECYCLE), str(SCRIPT), str(MARKUPS[major])],
+        ["node", str(LIFECYCLE), str(TEMPLATE)],
         check=True,
         capture_output=True,
         text=True,
     )
 
 
-def test_locale_template_matches_major():
-    expected = compose_vue(MARKUPS["v3" if IPYVUETIFY_V3 else "v2"], SCRIPT)
-    assert LocaleSelectWidget().template == expected
+def test_the_widget_sends_the_template_file():
+    assert LocaleSelectWidget().template.template == TEMPLATE.read_text()
 
 
 @pytest.mark.parametrize(
     "spelling", ["v-list-item-content", "v-list-item-action", "depressed", "headline", " left>"]
 )
-def test_v3_markup_drops_vuetify2_spellings(spelling):
+def test_markup_has_no_vuetify2_spellings(spelling):
     """Python cannot catch these: Vuetify 3 drops unknown props, removed components only warn."""
-    assert spelling not in MARKUPS["v3"].read_text()
+    assert spelling not in TEMPLATE.read_text().split("<script>")[0]
 
 
 def test_the_selector_does_not_import_the_legacy_widgets():

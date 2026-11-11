@@ -6,7 +6,6 @@ import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal._vuetify import btn_variant, size
 from pysepal.solara.theme import ThemeState, resolve_theme_state
 
 from .bridges import ColorSchemeBridge
@@ -79,8 +78,8 @@ def ThemeToggle(theme_state: Optional[ThemeState] = None, enable_auto: bool = Tr
         )
         btn = rv.Btn(
             icon=True,
-            children=[rv.Icon(children=[ICONS[mode]], **size("small"))],
-            **btn_variant(text=True),
+            children=[rv.Icon(children=[ICONS[mode]], size="small")],
+            variant="text",
         )
     ipyvue.use_event(btn, "click", lambda *_: state.set_mode(next_mode(mode, enable_auto)))
     return main

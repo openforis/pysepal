@@ -1,9 +1,9 @@
 /*******************************************************************************
  * The native MapApp shell (pysepal.solara.components.map_app).
  *
- * The shell positions its own sheets instead of using Vuetify's layout system,
- * whose API differs between Vuetify 2 and 3. Its layers stay below Vuetify's
- * modal baseline: see the layering contract in frontend/css/base.css.
+ * The shell positions its own sheets instead of using Vuetify's layout system.
+ * Its layers stay below Vuetify's modal baseline: see the layering contract in
+ * frontend/css/base.css.
  * The --sepal-mapapp-* variables are set inline on the shell root.
  */
 
@@ -78,7 +78,6 @@
   transition: width 0.2s ease, bottom 0.3s ease;
 }
 
-.sepal-mapapp__drawer.theme--dark,
 .sepal-mapapp__drawer.v-theme--dark {
   border-right-color: rgba(255, 255, 255, 0.12);
 }
@@ -137,15 +136,12 @@
   padding-right: 18px !important;
 }
 
-.sepal-mapapp__drawer--rail .v-list-item__prepend > .v-icon,
-.sepal-mapapp__drawer--rail .v-list-item__icon {
+.sepal-mapapp__drawer--rail .v-list-item__prepend > .v-icon {
   margin-inline-end: 0 !important;
-  margin-right: 0 !important;
 }
 
-/* --v-theme-on-surface is Vuetify 3 only; Vuetify 2 falls back to black. */
 .sepal-mapapp .active-step {
-  background-color: rgba(var(--v-theme-on-surface, 0, 0, 0), 0.1);
+  background-color: rgba(var(--v-theme-on-surface), 0.1);
 }
 
 .sepal-mapapp a,
@@ -268,12 +264,10 @@
   border-radius: 4px;
 }
 
-.sepal-right-panel.theme--dark .section-header,
 .sepal-right-panel.v-theme--dark .section-header {
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
-.sepal-right-panel.theme--dark .panel-description,
 .sepal-right-panel.v-theme--dark .panel-description {
   background-color: rgba(255, 255, 255, 0.05);
 }

@@ -1,14 +1,16 @@
 <template>
   <div :class="{ 'theme-dark': is_dark, 'theme-light': !is_dark }">
-    <!-- Toast Stack: fixed top-right. The click is caught here because Vue 3
-         has no `.native` and Vuetify 2's v-alert does not forward its clicks. -->
+    <!-- Toast Stack: fixed top-right. One click handler on the stack finds the
+         clicked toast by its data-toast-id. -->
     <div class="toast-stack" @click="_onToastClick">
       <v-alert
         v-for="toast in visibleToasts"
         :key="toast.id"
         :type="toast.color"
         :icon="toast.kind === 'cancel' ? 'mdi-cancel' : undefined"
-        v-bind="alertProps(toast)"
+        :variant="toast.kind === 'cancel' ? 'tonal' : 'flat'"
+        :closable="!toast.timeout"
+        density="compact"
         elevation="4"
         class="toast-alert"
         :class="'toast-' + toast.kind"
@@ -35,11 +37,19 @@
       <div v-if="logOpen" class="pill-log">
         <div class="pill-log-header">
           <span>
-            <v-icon v-bind="iconSize('small')" class="mr-2">mdi-history</v-icon>
+            <!-- px: the named icon sizes scale with the font -->
+            <v-icon :size="16" class="mr-2">mdi-history</v-icon>
             Logger
           </span>
-          <v-btn icon v-bind="logCloseBtnProps" @click="logOpen = false">
-            <v-icon v-bind="iconSize('small')">mdi-close</v-icon>
+          <!-- a flat 20px button: an icon button is elevated and wider than its size -->
+          <v-btn
+            icon
+            size="x-small"
+            density="comfortable"
+            variant="text"
+            @click="logOpen = false"
+          >
+            <v-icon :size="16">mdi-close</v-icon>
           </v-btn>
         </div>
         <div ref="logBody" class="pill-log-body" @scroll="_onLogScroll">
@@ -100,21 +110,6 @@ module.exports = {
     };
   },
   computed: {
-    v3() {
-      return !!(
-        this.$vuetify &&
-        this.$vuetify.theme &&
-        this.$vuetify.theme.global
-      );
-    },
-    logCloseBtnProps() {
-      // A Vuetify 3 icon button is elevated and 12px wider than its size; these
-      // give back the flat 20px button of Vuetify 2.
-      if (this.v3) {
-        return { size: "x-small", density: "comfortable", variant: "text" };
-      }
-      return { "x-small": true };
-    },
     visibleToasts() {
       const dismissed = new Set(this.dismissedIdsList);
       const active = this.toasts.filter((t) => !dismissed.has(t.id));
@@ -229,47 +224,18 @@ module.exports = {
   mounted() {
     this._syncToastTimers(this.toasts);
     // Enable the right-edge transition only AFTER initial layout has
-    // settled — the RightPanel v-navigation-drawer registers with
-    // $vuetify.application a few ticks after MapApp mounts, which in turn
+    // settled — the RightPanel v-navigation-drawer registers with the
+    // Vuetify layout a few ticks after MapApp mounts, which in turn
     // drives the --sepal-notification-right-offset CSS var.  Gating with a
     // short timeout lets that first position lock in instantly (no slide).
     setTimeout(() => {
       this.transitionsEnabled = true;
     }, 400);
   },
-  // Vue 2 calls beforeDestroy, Vue 3 calls beforeUnmount.
-  beforeDestroy() {
-    this._clearDismissTimers();
-  },
   beforeUnmount() {
     this._clearDismissTimers();
   },
   methods: {
-    alertProps(toast) {
-      const cancel = toast.kind === "cancel";
-      const closable = !toast.timeout;
-      if (this.v3) {
-        return {
-          variant: cancel ? "tonal" : "flat",
-          closable,
-          density: "compact",
-        };
-      }
-      return {
-        text: cancel,
-        value: true,
-        dismissible: closable,
-        dense: true,
-        dark: !cancel,
-      };
-    },
-    iconSize(name) {
-      // Vuetify 3's named icon sizes scale with the font; Vuetify 2's are
-      // these pixels.
-      return this.v3
-        ? { size: { small: 16, "x-small": 12 }[name] }
-        : { [name]: true };
-    },
     _onToastClick(event) {
       const alert = event.target.closest("[data-toast-id]");
       if (alert) {
@@ -309,7 +275,7 @@ module.exports = {
         clearTimeout(this.dismissTimers[id]);
         delete this.dismissTimers[id];
       }
-      // Instantly hide in Vue (array push is reactive in Vue 2)
+      // Instantly hide in Vue
       if (!this.dismissedIdsList.includes(id)) {
         this.dismissedIdsList.push(id);
       }
@@ -354,8 +320,8 @@ module.exports = {
   position: fixed;
   top: 4px;
   right: 4px;
-  /* Stay above Vuetify dialogs and their overlays (~202 on Vuetify 2, 2000 on
-   * Vuetify 3) so toasts remain visible even when a modal is open —
+  /* Stay above Vuetify dialogs and their overlays (z-index 2000) so toasts
+   * remain visible even when a modal is open —
    * notifications are often about the dialog itself (errors, progress) and
    * cannot be hidden beneath it. */
   z-index: 9999;
@@ -406,10 +372,7 @@ module.exports = {
   color: #ffffff !important;
 }
 
-/* `:deep()` reaches the elements Vuetify renders inside a component. Vuetify 3
- * honours it; ipyvue 1 injects this style uncompiled, so the browser drops these
- * rules on Vuetify 2, as it always dropped the deprecated combinator they
- * replace. */
+/* `:deep()` reaches the elements Vuetify renders inside a component. */
 .toast-alert :deep(.v-alert__content) {
   display: flex;
   align-items: center;
@@ -547,8 +510,7 @@ module.exports = {
 
 /* Always-visible log button (v-btn icon, square override)
  * NOTE: Vuetify's v-btn paints its hover background through an overlay
- * (::before on Vuetify 2, .v-btn__overlay on Vuetify 3), so we must force that
- * overlay to transparent and set the real background-color on the button
+ * (.v-btn__overlay), so we must force that overlay to transparent and set the real background-color on the button
  * element itself.  `background-color` is used explicitly (not the `background`
  * shorthand) to avoid wiping the other background-* properties Vuetify may set.
  */
@@ -563,11 +525,6 @@ module.exports = {
   min-height: 36px !important;
 }
 
-.pill-log-btn.v-btn::before {
-  background-color: transparent !important;
-}
-
-/* A rule of its own: Vuetify 2 drops a rule whose selector list holds `:deep()`. */
 .pill-log-btn.v-btn :deep(.v-btn__overlay) {
   background-color: transparent !important;
 }

@@ -1,11 +1,12 @@
-// Runs LocaleSelect.js's own matcher over the shared fixture table, so the
+// Runs LocaleSelect.vue's own matcher over the shared fixture table, so the
 // browser implementation is tested rather than trusted. Only the object given
-// to `module.exports` is evaluated: the narrowest thing either ipyvue runs.
+// to `module.exports` is evaluated, as ipyvue does.
 import { readFileSync } from "node:fs";
 
-const [scriptPath, fixturePath] = process.argv.slice(2);
+const [vuePath, fixturePath] = process.argv.slice(2);
 
-const script = readFileSync(scriptPath, "utf8");
+const source = readFileSync(vuePath, "utf8");
+const script = source.split("<script>")[1].split("</script>")[0];
 const literal = script
   .slice(script.search(/^module\.exports\s*=/m))
   .replace(/^module\.exports\s*=/, "");
