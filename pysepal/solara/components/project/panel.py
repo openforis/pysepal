@@ -253,7 +253,8 @@ def ProjectPanel(
         if current
         else max(
             (i for i in infos if i.readable),
-            key=lambda i: i.updated_at or datetime.min,
+            # Timestamps, so naive (local) and aware times compare; undated sorts last.
+            key=lambda i: i.updated_at.timestamp() if i.updated_at else float("-inf"),
             default=None,
         )
     )

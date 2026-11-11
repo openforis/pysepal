@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import time
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import ipyvuetify as v
@@ -11,7 +12,7 @@ import reacton
 import solara
 
 from pysepal.message import msg
-from pysepal.solara.components.project import ProjectPanel, ProjectStore
+from pysepal.solara.components.project import ProjectInfo, ProjectPanel, ProjectStore
 from pysepal.solara.components.project._format import size_text
 
 from ._harness import wait_until, walk
@@ -145,6 +146,23 @@ def test_continue_card_opens_the_most_recent_then_closes(tmp_path):
         assert ns.calls == [("open", "recent"), ("close",)]
 
     _session(_store(tmp_path), scenario)
+
+
+def test_continue_card_compares_aware_and_naive_times(tmp_path):
+    class Mixed(ProjectStore):
+        def describe(self, name, folder):
+            when = datetime.now() - timedelta(days=1)
+            # "recent" is timezone-aware and newer; "old" is naive local time.
+            if name == "recent":
+                return ProjectInfo(name, updated_at=when.astimezone() + timedelta(hours=1))
+            return ProjectInfo(name, updated_at=when)
+
+    async def scenario(root, ns):
+        await _loaded(root, "recent")
+        texts = _texts(root, skip_dialogs=True)
+        assert msg("project.continue_title") in texts and "old" not in texts
+
+    _session(_store(tmp_path, Mixed), scenario)
 
 
 def test_open_refused_keeps_the_panel(tmp_path):

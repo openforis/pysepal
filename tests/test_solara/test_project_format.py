@@ -26,6 +26,10 @@ def test_relative_time(delta, expected):
     assert relative_time(NOW - delta, NOW) == expected
 
 
+def test_relative_time_of_an_aware_time_against_a_naive_now():
+    assert relative_time(NOW.astimezone() - timedelta(minutes=29), NOW) == "29 minutes ago"
+
+
 @pytest.mark.parametrize(
     "n,expected",
     [(None, "…"), (0, "0.1 MB"), (200_000, "0.2 MB"), (14_600_000, "14.6 MB"), (2_300_000_000, "2.3 GB")],

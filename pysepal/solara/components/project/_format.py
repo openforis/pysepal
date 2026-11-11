@@ -14,7 +14,8 @@ def relative_time(when: datetime, now: datetime) -> str:
     """'just now', 'N minutes ago', 'N hours ago' or 'N days ago'. A time a
     little ahead of ``now`` reads 'just now'.
     """
-    seconds = max(0, int((now - when).total_seconds()))
+    # Timestamps, so a naive (local) and an aware time compare.
+    seconds = max(0, int(now.timestamp() - when.timestamp()))
     if seconds < 60:
         return msg("project.ago_now")
     if seconds < 3600:
