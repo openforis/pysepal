@@ -9,9 +9,15 @@
   padding-top: 8px;
 }
 
-.sepal-export-body .v-input--selection-controls {
+.sepal-export-body .v-input--selection-controls,
+.sepal-export-body .v-selection-control-group {
   margin-top: 0 !important;
   padding-top: 0 !important;
+}
+
+/* Vuetify 3 inline radios sit edge to edge; space them like Vuetify 2 rows. */
+.sepal-export-body .v-selection-control-group--inline {
+  column-gap: 16px;
 }
 
 /* Field wrapper: title stacked over its control. */
@@ -65,6 +71,30 @@
 
 .sepal-scale-toggle {
   width: fit-content;
+}
+
+/* Vuetify 3 (.v-btn-group) only. Its groups have a fixed height that squeezes
+   wrapped rows into one, and frameless surface-coloured buttons; match the
+   Vuetify 2 small toggles instead. */
+.sepal-band-toggle.v-btn-group,
+.sepal-scale-toggle.v-btn-group {
+  height: auto;
+}
+
+.sepal-band-toggle.v-btn-group.v-btn-toggle > .v-btn,
+.sepal-scale-toggle.v-btn-group.v-btn-toggle > .v-btn {
+  min-height: 28px;
+  border: thin solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+
+.sepal-band-toggle.v-btn-group.v-btn-toggle > .v-btn:not(:first-child),
+.sepal-scale-toggle.v-btn-group.v-btn-toggle > .v-btn:not(:first-child) {
+  border-inline-start-width: 0;
+}
+
+.sepal-band-toggle.v-btn-group.v-btn-toggle > .v-btn:not(.v-btn--active),
+.sepal-scale-toggle.v-btn-group.v-btn-toggle > .v-btn:not(.v-btn--active) {
+  background: rgba(var(--v-theme-on-surface), 0.04);
 }
 
 .sepal-scale-row {

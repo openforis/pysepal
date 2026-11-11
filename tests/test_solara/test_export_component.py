@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import solara
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts import gee_interface as gee_interface_module
 from pysepal.scripts.gee_interface import _resolve_create_folder_paths
 from pysepal.solara.components import export_hook as export_hook_module
@@ -67,6 +68,15 @@ class _FakeTable:
 class _FakeImageCollection:
     def toBands(self):
         return None
+
+
+_WHITE_TEXT_CLASS = "text-white" if IPYVUETIFY_V3 else "white--text"
+
+
+def _walk(widget):
+    yield widget
+    for child in getattr(widget, "children", ()) or ():
+        yield from _walk(child)
 
 
 def _render(factory, *args, **kwargs):
@@ -437,7 +447,8 @@ def test_export_launcher_renders_destination_as_radio_group():
     ]
 
     assert radio_groups
-    assert any(getattr(widget, "row", False) for widget in radio_groups)
+    row_prop = "inline" if IPYVUETIFY_V3 else "row"
+    assert any(getattr(widget, row_prop, False) for widget in radio_groups)
     assert not selects
 
 
@@ -504,7 +515,10 @@ def test_export_launcher_supports_small_block_button_convention():
     ]
 
     assert launcher_buttons
-    assert any(getattr(widget, "small", False) for widget in launcher_buttons)
+    if IPYVUETIFY_V3:
+        assert any(getattr(widget, "size", None) == "small" for widget in launcher_buttons)
+    else:
+        assert any(getattr(widget, "small", False) for widget in launcher_buttons)
 
 
 class _FakeGeeInterface:
@@ -1606,9 +1620,10 @@ def test_band_selector_field_fills_selected_buttons_with_secondary():
     assert color_by_label.get("B3") in ("", None)
     # Selected labels are forced white so they read on the secondary fill;
     # unselected inherit the theme text colour.
-    assert "white--text" in class_by_label.get("B4", "")
-    assert "white--text" in class_by_label.get("B2", "")
-    assert "white--text" not in class_by_label.get("B3", "")
+    white = _WHITE_TEXT_CLASS
+    assert white in class_by_label.get("B4", "")
+    assert white in class_by_label.get("B2", "")
+    assert white not in class_by_label.get("B3", "")
 
 
 def test_image_scale_field_styles_selected_preset_like_bands():
@@ -1637,7 +1652,7 @@ def test_image_scale_field_styles_selected_preset_like_bands():
 
     # Scale defaults to 30 → that preset is filled secondary with a white label.
     assert color_by_label.get("30") == "secondary"
-    assert "white--text" in class_by_label.get("30", "")
+    assert _WHITE_TEXT_CLASS in class_by_label.get("30", "")
     # A non-selected preset stays neutral.
     assert color_by_label.get("10") in ("", None)
 
@@ -2063,3 +2078,143 @@ def test_band_discovery_runs_again_when_the_dialog_reopens_on_the_same_source():
 
     assert discovered == [("a", ("B1", "B2")), ("a", ("B1", "B2"))]
     assert len(gee.calls) == 2
+
+
+def _grouped_sources():
+    def _image():
+        return ResolvedExport(ee_object=_FakeImage(), default_name="img")
+
+    def _table():
+        return ResolvedExport(ee_object=_FakeTable(), default_name="tbl")
+
+    return [
+        ExportSource(id="img", label="Image", kind="image", resolve=_image),
+        ExportSource(id="off", label="Disabled", kind="image", resolve=_image, disabled=True),
+        ExportSource(id="tbl", label="Table", kind="table", resolve=_table),
+    ]
+
+
+def _select_labelled(element, label):
+    return next(
+        widget
+        for widget in _walk(element)
+        if widget.__class__.__name__ == "Select" and getattr(widget, "label", None) == label
+    )
+
+
+def test_source_select_items_reach_the_widget_in_the_installed_shape():
+    element = _render(
+        ExportLauncher.widget,
+        sources=_grouped_sources(),
+        gee_interface=MagicMock(),
+        drive_interface=MagicMock(),
+    )
+    items = _select_labelled(element, "Asset").items
+
+    if IPYVUETIFY_V3:
+        assert items == [
+            {"type": "subheader", "title": "Images"},
+            {"title": "Image", "value": "img"},
+            {"title": "Disabled", "value": "off", "props": {"disabled": True}},
+            {"type": "divider"},
+            {"type": "subheader", "title": "Feature collections"},
+            {"title": "Table", "value": "tbl"},
+        ]
+    else:
+        assert items == [
+            {"header": "Images"},
+            {"text": "Image", "value": "img", "disabled": False},
+            {"text": "Disabled", "value": "off", "disabled": True},
+            {"divider": True},
+            {"header": "Feature collections"},
+            {"text": "Table", "value": "tbl", "disabled": False},
+        ]
+
+
+def test_source_select_shows_its_placeholder_before_a_pick():
+    element = _render(
+        ExportLauncher.widget,
+        sources=_grouped_sources(),
+        gee_interface=MagicMock(),
+        drive_interface=MagicMock(),
+    )
+    select = _select_labelled(element, "Asset")
+
+    # Vuetify 3 treats "" as a picked value and would hide the placeholder.
+    assert select.v_model is None
+    assert select.placeholder == "Select asset"
+    if IPYVUETIFY_V3:
+        assert select.persistent_placeholder is True
+
+
+def test_table_format_select_items_reach_the_widget_in_the_installed_shape():
+    source = ExportSource(
+        id="table",
+        label="Table",
+        kind="table",
+        resolve=lambda: ResolvedExport(ee_object=_FakeTable(), default_name="tbl"),
+    )
+    element = _render_preselected_dialog(source=source, target="drive")
+    items = _select_labelled(element, "Table file format").items
+
+    label_key = "title" if IPYVUETIFY_V3 else "text"
+    assert [item[label_key] for item in items] == ["CSV", "GeoJSON", "Shapefile", "KML", "KMZ"]
+    assert [item["value"] for item in items] == ["CSV", "GEO_JSON", "SHP", "KML", "KMZ"]
+
+
+def test_band_toggle_buttons_carry_their_index_as_value():
+    """The group's v_model holds child indices, so each button's value is its index."""
+    selected = solara.reactive(("B3",))
+    element = _render(
+        BandSelectorField.widget,
+        available=("B4", "B3", "B2"),
+        selected=selected,
+        dirty=solara.reactive(False),
+        export_kind="image",
+    )
+    toggle = next(w for w in _walk(element) if w.__class__.__name__ == "BtnToggle")
+
+    assert toggle.v_model == [1]
+    assert [button.value for button in toggle.children] == [0, 1, 2]
+
+
+def test_scale_toggle_buttons_carry_their_index_as_value():
+    element = _render(ImageScaleField.widget, scale=solara.reactive(30))
+    toggle = next(w for w in _walk(element) if w.__class__.__name__ == "BtnToggle")
+
+    assert toggle.v_model == 3
+    assert [button.value for button in toggle.children] == [0, 1, 2, 3, 4, 5]
+
+
+def test_export_dialog_fields_use_the_installed_vuetify_props():
+    source = ExportSource(
+        id="image-bands",
+        label="Image with bands",
+        kind="image",
+        resolve=lambda: ResolvedExport(
+            ee_object=_FakeImage(), default_name="demo_image", bands=("B4", "B3")
+        ),
+    )
+    element = _render_preselected_dialog(source=source, target="drive")
+    widgets = list(_walk(element))
+    fields = [w for w in widgets if w.__class__.__name__ in ("TextField", "Select")]
+    toggles = [w for w in widgets if w.__class__.__name__ == "BtnToggle"]
+    toggle_buttons = [button for toggle in toggles for button in toggle.children]
+    radio_group = next(w for w in widgets if w.__class__.__name__ == "RadioGroup")
+    close_button = next(
+        w for w in widgets if w.__class__.__name__ == "Btn" and "Close" in (w.children or [])
+    )
+
+    assert fields and len(toggles) == 2 and toggle_buttons
+    if IPYVUETIFY_V3:
+        assert all(f.density == "compact" and f.variant == "underlined" for f in fields)
+        assert all(t.density == "compact" for t in toggles)
+        assert all(b.size == "small" and b.variant == "flat" for b in toggle_buttons)
+        assert radio_group.inline is True
+        assert close_button.size == "small"
+    else:
+        assert all(f.dense is True for f in fields)
+        assert all(t.dense is True for t in toggles)
+        assert all(b.small is True and b.depressed is True for b in toggle_buttons)
+        assert radio_group.row is True and radio_group.mandatory is True
+        assert close_button.small is True
