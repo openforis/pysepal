@@ -38,11 +38,16 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
+        ipyvuetify: ["1"]
         include:
           - os: macos-latest # macos test
             python-version: "3.11"
+            ipyvuetify: "1"
           - os: windows-latest # windows test
             python-version: "3.11"
+            ipyvuetify: "1"
+          - python-version: "3.12" # Vuetify 3, see pysepal/_vuetify.py
+            ipyvuetify: "3"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -52,15 +57,15 @@ jobs:
       - name: Install nox
         run: python -m pip install nox
       - name: test with pytest
-        run: nox -s test -- -vv
+        run: nox -s "test(ipyvuetify='${{ matrix.ipyvuetify }}')" -- -vv
       - name: codecov
-        if: github.event_name == 'push' && matrix.python-version == '3.10' && runner.os == 'Linux'
+        if: github.event_name == 'push' && matrix.python-version == '3.10' && runner.os == 'Linux' && matrix.ipyvuetify == '1'
         uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
       - name: assess dead fixtures
-        if: matrix.python-version == '3.10'
+        if: matrix.python-version == '3.10' && matrix.ipyvuetify == '1'
         run: nox -s dead-fixtures
 
   test_gee:
