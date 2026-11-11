@@ -112,7 +112,7 @@ Existing pysepal VuetifyTemplate widgets follow this layout:
 | MapApp       | `vue_app.py`     | `vue/MapApp.vue`       |
 | ThemeToggle  | `vue_app.py`     | `vue/Theming.vue`      |
 | RightPanel   | `vue_app.py`     | `vue/RightPanel.vue`   |
-| FileInput    | `file_input.py`  | `vue/FileInput.vue`    |
+| FileInput    | `../solara/components/inputs/_file_input_widget.py` | `../solara/components/inputs/vue/FileInput.js` + `.v2.vue` / `.v3.vue` |
 | TaskButton   | `btn.py`         | `vue/TaskButton.vue`   |
 | Dialog       | `sepalwidget.py` | `vue/Dialog.vue`       |
 | Tabs         | `vue_widgets.py` | `vue/Tabs.vue`         |

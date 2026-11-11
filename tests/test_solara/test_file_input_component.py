@@ -1,13 +1,17 @@
 """FileInputComponent with multiple=True syncs a list of paths both ways."""
 
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 import reacton
 import solara
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts.filesystem import LocalFileSystem
+from pysepal.solara.components.inputs._file_input_widget import FileInputWidget
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 
 from ._harness import of_type, wait_until
@@ -25,7 +29,7 @@ def _run(component, interact):
     async def run():
         root, rc = reacton.render(component, handle_error=False)
         try:
-            await interact(of_type(root, "FileInput")[0])
+            await interact(of_type(root, "FileInputWidget")[0])
         finally:
             rc.close()
 
@@ -156,3 +160,25 @@ def test_select_folders_reaches_the_widget(batch: Path) -> None:
         await wait_until(lambda: held.value == [sub])
 
     _run(Harness(), interact)
+
+
+def test_template_matches_major() -> None:
+    """The widget sends the markup of the installed Vuetify major, with the shared script."""
+    template = FileInputWidget.class_traits()["template"].default()
+
+    assert ("v-list-item-content" in template) is not IPYVUETIFY_V3
+    assert ('v-bind="props"' in template) is IPYVUETIFY_V3
+    assert "module.exports = {" in template
+
+
+def test_the_inputs_do_not_import_sepalwidgets() -> None:
+    """pysepal.sepalwidgets does not import on ipyvuetify 3, so the inputs must not need it."""
+    code = (
+        "import sys, pysepal.solara.components.inputs\n"
+        "print('LEGACY', [m for m in sys.modules if m.startswith('pysepal.sepalwidgets')])"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], check=True, capture_output=True, text=True
+    )
+
+    assert "LEGACY []" in result.stdout.splitlines()

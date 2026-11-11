@@ -1,6 +1,6 @@
 """Solara FileInputComponent — canonical location.
 
-Wraps the ipyvuetify FileInput widget in a Solara-native component.
+Wraps the :class:`FileInputWidget` template widget in a Solara-native component.
 """
 
 from typing import Callable, List, Optional, Union
@@ -13,8 +13,8 @@ from pysepal.scripts.filesystem import (
     PathOutsideRootError,
     SandboxFileSystem,
 )
-from pysepal.sepalwidgets.file_input import (
-    FileInput,
+from pysepal.solara.components.inputs._file_input_widget import (
+    FileInputWidget,
     _default_filesystem,
     _resolve_bounds,
 )
@@ -34,7 +34,7 @@ def FileInputComponent(
     multiple: bool = False,
     select_folders: bool = False,
 ):
-    """Solara component wrapper for FileInput widget.
+    """Solara component wrapper for the FileInputWidget widget.
 
     Args:
         initial_folder: The initial folder to read files from.
@@ -54,7 +54,7 @@ def FileInputComponent(
             still opens the folder: its check selects it.
 
     Returns:
-        FileInput element configured as a Solara component.
+        FileInputWidget element configured as a Solara component.
     """
     reactive_value = solara.use_reactive(value, on_value)
     del value, on_value
@@ -89,7 +89,7 @@ def FileInputComponent(
         except PathOutsideRootError:
             pass
 
-    file_input = FileInput.element(
+    file_input = FileInputWidget.element(
         initial_folder=resolved_initial,
         root=resolved_root,
         filesystem=fs,

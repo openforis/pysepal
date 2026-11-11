@@ -1,29 +1,32 @@
-// Drives FileInput.vue's own selection methods, so the browser side of
+// Drives FileInput.js's own selection methods, so the browser side of
 // multiple mode is tested rather than trusted.
+//
+// node file_input_selection.mjs <FileInput.js> <JSON of the widget's trait defaults>
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
-const source = readFileSync(process.argv[2], "utf8");
-const script = source.split("<script>")[1].split("</script>")[0];
-const literal = script
-  .slice(script.search(/^export default/m) + "export default".length)
-  .trim()
-  .replace(/;\s*$/, "");
+const script = readFileSync(process.argv[2], "utf8");
+const traits = JSON.parse(process.argv[3]);
 
+// Evaluated like ipyvue 1 does: a CommonJS body that sets module.exports
 let now = 10_000;
-const component = runInNewContext(`(${literal})`, {
+const module = { exports: {} };
+runInNewContext(script, {
+  module,
+  exports: module.exports,
   window: {},
   Date: { now: () => now },
   setTimeout: () => 0,
 });
+const component = module.exports;
+
+// Like ipyvue, the synced traits are the component's data: the template must not
+// declare them as props, which Vue 3 would read in their place.
+assert.equal(component.props, undefined);
 
 function mount(props = {}) {
-  const instance = { $refs: {}, $nextTick() {} };
-  for (const [name, prop] of Object.entries(component.props)) {
-    instance[name] =
-      typeof prop.default === "function" ? prop.default() : prop.default;
-  }
+  const instance = { $refs: {}, $nextTick() {}, ...structuredClone(traits) };
   Object.assign(instance, component.data(), props);
   for (const [name, method] of Object.entries(component.methods)) {
     instance[name] = method.bind(instance);
@@ -133,3 +136,19 @@ assert.equal(both.countLabel, "1 item");
 both.onFileSelect(folder("/r/sub"));
 assert.equal(both.current_folder, "/r/sub");
 assert.deepEqual([...both.value], ["/r/sub"]);
+
+// theme colours are spelled for the Vuetify major the page runs
+const csv = file("/r/a.csv");
+const v2 = mount();
+assert.equal(v2.getIconColor(csv), "secondary_contrast");
+assert.match(v2.primaryColor, /--v-primary-base/);
+const v3 = mount({ $vuetify: { theme: { global: { name: "light" } } } });
+assert.equal(v3.getIconColor(csv), "secondary-contrast");
+assert.equal(v3.getIconColor(folder("/r/sub")), "primary-contrast");
+assert.equal(v3.primaryColor, "rgb(var(--v-theme-primary))");
+assert.equal(Object.keys(v3.getItemStyle(0)).length, 0);
+v3.selectedIndex = 0;
+assert.equal(
+  v3.getItemStyle(0).borderLeft,
+  "3px solid rgb(var(--v-theme-primary))"
+);
