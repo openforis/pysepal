@@ -9,9 +9,12 @@ import ee
 import ipyvuetify as v
 import pytest
 
-from pysepal import sepalwidgets as sw
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts import decorator as sd
 from pysepal.scripts.warning import SepalWarning
+
+# these tests drive the deprecated sepalwidgets, which need ipyvuetify 1
+legacy = pytest.mark.skipif(IPYVUETIFY_V3, reason="sepalwidgets needs ipyvuetify 1")
 
 
 @pytest.mark.gee
@@ -87,8 +90,11 @@ def test_need_ee_raises_when_not_initialized(monkeypatch) -> None:
         use_ee()
 
 
+@legacy
 def test_catch_errors() -> None:
     """Check the catch error decorator."""
+    from pysepal import sepalwidgets as sw
+
     # create an external alert to test the wiring
     alert = sw.Alert()
 
@@ -157,8 +163,11 @@ def test_catch_errors() -> None:
         assert any("toto" in s for s in msg_list)
 
 
+@legacy
 def test_loading_button() -> None:
     """Check the loading decorator."""
+    from pysepal import sepalwidgets as sw
+
     # create a fake object that uses the decorator
     class Obj:
         def __init__(self):
@@ -200,6 +209,7 @@ def test_loading_button() -> None:
 
 def test_switch() -> None:
     """Test the switch decorator."""
+
     # create a fake object that uses the decorator
     class Obj:
         def __init__(self):

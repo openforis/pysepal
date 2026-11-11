@@ -13,14 +13,20 @@ import ipyvuetify as v
 import pytest
 from shapely import geometry as sg
 
-from pysepal import sepalwidgets as sw
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.frontend.styles import TYPES
 from pysepal.scripts import utils as su
 from pysepal.scripts.warning import SepalWarning
 
+# these tests drive the deprecated sepalwidgets, which need ipyvuetify 1
+legacy = pytest.mark.skipif(IPYVUETIFY_V3, reason="sepalwidgets needs ipyvuetify 1")
 
+
+@legacy
 def test_hide_component() -> None:
     """Check we can hide vanilla ipyvuetify widgets."""
+    from pysepal import sepalwidgets as sw
+
     # hide a normal v component
     widget = v.Btn()
     su.hide_component(widget)
@@ -34,8 +40,11 @@ def test_hide_component() -> None:
     return
 
 
+@legacy
 def test_show_component() -> None:
     """Check we can show vanilla ipyvuetify widgets."""
+    from pysepal import sepalwidgets as sw
+
     # show a normal v component
     widget = v.Btn()
     su.hide_component(widget)
