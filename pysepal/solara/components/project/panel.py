@@ -219,6 +219,11 @@ def ProjectPanel(
 
     def _confirm_delete():
         name = deleting[0]
+        # A task may have started writing since the confirmation opened.
+        blocked = store.delete_blocked(name)
+        if blocked:
+            set_deleting((name, blocked))
+            return
 
         def _deleted():
             if selected.peek() == name:

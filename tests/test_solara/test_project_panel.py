@@ -362,12 +362,30 @@ def test_delete_of_a_vanished_folder_shows_the_error_and_rereads(tmp_path):
     _session(_store(tmp_path), scenario, current="old")
 
 
-def test_delete_blocked_never_deletes(tmp_path):
-    deleted = []
-
+def test_delete_blocked_on_open_shows_the_reason_and_no_field(tmp_path):
     class Busy(ProjectStore):
         def delete_blocked(self, name):
             return "writing"
+
+    async def scenario(root, ns):
+        await _loaded(root)
+        await _open_manage(root)
+        title = await _ask_delete(root, "recent")
+        dialog = _dialog(root, title)
+        assert "writing" in _texts(dialog)
+        assert not [w for w in walk(dialog) if isinstance(w, v.TextField)]
+        assert _button(dialog, msg("project.delete")).disabled
+
+    _session(_store(tmp_path, Busy), scenario, current="old")
+
+
+def test_delete_blocked_since_the_confirmation_opened_never_deletes(tmp_path):
+    asked, deleted = [], []
+
+    class Busy(ProjectStore):
+        def delete_blocked(self, name):
+            asked.append(name)
+            return "writing" if len(asked) > 1 else None  # a writer starts after it opened
 
         def delete(self, name):
             deleted.append(name)
@@ -376,10 +394,12 @@ def test_delete_blocked_never_deletes(tmp_path):
         await _loaded(root)
         await _open_manage(root)
         title = await _ask_delete(root, "recent")
-        dialog = _dialog(root, title)
-        assert "writing" in _texts(dialog)
-        _click(_button(dialog, msg("project.delete")))
-        assert deleted == []
+        _field(root, msg("project.delete_type_label", name="recent")).v_model = "recent"
+        _click(_button(_dialog(root, title), msg("project.delete")))
+        # The refusal landing in the still-open confirmation is the press handled.
+        await wait_until(lambda: "writing" in _texts(_dialog(root, title) or root))
+        assert not _button(_dialog(root, title), msg("project.delete")).loading
+        assert deleted == [] and (tmp_path / "recent").is_dir()
 
     _session(_store(tmp_path, Busy), scenario, current="old")
 
