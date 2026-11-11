@@ -13,6 +13,7 @@ from typing import Iterator, List, Optional, Tuple, Union
 import solara
 import solara.server.settings
 
+from pysepal.frontend.styles import apply_palette
 from pysepal.scripts.scratch import scratch_dir
 
 from .asset_merger import merge_asset_files
@@ -32,33 +33,7 @@ SHARED_BASE_CSS = Path(__file__).parent.parent / "frontend" / "css" / "base.css"
 
 def setup_theme_colors():
     """Configure default sepalui theme colors for the application."""
-    # Dark theme colors
-    solara.lab.theme.themes.dark.primary = "#76591e"
-    solara.lab.theme.themes.dark.primary_contrast = "#bf8f2d"
-    solara.lab.theme.themes.dark.secondary = "#363e4f"
-    solara.lab.theme.themes.dark.secondary_contrast = "#5d76ab"
-    solara.lab.theme.themes.dark.error = "#a63228"
-    solara.lab.theme.themes.dark.info = "#c5c6c9"
-    solara.lab.theme.themes.dark.success = "#3f802a"
-    solara.lab.theme.themes.dark.warning = "#b8721d"
-    solara.lab.theme.themes.dark.accent = "#272727"
-    solara.lab.theme.themes.dark.anchor = "#f3f3f3"
-    solara.lab.theme.themes.dark.main = "#24221f"
-    solara.lab.theme.themes.dark.darker = "#1a1a1a"
-    solara.lab.theme.themes.dark.bg = "#121212"
-    solara.lab.theme.themes.dark.menu = "#424242"
-
-    # Light theme colors
-    solara.lab.theme.themes.light.primary = "#5BB624"
-    solara.lab.theme.themes.light.primary_contrast = "#76b353"
-    solara.lab.theme.themes.light.accent = "#f3f3f3"
-    solara.lab.theme.themes.light.anchor = "#f3f3f3"
-    solara.lab.theme.themes.light.secondary = "#2199C4"
-    solara.lab.theme.themes.light.secondary_contrast = "#5d76ab"
-    solara.lab.theme.themes.light.main = "#2196f3"
-    solara.lab.theme.themes.light.darker = "#ffffff"
-    solara.lab.theme.themes.light.bg = "#FFFFFF"
-    solara.lab.theme.themes.light.menu = "#FFFFFF"
+    apply_palette(solara.lab.theme.themes)
 
 
 _merged_root: Optional[Path] = None
