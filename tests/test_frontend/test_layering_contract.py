@@ -17,11 +17,11 @@ import re
 from pathlib import Path
 
 import pysepal.frontend.styles as ss
-import pysepal.sepalwidgets as sw
 import pysepal.solara as solara_pkg
 
 BASE_CSS = ss.CSS_DIR / "base.css"
-MAP_APP_VUE = Path(sw.__file__).parent / "vue" / "MapApp.vue"
+# read as a file: importing the deprecated widget package fails on ipyvuetify 3
+MAP_APP_VUE = ss.CSS_DIR.parents[1] / "sepalwidgets" / "vue" / "MapApp.vue"
 LEGEND_VUE = Path(solara_pkg.__file__).parent / "components" / "Legend.vue"
 NOTIFICATION_VUE = Path(solara_pkg.__file__).parent / "notifications" / "NotificationUI.vue"
 

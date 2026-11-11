@@ -8,12 +8,14 @@
  */
 
 /* remove extra padding on top of the content */
-main.v-content {
+main.v-content,
+main.v-main {
   padding-top: 0px !important;
 }
 
 /* Lift selects/menus above the fullscreen map. Voila-only: the Solara runtime
- * handles this stacking itself, so base.css keeps only the shared max-width. */
+ * handles this stacking itself, so base.css keeps only the shared max-width.
+ * Vuetify 3 overlays already start above the map (~2000). */
 .v-menu__content {
   z-index: 902 !important; /* important for showing selects on top of the map */
 }
