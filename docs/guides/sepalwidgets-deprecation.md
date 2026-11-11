@@ -67,19 +67,19 @@ A Solara app ships its own frontend, so it can run on either major. To move it:
 1. Replace each legacy widget with the Solara component in the table below.
 2. Remove the `ipyvuetify<3` pin, or keep it until the app's own code is ready.
 
-| Legacy                                       | Solara replacement                                                                     |
-| -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `sepalwidgets.vue_app.MapApp.element(...)`   | `pysepal.solara.components.map_app.MapApp(...)` (see below)                            |
-| `sepalwidgets.vue_app.ThemeToggle`           | `pysepal.solara.components.map_app.ThemeToggle`                                        |
-| `sepalwidgets.vue_app.LocaleSelect`          | `pysepal.solara.components.locale_select.LocaleSelectComponent`                        |
-| `sw.FileInput`                               | `pysepal.solara.components.inputs.FileInputComponent`                                  |
-| `sw.AssetSelect`                             | `pysepal.solara.components.inputs.AssetSelectComponent`                                |
-| `sw.VectorField`                             | `pysepal.solara.components.inputs.VectorSelectorComponent`                             |
-| `sw.LoadTableField`                          | `pysepal.solara.components.inputs.PointsSelectorComponent`                             |
-| `sw.TaskButton`, `sw.Btn` with a task        | `pysepal.solara.components.task_button.TaskButtonComponent`                            |
-| `sw.Alert`, `sw.StateBar`, `sw.Banner`       | `pysepal.solara.notifications` (`NotificationProvider`, `use_notifications`)           |
-| `aoi.AoiTile`, `aoi.AoiView`                 | `pysepal.solara.components.aoi.AoiView`                                                |
-| `sw.Tile`, `sw.Card`, other `sw.*` subclasses | Solara layout (`solara.Card`, `solara.Column`, ...) or plain `solara.v.*` elements    |
+| Legacy                                        | Solara replacement                                                                 |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `sepalwidgets.vue_app.MapApp.element(...)`    | `pysepal.solara.components.map_app.MapApp(...)` (see below)                        |
+| `sepalwidgets.vue_app.ThemeToggle`            | `pysepal.solara.components.map_app.ThemeToggle`                                    |
+| `sepalwidgets.vue_app.LocaleSelect`           | `pysepal.solara.components.locale_select.LocaleSelectComponent`                    |
+| `sw.FileInput`                                | `pysepal.solara.components.inputs.FileInputComponent`                              |
+| `sw.AssetSelect`                              | `pysepal.solara.components.inputs.AssetSelectComponent`                            |
+| `sw.VectorField`                              | `pysepal.solara.components.inputs.VectorSelectorComponent`                         |
+| `sw.LoadTableField`                           | `pysepal.solara.components.inputs.PointsSelectorComponent`                         |
+| `sw.TaskButton`, `sw.Btn` with a task         | `pysepal.solara.components.task_button.TaskButtonComponent`                        |
+| `sw.Alert`, `sw.StateBar`, `sw.Banner`        | `pysepal.solara.notifications` (`NotificationProvider`, `use_notifications`)       |
+| `aoi.AoiTile`, `aoi.AoiView`                  | `pysepal.solara.components.aoi.AoiView`                                            |
+| `sw.Tile`, `sw.Card`, other `sw.*` subclasses | Solara layout (`solara.Card`, `solara.Column`, ...) or plain `solara.v.*` elements |
 
 `MapApp` takes the same keyword arguments as the legacy `MapApp.element`, except
 `model`, `theme_toggle` and `language_selector`. The theme toggle and the

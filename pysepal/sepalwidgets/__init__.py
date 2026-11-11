@@ -1,3 +1,4 @@
+# ruff: noqa: E402, I001
 """All the widgets available in pysepal.
 
 Package to access all the widgets available in pysepal. The widgets are all derived from ``IpyvuetifyWidget`` and ``SepalWidget``. They can be used to build interfaces in applications. ``pysepal.sepalwidgets`` includes all the widgets from ``ipyvuetify`` and some extra ones that are useful to build GIS related applications.
@@ -40,7 +41,7 @@ warnings.warn(
     stacklevel=2,
 )
 
-from pysepal.sepalwidgets.sepal_ipyvuetify import *  # noqa: E402, I
+from pysepal.sepalwidgets.sepal_ipyvuetify import *
 
 # import and/or overwrite with our customized widgets
 from pysepal.sepalwidgets.sepalwidget import *
