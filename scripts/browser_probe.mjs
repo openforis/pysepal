@@ -56,6 +56,10 @@
  *                        (same --timeout budget), e.g. until every leaflet tile
  *                        has loaded
  *   --screenshot <png>   write a PNG of the viewport after --eval
+ *   --console            also collect the page's console warnings/errors and
+ *                        uncaught exceptions; the output becomes
+ *                        { value, console: [{ level, text }] }. Vue reports an
+ *                        unknown component or a bad template only here.
  *   --timeout <ms>       readiness budget (default 30000)
  *   --force-theme <t>    set the Solara and pysepal theme keys in localStorage
  *                        to "dark" or "light" and reload (Voila ignores them)
@@ -117,6 +121,8 @@ const SCALE = parseFloat(argVal("--scale", "1"));
 const WAIT_JS = argVal("--wait-js");
 const SCREENSHOT = argVal("--screenshot");
 const SETTLE_AFTER = parseInt(argVal("--settle-after", "1200"), 10);
+const CONSOLE = process.argv.includes("--console");
+const consoleEntries = [];
 let EVAL = argVal("--eval");
 if (EVAL && EVAL.startsWith("@")) EVAL = readFileSync(EVAL.slice(1), "utf8");
 if (!EVAL)
@@ -254,6 +260,24 @@ async function main() {
   });
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(ev.data);
+    if (CONSOLE && msg.method === "Runtime.consoleAPICalled") {
+      const { type, args } = msg.params;
+      if (type === "warning" || type === "error" || type === "assert")
+        consoleEntries.push({
+          level: type,
+          text: args
+            .map((a) => a.value ?? a.description ?? a.type)
+            .join(" ")
+            .slice(0, 2000),
+        });
+    }
+    if (CONSOLE && msg.method === "Runtime.exceptionThrown") {
+      const d = msg.params.exceptionDetails;
+      consoleEntries.push({
+        level: "exception",
+        text: (d.exception?.description ?? d.text ?? "").slice(0, 2000),
+      });
+    }
     if (msg.id && pending.has(msg.id)) {
       const p = pending.get(msg.id);
       pending.delete(msg.id);
@@ -362,7 +386,8 @@ async function main() {
   if (WAIT_JS) await waitFor(WAIT_JS);
 
   const value = await evaluate(ws, sessionId, EVAL);
-  console.log(JSON.stringify(value, null, 2));
+  const output = CONSOLE ? { value, console: consoleEntries } : value;
+  console.log(JSON.stringify(output, null, 2));
 
   if (SCREENSHOT) {
     const { data } = await send(
