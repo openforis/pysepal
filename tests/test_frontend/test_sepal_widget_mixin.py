@@ -1,0 +1,62 @@
+"""Test the SepalWidget mixin outside the deprecated widget package."""
+
+import subprocess
+import sys
+
+import ipyvuetify as v
+
+from pysepal._sepal_widget import SepalWidget, Tooltip
+
+
+class _Btn(v.Btn, SepalWidget):
+    pass
+
+
+def test_mixin_imports_without_sepalwidgets() -> None:
+    """Check that the mixin does not pull in ``pysepal.sepalwidgets``."""
+    code = (
+        "import sys; import pysepal._sepal_widget; "
+        "assert 'pysepal.sepalwidgets' not in sys.modules, 'sepalwidgets imported'"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_hide_and_show_return_self() -> None:
+    """Check that ``hide``/``show`` chain and toggle the ``d-none`` class."""
+    btn = _Btn(children=["x"])
+
+    assert btn.hide() is btn
+    assert btn.viz is False
+    assert "d-none" in btn.class_
+
+    assert btn.show() is btn
+    assert btn.viz is True
+    assert "d-none" not in btn.class_
+
+
+def test_tooltip_binds_the_activator() -> None:
+    """Check that the tooltip wires its activator for the installed major."""
+    from pysepal._vuetify import IPYVUETIFY_V3
+
+    btn = _Btn(children=["x"])
+    tooltip = Tooltip(btn, "hello")
+
+    assert tooltip.children == ["hello"]
+    assert tooltip.v_slots[0]["children"] is btn
+    if IPYVUETIFY_V3:
+        assert btn.v_bind == "tooltip.props"
+    else:
+        assert btn.v_on == "tooltip.on"
+
+
+def test_sepalwidgets_reexports_the_mixin() -> None:
+    """Check that the legacy import path still gives the same classes."""
+    from pysepal._vuetify import IPYVUETIFY_V3
+
+    if IPYVUETIFY_V3:
+        return
+    from pysepal.sepalwidgets.sepalwidget import SepalWidget as Legacy
+    from pysepal.sepalwidgets.sepalwidget import Tooltip as LegacyTooltip
+
+    assert Legacy is SepalWidget
+    assert LegacyTooltip is Tooltip
