@@ -15,11 +15,7 @@ import ipywidgets.widgets.widget as widget_module
 import pytest
 
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3
 from tests._kernel_contexts import kernel_contexts  # noqa: F401
-
-# AoiControl is built on pysepal.sepalwidgets, which needs ipyvuetify 1
-legacy = pytest.mark.skipif(IPYVUETIFY_V3, reason="pysepal.sepalwidgets needs ipyvuetify 1")
 
 
 def _collect() -> None:
@@ -149,8 +145,6 @@ def test_a_closed_control_releases_its_map(kernel) -> None:
         sm.GeomanDrawControl(m),
         sm.MenuControl("fa-solid fa-cog", sm.MapBtn("x"), m=m),
     ]
-    if not IPYVUETIFY_V3:
-        controls.append(sm.AoiControl(m))
     for control in controls:
         control.close()
         assert control.m is None
@@ -190,7 +184,6 @@ def test_a_closed_menu_keeps_the_content_of_its_caller(kernel) -> None:
         "FullScreenControl",
         "GeomanDrawControl",
         "MenuControl",
-        pytest.param("AoiControl", marks=legacy),
         "LegendControl",
     ],
 )
@@ -210,13 +203,8 @@ def _after_close(control_name: str):
         "inspector": m.v_inspector,
         "layers": next(c for c in m.controls if isinstance(c, sm.LayersControl)),
     }
-    if not IPYVUETIFY_V3:
-        controls["aoi"] = sm.AoiControl(m)
     control = controls[control_name]
     m.close()
-    # the map closes the controls it built, the caller closes its own
-    if "aoi" in controls:
-        controls["aoi"].close()
     return control
 
 
@@ -232,13 +220,6 @@ def _after_close(control_name: str):
         ("inspector", lambda c: c._from_eelayer.__wrapped__(c, MagicMock(spec=ee.Image), [0, 0])),
         ("inspector", lambda c: c._from_raster("missing.tif", [0, 0])),
         ("layers", lambda c: c.update_table({})),
-        pytest.param("aoi", lambda c: c.zoom(MagicMock(value=(0, 0, 1, 1))), marks=legacy),
-        pytest.param("aoi", lambda c: c.click_btn(), marks=legacy),
-        pytest.param(
-            "aoi",
-            lambda c: c.add_aoi.__wrapped__(c, "x", MagicMock(spec=ee.Geometry)),
-            marks=legacy,
-        ),
     ],
 )
 def test_a_control_of_a_closed_map_does_nothing(kernel, control_name, call) -> None:

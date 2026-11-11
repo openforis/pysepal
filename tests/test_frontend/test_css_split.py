@@ -31,10 +31,9 @@ SHARED_SELECTORS = [
     ".solara-markdown.jp-RenderedHTMLCommon",
 ]
 
-# Deliberately Voila-only. `.v-menu__content` z-index was forked off for Solara
-# in PR #968; `main.v-content` was only ever in the Voila sheet. None of these
-# may leak into the shared base or the Solara sheet.
-VOILA_ONLY_MARKERS = ["z-index: 902", "main.v-content"]
+# Deliberately Voila-only: `main.v-main` was only ever in the Voila sheet. None of
+# these may leak into the shared base or the Solara sheet.
+VOILA_ONLY_MARKERS = ["main.v-main"]
 
 
 def _voila_css() -> str:

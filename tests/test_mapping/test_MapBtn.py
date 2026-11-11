@@ -3,7 +3,6 @@
 import ipyvuetify as v
 
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3
 
 
 def test_init() -> None:
@@ -13,8 +12,7 @@ def test_init() -> None:
     assert isinstance(map_btn, sm.MapBtn)
     assert isinstance(map_btn.children[0], v.Icon)
     # Vuetify 3 renders a Font Awesome name as is only behind the class: prefix
-    prefix = "class:" if IPYVUETIFY_V3 else ""
-    assert map_btn.children[0].children[0] == f"{prefix}fa-solid fa-folder"
+    assert map_btn.children[0].children[0] == "class:fa-solid fa-folder"
 
     # mdi icon
     map_btn = sm.MapBtn("mdi-folder")

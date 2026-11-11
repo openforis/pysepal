@@ -1,16 +1,11 @@
 """Guards for the modal layering contract.
 
 pysepal's floating chrome (map, app bar, legend, task pill) must stay BELOW
-Vuetify's modal baseline. Vuetify derives a dialog's z-index at runtime -- the
-``stackable`` mixin reads computed z-indexes off the DOM -- so any app layer
-that outranks it has to be beaten with ``!important``, which desynchronises that
-bookkeeping and silently breaks click-outside-to-close.
-
-The historical failure mode: the fullscreen map sat at 800, above Vuetify's
-~201 scrim, so an outside click landed on the map and ``click:outside`` never
-fired. Every workaround that pinned ``.v-overlay`` or ``.v-dialog__content``
-from CSS traded that bug for a worse one (the dialog rendering behind its own
-scrim). The fix was to renumber the app's own layers underneath instead.
+Vuetify's overlays. Vuetify gives each overlay (menu, dialog and its scrim) its
+z-index at runtime, from 2000 and stacked by opening order, so an app layer that
+outranks them can only be beaten by pinning an overlay's z-index from CSS, which
+overrides the stacking Vuetify computes. pysepal keeps its own layers below 200
+instead.
 """
 
 import re
@@ -24,10 +19,10 @@ MAP_APP_CSS = Path(solara_pkg.__file__).parent / "components" / "map_app" / "map
 LEGEND_VUE = Path(solara_pkg.__file__).parent / "components" / "Legend.vue"
 NOTIFICATION_VUE = Path(solara_pkg.__file__).parent / "notifications" / "NotificationUI.vue"
 
-VUETIFY_OVERLAY_Z_INDEX = 201
+APP_LAYER_CEILING = 200
 
 # Selector -> the file whose rule sets its z-index. Each must stay under the
-# scrim so a modal covers it instead of it punching through.
+# ceiling so a modal covers it instead of it punching through.
 APP_LAYERS = {
     ".full-screen-map > .leaflet-container": BASE_CSS,
     "header.v-app-bar": BASE_CSS,
@@ -37,10 +32,9 @@ APP_LAYERS = {
     ".sepal-right-panel": MAP_APP_CSS,
 }
 
-# Rules that pin Vuetify's own modal elements. `.v-overlay__scrim` is exempt:
-# it is a child of `.v-overlay`, which is its own stacking context, so a
-# z-index there cannot lift it out and is merely inert.
-FORBIDDEN_PINS = (".v-overlay", ".v-dialog__content", ".dialog-container")
+# Rules that pin Vuetify's own modal elements (`.v-overlay` also matches its
+# `__content` and `__scrim` children).
+FORBIDDEN_PINS = (".v-overlay", ".dialog-container")
 
 
 def _z_index_for(selector: str, path: Path) -> int:
@@ -62,12 +56,12 @@ def _z_index_for(selector: str, path: Path) -> int:
 
 
 def test_app_layers_stay_below_the_vuetify_modal_baseline():
-    """Floating chrome must sit under the scrim, so modals cover it natively."""
+    """Floating chrome must sit under the overlays, so modals cover it natively."""
     for selector, path in APP_LAYERS.items():
         z = _z_index_for(selector, path)
-        assert z < VUETIFY_OVERLAY_Z_INDEX, (
-            f"{selector} ({path.name}) is at z-index {z}, above Vuetify's "
-            f"{VUETIFY_OVERLAY_Z_INDEX} scrim. Renumber it below instead of "
+        assert z < APP_LAYER_CEILING, (
+            f"{selector} ({path.name}) is at z-index {z}, above pysepal's "
+            f"{APP_LAYER_CEILING} ceiling. Renumber it below instead of "
             f"pinning Vuetify's layers -- see the contract in base.css."
         )
 
@@ -90,7 +84,6 @@ def test_no_stylesheet_pins_the_vuetify_modal_z_index():
             if not any(pin in selector for pin in FORBIDDEN_PINS):
                 continue
             assert "z-index" not in body, (
-                f"{path.name} pins a z-index on '{selector}'. Vuetify computes "
-                f"dialog stacking at runtime; overriding it desynchronises the "
-                f"stackable mixin and click-outside stops firing."
+                f"{path.name} pins a z-index on '{selector}'. Vuetify stacks "
+                f"its overlays at runtime; overriding one breaks that order."
             )

@@ -10,15 +10,11 @@ from traitlets import observe
 from typing_extensions import Self
 
 from pysepal._sepal_widget import SepalWidget
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.message import msg
 
-# a Vuetify 3 SystemBar is a layout item: it needs a v-layout parent
-_Bar = v.Sheet if IPYVUETIFY_V3 else v.SystemBar
 
-
-class _StateBar(_Bar, SepalWidget):
+class _StateBar(v.Sheet, SepalWidget):
 
     msg: t.Unicode = t.Unicode("").tag(sync=True)
     "the displayed message"
@@ -32,18 +28,19 @@ class _StateBar(_Bar, SepalWidget):
     def __init__(self, **kwargs) -> None:
         """Inline status bar: a small spinner and a message.
 
+        A ``v.Sheet`` rather than a ``v.SystemBar``, which is a layout item that needs a
+        ``v-layout`` parent.
+
         Args:
-            kwargs (optional): any parameter from the bar widget. If set, 'children' will be overwritten.
+            kwargs (optional): any parameter from the Sheet widget. If set, 'children' will be overwritten.
         """
-        value = {"model_value": 100} if IPYVUETIFY_V3 else {"value": 100}
         self.progress = v.ProgressCircular(
-            indeterminate=self.loading, size=15, color="primary", class_="mr-2", **value
+            indeterminate=self.loading, size=15, color="primary", class_="mr-2", model_value=100
         )
 
-        if IPYVUETIFY_V3:
-            kwargs.setdefault("class_", "d-flex align-center px-2 text-body-2")
-            kwargs.setdefault("height", 24)
-            kwargs.setdefault("color", "surface-light")
+        kwargs.setdefault("class_", "d-flex align-center px-2 text-body-2")
+        kwargs.setdefault("height", 24)
+        kwargs.setdefault("color", "surface-light")
 
         kwargs["children"] = [self.progress, self.msg]
 

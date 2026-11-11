@@ -1,10 +1,9 @@
 """Test the FullScreen Control."""
 
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3
 
 # Vuetify 3 renders a Font Awesome name as is only behind the class: prefix
-PREFIX = "class:" if IPYVUETIFY_V3 else ""
+PREFIX = "class:"
 
 
 def test_init() -> None:
