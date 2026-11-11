@@ -26,6 +26,17 @@ from pysepal import __author__, __version__  # noqa: E402
 package_path = os.path.abspath("../..")
 os.environ["PYTHONPATH"] = ":".join((package_path, os.environ.get("PYTHONPATH", "")))
 
+# The examples still show the deprecated sepalwidgets; the deprecation is in its
+# docstring, so its warning stays out of every executed cell.
+os.environ["PYTHONWARNINGS"] = ",".join(
+    w
+    for w in (
+        "ignore:pysepal.sepalwidgets is deprecated:DeprecationWarning",
+        os.environ.get("PYTHONWARNINGS", ""),
+    )
+    if w
+)
+
 DOC_DIR = Path(__file__).parent
 
 

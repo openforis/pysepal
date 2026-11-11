@@ -16,6 +16,8 @@ def lint(session):
 
 
 IPYVUETIFY_PINS = {"1": "ipyvuetify>=1.8,<3", "3": "ipyvuetify>=3,<4"}
+# sessions that cover the deprecated sepalwidgets too run on ipyvuetify 1
+LEGACY = IPYVUETIFY_PINS["1"]
 
 
 @nox.session(reuse_venv=False)
@@ -40,7 +42,7 @@ def test(session, ipyvuetify):
 @nox.session(reuse_venv=False)
 def test_gee(session):
     """Run GEE smoke tests. Requires EARTHENGINE_* credentials."""
-    session.install(".[test]")
+    session.install(".[test]", LEGACY)
     session.run("pip", "list")
 
     if "sepal-user" in session.virtualenv.location:
@@ -66,7 +68,7 @@ def dead_fixtures(session):
     """Check for dead fixtures items."""
     # pytest-deadfixtures 3.1.0 reads FixtureManager._arg2fixturedefs, which
     # pytest 9.2 renamed; drop the cap once upstream PR #61 is released.
-    session.install(".[test]", "pytest<9.2")
+    session.install(".[test]", "pytest<9.2", LEGACY)
     test_files = session.posargs or ["tests"]
     # Clear addopts ("-m 'not gee'") so the scan covers both test lanes;
     # otherwise every GEE fixture reports as unused.
@@ -87,7 +89,7 @@ def bin(session):
 @nox.session(reuse_venv=True)
 def docs(session):
     """Build the documentation."""
-    session.install(".[doc]")
+    session.install(".[doc]", LEGACY)
     # patch version in nox instead of pyproject to avoid blocking conda releases
     session.run("rm", "-rf", "docs/source/modules", external=True)
     session.run("rm", "-rf", "docs/build/html", external=True)
