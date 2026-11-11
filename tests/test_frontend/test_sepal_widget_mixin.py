@@ -1,4 +1,4 @@
-"""Test the SepalWidget mixin outside the deprecated widget package."""
+"""Test the SepalWidget mixin."""
 
 import subprocess
 import sys
@@ -39,28 +39,10 @@ def test_hide_and_show_return_self() -> None:
 
 
 def test_tooltip_binds_the_activator() -> None:
-    """Check that the tooltip wires its activator for the installed major."""
-    from pysepal._vuetify import IPYVUETIFY_V3
-
+    """Check that the tooltip binds its activator slot's props to the widget."""
     btn = _Btn(children=["x"])
     tooltip = Tooltip(btn, "hello")
 
     assert tooltip.children == ["hello"]
     assert tooltip.v_slots[0]["children"] is btn
-    if IPYVUETIFY_V3:
-        assert btn.v_bind == "tooltip.props"
-    else:
-        assert btn.v_on == "tooltip.on"
-
-
-def test_sepalwidgets_reexports_the_mixin() -> None:
-    """Check that the legacy import path still gives the same classes."""
-    from pysepal._vuetify import IPYVUETIFY_V3
-
-    if IPYVUETIFY_V3:
-        return
-    from pysepal.sepalwidgets.sepalwidget import SepalWidget as Legacy
-    from pysepal.sepalwidgets.sepalwidget import Tooltip as LegacyTooltip
-
-    assert Legacy is SepalWidget
-    assert LegacyTooltip is Tooltip
+    assert btn.v_bind == "tooltip.props"

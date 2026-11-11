@@ -1,8 +1,6 @@
-"""The file picker widget behind :func:`FileInputComponent`, on both ipyvuetify majors.
+"""The file picker widget behind :func:`FileInputComponent`.
 
-It reads any :class:`FileSystem`. The template is one shared script
-(``vue/FileInput.js``) with the markup of the installed Vuetify major
-(``vue/FileInput.v2.vue`` or ``vue/FileInput.v3.vue``).
+It reads any :class:`FileSystem`; its template is ``vue/FileInput.vue``.
 """
 
 from pathlib import Path, PurePosixPath
@@ -13,7 +11,6 @@ from pysepal_api import SepalClient
 from traitlets import Bool, Int, List, TraitError, Unicode, observe, validate
 from traitlets import Union as UnionTrait
 
-from pysepal._vuetify import compose_vue, vuetify_markup
 from pysepal.logger import log
 from pysepal.message import msg
 from pysepal.scripts.filesystem import (
@@ -78,9 +75,7 @@ def _selection_trait():
 
 class FileInputWidget(v.VuetifyTemplate):
 
-    template = Unicode(
-        compose_vue(vuetify_markup(VUE_DIR / "FileInput"), VUE_DIR / "FileInput.js")
-    ).tag(sync=True)
+    template_file = Unicode(str(VUE_DIR / "FileInput.vue")).tag(sync=True)
 
     file_list = List([]).tag(sync=True)
     current_folder = Unicode("/").tag(sync=True)

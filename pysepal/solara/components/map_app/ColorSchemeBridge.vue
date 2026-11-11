@@ -3,9 +3,7 @@
 </template>
 
 <script>
-// Plain Vue only (no Vuetify tags), so the same file runs on Vue 2 and Vue 3.
-// ipyvue 3 evaluates only the exported object and ipyvue 1 keeps only the
-// standard component options, so the storage key is a method.
+// ipyvue evaluates only the exported object, so the storage key is a method.
 module.exports = {
   mounted() {
     this.media = window.matchMedia
@@ -27,9 +25,6 @@ module.exports = {
     }
     if (stored) this.stored_mode(stored);
     this.applyDark(this.dark);
-  },
-  beforeDestroy() {
-    this.teardown();
   },
   beforeUnmount() {
     this.teardown();
@@ -54,9 +49,7 @@ module.exports = {
       const theme = this.$vuetify && this.$vuetify.theme;
       if (dark === null || dark === undefined || !theme) return;
       const name = dark ? "dark" : "light";
-      if (!theme.global) {
-        theme.dark = dark;
-      } else if (typeof theme.change === "function") {
+      if (typeof theme.change === "function") {
         theme.change(name);
       } else if (theme.global.name && typeof theme.global.name === "object") {
         theme.global.name.value = name;

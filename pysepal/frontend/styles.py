@@ -6,12 +6,9 @@ from typing import Tuple
 
 import ipyvuetify as v
 from IPython.display import HTML, Javascript, display
-from ipyvuetify._version import semver
-from ipywidgets import Widget
-from traitlets import Bool, HasTraits, Unicode, link
+from traitlets import Bool, HasTraits, link
 
 import pysepal.scripts.utils as su
-from pysepal._vuetify import IPYVUETIFY_V3
 
 ################################################################################
 # access the folders where style information is stored (layers, widgets)
@@ -78,7 +75,7 @@ LIGHT_THEME = {
     "anchor": "#f3f3f3",
     "secondary": "#2199C4",
     "secondary_contrast": "#5d76ab",
-    # the Vuetify 2 defaults, kept on Vuetify 3 whose error default is #B00020
+    # set explicitly: Vuetify's own error default is #B00020
     "success": "#4CAF50",
     "info": "#2196F3",
     "warning": "#FB8C00",
@@ -93,41 +90,8 @@ LIGHT_THEME = {
 THEMES = {True: DARK_THEME, False: LIGHT_THEME}
 "colors of each theme, keyed by whether it is dark"
 
-_V3_COLORS = ("primary", "secondary", "error", "info", "success", "warning")
-_V3_SURFACE = {True: "#1E1E1E", False: "#FFFFFF"}
-
-
-class ThemeColors(Widget):
-    """The Vuetify 2 colour model, extended with the pysepal colour names.
-
-    Vuetify 3 has its own colour model, which takes custom names through
-    ``custom_theme_colors``; see :func:`apply_palette`.
-    """
-
-    _model_name = Unicode("ThemeColorsModel").tag(sync=True)
-
-    _model_module = Unicode("jupyter-vuetify").tag(sync=True)
-
-    _view_module_version = Unicode(semver).tag(sync=True)
-
-    _model_module_version = Unicode(semver).tag(sync=True)
-
-    _theme_name = Unicode().tag(sync=True)
-
-    primary = Unicode().tag(sync=True)
-    primary_contrast = Unicode().tag(sync=True)
-    secondary = Unicode().tag(sync=True)
-    secondary_contrast = Unicode().tag(sync=True)
-    accent = Unicode().tag(sync=True)
-    error = Unicode().tag(sync=True)
-    info = Unicode().tag(sync=True)
-    success = Unicode().tag(sync=True)
-    warning = Unicode().tag(sync=True)
-    anchor = Unicode(None, allow_none=True).tag(sync=True)
-    main = Unicode().tag(sync=True)
-    bg = Unicode().tag(sync=True)
-    menu = Unicode().tag(sync=True)
-    darker = Unicode().tag(sync=True)
+_STANDARD_COLORS = ("primary", "secondary", "error", "info", "success", "warning")
+_SURFACE = {True: "#1E1E1E", False: "#FFFFFF"}
 
 
 def apply_palette(themes) -> None:
@@ -139,32 +103,22 @@ def apply_palette(themes) -> None:
     """
     for dark, colors in ((True, themes.dark), (False, themes.light)):
         palette = THEMES[dark]
-        if not IPYVUETIFY_V3:
-            for name, value in palette.items():
-                setattr(colors, name, value)
-            continue
-
-        # Vuetify 3 refuses accent/anchor and drops unknown names: the standard
+        # Vuetify refuses accent/anchor and drops unknown names: the standard
         # colours are traits, the others travel as custom colours.
-        for name in _V3_COLORS:
+        for name in _STANDARD_COLORS:
             setattr(colors, name, palette[name])
         colors.primary_darken_1 = palette["primary"]
         colors.secondary_darken_1 = palette["secondary"]
         colors.background = palette["bg"]
-        colors.surface = _V3_SURFACE[dark]
+        colors.surface = _SURFACE[dark]
         colors.custom_theme_colors = {
             name.replace("_", "-"): value
             for name, value in palette.items()
-            if name not in _V3_COLORS
+            if name not in _STANDARD_COLORS
         }
 
 
-if IPYVUETIFY_V3:
-    apply_palette(v.theme.themes)
-else:
-    # override the default theme with the custom ones
-    v.theme.themes.light = ThemeColors(_theme_name="light", **LIGHT_THEME)
-    v.theme.themes.dark = ThemeColors(_theme_name="dark", **DARK_THEME)
+apply_palette(v.theme.themes)
 
 ################################################################################
 # define classes and method to make the application responsive

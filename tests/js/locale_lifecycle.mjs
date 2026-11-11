@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
-// argv: the shared script, one major's markup, then optional JSON props.
-const script = readFileSync(process.argv[2], "utf8");
-const markup = readFileSync(process.argv[3], "utf8");
-// The `v-if` of the element that wraps the check icon, whichever major's slot it is.
+// argv: LocaleSelect.vue, then optional JSON props.
+const source = readFileSync(process.argv[2], "utf8");
+const [markup, rest] = source.split("<script>");
+const script = rest.split("</script>")[0];
+// The `v-if` of the slot that wraps the check icon.
 const selectedCondition = markup.match(
   /v-if="([^"]+)"[^>]*>\s*<v-icon[^>]*>mdi-check</
 )[1];
@@ -90,8 +91,8 @@ const blocked = browser("", "fr", true).mount();
 blocked.selectLanguage("es");
 assert.equal(blocked.value, "es");
 
-const props = process.argv[4]
-  ? JSON.parse(process.argv[4])
+const props = process.argv[3]
+  ? JSON.parse(process.argv[3])
   : { value: "pt-BR", offered: ["en", "pt_br"] };
 const alternate = browser("en", "en");
 const alternateFirst = alternate.mount("en", props.offered);

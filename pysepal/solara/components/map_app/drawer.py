@@ -5,12 +5,11 @@ from typing import Callable, Iterable, Mapping, Optional, Sequence
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal._vuetify import density
 from pysepal.message import msg
 from pysepal.solara.components.locale_select import LocaleSelectComponent
 from pysepal.solara.theme import ThemeState
 
-from ._ui import IconButton, NavItem, text_class
+from ._ui import IconButton, NavItem
 from .theme_toggle import ThemeToggle
 
 DEFAULT_STEP_ICON = "mdi-checkbox-blank-circle-outline"
@@ -59,7 +58,7 @@ def Drawer(
                 if not rail:
                     rv.Html(
                         tag="span",
-                        class_=text_class("title", "font-weight-medium"),
+                        class_="text-h6 font-weight-medium",
                         children=[app_title],
                     )
             if not rail:
@@ -73,7 +72,7 @@ def Drawer(
         rv.Divider(class_="ma-0 pa-0")
 
         with rv.Html(tag="div", class_="sepal-mapapp__drawer-top"):
-            with rv.List(class_="pa-0 ma-0", **density()):
+            with rv.List(class_="pa-0 ma-0", density="compact"):
                 if has_map:
                     NavItem(
                         icon="mdi-map",
@@ -96,7 +95,7 @@ def Drawer(
         with rv.Html(tag="div", class_="sepal-mapapp__drawer-bottom"):
             rv.Divider(class_="mb-4")
             if links:
-                with rv.List(class_="pa-0 ma-0", **density()):
+                with rv.List(class_="pa-0 ma-0", density="compact"):
                     for link in links:
                         NavItem(
                             icon=link["icon"],

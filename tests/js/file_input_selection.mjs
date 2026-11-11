@@ -1,15 +1,16 @@
-// Drives FileInput.js's own selection methods, so the browser side of
+// Drives FileInput.vue's own selection methods, so the browser side of
 // multiple mode is tested rather than trusted.
 //
-// node file_input_selection.mjs <FileInput.js> <JSON of the widget's trait defaults>
+// node file_input_selection.mjs <FileInput.vue> <JSON of the widget's trait defaults>
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
-const script = readFileSync(process.argv[2], "utf8");
+const source = readFileSync(process.argv[2], "utf8");
+const script = source.split("<script>")[1].split("</script>")[0];
 const traits = JSON.parse(process.argv[3]);
 
-// Evaluated like ipyvue 1 does: a CommonJS body that sets module.exports
+// Evaluated as a CommonJS body that sets module.exports
 let now = 10_000;
 const module = { exports: {} };
 runInNewContext(script, {
@@ -137,18 +138,16 @@ both.onFileSelect(folder("/r/sub"));
 assert.equal(both.current_folder, "/r/sub");
 assert.deepEqual([...both.value], ["/r/sub"]);
 
-// theme colours are spelled for the Vuetify major the page runs
-const csv = file("/r/a.csv");
-const v2 = mount();
-assert.equal(v2.getIconColor(csv), "secondary_contrast");
-assert.match(v2.primaryColor, /--v-primary-base/);
-const v3 = mount({ $vuetify: { theme: { global: { name: "light" } } } });
-assert.equal(v3.getIconColor(csv), "secondary-contrast");
-assert.equal(v3.getIconColor(folder("/r/sub")), "primary-contrast");
-assert.equal(v3.primaryColor, "rgb(var(--v-theme-primary))");
-assert.equal(Object.keys(v3.getItemStyle(0)).length, 0);
-v3.selectedIndex = 0;
+// icons and the keyboard-selected row use the Vuetify 3 theme colours
+const themed = mount();
+assert.equal(themed.getIconColor(file("/r/a.csv")), "secondary-contrast");
+assert.equal(themed.getIconColor(folder("/r/sub")), "primary-contrast");
+assert.equal(themed.getIconColor(file("/r/notes.xyz")), "anchor");
+assert.equal(Object.keys(themed.getItemStyle(0)).length, 0);
+assert.equal(Object.keys(themed.getTitleStyle(0)).length, 0);
+themed.selectedIndex = 0;
 assert.equal(
-  v3.getItemStyle(0).borderLeft,
+  themed.getItemStyle(0).borderLeft,
   "3px solid rgb(var(--v-theme-primary))"
 );
+assert.equal(themed.getTitleStyle(0).color, "rgb(var(--v-theme-primary))");

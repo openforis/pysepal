@@ -98,8 +98,10 @@
       :aria-label="isCollapsed ? 'Show legend' : 'Hide legend'"
       :aria-expanded="String(!isCollapsed)"
     >
-      <v-icon v-bind="iconProps('small')">mdi-map-legend</v-icon>
-      <v-icon v-bind="iconProps('x-small')">{{
+      <!-- px: the named icon sizes scale with the font; the icons take the
+           bar's themed text colour -->
+      <v-icon :size="16">mdi-map-legend</v-icon>
+      <v-icon :size="12">{{
         isCollapsed ? "mdi-chevron-up" : "mdi-chevron-down"
       }}</v-icon>
     </div>
@@ -109,30 +111,22 @@
 <script>
 module.exports = {
   // legend_data, visible, collapsed, selector_options and selected are traits:
-  // ipyvue adds them as data, and declaring them as props too makes Vue 3 warn
+  // ipyvue adds them as data, and declaring them as props too makes Vue warn
   // about the duplicate.
   data() {
     return {
       internalCollapsed: false,
     };
   },
-  // Not in data(): the traits cannot be read there under either ipyvue.
+  // Not in data(): ipyvue calls it before the traits exist.
   created() {
     this.internalCollapsed = !!this.collapsed;
   },
   computed: {
-    v3() {
-      return !!(
-        this.$vuetify &&
-        this.$vuetify.theme &&
-        this.$vuetify.theme.global
-      );
-    },
     isDark() {
       // Reactive: changes when the user toggles the Vuetify theme at runtime.
       const theme = this.$vuetify && this.$vuetify.theme;
       if (!theme) return false;
-      if (!this.v3) return theme.dark === true;
       const current = theme.global.current;
       // A ref, unless the reactive $vuetify has already unwrapped it.
       const definition =
@@ -188,14 +182,6 @@ module.exports = {
     },
   },
   methods: {
-    iconProps(size) {
-      if (this.v3) {
-        // Vuetify 3's named icon sizes scale with the font; Vuetify 2's are these
-        // pixels. Vuetify 3 icons take the bar's themed text colour.
-        return { size: { small: 16, "x-small": 12 }[size] };
-      }
-      return { [size]: true, dark: this.isDark, light: !this.isDark };
-    },
     toggleCollapse() {
       const nextCollapsed = !this.internalCollapsed;
       this.internalCollapsed = nextCollapsed;

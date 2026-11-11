@@ -1,6 +1,5 @@
 """The native Solara MapApp shell: a full-screen map with a drawer of steps and a tool panel."""
 
-import contextlib
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional, Sequence, Union
 
@@ -8,7 +7,6 @@ import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.message import msg
 from pysepal.solara.theme import ThemeState, resolve_theme_state
 
@@ -32,7 +30,7 @@ DISPLAYS = ("step", "dialog")
 
 _FIELD = {"color": "primary", "variant": "underlined"}
 _CONTROL = {"color": "primary"}
-V3_DEFAULTS = {
+DEFAULTS = {
     **dict.fromkeys(
         ["VTextField", "VTextarea", "VSelect", "VAutocomplete", "VCombobox", "VFileInput"], _FIELD
     ),
@@ -40,19 +38,11 @@ V3_DEFAULTS = {
         ["VCheckbox", "VCheckboxBtn", "VRadioGroup", "VRadio", "VSwitch", "VSlider"], _CONTROL
     ),
 }
-"""Vuetify 3 defaults for everything the shell holds, its dialogs and menus included.
+"""Vuetify defaults for everything the shell holds, its dialogs and menus included.
 
-Vuetify 3 fills fields and drops the primary accent of focused and selected
-controls; these give an app the Vuetify 2 look it was designed with. A prop set
-on a component still wins.
+They give the shell's content pysepal's look: underlined fields, and the primary
+accent on focused and selected controls. A prop set on a component still wins.
 """
-
-
-def _defaults():
-    """Return the context that gives the shell's content its Vuetify 3 defaults."""
-    if IPYVUETIFY_V3:
-        return rv.DefaultsProvider(defaults=V3_DEFAULTS)
-    return contextlib.nullcontext()
 
 
 def _map_widget(main_map):
@@ -377,7 +367,7 @@ def MapApp(
 
     with rv.Html(tag="div", class_=" ".join(classes), style_=local_vars) as main:
         solara.Style(CSS)
-        with _defaults():
+        with rv.DefaultsProvider(defaults=DEFAULTS):
             ViewportBridge(
                 css_vars=css_vars,
                 body_class="sepal-modal-open" if dialog_open else "",

@@ -1,8 +1,6 @@
 """The mixin that gives a pysepal widget ``viz``, ``hide``/``show`` and tooltips.
 
-It lives outside ``pysepal.sepalwidgets`` so that the map controls keep that API
-on both ipyvuetify majors without importing the deprecated widget package, which
-``pysepal.sepalwidgets.sepalwidget`` re-exports it from.
+The map controls build on it.
 """
 
 import warnings
@@ -13,8 +11,6 @@ import traitlets as t
 from deprecated.sphinx import versionadded
 from traitlets import observe
 from typing_extensions import Self
-
-from pysepal._vuetify import IPYVUETIFY_V3
 
 __all__ = ["SepalWidget", "Tooltip"]
 
@@ -238,10 +234,7 @@ class Tooltip(v.Tooltip):
         kwargs.setdefault("close_delay", 200)
 
         self.v_slots = [{"name": "activator", "variable": "tooltip", "children": widget}]
-        if IPYVUETIFY_V3:
-            widget.v_bind = "tooltip.props"
-        else:
-            widget.v_on = "tooltip.on"
+        widget.v_bind = "tooltip.props"
 
         self.children = [tooltip]
 
