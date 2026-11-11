@@ -28,9 +28,10 @@ su.init_ee()
 # The deprecated ipyvuetify widget layer supports ipyvuetify 1 only.
 _LEGACY_SUITES = [
     "test_sepalwidgets/*",
-    "test_aoi/*",
-    "test_planetapi/*",
-    "test_templates/*",
+    "test_aoi/test_AoiTile.py",
+    "test_aoi/test_AoiView.py",
+    "test_planetapi/test_PlanetView.py",
+    "test_planetapi/test_PlanetWidgets.py",
 ]
 collect_ignore_glob = _LEGACY_SUITES if IPYVUETIFY_V3 else []
 
