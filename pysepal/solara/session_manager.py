@@ -7,6 +7,7 @@ Solara applications.
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Optional
 
 from eeclient.client import EESession
@@ -21,6 +22,43 @@ from pysepal.solara.runtime_context import get_current_runtime_id
 from pysepal.solara.theme import ThemeState
 
 logger = logging.getLogger("sepalui.session_manager")
+
+_RESULTS_DIR_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pysepal-results-dir")
+"""Creates module results directories off the render path.
+
+pysepal-api >= 0.3 made ``SepalClient.create()`` pure, so the ``createFolder``
+call it used to make now runs here, where a slow SEPAL API cannot block a render.
+"""
+
+
+def _schedule_results_dir(client: SepalClient, module_name: str) -> None:
+    """Create the module results directory in the background.
+
+    Failures are logged, never raised: they must not break session creation.
+
+    Args:
+        client: The client to create the directory with.
+        module_name: The module whose directory to create, for logging.
+    """
+    ensure = getattr(client, "ensure_results_dir", None)
+    if ensure is None:
+        # pysepal-api 0.2 creates the directory inside SepalClient.create().
+        return
+
+    def _run() -> None:
+        try:
+            ensure()
+        except Exception:
+            logger.warning(
+                f"Could not create the results directory for '{module_name}'", exc_info=True
+            )
+
+    try:
+        _RESULTS_DIR_EXECUTOR.submit(_run)
+    except Exception:
+        logger.warning(
+            f"Could not schedule the results directory for '{module_name}'", exc_info=True
+        )
 
 
 class SessionManager:
@@ -99,6 +137,7 @@ class SessionManager:
 
         gee_interface = GEEInterface(gee_session)
         sepal_client = SepalClient.create(session_id=sepal_session_id, module_name=module_name)
+        _schedule_results_dir(sepal_client, module_name)
         drive_interface = GDriveInterface(sepal_headers=sepal_headers)
         theme_state = ThemeState()
 
