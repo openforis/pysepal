@@ -17,8 +17,12 @@ from component.scripts import (
     gradient_legend,
     upsert_legends,
 )
+from solara.util import IPYVUETIFY_V3
 
 from pysepal.solara.notifications import use_notifications
+
+# Vuetify 3 renamed these props; solara.util.IPYVUETIFY_V3 says which major is installed.
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
 
 
 @solara.component
@@ -103,7 +107,7 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
             color="primary",
             loading=process_task.pending,
             disabled=process_task.pending or not has_aoi,
-            small=True,
+            **SMALL,
             block=True,
         )
         solara.Button(
@@ -113,6 +117,6 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
             outlined=True,
             loading=failing_task.pending,
             disabled=failing_task.pending,
-            small=True,
+            **SMALL,
             block=True,
         )

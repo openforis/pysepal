@@ -15,10 +15,10 @@ the right end. The entries that do not fit go into a menu at the end of the row.
 The panel docks at the bottom of the window, opened by its tab, and the task
 pill and its logger hide.
 
-It is new in pysepal 4.2. It is a plain `@solara.component` built from Solara
-and Vuetify elements. The legacy `pysepal.sepalwidgets.vue_app.MapApp`, a Vue
-template used as `MapApp.element(...)`, still works and has not changed. Use the
-native one in new apps; pysepal 5 keeps only the native one.
+It is a plain `@solara.component` built from Solara and Vuetify elements, so it
+renders on ipyvuetify 1 (Vuetify 2) and ipyvuetify 3 (Vuetify 3). It replaces
+the legacy `pysepal.sepalwidgets.vue_app.MapApp`, a Vue 2 template that is
+deprecated with the rest of sepalwidgets (see `sepalwidgets-deprecation.md`).
 
 ## Quick start
 
@@ -56,28 +56,28 @@ def Page():
 
 ## Arguments
 
-| Argument                | Purpose                                                                                                              |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `app_title`, `app_icon` | Title and MDI icon at the top of the drawer.                                                                         |
-| `main_map`              | The map widget, or a one-item list holding it (see "The map" below).                                                 |
-| `steps_data`            | The drawer steps (see "Steps").                                                                                      |
-| `right_panel_config`    | `title`, `icon`, `width` (px as a number, `"300"` or `"300px"`), `description` and `toggle_icon` of the right panel. |
-| `right_panel_content`   | The panel sections: `title`, `icon`, `description`, `content`, `divider`. No section, no panel.                      |
-| `right_panel_footer`    | Elements or widgets pinned below the sections, e.g. an action bar.                                                   |
-| `right_panel_open`      | Whether the panel starts open. A later change opens or closes it.                                                    |
-| `on_right_panel_open`   | Called with the new state when the user opens or closes the panel.                                                   |
-| `initial_step`          | The step to open on mount, if it can show (it has content and its `display` is `"step"` or `"dialog"`).              |
-| `current_step`          | The active step. A later change activates that step, unless it has no content; `None` shows the map.                 |
-| `on_current_step`       | Called with the step the user activates (`None` when they go back to the map).                                       |
-| `step_open`             | A later change to `False` closes the step dialog, to `True` reopens it.                                              |
-| `on_step_open`          | Called when a step opens or closes.                                                                                  |
-| `is_pinned`             | Whether the drawer starts pinned open. An unpinned drawer starts as a rail and collapses on a click on the map.      |
-| `theme_state`           | The `ThemeState` the toggle and the map follow; defaults to the current scope's.                                     |
-| `locales`               | The locale codes the language selector offers, normally `messages.available_locales()`.                              |
-| `repo_url`              | Target of the Source Code and Report Bug links; empty hides both.                                                    |
-| `docs_url`              | Target of the Documentation link; empty hides it.                                                                    |
-| `dialog_width`          | Default width of dialog steps, in the forms of a step's `width`. 800 when it does not read as a size.                |
-| `dialog_fullscreen`     | Show dialog steps full screen.                                                                                       |
+| Argument                | Purpose                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `app_title`, `app_icon` | Title and MDI icon at the top of the drawer.                                                                   |
+| `main_map`              | The map widget, or a one-item list holding it (see "The map" below).                                           |
+| `steps_data`            | The drawer steps (see "Steps").                                                                                |
+| `right_panel_config`    | `title`, `icon`, `width` (px), `description` and `toggle_icon` of the right panel.                             |
+| `right_panel_content`   | The panel sections: `title`, `icon`, `description`, `content`, `divider`. No section, no panel.                |
+| `right_panel_footer`    | Elements or widgets pinned below the sections, e.g. an action bar.                                             |
+| `right_panel_open`      | Whether the panel starts open. A later change opens or closes it.                                              |
+| `on_right_panel_open`   | Called with the new state when the user opens or closes the panel.                                             |
+| `initial_step`          | The step to open on mount, if it can show (it has content and its `display` is `"step"` or `"dialog"`).       |
+| `current_step`          | The active step. A later change activates that step; `None` shows the map.                                    |
+| `on_current_step`       | Called with the step the user activates (`None` when they go back to the map).                                 |
+| `step_open`             | A later change to `False` closes the step dialog, to `True` reopens it.                                        |
+| `on_step_open`          | Called when a step opens or closes.                                                                            |
+| `is_pinned`             | Whether the drawer starts pinned open. An unpinned drawer starts as a rail and collapses on a click on the map. |
+| `theme_state`           | The `ThemeState` the toggle and the map follow; defaults to the current scope's.                               |
+| `locales`               | The locale codes the language selector offers, normally `messages.available_locales()`.                        |
+| `repo_url`              | Target of the Source Code and Report Bug links; empty hides both.                                              |
+| `docs_url`              | Target of the Documentation link; empty hides it.                                                              |
+| `dialog_width`          | Default width of dialog steps, in px or `"NN%"` of the window.                                                 |
+| `dialog_fullscreen`     | Show dialog steps full screen.                                                                                 |
 
 A `content` is an element (`AoiView(...)`), a widget, or a list of them.
 
@@ -90,22 +90,22 @@ matching `on_*` callback and keep the value in a reactive.
 
 Each entry of `steps_data` is a dict:
 
-| Key                  | Meaning                                                                                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                 | Unique id, reported through `on_current_step`. Steps that share an id or have none still work, but report an id the parent cannot tell apart.                             |
-| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                                         |
-| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`.            |
-| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                                           |
-| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                                         |
-| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                               |
-| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id; a step without content closes the dialog instead). |
-| `width`, `height`    | Size of a dialog step: px as a number, `"600"` or `"600px"`, or `"NN%"` of the window. A size that does not read falls back to `dialog_width`.                            |
+| Key                  | Meaning                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | Unique id, reported through `on_current_step`.                                                                                                                |
+| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                             |
+| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`. |
+| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                               |
+| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                             |
+| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                   |
+| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id).                                        |
+| `width`, `height`    | Size of a dialog step, in px or `"NN%"` of the window.                                                                                                        |
 
 All step and section contents stay mounted. The shell only hides the ones that
 are not shown, so a form keeps what the user typed when they leave the step and
-come back. On mount, the shell opens the step named by `current_step` if it
-has content, else `initial_step`. If there is no map and no such step, it opens
-the first step that can show.
+come back. On mount, the shell opens the step named by `current_step` or
+`initial_step`. If there is no map and no such step, it opens the first step
+that can show.
 
 ## The map
 
@@ -120,8 +120,8 @@ has these attributes, the shell keeps them up to date:
 - `bind_theme_state(theme_state)`: the map's basemap and its controls follow the
   theme.
 
-`SepalMap` has all of these. Build it with `fullscreen=True` so it fills the
-shell. The Leaflet controls move out from under the drawer and the panel.
+`SepalMap` has all of these. The Leaflet controls move out from under the
+drawer and the panel.
 
 ## Theme and language
 
@@ -153,16 +153,14 @@ While a step dialog is open, the shell also puts the class `sepal-modal-open` on
 
 The legend and the notifications use these to stay clear of the panels, so mount
 `NotificationProvider()` and the legend next to the shell and they follow it.
-See `docs/guides/solara-notifications.md` for the notification API.
 
 ## Moving from the legacy MapApp
 
-| Legacy                                                 | Native                                                              |
-| ------------------------------------------------------ | ------------------------------------------------------------------- |
-| `from pysepal.sepalwidgets.vue_app import MapApp`      | `from pysepal.solara.components.map_app import MapApp`              |
-| `MapApp.element(...)`                                  | `MapApp(...)`, same keyword arguments                               |
-| `model=HasTraits()`                                    | `current_step` / `on_current_step` and `step_open` / `on_step_open` |
-| `theme_toggle=`, `language_selector=`                  | built in; pass `theme_state=` and `locales=`                        |
-| content built as widgets to keep their click handlers  | elements work too, e.g. `solara.Button(..., on_click=...)`          |
-| observing the widget's `right_panel_open`, `step_open` | `on_right_panel_open`, `on_step_open`                               |
-| an `rv.Dialog` in the content needs `eager=True`       | it mounts when it opens; drop `eager=True`                          |
+| Legacy                                                  | Native                                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `from pysepal.sepalwidgets.vue_app import MapApp`       | `from pysepal.solara.components.map_app import MapApp`                    |
+| `MapApp.element(...)`                                   | `MapApp(...)`, same keyword arguments                                     |
+| `model=HasTraits()`                                     | `current_step` / `on_current_step` and `step_open` / `on_step_open`       |
+| `theme_toggle=`, `language_selector=`                   | built in; pass `theme_state=` and `locales=`                              |
+| content built as widgets to keep their click handlers   | elements work too, e.g. `solara.Button(..., on_click=...)`                |
+| observing the widget's `right_panel_open`, `step_open`  | `on_right_panel_open`, `on_step_open`                                     |

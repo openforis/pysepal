@@ -24,6 +24,7 @@ import os
 from pathlib import Path
 
 import solara
+from solara.util import IPYVUETIFY_V3
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
@@ -38,6 +39,10 @@ from pysepal.solara.components.task_button import TaskButtonComponent, use_task_
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
+
+# Vuetify 3 spells the small button `size="small"`; solara.util.IPYVUETIFY_V3 says which
+# major is installed.
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
 
 #: Points the demo at real class maps instead of the generated stand-in.
 RASTER_DIR_ENV_VAR = "PYSEPAL_DEMO_RASTER_DIR"
@@ -253,11 +258,7 @@ def RasterPanel():
                         label=msg("buttons.large"), **large_props, small=True, block=True
                     ),
                     solara.Button(
-                        msg("buttons.clear_rasters"),
-                        on_click=clear,
-                        color="primary",
-                        block=True,
-                        small=True,
+                        msg("buttons.clear_rasters"), on_click=clear, block=True, **SMALL
                     ),
                 ],
                 "description": msg(

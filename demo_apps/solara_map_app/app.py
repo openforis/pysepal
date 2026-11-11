@@ -32,6 +32,7 @@ from component.scripts import sample_folder
 from component.tile import ExportPanel, FilesPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
 
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara import (
     get_current_drive_interface,
     get_current_filesystem,
@@ -43,7 +44,6 @@ from pysepal.solara import (
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiView
-from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider
 
 setup_solara_server(extra_asset_locations=[])
