@@ -86,7 +86,6 @@ def test_need_ee_raises_when_not_initialized(monkeypatch) -> None:
 
 def test_switch() -> None:
     """Test the switch decorator."""
-
     # create a fake object that uses the decorator
     class Obj:
         def __init__(self):
