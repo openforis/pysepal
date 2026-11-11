@@ -142,6 +142,7 @@ pysepal = [
     "frontend/**/*",
     "templates/**/*",
     "**/*.vue",
+    "**/*.js",
     "**/*.css",
     "solara/common/assets/*",
     "templates/**/.*"

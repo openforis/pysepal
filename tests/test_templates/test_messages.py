@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.i18n import current_locale, set_locale
+
+# the module_factory templates are sepalwidgets apps (ipyvuetify 1 only)
+legacy_template = pytest.mark.skipif(IPYVUETIFY_V3, reason="sepalwidgets needs ipyvuetify 1")
 
 TEMPLATES = Path(__file__).parents[2] / "pysepal" / "templates"
 
@@ -63,6 +67,7 @@ def test_scaffold_messages_follow_locale_and_fall_back_to_english(scaffold):
         set_locale(original)
 
 
+@legacy_template
 def test_scaffold_notebook_builds_app_title_from_catalogue(scaffold):
     from pysepal import sepalwidgets as sw
 
@@ -76,6 +81,7 @@ def test_scaffold_notebook_builds_app_title_from_catalogue(scaffold):
         app_bar.close()
 
 
+@legacy_template
 def test_panel_notebook_formats_footer_year(tmp_path):
     from pysepal import sepalwidgets as sw
 
