@@ -1,0 +1,336 @@
+/*******************************************************************************
+ * The native MapApp shell (pysepal.solara.components.map_app).
+ *
+ * The shell positions its own sheets instead of using Vuetify's layout system,
+ * whose API differs between Vuetify 2 and 3. Its layers stay below Vuetify's
+ * modal baseline: see the layering contract in frontend/css/base.css.
+ * The --sepal-mapapp-* variables are set inline on the shell root.
+ */
+
+.sepal-mapapp__map {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+}
+
+/* A narrow window always keeps the bottom band for the docked panel, so the map
+ * does not change size each time the panel opens. */
+.sepal-mapapp--narrow .sepal-mapapp__map {
+  bottom: 45vh;
+}
+
+.sepal-mapapp__map .leaflet-left {
+  transition: left 0.3s ease;
+  left: var(--sepal-mapapp-drawer) !important;
+}
+
+.sepal-mapapp__map .leaflet-right {
+  transition: right 0.3s ease;
+  right: var(--sepal-mapapp-right) !important;
+}
+
+.sepal-mapapp--narrow .sepal-mapapp__map .leaflet-left,
+.sepal-mapapp--narrow .sepal-mapapp__map .leaflet-right {
+  transition: none !important;
+}
+
+.sepal-mapapp .full-screen-map > .leaflet-container {
+  position: fixed !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 100;
+  bottom: 0;
+  left: 0;
+}
+
+.sepal-mapapp__step {
+  position: fixed;
+  top: 0;
+  left: var(--sepal-mapapp-drawer);
+  right: var(--sepal-mapapp-right);
+  bottom: 0;
+  z-index: 1;
+  padding: 16px;
+  overflow: auto;
+  transition: left 0.3s ease, right 0.3s ease;
+}
+
+.sepal-mapapp--narrow-bottom .sepal-mapapp__step {
+  bottom: var(--sepal-mapapp-bottom);
+}
+
+/* drawer */
+
+.sepal-mapapp__drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid rgba(0, 0, 0, 0.12);
+  transition: width 0.2s ease, bottom 0.3s ease;
+}
+
+.sepal-mapapp__drawer.theme--dark,
+.sepal-mapapp__drawer.v-theme--dark {
+  border-right-color: rgba(255, 255, 255, 0.12);
+}
+
+.sepal-mapapp__drawer--rail {
+  width: 60px;
+}
+
+.sepal-mapapp__drawer--disabled,
+.sepal-mapapp__drawer--disabled .v-list-item {
+  pointer-events: none !important;
+}
+
+.sepal-mapapp--narrow-bottom .sepal-mapapp__drawer {
+  bottom: var(--sepal-mapapp-bottom);
+}
+
+.sepal-mapapp__drawer-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  height: 64px;
+  flex: 0 0 auto;
+}
+
+.sepal-mapapp__app-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+}
+
+.sepal-mapapp__drawer-top {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sepal-mapapp__drawer-bottom {
+  flex: 0 0 auto;
+  padding: 16px 0;
+}
+
+.sepal-mapapp__item {
+  white-space: nowrap;
+}
+
+/* A rail item is its icon alone, centred in the 60px rail. */
+.sepal-mapapp__drawer--rail .v-list {
+  overflow: hidden;
+}
+
+.sepal-mapapp__drawer--rail .v-list-item {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.sepal-mapapp__drawer--rail .v-list-item__prepend > .v-icon,
+.sepal-mapapp__drawer--rail .v-list-item__icon {
+  margin-inline-end: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* --v-theme-on-surface is Vuetify 3 only; Vuetify 2 falls back to black. */
+.sepal-mapapp .active-step {
+  background-color: rgba(var(--v-theme-on-surface, 0, 0, 0), 0.1);
+}
+
+.sepal-mapapp a,
+.sepal-mapapp__dialog a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.sepal-mapapp .link-item {
+  color: inherit;
+  text-decoration: none !important;
+}
+
+.sepal-mapapp__config {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.sepal-mapapp__config--rail {
+  flex-direction: column;
+}
+
+/* In the rail the language button shrinks to a round icon button like the
+ * theme toggle: the code text goes, the icon is centred. */
+.sepal-mapapp__config--rail .v-btn {
+  min-width: 36px !important;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+}
+
+.sepal-mapapp__config--rail .v-btn .v-btn__content {
+  font-size: 0 !important;
+  gap: 0 !important;
+}
+
+.sepal-mapapp__config--rail .v-btn .v-btn__content .v-icon {
+  font-size: 20px !important;
+  margin: 0 !important;
+}
+
+.sepal-mapapp__drawer-toggle {
+  position: fixed;
+  top: 50%;
+  left: var(--sepal-mapapp-drawer);
+  transform: translateY(-50%);
+  z-index: 161;
+  margin-left: -5px;
+  transition: left 0.2s ease;
+}
+
+.sepal-mapapp--narrow-bottom .sepal-mapapp__drawer-toggle {
+  top: calc((100vh - var(--sepal-mapapp-bottom)) / 2);
+}
+
+.sepal-mapapp .control-btn {
+  min-width: 25px !important;
+  padding: 0 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  border-radius: 3px !important;
+}
+
+/* right panel */
+
+.sepal-right-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 160;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -2px 0 18px rgba(0, 0, 0, 0.08) !important;
+  transition: transform 0.3s ease;
+}
+
+.sepal-right-panel--closed {
+  transform: translateX(100%);
+  box-shadow: none !important;
+}
+
+.sepal-right-panel--narrow {
+  top: auto;
+  left: 0;
+  width: 100vw;
+  height: 45vh;
+  box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.12) !important;
+}
+
+.sepal-right-panel--narrow.sepal-right-panel--closed {
+  transform: translateY(100%);
+}
+
+.sepal-right-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sepal-right-panel .drawer-footer {
+  flex: 0 0 auto;
+}
+
+.sepal-right-panel .section-header {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+  margin-bottom: 12px;
+}
+
+.sepal-right-panel .section-description {
+  padding-left: 16px;
+  margin-top: 8px;
+}
+
+.sepal-right-panel .panel-description {
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.sepal-right-panel.theme--dark .section-header,
+.sepal-right-panel.v-theme--dark .section-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.sepal-right-panel.theme--dark .panel-description,
+.sepal-right-panel.v-theme--dark .panel-description {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Section cards sit on the panel's own surface. No !important: a colour class
+ * (a filled alert, a color="primary" card) sets its background with one. */
+.sepal-right-panel .drawer-top .v-sheet,
+.sepal-right-panel .drawer-top .v-card {
+  background-color: transparent;
+}
+
+.sepal-right-panel__tab {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 161;
+}
+
+.sepal-right-panel__tab .control-btn {
+  box-shadow: -2px 0 6px rgba(0, 0, 0, 0.12) !important;
+  border-radius: 3px 0 0 3px !important;
+}
+
+.sepal-mapapp--narrow .sepal-right-panel__tab {
+  top: auto;
+  right: auto;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.sepal-mapapp--narrow .sepal-right-panel__tab .control-btn {
+  min-width: 64px !important;
+  height: 25px !important;
+  border-radius: 3px 3px 0 0 !important;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.12) !important;
+}
+
+.sepal-mapapp--narrow .sepal-right-panel__tab .v-icon {
+  transform: rotate(90deg);
+}
+
+/* step dialog */
+
+.sepal-mapapp__dialog .dialog-card {
+  max-width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto !important;
+}
+
+.sepal-mapapp__dialog .dialog-content {
+  min-height: 200px;
+  max-height: 70vh;
+  overflow-y: auto;
+  flex: 1;
+}

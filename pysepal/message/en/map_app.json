@@ -1,0 +1,16 @@
+{
+  "map_app": {
+    "map": "Map",
+    "pin": "Pin sidebar",
+    "unpin": "Unpin sidebar",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "show_panel": "Show extra content",
+    "close_panel": "Close panel",
+    "links": {
+      "code": "Source Code",
+      "docs": "Documentation",
+      "bug": "Report Bug"
+    }
+  }
+}
