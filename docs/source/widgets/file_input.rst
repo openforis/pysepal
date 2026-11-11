@@ -26,9 +26,11 @@ the value can be retrieve from the :code:`v_model` trait.
 Several files
 -------------
 
-With :code:`multiple=True` the value is a list of paths. A click on a file adds it to the selection or removes it, and a click on a folder opens it. The selection stays when the user opens another folder, so one selection can hold files from several folders. The field shows the number of selected files; click it to see the paths and remove one. The clear button removes all of them.
+With :code:`multiple=True` the value is a list of paths. A click on a file adds it to the selection or removes it, and a click on a folder opens it. A check at the right of each file shows if it is selected. The selection stays when the user opens another folder, so one selection can hold files from several folders. The field shows the number of selected files; click it to see the paths and remove one. The clear button removes all of them.
 
 Every path in the list must be inside :code:`root`, as in single mode. The widget removes a path that is not.
+
+To let the user also select folders, add :code:`select_folders=True`. A folder then has a check too: a click on the check selects the folder, and a click on the row still opens it. The field then counts items, not files.
 
 .. jupyter-execute::
     :raises:

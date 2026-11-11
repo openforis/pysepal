@@ -95,6 +95,7 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
     v_model = _selection_trait()
     file = _selection_trait()
     multiple = Bool(False).tag(sync=True)
+    select_folders = Bool(False).tag(sync=True)
     clearable = Bool(True).tag(sync=True)
     error_messages = List([]).tag(sync=True)
 
@@ -113,6 +114,7 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
         sepal_client: SepalClient = None,
         filesystem: Optional[FileSystem] = None,
         multiple: bool = False,
+        select_folders: bool = False,
         **kwargs,
     ):
         """Custom widget to select a file of the user, on the local disk or in SEPAL.
@@ -132,13 +134,15 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
             multiple: Select several files. ``value`` is then a ``list[str]``: a
                 click adds or removes a file, and the selection is kept when the
                 user enters another folder.
+            select_folders: With ``multiple=True``, also select folders. A folder
+                row still opens the folder: its check selects it.
         """
         self.client = sepal_client
         if filesystem is None and sepal_client is not None:
             filesystem = SandboxFileSystem(sepal_client)
         self.filesystem = filesystem if filesystem is not None else _default_filesystem(root)
 
-        super().__init__(multiple=multiple, **kwargs)
+        super().__init__(multiple=multiple, select_folders=select_folders, **kwargs)
 
         if self.filesystem is not None:
             try:
@@ -200,8 +204,9 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
                 setattr(self, name, empty)
 
     def set_state(self, sync_data):
-        """Apply browser state, except ``root`` and ``multiple``: Python sets them."""
-        sync_data = {k: v for k, v in sync_data.items() if k not in ("root", "multiple")}
+        """Apply browser state, except the settings that Python sets."""
+        python_only = ("root", "multiple", "select_folders")
+        sync_data = {k: v for k, v in sync_data.items() if k not in python_only}
         super().set_state(sync_data)
 
     def load_files(self, *_):

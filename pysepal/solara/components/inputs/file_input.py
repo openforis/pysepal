@@ -32,6 +32,7 @@ def FileInputComponent(
     on_value: Optional[Callable[[Union[str, List[str]]], None]] = None,
     filesystem: Optional[FileSystem] = None,
     multiple: bool = False,
+    select_folders: bool = False,
 ):
     """Solara component wrapper for FileInput widget.
 
@@ -49,6 +50,8 @@ def FileInputComponent(
             By default the user's files for this runtime.
         multiple: Select several files, possibly from several folders. The value
             is then a ``list[str]``, and ``""`` is read as ``[]``.
+        select_folders: With ``multiple=True``, also select folders. A folder row
+            still opens the folder: its check selects it.
 
     Returns:
         FileInput element configured as a Solara component.
@@ -94,6 +97,7 @@ def FileInputComponent(
         label=label,
         clearable=clearable,
         multiple=multiple,
+        select_folders=select_folders,
         value=current_value(),
         on_v_model=lambda v: None,
     )

@@ -137,3 +137,22 @@ def test_the_app_can_switch_the_mode(batch: Path) -> None:
         assert widget.v_model == ""
 
     _run(Harness(), interact)
+
+
+def test_select_folders_reaches_the_widget(batch: Path) -> None:
+    held = solara.reactive([])
+    sub = str(batch / "sub")
+
+    @solara.component
+    def Harness():
+        FileInputComponent(
+            filesystem=LocalFileSystem(batch), multiple=True, select_folders=True, value=held
+        )
+
+    async def interact(widget):
+        assert widget.select_folders is True
+
+        widget.set_state({"value": [sub]})
+        await wait_until(lambda: held.value == [sub])
+
+    _run(Harness(), interact)

@@ -81,14 +81,8 @@
               :style="getItemStyle(index)"
             >
               <v-list-item-action>
-                <v-icon
-                  :color="isSelected(item) ? 'primary' : getIconColor(item)"
-                >
-                  {{
-                    isSelected(item)
-                      ? "fa-solid fa-square-check"
-                      : getIconName(item)
-                  }}
+                <v-icon :color="getIconColor(item)">
+                  {{ getIconName(item) }}
                 </v-icon>
               </v-list-item-action>
               <v-list-item-content>
@@ -105,6 +99,22 @@
               <v-list-item-action-text class="ml-1" v-if="item.type === 'file'">
                 {{ formatFileSize(item.size) }}
               </v-list-item-action-text>
+              <!-- A folder row opens the folder, so a folder is selected with its check only -->
+              <span
+                v-if="isCheckable(item)"
+                class="pysepal-file-input-check ml-2"
+                :class="{
+                  'pysepal-file-input-check--on primary--text':
+                    isSelected(item),
+                }"
+                :title="isSelected(item) ? 'Deselect' : 'Select'"
+                @click.stop="toggleFile(fullPath(item))"
+                @mousedown.stop
+              >
+                <v-icon small :color="isSelected(item) ? 'primary' : undefined">
+                  fa-solid fa-check
+                </v-icon>
+              </span>
             </v-list-item>
           </div>
 
@@ -219,6 +229,10 @@ export default {
       default: "",
     },
     multiple: {
+      type: Boolean,
+      default: false,
+    },
+    select_folders: {
       type: Boolean,
       default: false,
     },
@@ -356,7 +370,10 @@ export default {
     countLabel() {
       const count = this.selectedPaths.length;
       if (!count) return "";
-      return count === 1 ? "1 file" : `${count} files`;
+      const [one, many] = this.select_folders
+        ? ["item", "items"]
+        : ["file", "files"];
+      return count === 1 ? `1 ${one}` : `${count} ${many}`;
     },
   },
 
@@ -539,9 +556,16 @@ export default {
       return this.base_path ? this.base_path + "/" + item.path : item.path;
     },
 
+    isCheckable(item) {
+      if (!this.multiple) return false;
+      if (item.type === "file") return true;
+      return this.select_folders && item.name !== "..";
+    },
+
     isSelected(item) {
       return (
-        item.type === "file" && this.selectedPaths.includes(this.fullPath(item))
+        this.isCheckable(item) &&
+        this.selectedPaths.includes(this.fullPath(item))
       );
     },
 
@@ -784,5 +808,42 @@ export default {
 
 .pysepal-file-input-item__title--active {
   transition: color 120ms ease;
+}
+
+.pysepal-file-input-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+/* The circle takes the text colour, so it follows the theme: primary when on */
+.pysepal-file-input-check::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.pysepal-file-input-check:hover::before {
+  opacity: 0.08;
+}
+.pysepal-file-input-check--on::before {
+  opacity: 0.16;
+}
+.pysepal-file-input-check .v-icon {
+  position: relative;
+  opacity: 0.35;
+  transition: transform 0.1s, opacity 0.1s;
+}
+.pysepal-file-input-check--on .v-icon {
+  opacity: 1;
+  transform: scale(1.2);
 }
 </style>

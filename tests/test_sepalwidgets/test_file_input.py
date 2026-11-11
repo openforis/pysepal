@@ -388,6 +388,23 @@ def test_the_mode_is_not_writable_from_the_browser(batch: Path) -> None:
     assert file_input.v_model == ""
 
 
+def test_folders_can_be_selected_with_select_folders(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True, select_folders=True)
+
+    file_input.set_state({"value": [str(batch / "sub"), str(batch / "a.csv")]})
+
+    assert file_input.select_folders is True
+    assert file_input.v_model == [str(batch / "sub"), str(batch / "a.csv")]
+
+
+def test_select_folders_is_not_writable_from_the_browser(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    file_input.set_state({"select_folders": True})
+
+    assert file_input.select_folders is False
+
+
 def test_remote_list_stays_within_a_narrow_root() -> None:
     """On the SEPAL workspace too, each path of the list must be in the input's root."""
     root = "/home/sepal-user/allowed"

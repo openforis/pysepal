@@ -101,3 +101,35 @@ assert.equal(multi.countLabel, "");
 
 // a str value from Python before the first sync still reads as a list
 assert.deepEqual([...mount({ multiple: true, value: "" }).selectedPaths], []);
+
+// only files have a check, unless the app also selects folders
+const files = mount({
+  multiple: true,
+  value: [],
+  root: "/r",
+  current_folder: "/r",
+});
+assert.equal(files.isCheckable(file("/r/a.csv")), true);
+assert.equal(files.isCheckable(folder("/r/sub")), false);
+assert.equal(mount().isCheckable(file("/r/a.csv")), false);
+
+// with select_folders a folder is selected with its check; its row still opens it
+const both = mount({
+  multiple: true,
+  select_folders: true,
+  value: [],
+  root: "/r",
+  current_folder: "/r",
+});
+assert.equal(both.isCheckable(folder("/r/sub")), true);
+assert.equal(
+  both.isCheckable({ name: "..", path: "/", type: "directory" }),
+  false
+);
+both.toggleFile(both.fullPath(folder("/r/sub")));
+assert.deepEqual([...both.value], ["/r/sub"]);
+assert.equal(both.isSelected(folder("/r/sub")), true);
+assert.equal(both.countLabel, "1 item");
+both.onFileSelect(folder("/r/sub"));
+assert.equal(both.current_folder, "/r/sub");
+assert.deepEqual([...both.value], ["/r/sub"]);
