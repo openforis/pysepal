@@ -1,19 +1,28 @@
-"""The one locale algorithm: normalisation and offered-code matching."""
+"""The one locale algorithm, and the selector widget that carries its browser copy."""
 
 import json
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+import solara
 
 import pysepal
 from pysepal._locale import match_offered_locale, normalize_locale
+from pysepal._vuetify import IPYVUETIFY_V3, compose_vue
+from pysepal.i18n import current_locale, set_locale
+from pysepal.solara.components._locale_widget import VUE_DIR, LocaleSelectWidget
+from pysepal.solara.components.locale_select import LocaleSelectComponent
 
 FIXTURE = Path(__file__).parent / "fixtures" / "locale_matching.json"
 CASES = json.loads(FIXTURE.read_text())
-VUE = Path(pysepal.__file__).parent / "sepalwidgets" / "vue" / "LocaleSelect.vue"
+SCRIPT = VUE_DIR / "LocaleSelect.js"
+MARKUPS = {"v2": VUE_DIR / "LocaleSelect.v2.vue", "v3": VUE_DIR / "LocaleSelect.v3.vue"}
 HARNESS = Path(__file__).parent / "js" / "locale_parity.mjs"
+LIFECYCLE = Path(__file__).parent / "js" / "locale_lifecycle.mjs"
 
 
 def test_the_fixture_has_cases():
@@ -54,9 +63,66 @@ def test_the_first_offered_spelling_wins_a_normalisation_tie():
 def test_the_vue_transcription_agrees_with_python():
     """The browser resolves a locale before Python can, so it needs its own copy."""
     run = subprocess.run(
-        ["node", str(HARNESS), str(VUE), str(FIXTURE)],
+        ["node", str(HARNESS), str(SCRIPT), str(FIXTURE)],
         capture_output=True,
         text=True,
         check=True,
     )
     assert json.loads(run.stdout) == [case["expected"] for case in CASES]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("major", MARKUPS)
+def test_browser_resolution_persistence_and_remounts(major):
+    """Both majors' markup must mark the selected row the way the script expects."""
+    subprocess.run(
+        ["node", str(LIFECYCLE), str(SCRIPT), str(MARKUPS[major])],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_locale_template_matches_major():
+    expected = compose_vue(MARKUPS["v3" if IPYVUETIFY_V3 else "v2"], SCRIPT)
+    assert LocaleSelectWidget().template == expected
+
+
+@pytest.mark.parametrize(
+    "spelling", ["v-list-item-content", "v-list-item-action", "depressed", "headline", " left>"]
+)
+def test_v3_markup_drops_vuetify2_spellings(spelling):
+    """Python cannot catch these: Vuetify 3 drops unknown props, removed components only warn."""
+    assert spelling not in MARKUPS["v3"].read_text()
+
+
+def test_the_selector_does_not_import_the_legacy_widgets():
+    code = (
+        "import sys, pysepal.solara.components.locale_select; "
+        "print([m for m in sys.modules if m.split('.')[:2] == ['pysepal', 'sepalwidgets']])"
+    )
+    package_root = str(Path(pysepal.__file__).parents[1])
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([package_root, os.environ.get("PYTHONPATH", "")]),
+    }
+    run = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env
+    )
+    assert run.stdout.strip().splitlines()[-1] == "[]"
+
+
+def test_the_component_renders_the_widget_and_writes_the_locale():
+    set_locale("en")
+    widget, rc = solara.render_fixed(
+        LocaleSelectComponent(locales=["en", "fr", "es"]), handle_error=False
+    )
+    try:
+        assert isinstance(widget, LocaleSelectWidget)
+        assert [record["code"] for record in widget.available_locales] == ["en", "fr", "es"]
+        assert widget.value == current_locale() == "en"
+        widget.value = "fr"
+        assert current_locale() == "fr"
+    finally:
+        rc.close()
+        set_locale("en")

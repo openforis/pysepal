@@ -5,7 +5,7 @@ from typing import Iterable, Optional
 import solara
 
 from pysepal.i18n import current_locale, set_locale
-from pysepal.sepalwidgets.vue_app import LocaleSelect
+from pysepal.solara.components._locale_widget import LocaleSelectWidget
 from pysepal.solara.locale import describe_offered_locales
 
 
@@ -19,11 +19,11 @@ def LocaleSelectComponent(locales: Optional[Iterable[str]] = None):
     offered = solara.use_memo(
         lambda: describe_offered_locales(
             ["en"] if locales is None else locales,
-            LocaleSelect.COUNTRIES.to_dict(orient="records"),
+            LocaleSelectWidget.COUNTRIES.to_dict(orient="records"),
         ),
         dependencies=[locales],
     )
-    return LocaleSelect.element(
+    return LocaleSelectWidget.element(
         available_locales=offered,
         value=current_locale(),
         on_value=set_locale,

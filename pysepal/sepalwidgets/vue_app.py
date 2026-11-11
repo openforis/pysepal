@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import ipyvuetify as v
-import pandas as pd
 from deprecated.sphinx import deprecated
 from ipywidgets import DOMWidget, link
 from ipywidgets.widgets.widget import widget_serialization
@@ -22,6 +21,7 @@ from traitlets import (
     validate,
 )
 
+from pysepal.solara.components._locale_widget import LocaleSelectWidget
 from pysepal.solara.theme import ThemeState, get_current_theme_state
 
 logger = logging.getLogger("sepalui.vue_app")
@@ -605,13 +605,4 @@ class RightPanel(v.VuetifyTemplate):
         self.is_open = state
 
 
-class LocaleSelect(v.VuetifyTemplate):
-    """Vue transport rendered by ``LocaleSelectComponent``."""
-
-    template_file = Unicode(
-        str(Path(__file__).parents[1] / "sepalwidgets/vue/LocaleSelect.vue")
-    ).tag(sync=True)
-
-    COUNTRIES: pd.DataFrame = pd.read_parquet(Path(__file__).parents[1] / "data" / "locale.parquet")
-    available_locales = List([{"code": "en", "name": "English", "flag": "gb"}]).tag(sync=True)
-    value = Unicode("en").tag(sync=True)
+LocaleSelect = LocaleSelectWidget

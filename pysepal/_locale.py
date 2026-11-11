@@ -6,7 +6,7 @@ way. ``Translator.find_target`` and the old ``match_offered_locale`` disagreed,
 so a ``pt`` request against a ``pt-BR`` catalogue could depend on the order the
 filesystem listed the directories in.
 
-``LocaleSelect.vue`` carries a JavaScript transcription of the same rules,
+``LocaleSelect.js`` carries a JavaScript transcription of the same rules,
 because the browser resolves local storage and ``navigator.language`` before
 Python can act. ``tests/fixtures/locale_matching.json`` holds them in parity.
 """

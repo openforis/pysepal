@@ -2,11 +2,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
-const source = readFileSync(process.argv[2], "utf8");
-const script = source.split("<script>")[1].split("</script>")[0];
-const selectedCondition = source.match(/<v-list-item-action v-if="([^"]+)"/)[1];
+// argv: the shared script, one major's markup, then optional JSON props.
+const script = readFileSync(process.argv[2], "utf8");
+const markup = readFileSync(process.argv[3], "utf8");
+// The `v-if` of the element that wraps the check icon, whichever major's slot it is.
+const selectedCondition = markup.match(
+  /v-if="([^"]+)"[^>]*>\s*<v-icon[^>]*>mdi-check</
+)[1];
+// Only the exported object, so a module-scope binding fails here too.
 const literal = script
-  .slice(script.search(/^export default/m) + "export default".length)
+  .slice(script.search(/^module\.exports\s*=/m))
+  .replace(/^module\.exports\s*=/, "")
   .trim()
   .replace(/;\s*$/, "");
 
@@ -84,8 +90,8 @@ const blocked = browser("", "fr", true).mount();
 blocked.selectLanguage("es");
 assert.equal(blocked.value, "es");
 
-const props = process.argv[3]
-  ? JSON.parse(process.argv[3])
+const props = process.argv[4]
+  ? JSON.parse(process.argv[4])
   : { value: "pt-BR", offered: ["en", "pt_br"] };
 const alternate = browser("en", "en");
 const alternateFirst = alternate.mount("en", props.offered);

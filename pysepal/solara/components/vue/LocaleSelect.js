@@ -1,61 +1,11 @@
-<template>
-  <div>
-    <v-btn
-      depressed
-      @click="openDialog"
-      style="background-color: unset !important"
-    >
-      <v-icon small left>mdi-translate</v-icon>
-      {{ value }}
-    </v-btn>
+// Keep every binding inside the exported object: that object is all ipyvue is
+// guaranteed to evaluate.
+//
+// `value` and `available_locales` are synced traits that ipyvue injects as
+// data. ipyvue 1 ignores a `props` block; ipyvue 3 would warn that the two clash.
 
-    <v-dialog v-model="dialogOpen" max-width="400">
-      <v-card>
-        <v-card-title class="headline d-flex justify-space-between">
-          <span>Select your language</span>
-          <v-btn icon @click="closeDialog">
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-        </v-card-title>
-        <v-divider></v-divider>
-        <v-card-text>
-          <v-list>
-            <v-list-item
-              v-for="(locale, index) in available_locales"
-              :key="index"
-              @click="selectLanguage(locale.code)"
-            >
-              <v-list-item-content>
-                <v-list-item-title
-                  >{{ locale.name }} ({{ locale.code }})</v-list-item-title
-                >
-              </v-list-item-content>
-              <v-list-item-action v-if="isSelected(locale.code)">
-                <v-icon color="primary">mdi-check</v-icon>
-              </v-list-item-action>
-            </v-list-item>
-          </v-list>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
-  </div>
-</template>
-
-<script>
-// ipyvue evaluates only the exported object, so storage keys stay inside it.
-// Direct value assignment also works when the selector is a root widget.
-
-export default {
+module.exports = {
   name: "LocaleSelect",
-
-  props: {
-    available_locales: {
-      type: [String, Array, Object],
-      required: true,
-      default: () => [{ code: "en", name: "English", flag: "gb" }],
-    },
-    value: { type: String, required: true, default: "en" },
-  },
 
   data() {
     return {
@@ -160,7 +110,6 @@ export default {
     apply(code) {
       this.markLocaleResolved();
       if (this.value !== code) {
-        // eslint-disable-next-line vue/no-mutating-props
         this.value = code;
       }
     },
@@ -179,4 +128,3 @@ export default {
     },
   },
 };
-</script>

@@ -116,7 +116,7 @@ Existing pysepal VuetifyTemplate widgets follow this layout:
 | TaskButton   | `btn.py`         | `vue/TaskButton.vue`   |
 | Dialog       | `sepalwidget.py` | `vue/Dialog.vue`       |
 | Tabs         | `vue_widgets.py` | `vue/Tabs.vue`         |
-| LocaleSelect | `vue_app.py`     | `vue/LocaleSelect.vue` |
+| LocaleSelect | `../solara/components/_locale_widget.py` | `../solara/components/vue/LocaleSelect.js` + `.v2.vue` / `.v3.vue` |
 | DrawerItem   | `app.py`         | `vue/DrawerItem.vue`   |
 
 ## Python Backend
