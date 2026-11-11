@@ -320,6 +320,7 @@
 /* step dialog */
 
 .sepal-mapapp__dialog .dialog-card {
+  width: 100%;
   max-width: 100%;
   max-height: 90vh;
   overflow: hidden;
