@@ -35,6 +35,7 @@ from pysepal.solara.components.aoi.admin import (
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import ADMIN_METHODS, AoiSpec
 from pysepal.solara.components.aoi.asset import process_asset
+from pysepal.solara.components.aoi.constants import admin_source_attribution
 from pysepal.solara.components.aoi.draw import process_draw
 from pysepal.solara.components.aoi.points import process_points
 from pysepal.solara.components.aoi.shape import process_shape
@@ -527,6 +528,11 @@ def AoiView(
                         map_style or {},
                         "aoi",
                         autocenter=True,
+                        attribution=(
+                            f"Google Earth Engine, {admin_source_attribution(gee=True)}"
+                            if result.admin is not None
+                            else "Google Earth Engine"
+                        ),
                     )
                 elif result.admin is not None:
                     level = int(method[-1])
@@ -534,6 +540,7 @@ def AoiView(
                         level=level,
                         admin_code=result.admin,
                         name="aoi",
+                        attribution=admin_source_attribution(gee=False),
                     )
                     map_.add_layer(wms_layer)
 

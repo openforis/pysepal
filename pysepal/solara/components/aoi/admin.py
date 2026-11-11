@@ -18,7 +18,11 @@ from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
-from pysepal.solara.components.aoi.constants import FAO_GAUL_LAYERS, FAO_WFS_BASE_URL
+from pysepal.solara.components.aoi.constants import (
+    ADMIN_SOURCES,
+    FAO_GAUL_LAYERS,
+    FAO_WFS_BASE_URL,
+)
 
 # Path to GAUL -> ISO-3 mapping file
 GAUL_ISO_MAPPING: Path = Path(__file__).parents[3] / "data" / "gaul_iso.json"
@@ -310,6 +314,7 @@ async def process_admin(
                 gdf=None,  # Lazy - users can use get_gdf_async() if needed
                 feature_collection=feature_collection,
                 admin=admin_code,
+                admin_source=ADMIN_SOURCES[True]["name"],
                 gee=True,
                 spec=AoiSpec(method=method, admin_codes=codes),
             )
@@ -353,6 +358,7 @@ async def process_admin(
             gdf=None,  # Lazy - users can use AoiResult.get_gdf_async() when needed
             feature_collection=None,
             admin=admin_code,
+            admin_source=ADMIN_SOURCES[False]["name"],
             gee=False,
             spec=AoiSpec(method=method, admin_codes=codes),
         )
