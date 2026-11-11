@@ -8,18 +8,13 @@ used for multiple use-case sucha as (but not limited):
 ...
 """
 
-import warnings
 from functools import wraps
 from itertools import product
-from typing import Any, List, Optional
-from warnings import warn
+from typing import Any, List
 
-import ipyvuetify as v
 from deprecated.sphinx import versionadded
 
-from pysepal.message import msg
 from pysepal.scripts.gee import init_ee, need_ee  # noqa: F401 - backward compatibility
-from pysepal.scripts.warning import SepalWarning
 
 
 @versionadded(version="3.0", reason="moved from utils to a dedicated module")

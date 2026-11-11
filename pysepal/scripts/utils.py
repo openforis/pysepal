@@ -17,10 +17,9 @@ import tomli
 from anyascii import anyascii
 from deprecated.sphinx import deprecated, versionadded
 
-import pysepal
+from pysepal._sepal_widget import SepalWidget
 
 # check_input takes a `msg` parameter, which shadows the lookup.
-from pysepal._sepal_widget import SepalWidget
 from pysepal.message import msg as _msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts.gee import init_ee  # noqa: F401 - backward compatibility

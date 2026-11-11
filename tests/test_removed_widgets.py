@@ -70,7 +70,7 @@ def test_unknown_names_still_raise_the_usual_error():
     import pysepal.aoi
 
     with pytest.raises(AttributeError, match="has no attribute 'nope'"):
-        pysepal.aoi.nope  # noqa: B018
+        pysepal.aoi.nope
 
 
 def test_the_solara_surface_imports():
