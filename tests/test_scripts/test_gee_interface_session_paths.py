@@ -252,3 +252,11 @@ def test_the_parameters_only_the_deleted_branch_honoured_are_gone(method, remove
     import inspect
 
     assert removed not in inspect.signature(getattr(GEEInterface, method)).parameters
+
+
+def test_cancel_task_goes_through_the_session(interface):
+    interface.session.tasks.cancel_task_async = AsyncMock(return_value=None)
+
+    interface.cancel_task("ABC123")
+
+    interface.session.tasks.cancel_task_async.assert_awaited_once_with("ABC123")
