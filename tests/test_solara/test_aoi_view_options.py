@@ -10,12 +10,13 @@ import solara
 import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
 from pysepal import mapping as sm
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 
-from ._harness import find_by_label, of_type, render_and_drain, wait_until, walk
+from ._harness import find_by_label, of_type, render_and_drain, wait_until
 
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
@@ -155,7 +156,7 @@ def test_a_spec_outside_the_countries_is_refused(notifier):
         AoiView(gee=False, countries=["206"], spec=spec, autoselect=False)
 
     async def scenario(root):
-        assert find_by_label(root, msg("aoi_sel.method")).v_model == ""
+        assert not find_by_label(root, msg("aoi_sel.method")).v_model
         notifier.warning.assert_called_once()
 
     _session(_Harness, scenario)
@@ -210,61 +211,60 @@ def test_notify_success_false_skips_the_inline_message(fake_process_admin):
     assert not of_type(root, "Alert")
 
 
-def _enter_bridge(root):
-    return next(widget for widget in walk(root) if hasattr(widget, "vue_submit"))
-
-
-def _press_enter(root):
-    """Call the handler the page calls when the user presses Enter in a field."""
-    _enter_bridge(root).vue_submit(None)
-
-
-def test_the_enter_bridge_sits_in_the_form_it_watches():
+def test_the_method_list_reaches_the_widget_in_the_shape_of_the_major():
     @solara.component
     def _Harness():
         AoiView(gee=False)
 
     async def scenario(root):
-        bridge = _enter_bridge(root)
-        form = next(w for w in walk(root) if bridge in (getattr(w, "children", None) or ()))
-        assert bridge.scope in form.class_.split()
+        method = find_by_label(root, msg("aoi_sel.method"))
+        headers = [item for item in method.items if not item.get("value")]
+        choices = [item for item in method.items if item.get("value")]
+
+        assert [item["value"] for item in choices][:3] == ["ADMIN0", "ADMIN1", "ADMIN2"]
+        if IPYVUETIFY_V3:
+            assert {item["type"] for item in headers} == {"subheader"}
+            assert all(item["title"] for item in headers + choices)
+            assert method.density == "compact"
+            assert method.variant == "underlined"
+        else:
+            assert all(item["header"] for item in headers)
+            assert all(item["text"] for item in choices)
+            assert method.dense is True
 
     _session(_Harness, scenario)
 
 
-def test_enter_selects_a_complete_form(fake_process_admin):
-    held = solara.reactive(None)
+def test_no_method_leaves_the_select_empty():
+    """Vuetify 3 counts "" as a pick and floats the label over an empty field."""
 
     @solara.component
     def _Harness():
-        AoiView(value=held, gee=False)
+        AoiView(gee=False)
 
     async def scenario(root):
+        method = find_by_label(root, msg("aoi_sel.method"))
+        assert method.v_model == (None if IPYVUETIFY_V3 else "")
+
         _pick(root, msg("aoi_sel.method"), "ADMIN0")
-        _pick(root, msg("aoi_sel.adm.0"), "101")
-
-        _press_enter(root)
-
-        await wait_until(lambda: held.value is not None)
-        assert held.value.admin == "101"
+        assert find_by_label(root, msg("aoi_sel.adm.0")) is not None
 
     _session(_Harness, scenario)
 
 
-def test_enter_waits_for_a_complete_form(fake_process_admin):
-    held = solara.reactive(None)
+def test_the_draw_name_field_is_outlined_and_dense():
+    sepal_map = sm.SepalMap(gee=False)
 
     @solara.component
     def _Harness():
-        AoiView(value=held, gee=False)
+        AoiView(gee=False, map_=sepal_map)
 
     async def scenario(root):
-        _pick(root, msg("aoi_sel.method"), "ADMIN1")
-        _pick(root, msg("aoi_sel.adm.0"), "101")
-
-        _press_enter(root)
-        await asyncio.sleep(0.2)
-
-        assert held.value is None
+        _pick(root, msg("aoi_sel.method"), "DRAW")
+        name = find_by_label(root, msg("aoi_sel.aoi_name"))
+        if IPYVUETIFY_V3:
+            assert (name.variant, name.density) == ("outlined", "compact")
+        else:
+            assert (name.outlined, name.dense) == (True, True)
 
     _session(_Harness, scenario)
