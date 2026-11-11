@@ -16,6 +16,9 @@ from pysepal.solara.components.inputs.file_input import FileInputComponent
 
 from ._harness import of_type, wait_until
 
+# `python -c` imports pysepal from its cwd; a test elsewhere chdirs and never restores.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 @pytest.fixture
 def batch(tmp_path: Path) -> Path:
@@ -178,7 +181,7 @@ def test_the_inputs_do_not_import_sepalwidgets() -> None:
         "print('LEGACY', [m for m in sys.modules if m.startswith('pysepal.sepalwidgets')])"
     )
     result = subprocess.run(
-        [sys.executable, "-c", code], check=True, capture_output=True, text=True
+        [sys.executable, "-c", code], check=True, capture_output=True, text=True, cwd=REPO_ROOT
     )
 
     assert "LEGACY []" in result.stdout.splitlines()

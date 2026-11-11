@@ -2,10 +2,14 @@
 
 import subprocess
 import sys
+from pathlib import Path
 
 import ipyvuetify as v
 
 from pysepal._sepal_widget import SepalWidget, Tooltip
+
+# `python -c` imports pysepal from its cwd; a test elsewhere chdirs and never restores.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class _Btn(v.Btn, SepalWidget):
@@ -18,7 +22,7 @@ def test_mixin_imports_without_sepalwidgets() -> None:
         "import sys; import pysepal._sepal_widget; "
         "assert 'pysepal.sepalwidgets' not in sys.modules, 'sepalwidgets imported'"
     )
-    subprocess.run([sys.executable, "-c", code], check=True)
+    subprocess.run([sys.executable, "-c", code], check=True, cwd=REPO_ROOT)
 
 
 def test_hide_and_show_return_self() -> None:
