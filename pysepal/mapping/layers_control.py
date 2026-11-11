@@ -9,26 +9,22 @@ from ipyleaflet import GeoJSON, Layer, Map, TileLayer
 from ipywidgets import link
 
 from pysepal._sepal_widget import SepalWidget
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
 
-# a Vuetify 3 input lets its grid shrink below the control, which then overflows the cell
+# an input lets its grid shrink below the control, which then overflows the cell
 _FIT_CELL = "min-width: max-content;"
 
 
 def _checkbox(**kwargs) -> v.VuetifyWidget:
     """Return a checkbox showing neither label nor messages, to fit in a table cell."""
-    if IPYVUETIFY_V3:
-        return v.Checkbox(density="compact", hide_details=True, style_=_FIT_CELL, **kwargs)
-    return v.SimpleCheckbox(**kwargs)
+    return v.Checkbox(density="compact", hide_details=True, style_=_FIT_CELL, **kwargs)
 
 
 def _slider(**kwargs) -> v.Slider:
     """Return a slider showing no messages, so it can be centred in a table cell."""
-    if IPYVUETIFY_V3:
-        kwargs.update(density="compact", hide_details=True, color="primary")
+    kwargs.update(density="compact", hide_details=True, color="primary")
     return v.Slider(class_="v-no-messages", **kwargs)
 
 
@@ -39,13 +35,12 @@ class _Radio(v.Radio):
     "True when the radio is the selected one, False when not"
 
     def __init__(self, **kwargs) -> None:
-        if IPYVUETIFY_V3:
-            kwargs.update(density="compact", color="primary")
+        kwargs.update(density="compact", color="primary")
         super().__init__(**kwargs)
 
 
 class _SoloGroup(v.RadioGroup):
-    """A Vuetify 3 radio group holding one radio, its ``v_model`` mirrors ``active``.
+    """A radio group holding one radio, its ``v_model`` mirrors ``active``.
 
     A Vuetify 3 radio reports a click through its group only (it declares
     ``modelValue``, so Vue drops the ``update:modelValue`` listener on its way to
@@ -68,11 +63,14 @@ class _SoloGroup(v.RadioGroup):
             self._radio.active = True
 
 
-class _RadioSync:
-    """Keep the ``v_model`` of a group and the ``active`` trait of its radios in sync.
+class _Selection(t.HasTraits):
+    """The selected basemap, kept in sync with the ``active`` trait of the radios.
 
-    The radios sit deep in the table rows, so the group is given them.
+    Each radio sits in its own ``_SoloGroup``, so the selection is held in python.
     """
+
+    v_model: t.Any = t.Any(None)
+    "the value of the selected radio"
 
     def __init__(self, radios: Sequence[_Radio], **kwargs) -> None:
         self._radios = list(radios)
@@ -91,20 +89,6 @@ class _RadioSync:
         """Activate the radio matching the ``v_model`` and deactivate the others."""
         for radio in self._radios:
             radio.active = radio.value == self.v_model
-
-
-class _RadioGroup(_RadioSync, v.RadioGroup):
-    """The Vuetify 2 radio group wrapping the table.
-
-    A Vuetify 2 radio cannot be used alone (vuetifyjs/vuetify#2345).
-    """
-
-
-class _Selection(_RadioSync, t.HasTraits):
-    """The selected basemap of a Vuetify 3 table, whose radios each sit in a ``_SoloGroup``."""
-
-    v_model: t.Any = t.Any(None)
-    "the value of the selected radio"
 
 
 class _Card(v.Card, SepalWidget):
@@ -157,9 +141,8 @@ class BaseRow(_LinkedRow):
         """
         # create the checkbox, by default layer are visible
         self.w_radio = _Radio(value=layer.name)
-        radio = _SoloGroup(self.w_radio) if IPYVUETIFY_V3 else self.w_radio
         kwargs = {"style_": "width: 10%;", "tag": "td"}
-        radio_cell = v.Html(children=[radio], **kwargs)
+        radio_cell = v.Html(children=[_SoloGroup(self.w_radio)], **kwargs)
 
         # create the label
         kwargs = {"style_": "width: 40%;", "tag": "td"}
@@ -329,8 +312,8 @@ class LayersControl(MenuControl):
     hidden: Optional[dict] = None
     "the layers this control removed from the map to hide them, and their row position"
 
-    group: Optional[_RadioSync] = None
-    "As radio button cannot behave individually we add an extra GroupRadio to wrap the table"
+    group: Optional[_Selection] = None
+    "the selected basemap, shared by the radios of the table"
 
     tile: Optional[v.Card] = None
     "the card holding the table"
@@ -353,10 +336,7 @@ class LayersControl(MenuControl):
 
         # create a loading to place it on top of the card. It will always be visible
         # even when the card is scrolled
-        self.w_loading = v.ProgressLinear(
-            indeterminate=False,
-            **({"bg_color": "menu"} if IPYVUETIFY_V3 else {"background_color": "menu"}),
-        )
+        self.w_loading = v.ProgressLinear(indeterminate=False, bg_color="menu")
         self.tile = _Card(elevation=0)
 
         # set the kwargs parameters
@@ -438,19 +418,14 @@ class LayersControl(MenuControl):
             radios = [row.w_radio for row in rows]
             base_rows = head + rows + [empty_row]
 
-        # create a table from these rows and wrap it in the radioGroup
+        # create a table from these rows
         tbody = v.Html(tag="tbody", children=vector_rows + layer_rows + base_rows)
-        if IPYVUETIFY_V3:
-            table = v.Table(children=[tbody], density="compact", class_="v-no-border")
-            self.group = _Selection(radios, v_model=current.name)
-            content = table
-        else:
-            table = v.SimpleTable(children=[tbody], dense=True, class_="v-no-border")
-            self.group = content = _RadioGroup(radios, v_model=current.name, children=[table])
+        table = v.Table(children=[tbody], density="compact", class_="v-no-border")
+        self.group = _Selection(radios, v_model=current.name)
 
         # set the table as children of the widget, the previous one is discarded
         previous = self.tile.children
-        self.tile.children = [content]
+        self.tile.children = [table]
         close_tree(*previous)
 
         return

@@ -1,6 +1,5 @@
 """Base menu ``Control`` to display widgets to your user."""
 
-import sys
 from typing import Optional, Union
 
 import ipyvuetify as v
@@ -8,7 +7,6 @@ from ipyleaflet import Map, WidgetControl
 from traitlets import Bool, Int
 from typing_extensions import Self
 
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping._widget_tree import close_parts
 from pysepal.mapping.map_btn import MapBtn
 
@@ -43,12 +41,12 @@ class MenuControl(WidgetControl):
         """Widget control displaying a btn on the map.
 
         When clicked the menu expand to show the content set by the user and all the others are closed.
-        It's used to display interactive tiles directly in the map. If the card_content is a Tile it will be automatically nested.
+        It's used to display interactive tiles directly in the map.
 
         Args:
             icon_content: the icon content as specified in the sm.MapBtn object (i.e. a 3 letter name or an icon name)
-            card_content: any container widget. A legacy ``pysepal.sepalwidgets.Tile`` is nested to fit in this component
-            card_title: the card title. THe tile title will override this parameter if existing
+            card_content: any container widget
+            card_title: the card title
             m: The map associated with the Menu
             group: The group of Menu control, tell how the Menucontrol interact with the others
             fullscreen: Either or not the Menu container should be displayed in fullscreen on top of the map
@@ -62,23 +60,11 @@ class MenuControl(WidgetControl):
         self.fullscreen = fullscreen
 
         # create a clickable btn
-        activator = {"v_bind": "menu.props"} if IPYVUETIFY_V3 else {"v_on": "menu.on"}
-        btn = MapBtn(content=icon_content, **activator)
+        btn = MapBtn(content=icon_content, v_bind="menu.props")
         slot = {"name": "activator", "variable": "menu", "children": btn}
 
-        # nest the content if it's a legacy Tile, only loaded once an app imported
-        # the deprecated widget package
-        children = [card_content]
-        tile_module = sys.modules.get("pysepal.sepalwidgets.tile")
-        if tile_module is not None and isinstance(card_content, tile_module.Tile):
-            card_title = card_content.get_title()
-            card_content.nest()
-            card_content.class_list.replace("ma-5", "ma-0")
-            card_content.children[0].class_list.replace("pa-5", "pa-2")
-            card_content.children[0].raised = False
-            card_content.children[0].elevation = 0
-
         # set up a title of needed
+        children = [card_content]
         if card_title != "":
             card_title = v.CardTitle(children=[card_title])
             children.insert(0, card_title)
@@ -97,7 +83,6 @@ class MenuControl(WidgetControl):
             close_on_content_click=False,
             children=[card],
             v_slots=[slot],
-            **({} if IPYVUETIFY_V3 else {"offset_x": True}),
         )
 
         # by default MenuControls will be displayed in the bottomright corner
@@ -131,16 +116,9 @@ class MenuControl(WidgetControl):
 
         The menu opens beside the button, towards the centre of the map.
         """
-        if IPYVUETIFY_V3:
-            side = "left" if "right" in self.position else "right"
-            align = "bottom" if "bottom" in self.position else "top"
-            self.menu.location = f"{side} {align}"
-            return
-
-        self.menu.top = "bottom" in self.position
-        self.menu.bottom = "top" in self.position
-        self.menu.left = "right" in self.position
-        self.menu.right = "left" in self.position
+        side = "left" if "right" in self.position else "right"
+        align = "bottom" if "bottom" in self.position else "top"
+        self.menu.location = f"{side} {align}"
 
         return
 

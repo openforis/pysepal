@@ -41,7 +41,6 @@ import ipyleaflet as ipl
 import ipyvuetify as v
 import ipywidgets as widgets
 import numpy as np
-from deprecated.sphinx import deprecated
 from eeclient.client import EESession
 from ipyleaflet import TileLayer  # noqa: F401 - leave it here, it is used in the eval
 from traitlets import Int as _TInt
@@ -64,8 +63,6 @@ from pysepal.scripts import utils as su
 
 if TYPE_CHECKING:
     from matplotlib import colors as mpc
-
-    from pysepal.sepalwidgets.vue_app import ThemeToggle
 
 __all__ = ["SepalMap"]
 
@@ -120,7 +117,6 @@ class SepalMap(ipl.Map):
         vinspector: bool = False,
         gee: bool = True,
         statebar: bool = False,
-        theme_toggle: "ThemeToggle" = None,
         theme_state: Optional[ThemeState] = None,
         gee_session: Optional[EESession] = None,
         gee_interface: Optional[GEEInterface] = None,
@@ -142,7 +138,6 @@ class SepalMap(ipl.Map):
             vinspector: Add value inspector to map, useful to inspect pixel values. default to false
             gee: whether or not to use the ee binding. If False none of the earthengine display functionalities can be used. default to True
             statebar: whether or not to display the Statebar in the map
-            theme_toggle: deprecated ThemeToggle source. Use theme_state instead.
             theme_state: shared theme state for Solara apps
             gee_session (optional): a custom EESession object to do gee requests. default to None (deprecated in favor of gee_interface)
             gee_interface: a shared GEEInterface instance. If provided, takes precedence over gee_session
@@ -206,7 +201,7 @@ class SepalMap(ipl.Map):
         # add the basemaps, ipyleaflet's default one is discarded
         self._owned.extend([] if "layers" in kwargs else self.layers)
         self.clear()
-        theme_source = self._resolve_theme_source(theme_state, theme_toggle)
+        theme_source = theme_state if theme_state is not None else v.theme
         default_basemap = "SEPAL_DARK" if self._theme_is_dark(theme_source) else "SEPAL_LIGHT"
         basemaps = basemaps or [default_basemap]
         # dict.fromkeys, not set: a set has no order, so the basemap left visible
@@ -367,33 +362,6 @@ class SepalMap(ipl.Map):
     def _theme_is_dark(source) -> bool:
         """Normalize theme sources that expose a `dark` traitlet."""
         return getattr(source, "dark", None) is True
-
-    @staticmethod
-    def _resolve_theme_source(
-        theme_state: Optional[ThemeState], theme_toggle: Optional["ThemeToggle"]
-    ):
-        """Resolve the theme source used to initialize and drive the map theme."""
-        if theme_state is not None:
-            return theme_state
-
-        if theme_toggle is not None:
-            return SepalMap._resolve_deprecated_theme_toggle_source(theme_toggle)
-
-        return v.theme
-
-    @staticmethod
-    @deprecated(
-        version="3.4.0",
-        reason="SepalMap(theme_toggle=...) is deprecated; pass theme_state=... instead.",
-        category=DeprecationWarning,
-    )
-    def _resolve_deprecated_theme_toggle_source(theme_toggle: "ThemeToggle"):
-        """Resolve the legacy theme_toggle constructor path."""
-        if hasattr(theme_toggle, "get_theme_state"):
-            bound_theme_state = theme_toggle.get_theme_state()
-            if bound_theme_state is not None:
-                return bound_theme_state
-        return theme_toggle
 
     def show_dc(self) -> Self:
         """Show the drawing control on the map.

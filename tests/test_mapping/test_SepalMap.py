@@ -14,17 +14,14 @@ import pytest
 from ipyleaflet import GeoJSON
 from shapely.geometry import box
 
+from pysepal import aoi
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.frontend import styles as ss
 from pysepal.mapping.basemaps import basemap_tiles, xyz_tiles
 from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.visualization import get_viz_params
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.theme import ThemeState
-
-# the legacy widgets are built on pysepal.sepalwidgets, which needs ipyvuetify 1
-legacy = pytest.mark.skipif(IPYVUETIFY_V3, reason="pysepal.sepalwidgets needs ipyvuetify 1")
 
 # create a seed so that we can check values
 random.seed(42)
@@ -85,29 +82,6 @@ def test_init() -> None:
     # check that a wrong layer raise an error if it's not part of the leaflet basemap list
     with pytest.raises(Exception):
         m = sm.SepalMap(["TOTO"])
-
-    return
-
-
-@legacy
-def test_theme_toggle_is_deprecated_but_still_follows_bound_theme_state() -> None:
-    """Legacy theme_toggle input should warn while still honoring the bound ThemeState."""
-    from pysepal.sepalwidgets.vue_app import ThemeToggle
-
-    theme_state = ThemeState(mode="light", dark=False)
-    first_toggle = ThemeToggle(theme_state=theme_state)
-    with pytest.deprecated_call(match="theme_toggle"):
-        m = sm.SepalMap(theme_toggle=first_toggle, gee=False)
-
-    assert m.layers[0].name == "SEPAL Light"
-
-    second_toggle = ThemeToggle(theme_state=theme_state)
-    second_toggle.dark = True
-
-    assert m.layers[0].name == "SEPAL Dark"
-
-    first_toggle.dark = False
-    assert m.layers[0].name == "SEPAL Light"
 
     return
 
@@ -754,17 +728,13 @@ def square_gdf() -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(geometry=[box(12.445, 41.899, 12.459, 41.909)], crs="EPSG:4326")
 
 
-def _legacy_aoi_layer(gdf: gpd.GeoDataFrame) -> GeoJSON:
-    from pysepal import aoi
-
+def _aoi_model_layer(gdf: gpd.GeoDataFrame) -> GeoJSON:
     model = aoi.AoiModel(gee=False)
     model.gdf, model.name = gdf, "square"
     return model.get_ipygeojson()
 
 
-@pytest.mark.parametrize(
-    "build", [sm.get_ipygeojson, pytest.param(_legacy_aoi_layer, marks=legacy)]
-)
+@pytest.mark.parametrize("build", [sm.get_ipygeojson, _aoi_model_layer])
 def test_a_geojson_aoi_follows_the_map_theme(build, square_gdf: gpd.GeoDataFrame) -> None:
     """The AOI takes the theme the map is bound to, not the process-global palette."""
     theme_state = ThemeState(mode="light")

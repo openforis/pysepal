@@ -5,8 +5,8 @@ import ipyvuetify as v
 import pytest
 from ipyleaflet import Map, Marker, PMTilesLayer
 
+from pysepal import aoi
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping.basemaps import basemap_tiles
 
 
@@ -17,8 +17,8 @@ def test_init() -> None:
     # create a map with 1 layer (the basemap)
     m = sm.SepalMap()
     layer_control = next(c for c in m.controls if isinstance(c, sm.LayersControl))
-    # Vuetify 3 radios stand alone, a radio group would also drive the checkboxes
-    assert isinstance(layer_control.tile.children[0], v.Table if IPYVUETIFY_V3 else v.RadioGroup)
+    # the radios stand alone, a radio group would also drive the checkboxes
+    assert isinstance(layer_control.tile.children[0], v.Table)
 
     layer_rows = layer_control.tile.get_children(klass=sm.LayerRow)
     base_rows = layer_control.tile.get_children(klass=sm.BaseRow)
@@ -183,12 +183,8 @@ def test_ungrouped() -> None:
 
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-@pytest.mark.skipif(IPYVUETIFY_V3, reason="the legacy AoiModel needs ipyvuetify 1")
 def test_vectors() -> None:
     """Check that vectors are grouped together and they can be controlled."""
-    # the legacy aoi package is built on pysepal.sepalwidgets
-    from pysepal import aoi
-
     m = sm.SepalMap()
     m.add_layer(aoi.AoiModel(admin="171").get_ipygeojson())
     aoi_layer = m.find_layer("aoi")
