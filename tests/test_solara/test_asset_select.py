@@ -3,14 +3,9 @@
 import asyncio
 
 import ipyvuetify as v
-import pytest
 import solara
 
-from pysepal._vuetify import IPYVUETIFY_V3, select_items
 from pysepal.solara.components.inputs import asset_select as asset_select_mod
-
-v3_only = pytest.mark.skipif(not IPYVUETIFY_V3, reason="Vuetify 3 combobox behaviour")
-v2_only = pytest.mark.skipif(IPYVUETIFY_V3, reason="Vuetify 2 combobox behaviour")
 
 
 class _FakeGeeInterface:
@@ -106,22 +101,17 @@ _LISTED = [
 ]
 
 
-def test_asset_items_reach_the_widget_in_the_shape_of_the_major():
-    written = [
-        {"divider": True},
-        {"header": "Raster"},
-        "users/tester/mosaic",
-        {"divider": True},
-        {"header": "Table"},
-        "users/tester/zones",
-    ]
-
+def test_asset_items_reach_the_widget_grouped_by_type():
     async def scenario(combobox, gee):
         assert await _wait_for(lambda: len(combobox.items) > 1)
-        assert combobox.items == select_items(written)
-        if IPYVUETIFY_V3:
-            kinds = [item.get("type") for item in combobox.items if isinstance(item, dict)]
-            assert kinds == ["divider", "subheader", "divider", "subheader"]
+        assert combobox.items == [
+            {"type": "divider", "title": ""},
+            {"type": "subheader", "title": "Raster"},
+            "users/tester/mosaic",
+            {"type": "divider", "title": ""},
+            {"type": "subheader", "title": "Table"},
+            "users/tester/zones",
+        ]
 
     _drive(scenario, assets=_LISTED)
 
@@ -130,41 +120,24 @@ def test_an_empty_folder_shows_a_disabled_item():
     async def scenario(combobox, gee):
         assert await _wait_for(lambda: bool(combobox.items))
         (item,) = combobox.items
-        if IPYVUETIFY_V3:
-            assert item["props"] == {"disabled": True}
-            assert "title" in item
-        else:
-            assert item["disabled"] is True
-            assert "text" in item
+        assert item["props"] == {"disabled": True}
+        assert "title" in item
 
     _drive(scenario, assets=[])
 
 
 def test_the_placeholder_shows_while_the_field_is_empty():
-    """Vuetify 2 shows a placeholder unfocused; Vuetify 3 only when told to."""
+    """Vuetify shows the placeholder of an unfocused field only when told to."""
 
     async def scenario(combobox, gee):
-        if IPYVUETIFY_V3:
-            assert combobox.persistent_placeholder is True
+        assert combobox.persistent_placeholder is True
         assert combobox.placeholder
 
     _drive(scenario)
 
 
-@v2_only
-def test_vuetify_2_looks_up_what_the_combobox_commits():
-    """A Vuetify 2 combobox moves v_model only on blur, Enter or a pick."""
-
-    async def scenario(combobox, gee):
-        combobox.v_model = "users/tester/typed"
-        assert await _wait_for(lambda: gee.lookups == ["users/tester/typed"])
-
-    _drive(scenario, assets=_LISTED)
-
-
-@v3_only
 def test_typing_does_not_look_up_every_keystroke():
-    """A Vuetify 3 combobox moves v_model on every keystroke."""
+    """The combobox moves v_model on every keystroke."""
 
     async def scenario(combobox, gee):
         for text in ("u", "us", "users/x"):
@@ -175,7 +148,6 @@ def test_typing_does_not_look_up_every_keystroke():
     _drive(scenario, assets=_LISTED)
 
 
-@v3_only
 def test_enter_commits_the_typed_id():
     async def scenario(combobox, gee):
         combobox.v_model = "users/tester/typed"
@@ -185,7 +157,6 @@ def test_enter_commits_the_typed_id():
     _drive(scenario, assets=_LISTED)
 
 
-@v3_only
 def test_blur_commits_the_typed_id_once():
     async def scenario(combobox, gee):
         combobox.v_model = "users/tester/typed"
@@ -205,7 +176,6 @@ def test_blur_commits_the_typed_id_once():
     _drive(scenario, assets=_LISTED)
 
 
-@v3_only
 def test_picking_a_listed_asset_commits_at_once():
     async def scenario(combobox, gee):
         combobox.v_model = "users/tester/zones"
@@ -214,7 +184,6 @@ def test_picking_a_listed_asset_commits_at_once():
     _drive(scenario, assets=_LISTED)
 
 
-@v3_only
 def test_clearing_the_field_clears_the_selection_at_once():
     held = solara.reactive(None)
 

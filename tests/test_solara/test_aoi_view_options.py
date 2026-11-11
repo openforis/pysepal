@@ -10,7 +10,6 @@ import solara
 import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
@@ -21,8 +20,8 @@ from ._harness import find_by_label, of_type, render_and_drain, wait_until
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
 _ITEMS = {
-    (0, ""): [{"text": "Algeria", "value": "101"}, {"text": "Paraguay", "value": "206"}],
-    (1, "101"): [{"text": "Adrar", "value": "1001"}],
+    (0, ""): [{"title": "Algeria", "value": "101"}, {"title": "Paraguay", "value": "206"}],
+    (1, "101"): [{"title": "Adrar", "value": "1001"}],
 }
 
 _SQUARE = {
@@ -211,7 +210,7 @@ def test_notify_success_false_skips_the_inline_message(fake_process_admin):
     assert not of_type(root, "Alert")
 
 
-def test_the_method_list_reaches_the_widget_in_the_shape_of_the_major():
+def test_the_method_list_reaches_the_widget_with_subheaders():
     @solara.component
     def _Harness():
         AoiView(gee=False)
@@ -222,21 +221,16 @@ def test_the_method_list_reaches_the_widget_in_the_shape_of_the_major():
         choices = [item for item in method.items if item.get("value")]
 
         assert [item["value"] for item in choices][:3] == ["ADMIN0", "ADMIN1", "ADMIN2"]
-        if IPYVUETIFY_V3:
-            assert {item["type"] for item in headers} == {"subheader"}
-            assert all(item["title"] for item in headers + choices)
-            assert method.density == "compact"
-            assert method.variant == "underlined"
-        else:
-            assert all(item["header"] for item in headers)
-            assert all(item["text"] for item in choices)
-            assert method.dense is True
+        assert {item["type"] for item in headers} == {"subheader"}
+        assert all(item["title"] for item in headers + choices)
+        assert method.density == "compact"
+        assert method.variant == "underlined"
 
     _session(_Harness, scenario)
 
 
 def test_no_method_leaves_the_select_empty():
-    """Vuetify 3 counts "" as a pick and floats the label over an empty field."""
+    """A select counts "" as a pick and floats the label over an empty field."""
 
     @solara.component
     def _Harness():
@@ -244,7 +238,7 @@ def test_no_method_leaves_the_select_empty():
 
     async def scenario(root):
         method = find_by_label(root, msg("aoi_sel.method"))
-        assert method.v_model == (None if IPYVUETIFY_V3 else "")
+        assert method.v_model is None
 
         _pick(root, msg("aoi_sel.method"), "ADMIN0")
         assert find_by_label(root, msg("aoi_sel.adm.0")) is not None
@@ -262,9 +256,6 @@ def test_the_draw_name_field_is_outlined_and_dense():
     async def scenario(root):
         _pick(root, msg("aoi_sel.method"), "DRAW")
         name = find_by_label(root, msg("aoi_sel.aoi_name"))
-        if IPYVUETIFY_V3:
-            assert (name.variant, name.density) == ("outlined", "compact")
-        else:
-            assert (name.outlined, name.dense) == (True, True)
+        assert (name.variant, name.density) == ("outlined", "compact")
 
     _session(_Harness, scenario)

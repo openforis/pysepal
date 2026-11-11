@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 
 import solara
 
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts import gee_interface as gee_interface_module
 from pysepal.scripts.gee_interface import _resolve_create_folder_paths
 from pysepal.solara.components import export_hook as export_hook_module
@@ -68,9 +67,6 @@ class _FakeTable:
 class _FakeImageCollection:
     def toBands(self):
         return None
-
-
-_WHITE_TEXT_CLASS = "text-white" if IPYVUETIFY_V3 else "white--text"
 
 
 def _walk(widget):
@@ -447,8 +443,7 @@ def test_export_launcher_renders_destination_as_radio_group():
     ]
 
     assert radio_groups
-    row_prop = "inline" if IPYVUETIFY_V3 else "row"
-    assert any(getattr(widget, row_prop, False) for widget in radio_groups)
+    assert any(getattr(widget, "inline", False) for widget in radio_groups)
     assert not selects
 
 
@@ -515,10 +510,7 @@ def test_export_launcher_supports_small_block_button_convention():
     ]
 
     assert launcher_buttons
-    if IPYVUETIFY_V3:
-        assert any(getattr(widget, "size", None) == "small" for widget in launcher_buttons)
-    else:
-        assert any(getattr(widget, "small", False) for widget in launcher_buttons)
+    assert any(getattr(widget, "size", None) == "small" for widget in launcher_buttons)
 
 
 class _FakeGeeInterface:
@@ -1620,10 +1612,9 @@ def test_band_selector_field_fills_selected_buttons_with_secondary():
     assert color_by_label.get("B3") in ("", None)
     # Selected labels are forced white so they read on the secondary fill;
     # unselected inherit the theme text colour.
-    white = _WHITE_TEXT_CLASS
-    assert white in class_by_label.get("B4", "")
-    assert white in class_by_label.get("B2", "")
-    assert white not in class_by_label.get("B3", "")
+    assert "text-white" in class_by_label.get("B4", "")
+    assert "text-white" in class_by_label.get("B2", "")
+    assert "text-white" not in class_by_label.get("B3", "")
 
 
 def test_image_scale_field_styles_selected_preset_like_bands():
@@ -1652,7 +1643,7 @@ def test_image_scale_field_styles_selected_preset_like_bands():
 
     # Scale defaults to 30 → that preset is filled secondary with a white label.
     assert color_by_label.get("30") == "secondary"
-    assert _WHITE_TEXT_CLASS in class_by_label.get("30", "")
+    assert "text-white" in class_by_label.get("30", "")
     # A non-selected preset stays neutral.
     assert color_by_label.get("10") in ("", None)
 
@@ -2102,7 +2093,7 @@ def _select_labelled(element, label):
     )
 
 
-def test_source_select_items_reach_the_widget_in_the_installed_shape():
+def test_source_select_items_are_grouped_with_subheaders():
     element = _render(
         ExportLauncher.widget,
         sources=_grouped_sources(),
@@ -2111,24 +2102,14 @@ def test_source_select_items_reach_the_widget_in_the_installed_shape():
     )
     items = _select_labelled(element, "Asset").items
 
-    if IPYVUETIFY_V3:
-        assert items == [
-            {"type": "subheader", "title": "Images"},
-            {"title": "Image", "value": "img"},
-            {"title": "Disabled", "value": "off", "props": {"disabled": True}},
-            {"type": "divider", "title": ""},
-            {"type": "subheader", "title": "Feature collections"},
-            {"title": "Table", "value": "tbl"},
-        ]
-    else:
-        assert items == [
-            {"header": "Images"},
-            {"text": "Image", "value": "img", "disabled": False},
-            {"text": "Disabled", "value": "off", "disabled": True},
-            {"divider": True},
-            {"header": "Feature collections"},
-            {"text": "Table", "value": "tbl", "disabled": False},
-        ]
+    assert items == [
+        {"type": "subheader", "title": "Images"},
+        {"title": "Image", "value": "img"},
+        {"title": "Disabled", "value": "off", "props": {"disabled": True}},
+        {"type": "divider", "title": ""},
+        {"type": "subheader", "title": "Feature collections"},
+        {"title": "Table", "value": "tbl"},
+    ]
 
 
 def test_source_select_shows_its_placeholder_before_a_pick():
@@ -2140,14 +2121,13 @@ def test_source_select_shows_its_placeholder_before_a_pick():
     )
     select = _select_labelled(element, "Asset")
 
-    # Vuetify 3 treats "" as a picked value and would hide the placeholder.
+    # A select treats "" as a picked value and would hide the placeholder.
     assert select.v_model is None
     assert select.placeholder == "Select asset"
-    if IPYVUETIFY_V3:
-        assert select.persistent_placeholder is True
+    assert select.persistent_placeholder is True
 
 
-def test_table_format_select_items_reach_the_widget_in_the_installed_shape():
+def test_table_format_select_lists_every_format():
     source = ExportSource(
         id="table",
         label="Table",
@@ -2157,8 +2137,7 @@ def test_table_format_select_items_reach_the_widget_in_the_installed_shape():
     element = _render_preselected_dialog(source=source, target="drive")
     items = _select_labelled(element, "Table file format").items
 
-    label_key = "title" if IPYVUETIFY_V3 else "text"
-    assert [item[label_key] for item in items] == ["CSV", "GeoJSON", "Shapefile", "KML", "KMZ"]
+    assert [item["title"] for item in items] == ["CSV", "GeoJSON", "Shapefile", "KML", "KMZ"]
     assert [item["value"] for item in items] == ["CSV", "GEO_JSON", "SHP", "KML", "KMZ"]
 
 
@@ -2186,7 +2165,7 @@ def test_scale_toggle_buttons_carry_their_index_as_value():
     assert [button.value for button in toggle.children] == [0, 1, 2, 3, 4, 5]
 
 
-def test_export_dialog_fields_use_the_installed_vuetify_props():
+def test_export_dialog_fields_are_compact_and_underlined():
     source = ExportSource(
         id="image-bands",
         label="Image with bands",
@@ -2206,15 +2185,8 @@ def test_export_dialog_fields_use_the_installed_vuetify_props():
     )
 
     assert fields and len(toggles) == 2 and toggle_buttons
-    if IPYVUETIFY_V3:
-        assert all(f.density == "compact" and f.variant == "underlined" for f in fields)
-        assert all(t.density == "compact" for t in toggles)
-        assert all(b.size == "small" and b.variant == "flat" for b in toggle_buttons)
-        assert radio_group.inline is True
-        assert close_button.size == "small"
-    else:
-        assert all(f.dense is True for f in fields)
-        assert all(t.dense is True for t in toggles)
-        assert all(b.small is True and b.depressed is True for b in toggle_buttons)
-        assert radio_group.row is True and radio_group.mandatory is True
-        assert close_button.small is True
+    assert all(f.density == "compact" and f.variant == "underlined" for f in fields)
+    assert all(t.density == "compact" for t in toggles)
+    assert all(b.size == "small" and b.variant == "flat" for b in toggle_buttons)
+    assert radio_group.inline is True
+    assert close_button.size == "small"

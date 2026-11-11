@@ -7,7 +7,6 @@ from typing import Callable, Optional, Sequence, Union
 import solara
 from pysepal_api import SepalClient
 
-from pysepal._vuetify import size
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 
@@ -72,7 +71,7 @@ def ExportLauncher(
                         icon_name=icon,
                         color="primary",
                         disabled=True,
-                        **size("small" if small else None),
+                        **({"size": "small"} if small else {}),
                         block=block,
                     )
         else:
@@ -82,7 +81,7 @@ def ExportLauncher(
                 icon_name=icon,
                 color="primary",
                 disabled=False,
-                **size("small" if small else None),
+                **({"size": "small"} if small else {}),
                 block=block,
             )
 

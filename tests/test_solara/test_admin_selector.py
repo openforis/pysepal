@@ -5,17 +5,16 @@ import asyncio
 import solara
 
 import pysepal.solara.components.aoi.admin as admin_mod
-from pysepal._vuetify import IPYVUETIFY_V3, select_items
 from pysepal.message import msg
 from pysepal.solara.components.inputs.admin_selector import AdminLevelSelector
 
 from ._harness import find_by_label
 
 _ITEMS = {
-    (0, ""): [{"text": "Algeria", "value": "101"}, {"text": "Paraguay", "value": "206"}],
-    (1, "101"): [{"text": "Adrar", "value": "1001"}],
-    (1, "206"): [{"text": "Amambay", "value": "2184"}],
-    (2, "1001"): [{"text": "Aoulef", "value": "100001"}],
+    (0, ""): [{"title": "Algeria", "value": "101"}, {"title": "Paraguay", "value": "206"}],
+    (1, "101"): [{"title": "Adrar", "value": "1001"}],
+    (1, "206"): [{"title": "Amambay", "value": "2184"}],
+    (2, "1001"): [{"title": "Aoulef", "value": "100001"}],
 }
 
 
@@ -140,8 +139,7 @@ def test_countries_leaves_the_lower_levels_alone(monkeypatch):
     assert [item["value"] for item in items] == ["1001"]
 
 
-def test_items_reach_the_widget_in_the_shape_of_the_major(monkeypatch):
-    """fetch_admin_items keeps the Vuetify 2 shape; Vuetify 3 reads the label from title."""
+def test_items_reach_the_widget_unchanged(monkeypatch):
     monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
 
     @solara.component
@@ -151,11 +149,6 @@ def test_items_reach_the_widget_in_the_shape_of_the_major(monkeypatch):
     root = _render(_Harness)
     countries = find_by_label(root, msg("aoi_sel.adm.0"))
 
-    assert countries.items == select_items(_ITEMS[(0, "")])
-    if IPYVUETIFY_V3:
-        assert [item["title"] for item in countries.items] == ["Algeria", "Paraguay"]
-        assert countries.density == "compact"
-        assert countries.variant == "underlined"
-    else:
-        assert [item["text"] for item in countries.items] == ["Algeria", "Paraguay"]
-        assert countries.dense is True
+    assert countries.items == _ITEMS[(0, "")]
+    assert countries.density == "compact"
+    assert countries.variant == "underlined"

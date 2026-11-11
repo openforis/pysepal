@@ -9,7 +9,6 @@ import reacton
 import solara
 
 import pysepal.solara.components.inputs.asset_select as asset_select_mod
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.message import msg
 from pysepal.solara.components.inputs.asset_select import AssetSelectComponent
 from pysepal.solara.components.inputs.point_selector import PointsSelectorComponent
@@ -337,7 +336,7 @@ def test_points_keeps_an_incomplete_draft_after_autodetecting_columns(tmp_path, 
     asyncio.run(run())
 
 
-def test_vector_column_list_reaches_the_widget_in_the_shape_of_the_major(monkeypatch):
+def test_vector_column_list_reaches_the_widget_with_a_divider(monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: VECTORS.parents[1]))
     held = solara.reactive({"pathname": str(VECTORS), "column": "region", "value": None})
 
@@ -355,15 +354,10 @@ def test_vector_column_list_reaches_the_widget_in_the_shape_of_the_major(monkeyp
             value = find_by_label(root, msg("widgets.vector.value"))
             all_features, divider, *columns = column.items
             assert columns == ["land_use", "plot_id", "region"]
-            if IPYVUETIFY_V3:
-                assert (all_features["title"], all_features["value"]) == ("All features", "ALL")
-                assert divider["type"] == "divider"
-                assert {w.density for w in (column, value)} == {"compact"}
-                assert {w.variant for w in (column, value)} == {"underlined"}
-            else:
-                assert all_features == {"text": "All features", "value": "ALL"}
-                assert divider == {"divider": True}
-                assert column.dense is value.dense is True
+            assert all_features == {"title": "All features", "value": "ALL"}
+            assert divider == {"type": "divider", "title": ""}
+            assert {w.density for w in (column, value)} == {"compact"}
+            assert {w.variant for w in (column, value)} == {"underlined"}
         finally:
             rc.close()
 
@@ -389,10 +383,7 @@ def test_points_column_selects_are_dense(tmp_path, monkeypatch):
                 for role in ("id", "lat", "lng")
             ]
             assert all(select.clearable for select in selects)
-            if IPYVUETIFY_V3:
-                assert {(s.density, s.variant) for s in selects} == {("compact", "underlined")}
-            else:
-                assert all(select.dense for select in selects)
+            assert {(s.density, s.variant) for s in selects} == {("compact", "underlined")}
         finally:
             rc.close()
 

@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import solara
 
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
 from ._harness import of_type
@@ -101,37 +100,24 @@ def _render_button(**kwargs):
     return btn, of_type(btn, "Icon")[0]
 
 
-def test_small_button_is_small_on_both_majors():
+def test_small_button_is_small():
     btn, icon = _render_button(small=True)
 
-    if IPYVUETIFY_V3:
-        assert btn.size == "small"
-        assert icon.start is True
-        # A Vuetify 3 button sizes its icon itself.
-        assert icon.size is None
-    else:
-        assert btn.small is True
-        assert icon.left is True
-        assert icon.small is True
+    assert btn.size == "small"
+    assert icon.start is True
+    # The button sizes its icon itself.
+    assert icon.size is None
 
 
 def test_default_button_has_no_size():
     btn, icon = _render_button()
 
-    if IPYVUETIFY_V3:
-        assert btn.size is None
-        assert icon.start is True
-    else:
-        assert not btn.small
-        assert icon.left is True
+    assert btn.size is None
+    assert icon.start is True
 
 
-def test_button_is_filled_on_both_majors():
-    """Vuetify 3 card actions turn a button without a variant into a text button."""
+def test_button_is_filled():
+    """Card actions turn a button without a variant into a text button."""
     btn, _ = _render_button()
 
-    if IPYVUETIFY_V3:
-        assert btn.variant == "elevated"
-    else:
-        assert not btn.text
-        assert not btn.outlined
+    assert btn.variant == "elevated"
