@@ -2,19 +2,13 @@
 
 import json
 import os
-import warnings
 from pathlib import Path
 
 import ee
 import ipyvuetify as v
 import pytest
 
-from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts import decorator as sd
-from pysepal.scripts.warning import SepalWarning
-
-# these tests drive the deprecated sepalwidgets, which need ipyvuetify 1
-legacy = pytest.mark.skipif(IPYVUETIFY_V3, reason="sepalwidgets needs ipyvuetify 1")
 
 
 @pytest.mark.gee
@@ -90,125 +84,9 @@ def test_need_ee_raises_when_not_initialized(monkeypatch) -> None:
         use_ee()
 
 
-@legacy
-def test_catch_errors() -> None:
-    """Check the catch error decorator."""
-    from pysepal import sepalwidgets as sw
-
-    # create an external alert to test the wiring
-    alert = sw.Alert()
-
-    # create a fake object that uses the decorator
-    class Obj:
-        def __init__(self):
-            self.alert = sw.Alert()
-            self.btn = sw.Btn()
-
-        @sd.catch_errors()
-        def func0(self, *args):
-            return 1 / 0
-
-        @sd.catch_errors(alert=alert)
-        def func1(self, *args):
-            return 1 / 0
-
-        @sd.catch_errors()
-        def func2(self, *args):
-            return "toto"
-
-        @sd.loading_button()
-        def func3(self, *args):
-            warnings.warn("toto")
-            warnings.warn("sepal", SepalWarning)
-            return 1
-
-        @sd.loading_button()
-        def func4(self, *args):
-            warnings.warn("toto")
-            warnings.warn("sepal", SepalWarning)
-            return 1
-
-    obj = Obj()
-    with pytest.raises(Exception):
-        obj.func0()
-
-    # should return an alert error in the the self alert widget
-    assert obj.alert.type == "error"
-
-    # Reset the alert to remove previous state
-    assert obj.alert.reset()
-
-    with pytest.raises(Exception):
-        obj.func1()
-
-    # should return an alert in the external alert widget
-    assert alert.type == "error"
-
-    # check when there's no error
-    assert obj.alert.reset()
-    value = obj.func2()
-    assert value == "toto"
-    assert obj.alert.type != "error"
-
-    # should raise warnings
-    obj.alert.reset()
-    with warnings.catch_warnings(record=True) as w_list:
-        obj.func4(obj.btn, None, None)
-        assert obj.btn.disabled is False
-        assert obj.alert.type == "warning"
-        assert "sepal" in obj.alert.children[1].children[0]
-        assert "toto" not in obj.alert.children[1].children[0]
-        msg_list = [w.message.args[0] for w in w_list]
-        assert any("sepal" in s for s in msg_list)
-        assert any("toto" in s for s in msg_list)
-
-
-@legacy
-def test_loading_button() -> None:
-    """Check the loading decorator."""
-    from pysepal import sepalwidgets as sw
-
-    # create a fake object that uses the decorator
-    class Obj:
-        def __init__(self):
-            self.alert = sw.Alert()
-            self.btn = sw.Btn()
-
-        @sd.loading_button()
-        def func1(self, *args):
-            return 1 / 0
-
-        @sd.loading_button()
-        def func2(self, *args):
-            return 1 / 0
-
-        @sd.loading_button()
-        def func3(self, *args):
-            return "toto"
-
-    obj = Obj()
-
-    # should only display error in the alert
-    with pytest.raises(Exception):
-        obj.func1(obj.btn, None, None)
-
-    assert obj.btn.disabled is False
-    assert obj.alert.type == "error"
-    assert obj.btn.loading is False
-
-    # func 3 shouldn't raise any error
-    assert obj.alert.reset()
-    value = obj.func3(obj.btn, None, None)
-
-    assert value == "toto"
-    assert obj.alert.type != "error"
-    assert obj.btn.loading is False
-
-    return
-
-
 def test_switch() -> None:
     """Test the switch decorator."""
+
     # create a fake object that uses the decorator
     class Obj:
         def __init__(self):
