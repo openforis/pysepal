@@ -7,6 +7,7 @@ from typing import Any, Optional, Union
 import reacton.ipyvuetify as v
 import solara
 
+from pysepal._vuetify import IPYVUETIFY_V3, size
 from pysepal.solara.session_info import SessionInfo, SessionsOverview
 from pysepal.solara.utils import get_current_session_info, get_sessions_overview
 
@@ -142,8 +143,8 @@ def AdminButton(
         label="Admin panel",
         on_click=open_dialog,
         color="primary",
-        small=True,
         icon_name="mdi-shield-account",
+        **size("small"),
     )
 
     with v.Dialog(
@@ -153,20 +154,30 @@ def AdminButton(
             solara.v.CardTitle(children=["Admin: Session & Models Information"])
 
             with solara.v.CardText():
-                with v.Tabs(v_model=active_tab, on_v_model=set_active_tab):
+                # Vuetify 3 replaced v-tabs-items / v-tab-item with v-tabs-window /
+                # v-tabs-window-item; explicit values keep the integer tab model.
+                # Its tabs no longer default to the primary colour.
+                if IPYVUETIFY_V3:
+                    window, window_item = v.TabsWindow, v.TabsWindowItem
+                    tabs_props = {"color": "primary"}
+                else:
+                    window, window_item = v.TabsItems, v.TabItem
+                    tabs_props = {}
+
+                with v.Tabs(v_model=active_tab, on_v_model=set_active_tab, **tabs_props):
                     # Dynamic tab label based on number of models
                     model_count = len(normalize_models())
                     if model_count == 1:
-                        v.Tab(children=["Model Data"])
+                        v.Tab(children=["Model Data"], **_tab_value(0))
                     else:
-                        v.Tab(children=["Models Data"])
-                    v.Tab(children=["Session Info"])
+                        v.Tab(children=["Models Data"], **_tab_value(0))
+                    v.Tab(children=["Session Info"], **_tab_value(1))
 
-                with v.TabsItems(v_model=active_tab, on_v_model=set_active_tab):
-                    with v.TabItem():
+                with window(v_model=active_tab, on_v_model=set_active_tab):
+                    with window_item(**_tab_value(0)):
                         _render_model_content(normalize_models(), models_data, update_models_data)
 
-                    with v.TabItem():
+                    with window_item(**_tab_value(1)):
                         _render_session_content(
                             username, is_admin_user(), session_info, sessions_overview
                         )
@@ -180,6 +191,21 @@ def AdminButton(
                     color="primary",
                 )
                 solara.Button(label="Close", on_click=close_dialog, color="primary")
+
+
+def _tab_value(index: int) -> dict:
+    """Return the props that tie a Vuetify 3 tab to its window item."""
+    return {"value": index} if IPYVUETIFY_V3 else {}
+
+
+def _outlined_card() -> dict:
+    """Return the props of an outlined card.
+
+    A Vuetify 3 ``outlined`` card draws its border in the text colour; an empty
+    ``border`` draws the faint, shadowless Vuetify 2 one (ipyvuetify casts ``True``
+    to ``1.0``, which Vuetify ignores).
+    """
+    return {"border": ""} if IPYVUETIFY_V3 else {"outlined": True}
 
 
 def _render_model_content(
@@ -218,7 +244,7 @@ def _render_model_content(
             else:
                 solara.Markdown(f"#### {model_type}")
 
-            with solara.v.Card(outlined=True):
+            with solara.v.Card(**_outlined_card()):
                 with solara.v.CardText():
                     solara.Preformatted(
                         model_data,
