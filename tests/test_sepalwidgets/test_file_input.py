@@ -1,5 +1,6 @@
 """Test the FileInput widget in pysepal.sepalwidgets.file_input."""
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,6 +19,7 @@ from pysepal.sepalwidgets.file_input import FileInput
 from pysepal.solara import session_manager
 from pysepal.solara import utils as solara_utils
 from pysepal.solara._topology import SessionPlan, SessionSource
+from pysepal.solara.components.inputs._file_input_widget import VUE_DIR, FileInputWidget
 
 PER_CONNECTION = SessionPlan(SessionSource.PER_CONNECTION, "test")
 
@@ -447,5 +449,14 @@ def test_no_files_refuses_every_path_of_a_list(jail: Path, monkeypatch: pytest.M
 def test_browser_selection_logic() -> None:
     """The Vue side toggles files, keeps them across folders and clears them all."""
     harness = Path(__file__).parents[1] / "js" / "file_input_selection.mjs"
-    vue = Path(__file__).parents[2] / "pysepal" / "sepalwidgets" / "vue" / "FileInput.vue"
-    subprocess.run(["node", str(harness), str(vue)], check=True, capture_output=True, text=True)
+    traits = {
+        name: trait.default()
+        for name, trait in FileInputWidget.class_own_traits(sync=True).items()
+        if name != "template"
+    }
+    subprocess.run(
+        ["node", str(harness), str(VUE_DIR / "FileInput.js"), json.dumps(traits)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )

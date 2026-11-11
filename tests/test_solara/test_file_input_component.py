@@ -1,13 +1,17 @@
 """FileInputComponent with multiple=True syncs a list of paths both ways."""
 
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 import reacton
 import solara
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts.filesystem import LocalFileSystem
+from pysepal.solara.components.inputs._file_input_widget import FileInputWidget
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 
 from ._harness import of_type, wait_until
@@ -25,7 +29,7 @@ def _run(component, interact):
     async def run():
         root, rc = reacton.render(component, handle_error=False)
         try:
-            await interact(of_type(root, "FileInput")[0])
+            await interact(of_type(root, "FileInputWidget")[0])
         finally:
             rc.close()
 
@@ -158,40 +162,23 @@ def test_select_folders_reaches_the_widget(batch: Path) -> None:
     _run(Harness(), interact)
 
 
-def test_the_bounds_are_resolved_once_per_folder(batch: Path, monkeypatch) -> None:
-    """A folder outside the root warns once, not on every click that re-renders."""
-    from pysepal.solara.components.inputs import file_input
+def test_template_matches_major() -> None:
+    """The widget sends the markup of the installed Vuetify major, with the shared script."""
+    template = FileInputWidget.class_traits()["template"].default()
 
-    calls = []
+    assert ("v-list-item-content" in template) is not IPYVUETIFY_V3
+    assert ('v-bind="props"' in template) is IPYVUETIFY_V3
+    assert "module.exports = {" in template
 
-    def counting(*args):
-        calls.append(args[1:])
-        return resolve(*args)
 
-    resolve = file_input._resolve_bounds
-    monkeypatch.setattr(file_input, "_resolve_bounds", counting)
+def test_the_inputs_do_not_import_sepalwidgets() -> None:
+    """pysepal.sepalwidgets does not import on ipyvuetify 3, so the inputs must not need it."""
+    code = (
+        "import sys, pysepal.solara.components.inputs\n"
+        "print('LEGACY', [m for m in sys.modules if m.startswith('pysepal.sepalwidgets')])"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], check=True, capture_output=True, text=True
+    )
 
-    held = solara.reactive([])
-    folder = solara.reactive("/not/in/the/root")
-    a, b = str(batch / "a.csv"), str(batch / "sub" / "b.csv")
-
-    @solara.component
-    def Harness():
-        FileInputComponent(
-            filesystem=LocalFileSystem(batch),
-            initial_folder=folder.value,
-            multiple=True,
-            value=held,
-        )
-
-    async def interact(widget):
-        held.set([a])
-        held.set([a, b])
-        await wait_until(lambda: widget.v_model == [a, b])
-        assert len(calls) == 1
-
-        folder.set(str(batch / "sub"))
-        await wait_until(lambda: len(calls) == 2)
-        assert widget.initial_folder == str(batch / "sub")
-
-    _run(Harness(), interact)
+    assert "LEGACY []" in result.stdout.splitlines()

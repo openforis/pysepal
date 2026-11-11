@@ -260,7 +260,7 @@ def test_external_clear_resets_selector_controls(kind, tmp_path, _no_live_ee):
             if kind == "asset":
                 assert of_type(root, "Combobox")[0].v_model in (None, "")
             else:
-                assert of_type(root, "FileInput")[0].v_model == ""
+                assert of_type(root, "FileInputWidget")[0].v_model == ""
                 assert not of_type(root, "Select")
             assert held.value is None
         finally:
@@ -284,7 +284,7 @@ def test_vector_reselecting_a_file_does_not_restore_its_old_filter(monkeypatch):
             await wait_until(
                 lambda: bool(getattr(find_by_label(root, msg("widgets.vector.value")), "items", []))
             )
-            browser = of_type(root, "FileInput")[0]
+            browser = of_type(root, "FileInputWidget")[0]
             browser.v_model = ""
             await wait_until(lambda: held.value is None)
             browser.v_model = str(VECTORS)
@@ -315,7 +315,7 @@ def test_points_keeps_an_incomplete_draft_after_autodetecting_columns(tmp_path, 
     async def run():
         root, rc = reacton.render(Harness(), handle_error=False)
         try:
-            browser = of_type(root, "FileInput")[0]
+            browser = of_type(root, "FileInputWidget")[0]
             browser.v_model = str(table)
             await wait_until(lambda: held.value is not None)
             assert held.value == {
