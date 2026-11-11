@@ -23,13 +23,51 @@ Any argument from the original :code:`Layout` ipyvuetify class can be used to co
 
 the value can be retrieve from the :code:`v_model` trait.
 
+Several files
+-------------
+
+With :code:`multiple=True` the value is a list of paths. A click on a file adds it to the selection or removes it, and a click on a folder opens it. A check at the right of each file shows if it is selected. The selection stays when the user opens another folder, so one selection can hold files from several folders. The field shows the number of selected files; click it to see the paths and remove one. The clear button removes all of them.
+
+Every path in the list must be inside :code:`root`, as in single mode. The widget removes a path that is not.
+
+To let the user also select folders, add :code:`select_folders=True`. A folder then has a check too: a click on the check selects the folder, and a click on the row still opens it. The field then counts items, not files.
+
+.. jupyter-execute::
+    :raises:
+    :stderr:
+
+    from pysepal import sepalwidgets as sw
+
+    # correct colors for the documentation
+    # set to dark in SEPAL by default
+    import ipyvuetify as v
+    v.theme.dark = False
+
+    file_input = sw.FileInput(multiple=True, extensions=[".csv"])
+    file_input
+
+In a Solara app, give :code:`multiple=True` to :code:`FileInputComponent`. Its :code:`value` and :code:`on_value` then use :code:`list[str]`:
+
+.. code-block:: python
+
+    import solara
+
+    from pysepal.solara.components.inputs.file_input import FileInputComponent
+
+    tables = solara.reactive([])
+
+    @solara.component
+    def Page():
+        FileInputComponent(multiple=True, extensions=[".csv"], value=tables)
+        solara.Text(f"{len(tables.value)} tables selected")
+
 Methods
 -------
 
 select_file
 ^^^^^^^^^^^
 
-Manually select a file from it's path. No verification on the extension is performed.
+Manually select a file from it's path. No verification on the extension is performed. With :code:`multiple=True` the file is added to the selection.
 
 .. jupyter-execute::
     :raises:
@@ -54,7 +92,7 @@ reset
 ^^^^^
 
 
-Clear the File selection and move to the root folder if something was selected.
+Clear the File selection (all the files with :code:`multiple=True`) and move to the root folder if something was selected.
 
 .. jupyter-execute::
     :raises:
