@@ -13,7 +13,18 @@ from pysepal.solara.components.map_app.shell import initial_step_id
 from pysepal.solara.components.map_app.step_dialog import clamp
 from pysepal.solara.components.map_app.theme_toggle import next_mode
 from pysepal.solara.theme import ThemeState
-from tests.test_solara._harness import walk
+
+
+def walk(widget):
+    """Walk the tree through children and slots: drawer items sit in a tooltip slot."""
+    yield widget
+    children = list(getattr(widget, "children", ()) or ())
+    for slot in getattr(widget, "v_slots", None) or []:
+        slot_children = slot.get("children")
+        children += slot_children if isinstance(slot_children, list) else [slot_children]
+    for child in children:
+        if child is not None and not isinstance(child, str):
+            yield from walk(child)
 
 
 class FakeMap(ipywidgets.DOMWidget):
@@ -363,3 +374,15 @@ def test_stored_mode_adopted_once():
 
 def _bridge_scheme(root):
     return next(w for w in walk(root) if hasattr(w, "vue_prefers_dark"))
+
+
+def test_drawer_items_still_click_after_the_rail_toggles():
+    """A narrow window turns the drawer into a rail and back; the items must still answer."""
+    box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
+    _bridge(box).vue_window_size({"w": 800, "h": 600})
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+
+    _item(box, 1).fire_event("click", None)
+
+    assert calls["current"] == [1]
+    assert _visible(_step_container(box))
