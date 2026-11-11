@@ -25,6 +25,7 @@ import solara
 from deprecated.sphinx import versionadded, versionchanged
 
 from pysepal import mapping as sm
+from pysepal._vuetify import IPYVUETIFY_V3, density, field_variant, select_items
 from pysepal.mapping import get_ipygeojson
 from pysepal.message import msg
 from pysepal.scripts import utils as su
@@ -169,12 +170,14 @@ def MethodSelect(
 
         items.append({"text": msg(m["label_key"]), "value": k})
 
+    # No method is "" here; a Vuetify 3 select counts "" as a pick and floats its label.
     with rv.Select(
         label=msg("aoi_sel.method"),
-        items=items,
-        v_model=reactive_value.value,
-        dense=True,
-        on_v_model=reactive_value.set,
+        items=select_items(items),
+        v_model=(reactive_value.value or None) if IPYVUETIFY_V3 else reactive_value.value,
+        on_v_model=lambda method: reactive_value.set(method or ""),
+        **density(),
+        **field_variant(),
     ):
         pass
 
@@ -780,8 +783,8 @@ def AoiView(
                     label=msg("aoi_sel.aoi_name"),
                     v_model=draw_name.value,
                     on_v_model=draw_name.set,
-                    outlined=True,
-                    dense=True,
+                    **field_variant(outlined=True),
+                    **density(),
                 ):
                     pass
             else:
