@@ -8,6 +8,7 @@ from ipyleaflet import Map
 from shapely import geometry as sg
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.scripts import decorator as sd
 
@@ -56,8 +57,16 @@ class AoiControl(MenuControl):
         # add js behaviours
         self.menu.v_slots[0]["children"].on_event("click", self.click_btn)
 
+    def close(self) -> None:
+        """Close the list of AOIs and release the map."""
+        close_tree(self.aoi_list)
+        self.map_ = None
+        super().close()
+
     def click_btn(self, *args) -> None:
         """Zoom to the total area of all AOIs in :code:`self.aoi_bounds`. Use the whole world if empty."""
+        if self.m is None:
+            return
         # set the bounds to the world if the list is empty
         if len(self.aoi_bounds) == 0:
             self.m.center = [0, 0]
@@ -81,6 +90,8 @@ class AoiControl(MenuControl):
             item: the item to use to compute the bounds. It need to be a shapely geometry or an ee object.
         """
         if isinstance(item, ee.ComputedObject):
+            if self.map_ is None:
+                return
             bounds = self.map_.gee_interface.get_bounds(item)
 
         elif isinstance(item, sg.base.BaseGeometry):
@@ -116,6 +127,8 @@ class AoiControl(MenuControl):
         Args:
             widget: the clicked widget containing the bounds
         """
+        if self.m is None:
+            return
         # the widget store the bounding box in value
         # a tuple of the bounds of the geometry (minx, miny, maxx, maxy)
         self.m.zoom_bounds(widget.value)
@@ -133,6 +146,8 @@ class AoiControl(MenuControl):
             children.append(item)
             item.on_event("click", self.zoom)
 
+        previous = self.aoi_list.children
         self.aoi_list.children = children
+        close_tree(*previous)
 
         return

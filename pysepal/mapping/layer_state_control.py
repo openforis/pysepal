@@ -7,6 +7,7 @@ from ipyleaflet import Map, WidgetControl
 from traitlets import observe
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_tree
 from pysepal.message import msg
 
 
@@ -24,6 +25,9 @@ class LayerStateControl(WidgetControl):
     nb_loading_layer: t.Int = t.Int(0).tag(sync=True)
     "the number of loading layer in the map"
 
+    _watched: tuple = ()
+    "the layers whose loading trait this control observes"
+
     def __init__(self, m: Map, **kwargs) -> None:
         """A specific statebar dedicated to the the counting of loading tiles in the map.
 
@@ -34,6 +38,7 @@ class LayerStateControl(WidgetControl):
         """
         # save the map as a member of the widget
         self.m = m
+        self._watched = []
 
         # create a statebar
         text = msg("layer_state.complete", count=self.nb_layer)
@@ -49,6 +54,17 @@ class LayerStateControl(WidgetControl):
 
         # add js behaviour
         self.m.observe(self.update_nb_layer, "layers")
+
+    def close(self) -> None:
+        """Stop observing the map and its layers, then close the statebar."""
+        if self.m is not None:
+            self.m.unobserve(self.update_nb_layer, "layers")
+        watched, self._watched = self._watched, []
+        for layer in watched:
+            layer.unobserve(self.update_loading, "loading")
+        close_tree(self.w_state)
+        self.m = None
+        super().close()
 
     def update_nb_layer(self, change: dict) -> None:
         """Update the number of layer monitored by the statebar."""
@@ -67,9 +83,15 @@ class LayerStateControl(WidgetControl):
         # add a layer
         if len(change["new"]) > len(change["old"]):
             modified_layer.observe(self.update_loading, "loading")
+            self._watched.append(modified_layer)
 
         # remove a layer
         elif len(change["new"]) < len(change["old"]):
+            # the layer may outlive the map, and a bound method holds this control
+            if modified_layer in self._watched:
+                self._watched.remove(modified_layer)
+                modified_layer.unobserve(self.update_loading, "loading")
+
             # the test is split as not all the layers have a loading trait
             if hasattr(modified_layer, "loading") is True:
                 if modified_layer.loading is True:
