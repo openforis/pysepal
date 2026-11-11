@@ -58,12 +58,13 @@ def ThemeToggle(theme_state: Optional[ThemeState] = None, enable_auto: bool = Tr
     prefers_dark, set_prefers_dark = solara.use_state(False)
     adopted = solara.use_ref(False)
 
+    dark = prefers_dark if mode == "auto" else mode == "dark"
+
     def apply():
-        dark = prefers_dark if mode == "auto" else mode == "dark"
         state.set_dark(dark)
         solara.lab.theme.dark = dark
 
-    solara.use_effect(apply, [mode, prefers_dark, id(state)])
+    solara.use_effect(apply, [dark, id(state)])
 
     def adopt(stored: str):
         if adopted.current:
@@ -73,7 +74,9 @@ def ThemeToggle(theme_state: Optional[ThemeState] = None, enable_auto: bool = Tr
             state.set_mode(stored)
 
     with rv.Html(tag="span", class_="sepal-theme-toggle") as main:
-        ColorSchemeBridge(mode=mode, event_prefers_dark=set_prefers_dark, event_stored_mode=adopt)
+        ColorSchemeBridge(
+            mode=mode, dark=dark, event_prefers_dark=set_prefers_dark, event_stored_mode=adopt
+        )
         btn = rv.Btn(
             icon=True,
             children=[rv.Icon(children=[ICONS[mode]], **size("small"))],

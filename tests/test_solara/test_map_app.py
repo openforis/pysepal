@@ -358,6 +358,7 @@ def test_toggle_cycles_mode_and_resolves_dark():
 
     btn.fire_event("click", None)
     assert (state.mode, state.dark) == ("dark", True)
+    assert bridge.dark is True  # the bridge applies it to the page's Vuetify too
 
 
 def test_stored_mode_adopted_once():

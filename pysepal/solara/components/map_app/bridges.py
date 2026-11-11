@@ -31,14 +31,16 @@ def ViewportBridge(
 @solara.component_vue("ColorSchemeBridge.vue")
 def ColorSchemeBridge(
     mode: str = "",
+    dark: Optional[bool] = None,
     event_prefers_dark: Optional[Callable[[bool], None]] = None,
     event_stored_mode: Optional[Callable[[str], None]] = None,
 ):
-    """Report the browser's colour-scheme preference and remember the theme mode.
+    """Report the browser's colour-scheme preference, remember the mode, apply the theme.
 
     Args:
         mode: The theme mode to store in the browser (``"dark"``, ``"light"`` or
             ``"auto"``); empty stores nothing.
+        dark: The theme to apply to the page's Vuetify; None applies nothing.
         event_prefers_dark: Called with the ``prefers-color-scheme: dark`` match
             on mount and whenever the preference changes.
         event_stored_mode: Called once on mount with the mode stored by an
