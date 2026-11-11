@@ -4,9 +4,12 @@ import inspect
 
 import solara
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.solara.components import admin
 from pysepal.solara.session_info import SessionInfo
 from pysepal.solara.session_manager import SessionManager
+
+from ._harness import of_type
 
 
 def test_admin_uses_the_canonical_session_helpers():
@@ -71,3 +74,70 @@ def test_admin_gate_fails_closed_for_a_scope_less_caller(monkeypatch):
     box, _ = solara.render(admin.AdminButton(), handle_error=False)
 
     assert box.children[0].children == []
+
+
+class _Model:
+    def export_data(self):
+        return {"answer": 42}
+
+
+def _render_admin_panel(monkeypatch):
+    """Render the panel for an admin; the dialog content is built while it is closed."""
+    monkeypatch.setenv("PYSEPAL_ADMIN_USERS", "admin")
+    monkeypatch.setattr(
+        admin,
+        "get_current_session_info",
+        lambda: SessionInfo(scope_id="probe", username="admin"),
+    )
+    box, rc = solara.render(admin.AdminButton(models=_Model()), handle_error=False)
+    return box, rc
+
+
+def test_admin_button_is_small(monkeypatch):
+    box, rc = _render_admin_panel(monkeypatch)
+    try:
+        button = of_type(box, "Btn")[0]
+        assert (button.size == "small") if IPYVUETIFY_V3 else (button.small is True)
+    finally:
+        rc.close()
+
+
+def test_admin_tabs_switch_their_content(monkeypatch):
+    """Vuetify 3 has no v-tabs-items / v-tab-item; the tab model must still drive the body."""
+    box, rc = _render_admin_panel(monkeypatch)
+    try:
+        tabs = of_type(box, "Tabs")[0]
+        window_type, item_type = (
+            ("TabsWindow", "TabsWindowItem") if IPYVUETIFY_V3 else ("TabsItems", "TabItem")
+        )
+        window = of_type(box, window_type)[0]
+        items = of_type(window, item_type)
+
+        assert [tab.children[0] for tab in of_type(tabs, "Tab")] == ["Model Data", "Session Info"]
+        assert len(items) == 2
+        if IPYVUETIFY_V3:
+            assert [tab.value for tab in of_type(tabs, "Tab")] == [0, 1]
+            assert [item.value for item in items] == [0, 1]
+            assert tabs.color == "primary"
+        assert tabs.v_model == window.v_model == 0
+
+        tabs.v_model = 1
+
+        assert window.v_model == 1
+    finally:
+        rc.close()
+
+
+def test_admin_model_card_is_outlined(monkeypatch):
+    box, rc = _render_admin_panel(monkeypatch)
+    try:
+        dialog_card = of_type(box, "Card")[0]
+        # The model data is read when the dialog opens.
+        of_type(box, "Btn")[0].fire_event("click", {})
+        cards = [card for card in of_type(box, "Card") if card is not dialog_card]
+        if IPYVUETIFY_V3:
+            assert [card.border for card in cards] == [""]
+        else:
+            assert [card.outlined for card in cards] == [True]
+    finally:
+        rc.close()
