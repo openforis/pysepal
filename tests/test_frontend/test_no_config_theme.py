@@ -8,8 +8,10 @@ is the wrong thing to ask.
 from pathlib import Path
 
 import ipyvuetify as v
+import pytest
 
 import pysepal
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.frontend import styles
 from tests._import_probe import shipped_locations
 
@@ -45,6 +47,7 @@ def test_set_colors_still_tracks_the_live_vuetify_theme():
     assert color.theme_name == "light"
 
 
+@pytest.mark.skipif(IPYVUETIFY_V3, reason="sepalwidgets needs ipyvuetify 1")
 def test_theme_select_writes_nothing(tmp_path, monkeypatch):
     """Same invariant as ``test_set_colors_writes_nothing``."""
     from pysepal import sepalwidgets as sw
