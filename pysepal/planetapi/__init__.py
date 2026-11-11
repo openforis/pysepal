@@ -9,27 +9,24 @@ Example:
 
         from pysepal import planetapi
 
-        planetapi.PlanetView()
+        planetapi.PlanetModel()
 """
-
-import importlib
 
 from .planet_model import *
 
-# The widgets need the deprecated sepalwidgets package (ipyvuetify 1 only), so
-# they load on first use and the model imports on both ipyvuetify majors.
-_WIDGETS = {
-    "PlanetView": ".planet_view",
-    "InfoView": ".planet_widgets",
-    "InfoCard": ".planet_widgets",
+# Widgets removed in 5.0 with sepalwidgets, and what replaces them.
+_REMOVED = {
+    "PlanetView": "pysepal.planetapi.PlanetModel with your own Solara form",
+    "InfoView": "pysepal.planetapi.PlanetModel with your own Solara form",
+    "InfoCard": "pysepal.planetapi.PlanetModel with your own Solara form",
 }
 
 
 def __getattr__(name: str):
-    if name in _WIDGETS:
-        return getattr(importlib.import_module(_WIDGETS[name], __name__), name)
+    if name in _REMOVED:
+        raise AttributeError(
+            f"{__name__}.{name} was removed in pysepal 5.0 with the ipyvuetify 1 widget layer; "
+            f'use {_REMOVED[name]} or pin "pysepal<5". '
+            "See docs/guides/migrating-to-pysepal-5.md"
+        )
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-def __dir__():
-    return sorted([*globals(), *_WIDGETS])

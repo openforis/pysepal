@@ -38,16 +38,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
-        ipyvuetify: ["1"]
         include:
           - os: macos-latest # macos test
             python-version: "3.11"
-            ipyvuetify: "1"
           - os: windows-latest # windows test
             python-version: "3.11"
-            ipyvuetify: "1"
-          - python-version: "3.12" # Vuetify 3, see pysepal/_vuetify.py
-            ipyvuetify: "3"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up Python ${{ matrix.python-version }}
@@ -57,15 +52,15 @@ jobs:
       - name: Install nox
         run: python -m pip install nox
       - name: test with pytest
-        run: nox -s "test(ipyvuetify='${{ matrix.ipyvuetify }}')" -- -vv
+        run: nox -s test -- -vv
       - name: codecov
-        if: github.event_name == 'push' && matrix.python-version == '3.10' && runner.os == 'Linux' && matrix.ipyvuetify == '1'
+        if: github.event_name == 'push' && matrix.python-version == '3.10' && runner.os == 'Linux'
         uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
       - name: assess dead fixtures
-        if: matrix.python-version == '3.10' && matrix.ipyvuetify == '1'
+        if: matrix.python-version == '3.10'
         run: nox -s dead-fixtures
 
   test_gee:
@@ -138,23 +133,3 @@ jobs:
         run: python -m pip install nox
       - name: build the documentation and check for warnings
         run: nox -s docs
-
-  apps:
-    needs: [build]
-    # Templates use SepalMap which calls init_ee() in its constructor; skip on
-    # fork PRs since they have no EE creds.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    env:
-      EARTHENGINE_TOKEN: ${{ secrets.EARTHENGINE_TOKEN }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.10"
-      - name: Install dependencies
-        run: python -m pip install .[test] "ipyvuetify<3" # the templates are sepalwidgets apps
-      - name: build the template panel application
-        run: pytest --nbmake pysepal/templates/panel_app/ui.ipynb
-      - name: build the template map application
-        run: pytest --nbmake pysepal/templates/map_app/ui.ipynb

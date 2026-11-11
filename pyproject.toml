@@ -21,10 +21,9 @@ dependencies = [
     # building widgets
     "tomli",
     "ipykernel",
-    # 1.x (Vuetify 2) and 3.x (Vuetify 3) side by side, see pysepal/_vuetify.py;
-    # sepalwidgets needs 1.x. Below 1.8 there is no _version.semver, which pysepal
-    # imports at startup, and a cap alone lets a crowded solve fall to 0.1.x.
-    "ipyvuetify>=1.8,<4",
+    # Vuetify 3. pysepal 5 dropped ipyvuetify 1 (Vuetify 2) and sepalwidgets with it;
+    # 3.1 is the oldest release it is tested on.
+    "ipyvuetify>=3.1,<4",
     "markdown",
     "ipyleaflet>=0.14.0",  # to have access to data member in edition
     # earthengine management
@@ -121,10 +120,8 @@ doc = [
 
 [project.scripts]
 module_deploy = "pysepal.bin.module_deploy:main"
-module_factory = "pysepal.bin.module_factory:main"
 module_venv = "pysepal.bin.module_venv:main"
 activate_venv = "pysepal.bin.activate_venv:main"
-sepal_ipyvuetify = "pysepal.bin.sepal_ipyvuetify:main"
 entry_point = "pysepal.bin.entry_point:main"
 
 [tool.setuptools]
@@ -140,12 +137,10 @@ pysepal = [
     "data/*",
     "message/**/*",
     "frontend/**/*",
-    "templates/**/*",
     "**/*.vue",
     "**/*.js",
     "**/*.css",
-    "solara/common/assets/*",
-    "templates/**/.*"
+    "solara/common/assets/*"
 ]
 
 [tool.commitizen]

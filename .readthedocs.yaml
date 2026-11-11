@@ -22,8 +22,6 @@ build:
     # patch deprecated and sphinx version to mimic nox build
     post_install:
       - pip install sphinx
-      # the docs also render the deprecated sepalwidgets, which need ipyvuetify 1
-      - pip install "ipyvuetify>=1.8,<3"
     pre_build:
       - sphinx-apidoc --force --module-first --templatedir=docs/source/_templates/apidoc -o docs/source/modules ./pysepal
 
