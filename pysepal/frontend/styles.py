@@ -11,6 +11,7 @@ from ipywidgets import Widget
 from traitlets import Bool, HasTraits, Unicode, link
 
 import pysepal.scripts.utils as su
+from pysepal._vuetify import IPYVUETIFY_V3
 
 ################################################################################
 # access the folders where style information is stored (layers, widgets)
@@ -36,7 +37,7 @@ JS_DIR: Path = Path(__file__).parent / "js"
 TYPES: Tuple[str, ...] = (
     "info",
     "primary",
-    "primary_contarst",
+    "primary_contrast",
     "secondary",
     "secondary_contrast",
     "accent",
@@ -52,7 +53,56 @@ TYPES: Tuple[str, ...] = (
 "The different types defined by ipyvuetify"
 
 
+DARK_THEME = {
+    "primary": "#76591e",
+    "primary_contrast": "#bf8f2d",  # a bit lighter than the primary color
+    "secondary": "#363e4f",
+    "secondary_contrast": "#5d76ab",
+    "error": "#a63228",
+    "info": "#c5c6c9",
+    "success": "#3f802a",
+    "warning": "#b8721d",
+    "accent": "#272727",
+    "anchor": "#f3f3f3",
+    "main": "#24221f",
+    "darker": "#1a1a1a",
+    "bg": "#121212",
+    "menu": "#424242",
+}
+"colors used for the dark theme"
+
+LIGHT_THEME = {
+    "primary": "#5BB624",
+    "primary_contrast": "#76b353",
+    "accent": "#f3f3f3",
+    "anchor": "#f3f3f3",
+    "secondary": "#2199C4",
+    "secondary_contrast": "#5d76ab",
+    # the Vuetify 2 defaults, kept on Vuetify 3 whose error default is #B00020
+    "success": "#4CAF50",
+    "info": "#2196F3",
+    "warning": "#FB8C00",
+    "error": "#FF5252",
+    "main": "#2196f3",  # used by appbar and versioncard
+    "darker": "#ffffff",  # used for the navdrawer
+    "bg": "#FFFFFF",
+    "menu": "#FFFFFF",
+}
+"colors used for the light theme"
+
+THEMES = {True: DARK_THEME, False: LIGHT_THEME}
+"colors of each theme, keyed by whether it is dark"
+
+_V3_COLORS = ("primary", "secondary", "error", "info", "success", "warning")
+_V3_SURFACE = {True: "#1E1E1E", False: "#FFFFFF"}
+
+
 class ThemeColors(Widget):
+    """The Vuetify 2 colour model, extended with the pysepal colour names.
+
+    Vuetify 3 has its own colour model, which takes custom names through
+    ``custom_theme_colors``; see :func:`apply_palette`.
+    """
 
     _model_name = Unicode("ThemeColorsModel").tag(sync=True)
 
@@ -80,55 +130,41 @@ class ThemeColors(Widget):
     darker = Unicode().tag(sync=True)
 
 
-dark_theme_colors = ThemeColors(
-    _theme_name="dark",
-    primary="#76591e",
-    primary_contrast="#bf8f2d",  # a bit lighter than the primary color
-    secondary="#363e4f",
-    secondary_contrast="#5d76ab",
-    error="#a63228",
-    info="#c5c6c9",
-    success="#3f802a",
-    warning="#b8721d",
-    accent="#272727",
-    anchor="#f3f3f3",
-    main="#24221f",
-    darker="#1a1a1a",
-    bg="#121212",
-    menu="#424242",
-)
+def apply_palette(themes) -> None:
+    """Write the pysepal palette onto ipyvuetify themes.
 
-light_theme_colors = ThemeColors(
-    _theme_name="light",
-    primary="#5BB624",
-    primary_contrast="#76b353",
-    accent="#f3f3f3",
-    anchor="#f3f3f3",
-    secondary="#2199C4",
-    secondary_contrast="#5d76ab",
-    success=v.theme.themes.light.success,
-    info=v.theme.themes.light.info,
-    warning=v.theme.themes.light.warning,
-    error=v.theme.themes.light.error,
-    main="#2196f3",  # used by appbar and versioncard
-    darker="#ffffff",  # used for the navdrawer
-    bg="#FFFFFF",
-    menu="#FFFFFF",
-)
+    Args:
+        themes: an ipyvuetify ``Themes``, such as ``ipyvuetify.theme.themes`` or
+            Solara's per-kernel ``solara.lab.theme.themes``.
+    """
+    for dark, colors in ((True, themes.dark), (False, themes.light)):
+        palette = THEMES[dark]
+        if not IPYVUETIFY_V3:
+            for name, value in palette.items():
+                setattr(colors, name, value)
+            continue
 
-DARK_THEME = {k: v for k, v in dark_theme_colors.__dict__["_trait_values"].items() if k in TYPES}
-"colors used for the dark theme"
-
-LIGHT_THEME = {k: v for k, v in light_theme_colors.__dict__["_trait_values"].items() if k in TYPES}
-"colors used for the light theme"
-
-THEMES = {True: DARK_THEME, False: LIGHT_THEME}
-"colors of each theme, keyed by whether it is dark"
+        # Vuetify 3 refuses accent/anchor and drops unknown names: the standard
+        # colours are traits, the others travel as custom colours.
+        for name in _V3_COLORS:
+            setattr(colors, name, palette[name])
+        colors.primary_darken_1 = palette["primary"]
+        colors.secondary_darken_1 = palette["secondary"]
+        colors.background = palette["bg"]
+        colors.surface = _V3_SURFACE[dark]
+        colors.custom_theme_colors = {
+            name.replace("_", "-"): value
+            for name, value in palette.items()
+            if name not in _V3_COLORS
+        }
 
 
-# override the default theme with the custom ones
-v.theme.themes.light = light_theme_colors
-v.theme.themes.dark = dark_theme_colors
+if IPYVUETIFY_V3:
+    apply_palette(v.theme.themes)
+else:
+    # override the default theme with the custom ones
+    v.theme.themes.light = ThemeColors(_theme_name="light", **LIGHT_THEME)
+    v.theme.themes.dark = ThemeColors(_theme_name="dark", **DARK_THEME)
 
 ################################################################################
 # define classes and method to make the application responsive
