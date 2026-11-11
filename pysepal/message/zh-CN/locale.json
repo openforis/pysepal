@@ -4,7 +4,8 @@
   "widgets": {
     "fileinput": {
       "label": "",
-      "placeholder": ""
+      "placeholder": "",
+      "no_local_files": "共享应用中无法使用此服务器上的文件。"
     },
     "table": {
       "label": "",

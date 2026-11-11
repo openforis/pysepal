@@ -12,9 +12,11 @@ import geopandas as gpd
 from shapely import force_2d
 
 from pysepal.scripts import utils as su
+from pysepal.scripts.filesystem import FileSystem
 from pysepal.scripts.gee_interface import refuse_ambient_session_per_connection
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
+from pysepal.solara.utils import _reader_filesystem
 
 
 async def process_shape(
@@ -23,10 +25,11 @@ async def process_shape(
     value: Any = None,
     gee: bool = True,
     gee_interface: Optional[Any] = None,
+    filesystem: Optional[FileSystem] = None,
 ) -> AoiResult:
     """Process a vector file into an AoiResult.
 
-    Reads a local vector file, optionally filters by column/value,
+    Reads a vector file, optionally filters by column/value,
     and creates a GeoDataFrame. If GEE is enabled, also creates an
     ee.FeatureCollection.
 
@@ -37,6 +40,8 @@ async def process_shape(
         gee: If True, create Earth Engine FeatureCollection.
         gee_interface: The session's interface. Omitting it is only accepted
             where the process serves a single identity.
+        filesystem: Where ``pathname`` lives. By default the local disk, or the
+            user's SEPAL workspace in a shared app.
 
     Returns:
         AoiResult with the vector geometry.
@@ -50,7 +55,8 @@ async def process_shape(
     if column != "ALL" and value is None:
         raise ValueError("Please select a value when filtering by column")
 
-    gdf = await asyncio.to_thread(gpd.read_file, pathname)
+    async with _reader_filesystem(filesystem).local_copy_async(pathname) as local:
+        gdf = await asyncio.to_thread(gpd.read_file, local)
     gdf = gdf.to_crs(epsg=4326)
 
     # Earth Engine rejects GeoJSON with Z coordinates (common in KML).

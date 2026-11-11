@@ -124,7 +124,7 @@ class Notifier:
         self._bus.add_toast(Toast(message=message, type=ToastType.INFO, timeout=timeout))
 
     def cancel(self, message: str, *, timeout: Optional[float] = None) -> None:
-        """Publish a cancellation toast (gray). ``timeout`` overrides default."""
+        """Publish a cancellation toast (a tinted info alert). ``timeout`` overrides default."""
         self._bus.add_toast(Toast(message=message, type=ToastType.CANCEL, timeout=timeout))
 
     def dismiss(self, toast_id: str) -> None:

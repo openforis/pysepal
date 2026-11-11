@@ -68,12 +68,14 @@ from pysepal.solara.notifications import NotificationProvider
 
 @solara.component
 def ExportsPanel(aoi: solara.Reactive[ee.Geometry]):
+    geometry = aoi.value  # read at render, so a new AOI gives a new resolve
+
     def _resolve_elevation() -> ResolvedExport:
-        dem = ee.Image("USGS/SRTMGL1_003").clip(aoi.value)
+        dem = ee.Image("USGS/SRTMGL1_003").clip(geometry)
         return ResolvedExport(
             ee_object=dem,
             default_name="SRTM_elevation",
-            region=aoi.value,
+            region=geometry,
             default_scale=30,
         )
 
@@ -102,22 +104,37 @@ ExportSource(
     id="elevation",              # stable identifier, used as the Select value
     label="SRTM elevation",       # user-visible label in the dropdown
     kind="image",                 # "image" or "table" — must match what resolve() returns
-    resolve=_resolve_elevation,   # 0-arg callable, runs when user presses Export
+    resolve=_resolve_elevation,   # 0-arg callable, runs when the user selects the source
     description="",               # optional, currently unused in UI
     disabled=False,               # greyed out in the Select when True
     icon="",                       # optional mdi- icon name for future use
 )
 ```
 
-Key rule: **`resolve` is called lazily**, not at mount. This is deliberate —
-your factory can stitch together `ee` objects that depend on the live AOI or
-other reactive state, and the computation only fires when the user commits
-to an export. Keep the factory pure-ish: it should return a `ResolvedExport`
-or raise on a clear error.
+Key rule: **`resolve` is called lazily**, not at mount. The dialog calls it
+once when the user selects the source, and keeps the `ResolvedExport` while
+that source stays selected. Your factory can stitch together `ee` objects
+that depend on the live AOI or other app state, and the work only happens
+when the user picks that layer. It should return a `ResolvedExport` or raise
+on a clear error.
+
+The dialog calls `resolve` again only when:
+
+- the user selects another source, or opens the dialog again;
+- the app passes a different `resolve` for the selected source.
+
+Solara compares `resolve` as it compares hook dependencies: a function with
+the same code and the same captured values is the same `resolve`. So an app
+can rebuild its sources on every render; the dialog calls `resolve` again
+only when a value it captures changes. Read reactive values at render, as
+the quickstart reads `aoi.value`, and let `resolve` capture them. A
+`resolve` that reads `aoi.value` itself still works, but while the dialog
+stays open on that source it keeps the result for the old AOI.
 
 If `resolve()` raises, the dialog surfaces the exception message via the
 notification system (falling back to an inline `solara.Warning` when no
-provider is mounted).
+provider is mounted). The dialog shows the error once, and calls `resolve`
+again only on the conditions above.
 
 ## What `ResolvedExport` Carries
 
@@ -212,8 +229,8 @@ Rules:
 
 ### Auto-discovery cost
 
-Discovery calls `image.bandNames().getInfo()` once per selected source
-(the result is cached per source for the life of the dialog). This reads
+Discovery calls `image.bandNames().getInfo()` once per resolved source
+(again on each selection, each open of the dialog and each new image). This reads
 the image's **band schema, not its pixels**, so it is independent of how
 spatially large, high-resolution, or deeply chained the image is —
 `select`, `rename`, `addBands`, arithmetic, `mosaic`, and reducers all
@@ -242,13 +259,11 @@ To skip the round-trip entirely — for a known band set, or a source where
 `ResolvedExport`. A declared catalog renders instantly and never calls
 Earth Engine.
 
-Discovery is cached per source id, not per resolved image (`resolve()`
-returns a fresh object every render, so caching on the object would refetch
-constantly). A source whose `resolve()` changes its **band set** under the
-same id — unusual, since `clip`/`filter`/AOI changes preserve band names —
-therefore keeps its first-discovered catalog. If a source genuinely swaps
-its bands under one id, give it a distinct id per variant or declare
-`bands=(...)` so the picker tracks the change.
+Discovery follows the resolved export: while the dialog stays open, it runs
+again when the dialog resolves the source again and gets a different image
+(`ee` objects compare by structure, so an equal image does not fetch again).
+A source whose **band set** changes when the app inputs change therefore
+gets the new catalog.
 
 Heads-up on visualization: if you set both `vis_params` and `bands`, the
 viz dict can reference bands the user deselects. The engine applies
@@ -547,7 +562,7 @@ layers:
 - mount `NotificationProvider()` once in the app shell (see the
   notifications guide)
 - collect the app's exportable layers into a tuple of `ExportSource`
-  objects, with `resolve` reading from your AppState or props
+  objects, with `resolve` capturing the AppState values or props it reads
 - drop `ExportLauncher(sources=sources)` into the right side panel or
   toolbar — use `button_text=True` inside collapsible panels where the
   pysepal convention is `small=True, block=True`

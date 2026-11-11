@@ -10,6 +10,10 @@
     "title": "Rásteres locales",
     "description": "Dibujando {source}. Una rampa continua estirada sobre códigos de clase dispersos los muestra casi negros; class_colors dibuja cada uno con su color exacto. Defina {env_var} para usar productos reales."
   },
+  "errors": {
+    "title": "Una tarea fallida",
+    "description": "Este botón apunta a un ráster que no existe, así que su tarea falla. El aviso de error queda abierto hasta que lo cierre o inicie otra tarea, y el registro conserva el fallo."
+  },
   "source": {
     "synthetic": "sustitutos generados",
     "real": "mapas de clases reales"
@@ -18,7 +22,8 @@
     "continuous": "rampa continua",
     "classes": "colores por clase",
     "large": "ráster grande",
-    "clear_rasters": "limpiar rásteres"
+    "clear_rasters": "limpiar rásteres",
+    "missing": "ráster inexistente"
   },
   "layers": {
     "continuous": "Clases (continuo)",
@@ -30,7 +35,8 @@
     "classes": "Colores por clase",
     "large": "Ráster grande",
     "preparing": "preparando COG...",
-    "preparing_overviews": "preparando COG con vistas generales..."
+    "preparing_overviews": "preparando COG con vistas generales...",
+    "missing": "Ráster inexistente"
   },
   "toasts": {
     "continuous": "Rampa continua añadida",

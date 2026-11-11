@@ -5,10 +5,13 @@
       <v-alert
         v-for="toast in visibleToasts"
         :key="toast.id"
-        :type="toast.kind !== 'cancel' ? toast.color : undefined"
+        :type="toast.color"
+        :text="toast.kind === 'cancel'"
+        :icon="toast.kind === 'cancel' ? 'mdi-cancel' : undefined"
         :value="true"
+        :dismissible="!toast.timeout"
         dense
-        dark
+        :dark="toast.kind !== 'cancel'"
         elevation="4"
         class="toast-alert"
         :class="'toast-' + toast.kind"
@@ -323,7 +326,6 @@ export default {
   cursor: pointer;
   margin-bottom: 0 !important;
   border-radius: 6px;
-  color: #ffffff !important;
   position: relative;
   overflow: hidden;
   min-height: 72px !important;
@@ -339,54 +341,34 @@ export default {
   background-color: transparent !important;
 }
 
-/* Translucent backgrounds tuned per theme.
- * Colors picked to mirror the Vuetify button palette:
- *  - success = theme success green
- *  - error   = theme error red (matches color="error" buttons like Cancel)
- *  - warning = theme warning orange
- *  - info    = theme info blue
- */
-
-/* Dark theme (default — theme success #3f802a, theme error #a63228) */
-.theme-dark > .toast-stack .toast-alert.toast-success {
-  background-color: rgba(63, 128, 42, 0.9) !important;
+/* Filled toasts take the theme colours, as any filled alert does, so they match
+ * the app's alerts and buttons in both themes. The opacity lets the map show
+ * through a little, as the toasts always did. */
+.toast-stack .toast-alert {
+  opacity: 0.9;
 }
-.theme-dark > .toast-stack .toast-alert.toast-info {
-  background-color: rgba(21, 101, 192, 0.9) !important;
-}
-.theme-dark > .toast-stack .toast-alert.toast-warning {
-  background-color: rgba(230, 120, 0, 0.9) !important;
-}
-.theme-dark > .toast-stack .toast-alert.toast-error {
-  background-color: rgba(166, 50, 40, 0.92) !important;
+.toast-stack .toast-alert.toast-error {
   border-left: 4px solid #ffcdd2 !important;
 }
+
+/* The tint is translucent, so the cancel toast sits on the card surface. */
 .theme-dark > .toast-stack .toast-alert.toast-cancel {
-  background-color: rgba(120, 120, 120, 0.9) !important;
-}
-
-/* Light theme — success matches the primary button green #5BB624,
- * error matches Vuetify's default error #ff5252 (color="error" buttons). */
-.theme-light > .toast-stack .toast-alert.toast-success {
-  background-color: rgba(91, 182, 36, 0.9) !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-info {
-  background-color: rgba(33, 150, 243, 0.9) !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-warning {
-  background-color: rgba(251, 140, 0, 0.9) !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-error {
-  background-color: rgba(255, 82, 82, 0.92) !important;
-  border-left: 4px solid #ffcdd2 !important;
+  background-color: #1e1e1e !important;
 }
 .theme-light > .toast-stack .toast-alert.toast-cancel {
-  background-color: rgba(150, 150, 150, 0.9) !important;
+  background-color: #ffffff !important;
+}
+.toast-alert.toast-cancel .toast-progress {
+  background-color: currentColor;
 }
 
 /* Align icon and content properly */
 .toast-alert >>> .v-alert__wrapper {
   align-items: center;
+}
+
+.toast-alert:not(.toast-cancel) {
+  color: #ffffff !important;
 }
 
 .toast-alert >>> .v-alert__content {
@@ -396,10 +378,10 @@ export default {
   line-height: 1.45;
   max-height: 400px;
   overflow-y: auto;
-  color: #ffffff;
 }
 
-.toast-alert >>> .v-icon {
+.toast-alert:not(.toast-cancel) >>> .v-alert__content,
+.toast-alert:not(.toast-cancel) >>> .v-icon {
   color: #ffffff !important;
 }
 
@@ -410,7 +392,6 @@ export default {
   word-break: break-word;
   white-space: pre-wrap;
   flex: 1;
-  color: #ffffff;
 }
 
 .toast-count {

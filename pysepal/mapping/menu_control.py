@@ -8,6 +8,7 @@ from traitlets import Bool, Int
 from typing_extensions import Self
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_parts
 from pysepal.mapping.map_btn import MapBtn
 
 
@@ -24,6 +25,9 @@ class MenuControl(WidgetControl):
 
     fullscreen: Bool(False).tag(sync=True)
     "Either or not the Menu container should be displayed in fullscreen on top of the map"
+
+    _caller_parts: tuple = ()
+    "the card content and title, given by the caller and left open by close"
 
     def __init__(
         self,
@@ -50,6 +54,7 @@ class MenuControl(WidgetControl):
         """
         # save the map in the members
         self.m = m
+        self._caller_parts = (card_content, card_title)
 
         # set the menucontrol parameters
         self.group = group
@@ -105,6 +110,17 @@ class MenuControl(WidgetControl):
         self.observe(self.update_position, "position")
         self.menu.observe(self.close_others, "v_model")
         self.menu.observe(self.activate, "v_model")
+
+    def close(self) -> None:
+        """Close the menu this control built and release the map.
+
+        The card content and title belong to the caller and stay open.
+        """
+        close_parts(self, keep=self._caller_parts)
+        # a task may still call the control after its map unmounted: methods
+        # of the map controls return early once m is None
+        self.m = None
+        super().close()
 
     def update_position(self, *args) -> None:
         """Update the position of the menu if the position of the widget is dynamically changed."""

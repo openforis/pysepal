@@ -72,7 +72,7 @@ gee_interface = get_current_gee_interface()
 
 # Call async methods directly — no asyncio.to_thread for GEE
 result = await gee_interface.get_info_async(ee_object)
-assets = await gee_interface.get_assets_async(folder)
+assets = await gee_interface.get_assets_async(folder)  # in a component: use_gee_assets()
 asset  = await gee_interface.get_asset_async(asset_id)
 map_id = await gee_interface.get_map_id_async(image, vis)
 
@@ -143,6 +143,47 @@ with rv.CardText():
     rv.Select(...)
 ```
 
+### Keep stateful siblings in place with keys
+
+Reacton matches a container's children by position and type. An element that
+appears only sometimes (`if status: Alert(...)`) moves every later sibling, and
+a sibling whose type changes at its position is unmounted and built again. Its
+hooks start over. A `use_task` in it loses its state, but the coroutine keeps
+running with no component left to show or cancel it.
+
+Symptom: a `TaskButtonComponent` flips to Cancel and back to its start label on
+the first click only. Later clicks work, because the alert is already there, and
+the second click starts a duplicate run. Key the conditional element and the
+stateful sibling after it:
+
+```python
+if status.value is not None:
+    StatusAlert(...).key("status")
+with rv.Html(tag="div", class_="d-flex").key("actions"):
+    CalculationAction(...)  # holds a use_task
+```
+
+Alternatively put the conditional element after the stateful one.
+
+### Elements passed as props, and slots
+
+An element created inside a `with` block becomes a child of that container,
+unless it is passed as a prop to another element created in the same block.
+Create it only when it is passed on, or it renders twice:
+
+```python
+icon = rv.Icon(children=["mdi-magnify"])
+rv.TextField(..., v_slots=[{"name": "prepend-inner", "children": icon}])
+```
+
+Give an element all its slots on its first render. The browser does not draw a
+slot that is added to an element after it mounted, although Python shows it in
+`v_slots`. A test that walks `v_slots` does not see the difference.
+
+A `v.Card` has elevation 2 by default. Kept from a widget layout around a single
+field, it shows as a shadow strip in the light theme (hard to see in dark). Use
+`elevation=0` for content cards in steps and dialogs.
+
 ### MapApp layout
 
 All map-based pysepal apps use `MapApp.element()` as the layout shell.
@@ -180,6 +221,37 @@ MapApp.element(
 )
 ```
 
+To read or drive the active step, pass it as a controlled prop with its
+`on_` callback. `MapApp(model=...)` is deprecated: it binds only the model
+passed on the first render.
+
+```python
+step = solara.use_reactive(1)
+MapApp.element(..., current_step=step.value, on_current_step=step.set)
+# same pair for step_open / on_step_open
+```
+
+A step's `actions` list draws the buttons under a dialog step. `"close": True`
+closes the step, `"next": <step id>` opens any step (so Back is `next` set to the
+previous step id), and `"cancel": True` only draws the button outlined. A step
+with `"right_panel_action": "toggle"` and empty `content` toggles the right panel
+instead of opening a window.
+
+```python
+{"id": 3, "name": "Settings", "display": "dialog", "content": [Settings()],
+ "actions": [{"label": "Close", "close": True, "cancel": True},
+             {"label": "Back", "next": 2, "cancel": True},
+             {"label": "Next", "next": 4}]}
+```
+
+Pass `docs_url=` with the app's published guide, for the Documentation link.
+
+To show and hide a map layer from a control, keep the prepared tiles (the
+`use_task` result) and add or remove the layer in an effect on a `shown`
+reactive. Showing it again then needs no Earth Engine request. Reset `shown` in
+an effect on the input the layer depends on, if a new input must show the layer
+again.
+
 `MapAppComponent` — typed dataclass props, `with` syntax — is designed but
 **not shipped**: `pysepal.solara.components.layout` does not exist and the
 import raises `ImportError`. Check with
@@ -209,6 +281,14 @@ new app to see the patterns in action:
 Dialogs inside MapApp's `right_panel_content` or `steps_data` need
 `eager=True` or the content fails to mount silently.
 
+This is about an `rv.Dialog` you place inside that content. MapApp's own step
+windows (`"display": "dialog"`) mount when opened, so they are lazy. An eager
+`rv.Dialog` is built with the page, while hidden:
+
+- Its tasks run at page load, once per session, not on each open. Work that must
+  follow the dialog goes in a `use_task` keyed on its open state; cancel a
+  pending run when it closes.
+
 ### value/on_value pattern
 
 All pysepal Solara components follow the Solara reactive pattern:
@@ -235,12 +315,26 @@ AssetSelectComponent(
 )
 ```
 
+`AssetSelectComponent` lists the user's assets once per session and shares the
+list with every other field. A custom asset field reads the same list with
+`use_gee_assets(folder)` from `pysepal.solara.components.inputs`, rather than
+calling `get_assets_async` on each mount. `reload_gee_assets()` lists every
+folder of the session again and refreshes every field; the sync icon calls it.
+Call it once an export to an asset has finished, not when it starts:
+
+```python
+listing = use_gee_assets()
+ids = [a["id"] for a in listing.assets if a["type"] == "IMAGE_COLLECTION"]
+# listing.loading and listing.error; reload_gee_assets() for a refresh
+```
+
 ### Notification System
 
-All user feedback (success, error, warnings, task progress) goes through
+All event feedback (success, error, warnings, task progress) goes through
 the centralized notification system. Do NOT add inline `solara.Error()`,
-`solara.Success()`, or `Alert` widgets to components — use the notification
-API instead.
+`solara.Success()`, or `Alert` widgets for events — use the notification
+API instead. A lasting reason, such as why a button is disabled, is state and
+stays on the page: see "Events go to the bus; state stays on the page" below.
 
 **Setup:** Mount `NotificationProvider()` once at the app root:
 
@@ -262,7 +356,7 @@ from pysepal.solara.notifications import use_notifications
 def MyComponent():
     notifications = use_notifications()
 
-    # Toasts (auto-dismiss after 3s, click to dismiss)
+    # Toasts (auto-dismiss after 3s, click to dismiss; errors stay until closed or a new task starts)
     notifications.success("Done!")
     notifications.error("Failed!")
     notifications.warning("Check config")
@@ -356,6 +450,19 @@ with track_task("Exporting", total_steps=2) as task:
 - The `@catch_errors` decorator is NOT modified. It continues to work
   with legacy Alert widgets only. The notification system is independent.
 
+**Events go to the bus; state stays on the page.** A reason that holds until the
+user changes something, such as why an action is disabled, is state:
+
+- Always render the action button. Disable it with `external_busy` until its
+  inputs are complete; do not hide it until a choice is made.
+- Give the reasons once per section: one `rv.Alert(type="warning", text=True, dense=True)` with one short line per item ("Sub-indicator A is not ready: …").
+  Not one outlined alert per item. `text=True` is the filled style `sw.Alert`
+  uses by default.
+- For one control, use its `hint` with `persistent_hint=True` and name what the
+  reason belongs to.
+- Do not repeat a reason another element already shows, and do not add a dialog
+  for an error a toast or field already shows.
+
 **Reference demo:**
 `demo_apps/solara_map_app/` — provider in `app.py`,
 `use_notifications` in `component/tile/process.py`
@@ -393,9 +500,14 @@ ExportLauncher(sources=sources, button_text=True)
 
 **Key rules:**
 
-- `ExportSource.resolve` is a 0-arg callable invoked lazily when the user
-  presses Export — keep it pure and read reactive state inside. This is
-  where AOI clipping, compositing, etc. should happen.
+- `ExportSource.resolve` is a 0-arg callable. The hook and the dialog call it
+  on every render for the selected source (to check the kind and fill the
+  defaults), not only on Export. Build the `ee` object lazily (clipping,
+  compositing) and make no Earth Engine request in it: no `getInfo()`. Leave
+  `ResolvedExport.bands` out and pysepal reads the bands itself with one async
+  request.
+- `ExportSource(..., disabled=True, description=...)` lists a layer that is not
+  ready yet, so one launcher can show every exportable layer.
 - The dialog kind and the real `ee` kind returned by `resolve()` must
   agree; mismatches surface as an error toast rather than a crash.
 - File formats must use canonical REST enum strings: `"GEO_TIFF"` (not
@@ -455,11 +567,18 @@ Button Convention" for the canonical pattern, rules, and cancel semantics.
 
 ### AOI Method Restrictions
 
-GEE/container apps must exclude SHAPE and POINTS methods — they read local
-files and assume server-local paths. Use `methods=["-SHAPE", "-POINTS"]`
-or an explicit allowlist. Read
+SHAPE and POINTS read the user's files through `get_current_filesystem()`: the
+local disk, or in a multi-user container the user's SEPAL workspace through the
+session's client. A container app without `@with_sepal_sessions` has no files,
+so pysepal does not offer them there. Drop them with an explicit allowlist only
+when the app should not offer them. Read
 `docs/guides/solara-gee-patterns.md` § "AOI Method
 Restrictions" for the full matrix.
+
+### AoiView
+
+Use `AoiView` for the area of interest, not an app-made picker. `AoiView(map_=...)`
+needs `map_.gee == gee`; otherwise it raises `ValueError`.
 
 ### Blocking I/O in Components
 
@@ -569,6 +688,38 @@ thread. A `prefer_threaded=True` body keeps the locale but runs on its own
 event loop, so it must stay on the synchronous GEE API (see the event-loop
 error below).
 
+After you add a locale, switch to it in the browser and open every step. A text
+that stays in English is a key that is missing from the locale file.
+
+**Errors from code without a UI.** Keep the science and storage packages free of
+`component.message` imports, so their tests run without pysepal. Raise an
+error that keeps a message key, and let the catalogue register the lookup:
+
+```python
+# mgci/errors.py (no UI import)
+translate = None  # set by component.message
+
+class LocalizedError(ValueError):
+    def __init__(self, key, **values):
+        super().__init__(key)
+        self.key, self.values = key, values
+
+    def __str__(self):
+        return translate(f"errors.{self.key}", **self.values) if translate else f"errors.{self.key}"
+
+# component/message/__init__.py
+import mgci.errors
+mgci.errors.translate = msg
+```
+
+The text is looked up when the error is shown, so a render or a task gets the
+user's language.
+
+**What stays English.** Translate only what the user reads in the app. Report
+tables, default export names (asset names cannot hold accents) and the metadata
+written into exported images stay in English in every locale. Keep the English
+names in a constant and translate only the display labels from it.
+
 **Migrating a 3.x app:**
 
 | 3.x                                            | 4.0                                                |
@@ -596,28 +747,36 @@ already covers both filesystems:
 
 [i1067]: https://github.com/openforis/pysepal/issues/1067
 
-`FileInputComponent` chooses its backend at runtime from whether a
-`sepal_client` was passed: `FileInput.load_files` calls `get_remote_files`
-(`sepal_client.files.list`, the user's sandbox over HTTP) when there is a client
-and `get_local_files` (a `pathlib` glob on the process filesystem) when there is
-not, where `root` then defaults to `~`. So it is **not** a sandbox-only
-component, and a local app is a first-class use of it. Its value is a single
-path as a `str`.
+Read and write user files through `get_current_filesystem()` (from
+`pysepal.solara`), never `pathlib` or `SepalClient.files` directly. It returns a
+`LocalFileSystem` (the home folder) in Voila, notebooks and a SEPAL sandbox, and
+a `SandboxFileSystem` (the user's workspace through their client) in a shared
+app-launcher container, where the process disk belongs to no user. Both speak
+the same absolute paths under `fs.root` (`/home/sepal-user` on SEPAL), refuse
+paths outside it, and offer `list`, `read_bytes`/`read_text`/`read_json`,
+`write`, `mkdir` and `local_copy` (a local path for readers like
+`gpd.read_file`; a shapefile brings its sidecars), each with an `*_async` twin:
+
+```python
+fs = get_current_filesystem()  # in the render, or at the start of a task
+spec = await fs.read_json_async("module_results/my_app/aoi.json")
+async with fs.local_copy_async(path) as local:
+    gdf = await asyncio.to_thread(gpd.read_file, local)
+```
+
+`FileInputComponent` browses that same filesystem by default (pass
+`filesystem=` to pick another). Its value is a single absolute path as a `str`;
+read it through the filesystem, not `open()`.
 
 Do not reach for `solara.FileBrowser` or `solara.FileBrowserMultiple` in a
 pysepal app. They read the process filesystem through `pathlib` and take no
 client, so they cannot serve a sandbox, and an app built on them stops working
 the moment it is deployed to SEPAL. pysepal apps use `FileInputComponent`.
 
-**The gap.** Nothing selects more than one path, and nothing in pysepal
-abstracts reading and writing over the two filesystems, so a component written
-against one cannot serve the other. Both are being tracked rather than worked
-around: multi-select on our own component in [#1067][i1067] (Solara's version is
-prior art there, not a dependency), and one filesystem interface in
-[#1066][i1066]. Until they land, an app needing several paths composes them from
-`FileInputComponent` or talks to `SepalClient` itself.
-
-[i1066]: https://github.com/openforis/pysepal/issues/1066
+**The gap.** Nothing selects more than one path yet: multi-select on our own
+component is [#1067][i1067] (Solara's version is prior art there, not a
+dependency). Until it lands, an app needing several paths composes them from
+`FileInputComponent`.
 
 ## Charts and Graphs
 
@@ -658,7 +817,50 @@ option = Option(
 EChartsWidget.element(option=option, style={"height": "300px"})
 ```
 
+## Logging
+
+Call `setup_logging("APP", config_path=...)` from `pysepal.logger` first in the
+entry point, before `init_ee()`. Name module loggers `APP.<area>` so they
+inherit its level and handler, and add a `[loggers.pysepal]` table to the TOML to
+see pysepal's own logs. `eeclient` at DEBUG logs every request: noisy, but the
+quickest way to count requests while you click through the app.
+
+## Testing Solara Components
+
+- A component with a `use_task` needs a running event loop at mount. Use
+  `unittest.IsolatedAsyncioTestCase` (or `asyncio.run`), or the render raises
+  "no running event loop".
+- Keep patches active for the whole test: `patcher.start()` plus
+  `self.addCleanup(patcher.stop)`. A re-render after a `with patch(...)` block
+  has exited builds the real component.
+- Walk `children` and the `children` of each `v_slots` entry to find widgets.
+  A slot added after mount is not on the page: see "Elements passed as props,
+  and slots".
+- To count Earth Engine requests, render the real tree with a fake
+  `gee_interface` whose `*_async` methods record their calls. Drive MapApp steps
+  with `vue_handle_step_activation(id)`.
+- Reproduce a UI bug in a test before fixing it. The remount in "Keep stateful
+  siblings in place with keys" fails a test that clicks once and looks for
+  Cancel.
+- Test against the pysepal that users get. An editable install of a local
+  pysepal branch hides both missing features and unreleased fixes: a test can
+  pass, or fail, only because of that branch. Check the version and the path
+  (`pysepal.__file__`), and run the suite once against the release tag, for
+  example with a `git worktree` of the tag first on `PYTHONPATH`. Take
+  documentation screenshots the same way.
+
 ## Known Error Patterns
+
+### Button resets to its start label right after the first click
+
+**Cause:** a conditional sibling appeared before it and remounted it. The task
+keeps running unseen. **Fix:** see "Keep stateful siblings in place with keys".
+
+### `TypeError: Expected element, not '<some text>'`
+
+**Cause:** a function under `@solara.component` returned a value that is not an
+element, often a plain helper that sits under a decorator meant for the next
+function. **Fix:** move the decorator; a component returns `None` or an element.
 
 ### `RuntimeError: ... is bound to a different event loop`
 
@@ -787,9 +989,9 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] Blocking sync work in `use_thread` instead of `use_task` + `asyncio.to_thread`
 - [ ] Bare `task.value` truthiness instead of `task.value is not None`
 - [ ] `use_effect` with incomplete dependency list (must include pending, finished, error, cancelled)
-- [ ] `methods="ALL"` in GEE/container apps (must exclude SHAPE and POINTS)
+- [ ] User files read with `pathlib`, `open()` or `SepalClient.files` instead of `get_current_filesystem()` (breaks in one of the two deployments)
 - [ ] Blocking file I/O (`gpd.read_file`, `pd.read_csv`) directly in `use_effect` (use `use_task` + `asyncio.to_thread`)
-- [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for user feedback (use `use_notifications()` + `NotificationProvider`)
+- [ ] Inline `solara.Error()` / `solara.Success()` / `Alert()` for event feedback (use `use_notifications()` + `NotificationProvider`; a lasting reason belongs in one `text` alert per section or a field hint)
 - [ ] A component published for reuse calling `use_notifications()` without `required=False` (it raises when rendered outside an app shell)
 - [ ] `NotificationProvider()` mounted in the same component body that calls `use_notifications()`, or after it (the bus exists only once the provider element has rendered, so both raise)
 - [ ] A dual-entrypoint app mounting `NotificationProvider()` only in `Page` (the Voila `ui.ipynb` displays the shared component directly, so that path has no provider and raises)
@@ -803,8 +1005,12 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
 - [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
-- [ ] A Solara install below 1.60.3 (the `use_task` result store and the leak-free subscription lifecycle the notification bus depends on landed in 1.60.1–1.60.3)
 - [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
+- [ ] A conditional element before a sibling that holds a `use_task`, with no `.key()` on either (the sibling remounts and loses its task)
+- [ ] `ExportSource.resolve` making Earth Engine requests (it runs on every render)
+- [ ] An action button hidden until its inputs exist, instead of rendered disabled
+- [ ] One outlined alert per item for persistent reasons, instead of one `text` alert per section or a field hint
+- [ ] A slot (`v_slots`) added after the element mounted (the browser does not draw it)
 
 Read `docs/guides/migration-notes-v3.4.md` for the
 full breaking changes list.

@@ -16,7 +16,7 @@ if not hasattr(solara.scope, "get_kernel_id"):
         "from 'this runtime has no kernel': UI state, theme and the "
         "notification bus would silently collapse onto one shared process "
         "scope for every connection. Install a solara that provides it "
-        "(pysepal pins solara>=1.60,<2)."
+        "(see the solara requirement of pysepal)."
     )
 
 PROCESS_SCOPE = "process"

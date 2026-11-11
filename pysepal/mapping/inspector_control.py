@@ -7,11 +7,12 @@ import ee
 import geopandas as gpd
 import ipyvuetify as v
 from deprecated.sphinx import deprecated
-from ipyleaflet import GeoJSON, Map, Marker
+from ipyleaflet import GeoJSON, Map, MapStyle, Marker
 from shapely import geometry as sg
 from traitlets import Bool
 
 from pysepal import sepalwidgets as sw
+from pysepal.mapping._widget_tree import close_tree, is_open
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
@@ -39,6 +40,12 @@ class InspectorControl(MenuControl):
     marker: Optional[Marker] = None
     "The marker of the last visited point"
 
+    _title: Optional[v.CardTitle] = None
+    "The title of the card"
+
+    _style: Optional[MapStyle] = None
+    "The last cursor style this control set on the map"
+
     def __init__(self, m: Map, open_tree: bool = True, **kwargs) -> None:
         """Widget control displaying a btn on the map.
 
@@ -62,7 +69,7 @@ class InspectorControl(MenuControl):
         )
 
         # set up the content
-        title = sw.CardTitle(children=[msg("inspector_control.title")])
+        self._title = title = sw.CardTitle(children=[msg("inspector_control.title")])
         self.text = sw.CardText(children=[msg("inspector_control.landing")])
 
         # create the menu widget
@@ -82,14 +89,44 @@ class InspectorControl(MenuControl):
         self.menu.observe(self.toggle_cursor, "v_model")
         self.m.on_interaction(self.read_data)
 
+    def close(self) -> None:
+        """Stop reading the map, then close the content and the marker."""
+        if self.m is not None:
+            self.m.on_interaction(self.read_data, remove=True)
+            # removing reads the model_id of every layer, all must still be open
+            layers = self.m.layers
+            if is_open(self.m) and self.marker in layers and all(map(is_open, layers)):
+                self.m.remove(self.marker)
+        # an open map may still display the last style
+        style, self._style = self._style, None
+        in_use = is_open(self.m) and self.m.default_style is style
+        if style is not None and not in_use:
+            style.close()
+        close_tree(self.text, self._title, self.w_loading, self.marker)
+        super().close()
+
+    def _set_cursor(self, cursor: str) -> None:
+        """Set the map cursor and close the style it replaces, if this control built it.
+
+        ``default_style`` builds a new ``MapStyle`` widget from each dict. A style
+        the map or the caller gave is left open.
+        """
+        previous, own = self.m.default_style, self._style
+        self.m.default_style = {"cursor": cursor}
+        self._style = self.m.default_style
+        if previous is own and previous is not self._style:
+            previous.close()
+
     def toggle_cursor(self, *args) -> None:
         """Toggle the cursor and marker display.
 
         Toggle the cursor on the map to notify to the user that the inspector
         mode is activated. also activate previous marker if the inspector already include data.
         """
-        cursors = [{"cursor": "grab"}, {"cursor": "crosshair"}]
-        self.m.default_style = cursors[self.menu.v_model]
+        if self.m is None:
+            return
+        cursors = ["grab", "crosshair"]
+        self._set_cursor(cursors[self.menu.v_model])
         self.marker.visible = self.menu.v_model
 
         return
@@ -100,6 +137,8 @@ class InspectorControl(MenuControl):
         Args:
             kwargs: any arguments from the map interaction
         """
+        if self.m is None:
+            return
         # check if the v_inspector is active
         is_click = kwargs.get("type") == "click"
         is_active = self.menu.v_model is True
@@ -109,7 +148,7 @@ class InspectorControl(MenuControl):
         # set the loading mode. Cannot be done as a decorator to avoid
         # flickering while moving the cursor on the map
         self.w_loading.indeterminate = True
-        self.m.default_style = {"cursor": "wait"}
+        self._set_cursor("wait")
 
         # init the text children
         children = []
@@ -152,15 +191,17 @@ class InspectorControl(MenuControl):
         tree_view.items = items
         tree_view.open_ = "0" if self.open_tree else ""
 
-        # set them in the card
+        # set them in the card, the previous ones are discarded
+        previous = self.text.children
         self.text.children = children
+        close_tree(*previous)
 
         # place a marker on the right coordinates
         self.marker.location = [lat, lng]
 
         # set back the cursor to crosshair
         self.w_loading.indeterminate = False
-        self.m.default_style = {"cursor": "crosshair"}
+        self._set_cursor("crosshair")
 
         # one last flicker to replace the menu next to the btn
         # if not it goes below the map
@@ -182,6 +223,8 @@ class InspectorControl(MenuControl):
         Returns:
             tke value associated to the image/feature names
         """
+        if self.m is None:
+            return {}
         # create a gee point
         ee_point = ee.Geometry.Point(*coords)
 
@@ -253,6 +296,8 @@ class InspectorControl(MenuControl):
         Returns:
             The value associated to the feature names
         """
+        if self.m is None:
+            return {}
         import rasterio as rio
         import rioxarray
         from rasterio.crs import CRS

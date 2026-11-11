@@ -36,6 +36,7 @@ from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.scripts.gee_task import GEETask, TaskState
+from pysepal.sepalwidgets import file_input as fi
 from pysepal.sepalwidgets.btn import Btn
 from pysepal.sepalwidgets.sepalwidget import SepalWidget
 
@@ -256,6 +257,9 @@ class FileInput(v.Flex, SepalWidget):
             label=msg("widgets.fileinput.placeholder"),
             class_="ml-5 mt-5",
             v_model="",
+            error_messages=(
+                [] if fi.local_files_allowed() else [msg("widgets.fileinput.no_local_files")]
+            ),
         )
 
         self.loading = v.ProgressLinear(
@@ -368,19 +372,36 @@ class FileInput(v.Flex, SepalWidget):
 
         return self
 
+    def _allows(self, path: Union[str, Path]) -> bool:
+        """Whether a path the browser sent may be listed or selected.
+
+        An empty ``root`` leaves the whole disk to a single-user app.
+        """
+        if not fi.local_files_allowed():
+            return False
+        return not self.root or fi.is_within(path, self.root)
+
+    @t.validate("file", "v_model")
+    def _keep_selection_in_root(self, proposal):
+        if not proposal["value"] or self._allows(proposal["value"]):
+            return proposal["value"]
+        return ""
+
+    def set_state(self, sync_data):
+        """Apply browser state, except ``root``: the bound is set in Python only."""
+        sync_data = {k: v for k, v in sync_data.items() if k != "root"}
+        super().set_state(sync_data)
+
     def _on_file_select(self, change: dict) -> Self:
         """Dispatch the behavior between file selection and folder change."""
-        if not change["new"]:
+        if not change["new"] or not self._allows(change["new"]):
             return self
 
         new_value = Path(change["new"])
 
         if new_value.is_dir():
             self.folder = new_value
-
-            # don't change folder if the folder is the parent of the root
-            if not self.folder == Path(self.root).parent:
-                self._change_folder()
+            self._change_folder()
 
         elif new_value.is_file():
             self.file = str(new_value)
@@ -409,6 +430,8 @@ class FileInput(v.Flex, SepalWidget):
             list of items inside the selected folder
         """
         folder = self.folder
+        if not self._allows(folder):
+            return []
 
         list_dir = [el for el in folder.glob("*") if not el.name.startswith(".")]
 
@@ -718,6 +741,7 @@ class AssetSelect(v.Combobox, SepalWidget):
 
         self._loaded = False
         self.valid = False
+        self._list_error: Optional[str] = None
         # Use provided gee_interface or create new one from session
         if gee_interface:
             self.gee_interface = gee_interface
@@ -764,10 +788,9 @@ class AssetSelect(v.Combobox, SepalWidget):
             debounced.subscribe(lambda value: setattr(self, "v_model", value or None))
             self.on_event("update:search-input", lambda w, e, d: subject.on_next(d))
 
-        # Start the initial task only if no default_asset is set
-        # If default_asset is set, the observer will trigger _get_items
-        if not self.default_asset:
-            self._get_items()
+        # Also with a default_asset: it was set before its observer was added, and
+        # _get_items_async reads it.
+        self._get_items()
 
     def _configure_tasks(self) -> None:
         def on_finally_get_items():
@@ -785,7 +808,7 @@ class AssetSelect(v.Combobox, SepalWidget):
         self._tasks["get_items"] = self.gee_interface.create_task(
             func=self._get_items_async,
             key="get_items",
-            on_error=lambda x: self.alert.add_msg(f"Failed to add layer. {x}", type_="error"),
+            on_error=self._on_get_items_error,
             on_finally=on_finally_get_items,
         )
 
@@ -881,6 +904,15 @@ class AssetSelect(v.Combobox, SepalWidget):
         self.asset_info = {}
         # Loading will be reset by on_finally_validate
 
+    def _on_get_items_error(self, error: Exception) -> None:
+        """Show a failed asset listing on the widget itself."""
+        log.error(
+            f"[{id(self)}] Failed to list the assets of {self.folder}: {error}", exc_info=error
+        )
+        self._list_error = msg("widgets.asset_select.list_failed", error=str(error))
+        self.error_messages = self._list_error
+        # Loading will be reset by on_finally_get_items
+
     # @sd.switch("loading", "disabled")
     async def _get_items_async(self, *args, gee_assets: List[dict] = None) -> Self:
 
@@ -916,8 +948,11 @@ class AssetSelect(v.Combobox, SepalWidget):
                     asset_info = await self.gee_interface.get_asset_async(default)
                     if asset_info["type"] in self.types:
                         filtered_defaults.append(default)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.warning(
+                        f"[{id(self)}] Dropped default asset {default}, its lookup failed: "
+                        f"{type(e).__name__}: {e}"
+                    )
 
             if filtered_defaults:
                 self.v_model = filtered_defaults[0]
@@ -932,6 +967,11 @@ class AssetSelect(v.Combobox, SepalWidget):
         # get the list of user asset
         # get_assets_async can return None for an empty/inaccessible folder; keep it iterable
         raw_assets = gee_assets or await self.gee_interface.get_assets_async(self.folder) or []
+
+        # error_messages also carries validation errors, which a reload must not clear
+        if self._list_error is not None and self.error_messages == self._list_error:
+            self.error_messages = None
+        self._list_error = None
 
         log.debug(
             f"[{id(self)}] {text} || [[[{id(self)} ]]]Already awaited for get_assets_async, current v_model is {self.v_model}"

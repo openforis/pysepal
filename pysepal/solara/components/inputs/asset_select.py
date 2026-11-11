@@ -12,6 +12,7 @@ import solara
 from reacton import ipyvue
 
 from pysepal.message import msg
+from pysepal.solara.components.inputs.gee_assets import use_gee_assets
 from pysepal.solara.hooks import _use_draft
 from pysepal.solara.notifications import use_notifications
 from pysepal.solara.utils import get_current_gee_interface
@@ -51,6 +52,9 @@ def AssetSelectComponent(
     Args:
         types: Asset types to list. Defaults to ["IMAGE", "TABLE"].
         folder: GEE folder to list assets from. Defaults to user's root folder.
+            The list is shared with every field of the session listing the same
+            folder (see :func:`use_gee_assets`). The sync icon lists the assets
+            again for every field of the session.
         value: Dict with {asset_id, type, column, value} or None.
         on_value: Callback when selection changes.
         loading: Whether the component is busy (loading assets, validating, etc.).
@@ -69,9 +73,7 @@ def AssetSelectComponent(
     asset_type = selection.get("type")
     selected_column = selection.get("column") or "ALL"
     selected_value = selection.get("value")
-    asset_items = solara.use_reactive([])
-    loading_assets = solara.use_reactive(True)
-    reload_token = solara.use_reactive(0)
+    listing = use_gee_assets(folder, gee_interface)
 
     def select_asset(aid):
         publish(None)
@@ -83,49 +85,28 @@ def AssetSelectComponent(
     def select_value(value):
         draft.set({**draft.value, "value": value})
 
-    async def load_assets():
-        loading_assets.set(True)
-        try:
-            folder_path = folder or await gee_interface.get_folder_async()
-            raw_assets = await gee_interface.get_assets_async(folder_path)
+    asset_items = []
+    for k in types:
+        ids = sorted(e["id"] for e in listing.assets if e.get("type") == k)
+        if ids:
+            asset_items += [
+                {"divider": True},
+                {"header": msg(ASSET_TYPES[k]) if k in ASSET_TYPES else k},
+                *ids,
+            ]
+    if not asset_items and not listing.loading and listing.error is None:
+        asset_items = [
+            {
+                "text": msg("widgets.asset_select.no_assets", folder=listing.folder or "root"),
+                "disabled": True,
+            }
+        ]
 
-            assets = {k: sorted([e["id"] for e in raw_assets if e["type"] == k]) for k in types}
+    def report_listing_error():
+        if listing.error is not None:
+            notifications.error(f"Error loading assets: {listing.error}")
 
-            items = []
-            for k in types:
-                if assets[k]:
-                    items += [
-                        {"divider": True},
-                        {"header": msg(ASSET_TYPES[k]) if k in ASSET_TYPES else k},
-                        *assets[k],
-                    ]
-
-            if not items:
-                asset_items.set(
-                    [
-                        {
-                            "text": msg(
-                                "widgets.asset_select.no_assets", folder=folder_path or "root"
-                            ),
-                            "disabled": True,
-                        }
-                    ]
-                )
-            else:
-                asset_items.set(items)
-        except Exception as e:
-            notifications.error(f"Error loading assets: {e}")
-            asset_items.set([])
-        finally:
-            loading_assets.set(False)
-
-    # Keep session-backed GEE coroutines on Solara's current event loop.
-    solara.lab.use_task(
-        load_assets,
-        dependencies=[reload_token.value],
-        raise_error=False,
-        prefer_threaded=False,
-    )
+    solara.use_effect(report_listing_error, [listing.error])
 
     async def load_asset():
         if not asset_id:
@@ -202,9 +183,9 @@ def AssetSelectComponent(
     solara.use_effect(publish_selection, [draft.value, asset_task.finished, asset_task.error])
 
     def sync_loading():
-        reactive_loading.set(loading_assets.value or asset_task.pending or value_task.pending)
+        reactive_loading.set(listing.loading or asset_task.pending or value_task.pending)
 
-    solara.use_effect(sync_loading, [loading_assets.value, asset_task.pending, value_task.pending])
+    solara.use_effect(sync_loading, [listing.loading, asset_task.pending, value_task.pending])
     column_items = []
     if asset_task.finished and asset_task.value and asset_task.value[0] == "TABLE":
         column_items = COLUMN_ALL_ITEMS + asset_task.value[1]
@@ -212,17 +193,17 @@ def AssetSelectComponent(
     validation_msg = wrong_type
 
     def reload_assets(*_ignore):
-        reload_token.set(reload_token.value + 1)
+        listing.reload()
 
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         asset_field = rv.Combobox(
             label=msg("widgets.asset_select.label"),
-            items=asset_items.value,
+            items=asset_items,
             v_model=asset_id,
             on_v_model=select_asset,
             clearable=True,
             dense=True,
-            loading=loading_assets.value or asset_task.pending,
+            loading=listing.loading or asset_task.pending,
             placeholder=msg("widgets.asset_select.placeholder"),
             prepend_inner_icon="mdi-sync",
             error=bool(validation_msg),

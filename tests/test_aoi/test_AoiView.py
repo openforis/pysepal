@@ -6,6 +6,7 @@ import ee
 import pytest
 
 from pysepal import aoi
+from pysepal.aoi.aoi_view import MethodSelect
 from pysepal.mapping import SepalMap
 from pysepal.message import msg
 
@@ -242,5 +243,6 @@ def test_building_a_view_does_not_strip_the_shared_method_list() -> None:
     aoi.AoiView("ALL", gee=False)
 
     assert aoi.AoiModel.METHODS == before
-    later = aoi.AoiView("ALL", gee=True)
-    assert "ASSET" in [item["value"] for item in later.w_method.items if "value" in item]
+
+    later = MethodSelect("ALL", gee=True)
+    assert "ASSET" in [item["value"] for item in later.items if "value" in item]

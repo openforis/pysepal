@@ -260,8 +260,15 @@ def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
 def test_restoring_another_method_removes_the_draw_control():
     from unittest.mock import Mock
 
-    draw = SimpleNamespace(data=[])
-    draw.clear = lambda: setattr(draw, "data", [])
+    import traitlets
+
+    class _Draw(traitlets.HasTraits):
+        data = traitlets.List()
+
+        def clear(self):
+            self.data = []
+
+    draw = _Draw()
     map_ = SimpleNamespace(gee=False, dc=draw, controls=[], layers=[])
     map_.add_control = map_.controls.append
     map_.remove_control = map_.controls.remove

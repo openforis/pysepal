@@ -3,6 +3,7 @@
 import pytest
 
 from pysepal.solara import dev_auth as _dev_auth
+from pysepal.solara.components.inputs.gee_assets import _listings
 from pysepal.solara.session_manager import SessionManager
 from pysepal.solara.theme import _theme_store
 from tests._kernel_contexts import kernel_contexts  # noqa: F401
@@ -11,24 +12,28 @@ from tests._kernel_contexts import kernel_contexts  # noqa: F401
 @pytest.fixture
 def empty_file_browser(monkeypatch):
     """Keep picker tests from listing the developer's home directory."""
-    from pysepal.sepalwidgets import file_input
+    from pysepal.scripts.filesystem import ListDirectoryResponse, LocalFileSystem
 
     monkeypatch.setattr(
-        file_input,
-        "get_local_files",
-        lambda folder, **kwargs: file_input.ListDirectoryResponse(path=str(folder), files=[]),
+        LocalFileSystem,
+        "list",
+        lambda self, folder=None, extensions=None: ListDirectoryResponse(
+            path=str(folder), files=[]
+        ),
     )
 
 
 @pytest.fixture(autouse=True)
 def _clean_ui_state():
-    """Keep this scope's theme and locale from leaking across tests."""
+    """Keep this scope's theme, locale and asset list from leaking across tests."""
     from pysepal.i18n import set_locale
 
     _theme_store.clear()
+    _listings.clear()
     set_locale("en")
     yield
     _theme_store.clear()
+    _listings.clear()
     set_locale("en")
 
 

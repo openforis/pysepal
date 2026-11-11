@@ -1885,3 +1885,181 @@ def test_export_dialog_labels_band_picker_as_properties_for_tables():
     flattened = [str(c) for group in label_texts for c in (group or [])]
     assert any("Properties" in chunk for chunk in flattened)
     assert not any("Bands" == chunk for chunk in flattened)
+
+
+def _counting_source(source_id, calls, *, value=None, error=None):
+    """Image source whose ``resolve`` logs each call into ``calls``."""
+
+    def _resolve():
+        calls.append((source_id, value))
+        if error is not None:
+            raise error
+        return ResolvedExport(ee_object=_FakeImage(), default_name=source_id, bands=("b1",))
+
+    return ExportSource(id=source_id, label=source_id.upper(), kind="image", resolve=_resolve)
+
+
+def _drive_dialog(build_sources, scenario, *, gee_interface=None):
+    """Mount the hook + dialog, then run ``scenario(captured)`` against the live render.
+
+    ``build_sources(inputs)`` runs on every render with the harness's ``inputs``
+    reactive value, as an app that rebuilds its sources each render does.
+    ``captured["controller"]`` is the controller of the latest render, and
+    ``captured["rc"]`` batches several state changes into one render.
+    """
+    captured = {}
+
+    @solara.component
+    def _Harness():
+        inputs = solara.use_reactive(0)
+        rerender = solara.use_reactive(0)
+        controller = use_export_dialog(
+            sources=build_sources(inputs.value),
+            gee_interface=gee_interface or MagicMock(),
+            drive_interface=MagicMock(),
+        )
+        captured.update(controller=controller, inputs=inputs, rerender=rerender)
+        solara.Text(str(rerender.value))
+        return ExportDialog(controller=controller, title="Test")
+
+    async def _runner():
+        _box, rc = solara.render(_Harness(), handle_error=False)
+        captured["rc"] = rc
+        try:
+            outcome = scenario(captured)
+            if asyncio.iscoroutine(outcome):
+                await outcome
+        finally:
+            rc.close()
+
+    asyncio.run(_runner())
+
+
+def _rerender_a_few_times(captured):
+    controller = captured["controller"]
+    for index in range(3):
+        captured["rerender"].set(captured["rerender"].value + 1)
+        controller.export_name.set(f"name-{index}")
+        controller.selected_target.set("drive" if index % 2 else "gee")
+
+
+def test_resolve_runs_once_per_selection_across_rerenders():
+    calls = []
+    source = _counting_source("a", calls)
+
+    def _scenario(captured):
+        captured["controller"].open_dialog()
+        captured["controller"].selected_source_id.set("a")
+        _rerender_a_few_times(captured)
+
+    _drive_dialog(lambda _inputs: [source], _scenario)
+
+    assert calls == [("a", None)]
+
+
+def test_resolve_runs_again_when_selection_changes():
+    calls = []
+    sources = [_counting_source("a", calls), _counting_source("b", calls)]
+
+    def _scenario(captured):
+        controller = captured["controller"]
+        controller.open_dialog()
+        controller.selected_source_id.set("a")
+        _rerender_a_few_times(captured)
+        controller.selected_source_id.set("b")
+        _rerender_a_few_times(captured)
+        controller.selected_source_id.set("a")
+
+    _drive_dialog(lambda _inputs: sources, _scenario)
+
+    assert calls == [("a", None), ("b", None), ("a", None)]
+
+
+def test_resolve_follows_inputs_of_sources_rebuilt_each_render():
+    """A new tuple with the same inputs reuses the result; new inputs resolve again."""
+    calls = []
+
+    def _scenario(captured):
+        captured["controller"].open_dialog()
+        captured["controller"].selected_source_id.set("a")
+        _rerender_a_few_times(captured)
+        captured["inputs"].set(1)
+        _rerender_a_few_times(captured)
+
+    _drive_dialog(lambda inputs: (_counting_source("a", calls, value=inputs),), _scenario)
+
+    assert calls == [("a", 0), ("a", 1)]
+
+
+def test_resolve_runs_again_when_the_dialog_reopens_on_the_same_source():
+    calls = []
+    source = _counting_source("a", calls)
+
+    def _scenario(captured):
+        controller = captured["controller"]
+        for _ in range(2):
+            # Same batch, as an app opening the dialog on a given source does.
+            with captured["rc"]:
+                controller.open_dialog()
+                controller.selected_source_id.set("a")
+            _rerender_a_few_times(captured)
+
+    _drive_dialog(lambda _inputs: [source], _scenario)
+
+    assert calls == [("a", None), ("a", None)]
+
+
+def test_resolve_error_is_shown_once_and_not_retried_each_render():
+    calls = []
+    source = _counting_source("a", calls, error=RuntimeError("no AOI selected"))
+    seen = {}
+
+    def _scenario(captured):
+        controller = captured["controller"]
+        controller.open_dialog()
+        controller.selected_source_id.set("a")
+        _rerender_a_few_times(captured)
+        seen["message"] = controller._state.inline_message.value
+        seen["source_state"] = export_hook_module.get_controller_source_state(
+            captured["controller"]
+        )
+
+    _drive_dialog(lambda _inputs: [source], _scenario)
+
+    assert calls == [("a", None)]
+    assert seen["message"] == "no AOI selected"
+    active, resolved, kind, error = seen["source_state"]
+    assert active is source
+    assert (resolved, kind, error) == (None, None, "no AOI selected")
+
+
+def test_band_discovery_runs_again_when_the_dialog_reopens_on_the_same_source():
+    """Opening clears the discovered bands, so discovery must refetch them."""
+    gee = _BandDiscoveryGeeInterface(band_names=["B1", "B2"])
+    # One image for both resolves: ee objects compare by structure, so a reopen
+    # resolves to an equal export.
+    image = _FakeImage()
+    source = ExportSource(
+        id="a",
+        label="A",
+        kind="image",
+        resolve=lambda: ResolvedExport(ee_object=image, default_name="a"),
+    )
+    discovered = []
+
+    async def _scenario(captured):
+        for _ in range(2):
+            with captured["rc"]:
+                captured["controller"].open_dialog()
+                captured["controller"].selected_source_id.set("a")
+            for _ in range(50):
+                await asyncio.sleep(0.01)
+                state = captured["controller"]._state
+                if state.discovered_source_id.value == "a":
+                    break
+            discovered.append((state.discovered_source_id.value, state.discovered_bands.value))
+
+    _drive_dialog(lambda _inputs: [source], _scenario, gee_interface=gee)
+
+    assert discovered == [("a", ("B1", "B2")), ("a", ("B1", "B2"))]
+    assert len(gee.calls) == 2

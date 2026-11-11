@@ -1,6 +1,9 @@
 """Test the MapApp widget."""
 
+import json
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -10,6 +13,7 @@ import ipyvuetify as v
 import pytest
 import reacton
 import solara
+from traitlets import Bool, HasTraits, Int
 
 import pysepal
 from pysepal import mapping as sm
@@ -144,6 +148,58 @@ def test_mapapp_panel_updates_survive_a_rerender() -> None:
         title.value = "Herramientas"
         assert rc.find(MapApp).widget.right_panel[0].config["title"] == "Herramientas"
         assert panel.config["title"] == "Herramientas"
+    finally:
+        rc.close()
+
+
+class _StepModel(HasTraits):
+    current_step = Int(allow_none=True)
+    step_open = Bool(False)
+
+
+def test_model_kwarg_warns_but_still_binds() -> None:
+    model = _StepModel()
+
+    with pytest.warns(DeprecationWarning, match="current_step=step.value"):
+        app = MapApp(model=model)
+
+    model.current_step = 3
+    assert app.current_step == 3
+
+
+@pytest.mark.parametrize("method", ["set_model", "unlink_model"])
+def test_model_methods_are_deprecated(method: str) -> None:
+    app = MapApp()
+    args = (_StepModel(),) if method == "set_model" else ()
+
+    with pytest.warns(DeprecationWarning):
+        getattr(app, method)(*args)
+
+
+def test_step_props_drive_the_app_both_ways() -> None:
+    """The replacement for ``model=``: a controlled prop plus its ``on_`` callback."""
+    step = solara.reactive(1)
+    is_open = solara.reactive(False)
+
+    @solara.component
+    def Demo():
+        MapApp.element(
+            current_step=step.value,
+            on_current_step=step.set,
+            step_open=is_open.value,
+            on_step_open=is_open.set,
+        )
+
+    _, rc = reacton.render(Demo())
+    try:
+        app = rc.find(MapApp).widget
+        step.value = 3
+        is_open.value = True
+        assert (app.current_step, app.step_open) == (3, True)
+
+        app.current_step = 2
+        app.step_open = False
+        assert (step.value, is_open.value) == (2, False)
     finally:
         rc.close()
 
@@ -361,6 +417,20 @@ def test_the_footer_renders_outside_the_scrolling_section_area() -> None:
     assert not [node for node in footer.ancestors() if "drawer-top" in node.classes]
 
 
+def test_right_panel_styles_use_no_vuetify3_theme_variables() -> None:
+    """Vuetify 2 defines no ``--v-*`` variables, so their light fallbacks always win (#1061)."""
+    template = _Template("RightPanel.vue")
+
+    assert "var(--v-" not in template.text[template.text.index("<style") :]
+
+
+@pytest.mark.parametrize("selector", [".section-header", ".panel-description"])
+def test_right_panel_colours_follow_the_dark_theme(selector: str) -> None:
+    rule = _Template("RightPanel.vue").css_rule(f".right-panel.theme--dark {selector}")
+
+    assert "rgba(255, 255, 255" in rule
+
+
 def test_the_drawer_click_rule_leaves_disabled_controls_alone() -> None:
     """A disabled control in a drawer must keep Vuetify's ``pointer-events: none``.
 
@@ -388,3 +458,47 @@ def test_the_footer_adds_no_padding_of_its_own() -> None:
     assert not [c for node in slot for c in node.classes if _PADDING_CLASS.match(c)]
     assert not [node for node in slot if "padding" in node.style]
     assert "padding" not in template.css_rule(".drawer-footer")
+
+
+def _drawer_links(**props) -> List[dict]:
+    harness = Path(__file__).parents[1] / "js" / "mapapp_links.mjs"
+    vue = Path(pysepal.__file__).parent / "sepalwidgets/vue/MapApp.vue"
+    result = subprocess.run(
+        ["node", str(harness), str(vue), json.dumps(props)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_no_documentation_link_without_docs_url() -> None:
+    """A guessed path in the repository can be an old guide or a 404."""
+    links = _drawer_links(repo_url="https://github.com/org/app", docs_url="")
+
+    assert [link["title"] for link in links] == ["Source Code", "Report Bug"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_documentation_link_opens_docs_url() -> None:
+    links = _drawer_links(repo_url="https://github.com/org/app", docs_url="https://docs.example")
+
+    assert [(link["title"], link["url"]) for link in links] == [
+        ("Source Code", "https://github.com/org/app"),
+        ("Documentation", "https://docs.example"),
+        ("Report Bug", "https://github.com/org/app/issues/new"),
+    ]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_no_repository_links_without_repo_url() -> None:
+    """Without a repository, Source Code has no target and Report Bug opens ``/issues/new``."""
+    links = _drawer_links(repo_url="", docs_url="https://docs.example")
+
+    assert [link["title"] for link in links] == ["Documentation"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_no_drawer_links_without_any_url() -> None:
+    assert _drawer_links(repo_url="", docs_url="") == []

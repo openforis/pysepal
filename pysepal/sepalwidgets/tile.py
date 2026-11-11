@@ -58,6 +58,9 @@ class Tile(v.Layout, SepalWidget):
             alert: the alert to display process information to the end user
             kwargs: any parameter from a v.Layout. if set, 'children' and '_metadata' will be overwritten.
         """
+        # a copy: the default list is shared by every call, and the caller's is theirs
+        inputs = list(inputs)
+
         self.btn = btn
         inputs += [btn] if btn else []
 

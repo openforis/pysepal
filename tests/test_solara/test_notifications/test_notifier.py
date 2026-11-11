@@ -97,3 +97,14 @@ def test_track_exception_after_explicit_complete_overrides_to_failed(bus, notifi
             task.complete()
             raise RuntimeError("late error")
     assert bus.tasks.value[0].status == TaskStatus.FAILED
+
+
+def test_rerunning_a_failed_task_closes_its_error_toast(bus, notifier):
+    with pytest.raises(RuntimeError):
+        with notifier.track("Processing"):
+            raise RuntimeError("boom")
+    assert [t.type for t in bus.toasts.value] == [ToastType.ERROR]
+
+    notifier.track("Processing")
+
+    assert bus.toasts.value == []
