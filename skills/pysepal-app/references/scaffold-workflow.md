@@ -22,8 +22,8 @@ For existing repos:
 - inspect the current file tree
 - inspect git status if available
 - identify files that already implement app entrypoints, state, and environment setup
-- find `pysepal.sepalwidgets` imports and `MapApp.element` calls; they move to the
-  Solara components
+- find `pysepal.sepalwidgets` imports and `MapApp.element` calls (removed in
+  5.0); they move to the Solara components
 
 ## 3. Generate the Base Scaffold
 

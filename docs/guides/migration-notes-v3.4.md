@@ -1,11 +1,8 @@
 # pysepal Solara Component Changes (v3.4)
 
 > This page records the 3.4 changes. § 8 is superseded: `MapAppComponent` never
-> shipped, and since 4.2 the shell is the native
-> `pysepal.solara.components.map_app.MapApp` (see
-> [solara-mapapp-component.md](./solara-mapapp-component.md)).
-> `pysepal.sepalwidgets` is deprecated
-> ([sepalwidgets-deprecation.md](./sepalwidgets-deprecation.md)).
+> shipped. pysepal 5 removed `pysepal.sepalwidgets` and the Vue `MapApp`; see
+> [migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md).
 
 Use this document to audit and update any pysepal-based Solara app that was
 scaffolded or written before these changes landed.

@@ -12,10 +12,9 @@ application:
 Below 960px of window width the drawer becomes a 60px rail and the panel docks
 at the bottom of the window.
 
-It is a plain `@solara.component` built from Solara and Vuetify elements, so it
-renders on ipyvuetify 1 (Vuetify 2) and ipyvuetify 3 (Vuetify 3). It replaces
-the legacy `pysepal.sepalwidgets.vue_app.MapApp`, a Vue 2 template that is
-deprecated with the rest of sepalwidgets (see `sepalwidgets-deprecation.md`).
+It is a plain `@solara.component` built from Solara and Vuetify 3 elements. It
+replaces the Vue 2 `pysepal.sepalwidgets.vue_app.MapApp`, removed in pysepal 5
+with the rest of sepalwidgets (see `migrating-to-pysepal-5.md`).
 
 ## Quick start
 
@@ -149,9 +148,9 @@ While a step dialog is open, the shell also puts the class `sepal-modal-open` on
 The legend and the notifications use these to stay clear of the panels, so mount
 `NotificationProvider()` and the legend next to the shell and they follow it.
 
-## Moving from the legacy MapApp
+## Moving from the removed Vue MapApp
 
-| Legacy                                                 | Native                                                              |
+| pysepal 4 (Vue MapApp)                                 | pysepal 5                                                           |
 | ------------------------------------------------------ | ------------------------------------------------------------------- |
 | `from pysepal.sepalwidgets.vue_app import MapApp`      | `from pysepal.solara.components.map_app import MapApp`              |
 | `MapApp.element(...)`                                  | `MapApp(...)`, same keyword arguments                               |

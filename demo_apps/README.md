@@ -1,8 +1,7 @@
 # pysepal demo apps
 
-Working apps built on pysepal, kept here to be read and run. They are **not**
-scaffolding — `module_factory` copies `pysepal/templates/map_app` and
-`pysepal/templates/panel_app`, never these. Nothing here ships in the wheel.
+Working apps built on pysepal, kept here to be read and run. Nothing here ships
+in the wheel.
 
 | Demo                                       | What it exercises                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

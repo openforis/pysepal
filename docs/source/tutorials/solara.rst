@@ -245,7 +245,6 @@ Here's the basic structure for a Solara-based SEPAL application:
     from pathlib import Path
     import solara
 
-    from pysepal.sepalwidgets.file_input import FileInput
     from pysepal.solara import (
         setup_sessions,
         with_sepal_sessions,
@@ -254,6 +253,7 @@ Here's the basic structure for a Solara-based SEPAL application:
         setup_theme_colors,
         setup_solara_server,
     )
+    from pysepal.solara.components.inputs import FileInputComponent
 
     # Initializes the Solara server with optional asset locations (can be .css or .js files)
     setup_solara_server(extra_asset_locations=[])
@@ -280,7 +280,7 @@ Here's the basic structure for a Solara-based SEPAL application:
         solara.Markdown("# Welcome to Your SEPAL Application")
 
         # Add your components
-        FileInput.element(sepal_client=sepal_client)
+        FileInputComponent(sepal_client=sepal_client)
 
 
 To run the application, use the provided ``run_solara.sh`` script as shown in the previous section, providing the path to your application file. If everything is set up correctly, your application should launch in the browser and the file system should show the files from your SEPAL workspace.
@@ -304,12 +304,12 @@ async processing with progress notifications, layer management, a floating map
 legend and the export dialog into one ``MapApp`` shell — read it alongside this
 section rather than copying the skeleton below.
 
-``MapApp.element()`` takes the map, the drawer steps and the right panel:
+``MapApp`` takes the map, the drawer steps and the right panel:
 
 .. code-block:: python
 
     from pysepal.mapping import SepalMap
-    from pysepal.sepalwidgets.vue_app import MapApp
+    from pysepal.solara.components.map_app import MapApp
     from pysepal.solara import get_current_gee_interface, get_current_theme_state
 
     @solara.component
@@ -349,7 +349,7 @@ section rather than copying the skeleton below.
             },
         ]
 
-        MapApp.element(
+        MapApp(
             app_title="Your Map Application",
             app_icon="mdi-map",
             main_map=[map_],

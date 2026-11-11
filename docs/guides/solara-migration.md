@@ -36,28 +36,21 @@ Use `import reacton.ipyvuetify as rv` when:
 
 Always prefer native Solara components when available.
 
-### Write for both ipyvuetify majors
+### Write for Vuetify 3
 
-pysepal runs on ipyvuetify 1 (Vuetify 2) and ipyvuetify 3 (Vuetify 3). A
-converted component must render on both. The `sepalwidgets` original ran on
-Vuetify 2 only, so check every `rv.*` call and template you carry over:
+pysepal 5 runs on ipyvuetify 3 (Vuetify 3) only. Code carried over from a
+pysepal 4 app was written for Vuetify 2, so check every `rv.*` call and template:
 
 - Vuetify 3 renamed props (`dense` → `density`, `small` → `size`, `outlined` /
   `text` → `variant`) and removed components (`v-list-item-content`,
   `v-flex`, `v-tabs-items`).
 - Activator slots bind `props`, not `on`. Select items read `title`, not `text`.
-- Inside pysepal, use the helpers in `pysepal/_vuetify.py` (`density()`,
-  `size()`, `btn_variant()`, `select_items()`, ...) or branch on its
-  `IPYVUETIFY_V3`. A template keeps one script and one markup file per major
-  (`vuetify_markup`, `compose_vue`); FileInput and LocaleSelect are built this
-  way.
-- Run the tests in both nox lanes, `nox -s "test(ipyvuetify='1')"` and
-  `"test(ipyvuetify='3')"`, and render the component in a browser on both
-  majors with `scripts/browser_probe.mjs --console`
-  ([browser-testing.md](./browser-testing.md)).
-
-[solara-upstream.md](./solara-upstream.md) lists the template rules learned on
-the way.
+- The full spelling table is in
+  [migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md); the template rules
+  are in [ipyvuetify-widgets.md](./ipyvuetify-widgets.md).
+- Render the component in a browser with `scripts/browser_probe.mjs --console`
+  ([browser-testing.md](./browser-testing.md)): Vue reports an unknown component
+  only in the console.
 
 ### GEE + SessionManager Migration Rule
 
@@ -587,9 +580,9 @@ Shows: AppState singleton, MapApp layout, `use_thread` for long operations, `use
 
 ## 9. Widget Conversion Status
 
-`pysepal.sepalwidgets` is deprecated in 4.2 and removed in 5.0
-([sepalwidgets-deprecation.md](./sepalwidgets-deprecation.md)). The Solara
-layer runs on both ipyvuetify majors.
+pysepal 5 removed `pysepal.sepalwidgets`
+([migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md)). What replaced its
+widgets:
 
 ### Converted (Solara-native)
 
@@ -605,25 +598,24 @@ layer runs on both ipyvuetify majors.
 
 ### Template widgets in the Solara layer
 
-These keep a `VuetifyTemplate`, with one shared script and one markup file per
-major. They do not depend on sepalwidgets.
+These keep a `VuetifyTemplate` with one `.vue` file.
 
 - `FileInputComponent` → `pysepal/solara/components/inputs/file_input.py`,
-  around `FileInputWidget` (`_file_input_widget.py`, `vue/FileInput.*`)
+  around `FileInputWidget` (`_file_input_widget.py`, `vue/FileInput.vue`)
 - `LocaleSelectComponent` → `pysepal/solara/components/locale_select.py`,
-  around `LocaleSelectWidget` (`_locale_widget.py`, `vue/LocaleSelect.*`)
+  around `LocaleSelectWidget` (`_locale_widget.py`, `vue/LocaleSelect.vue`)
 
-### Not converted (deprecated, in `pysepal/sepalwidgets/`)
+### Removed without a Solara version
 
-Use Solara layout or plain `rv.*` elements instead; these will not be converted.
+Use Solara layout or plain `rv.*` elements instead.
 
-- `Btn`, `DownloadBtn` (btn.py)
-- `Divider` (alert.py)
-- `DatePicker`, `NumberField`, `PasswordField`, `SimpleSlider` (inputs.py)
-- `Tile`, `TileAbout`, `TileDisclaimer` (tile.py)
-- `Radio`, `RadioGroup` (radio.py)
-- `Markdown`, `CopyToClip`, `StateIcon` (widget.py)
-- `Dialog` (sepalwidget.py). The `SepalWidget` mixin and `Tooltip` moved to
+- `Btn`, `DownloadBtn`
+- `Divider`
+- `DatePicker`, `NumberField`, `PasswordField`, `SimpleSlider`
+- `Tile`, `TileAbout`, `TileDisclaimer`
+- `Radio`, `RadioGroup`
+- `Markdown`, `CopyToClip`, `StateIcon`
+- `Dialog`. The `SepalWidget` mixin and `Tooltip` moved to
   `pysepal/_sepal_widget.py`.
-- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer` (app.py): `MapApp` is
-  the replacement
+- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer`: `MapApp` is the
+  replacement

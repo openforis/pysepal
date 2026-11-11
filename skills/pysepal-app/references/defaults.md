@@ -86,15 +86,15 @@ Local apps still use:
 - pre-commit tooling
 - `catalog()`/`msg()` i18n structure
 
-Local/Voila apps pin `ipyvuetify<3` in `pyproject.toml`. SEPAL's Jupyter server
-serves one ipyvuetify 1 frontend to every Voila app, and a widget renders only
-when its kernel has the same major.
+pysepal 5 needs ipyvuetify 3. A Voila app on SEPAL renders only once SEPAL's
+Jupyter server runs ipyvuetify 3 too: that server serves one frontend to every
+Voila app.
 
 ## Dependency Defaults
 
 `pyproject.toml` owns Python dependencies. Both templates require
-`pysepal>=4.2`, the first release with the native `MapApp` and ipyvuetify 3
-support.
+`pysepal>=5`, the first release with the native `MapApp`; it is Vuetify 3
+only.
 
 `sepal_environment.yml` owns conda-level or compiled dependencies and installs the local project with:
 

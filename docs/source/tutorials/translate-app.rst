@@ -306,13 +306,13 @@ default, which may be a different language. Let such workers return results or
 a message key and named arguments, then call :code:`msg()` in the owning UI
 context after receiving them.
 
-An application is a Solara component, and :code:`MapApp.element(...)` is its
-shell. The shell mounts the language selector for you and the selector writes
+An application is a Solara component, and :code:`MapApp(...)` from
+:code:`pysepal.solara.components.map_app` is its shell. The shell mounts the language selector for you and the selector writes
 the user's choice here. Offer it the languages your catalogue ships:
 
 .. code-block:: python
 
-    MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         locales=messages.available_locales(),
     )
@@ -320,15 +320,6 @@ the user's choice here. Offer it the languages your catalogue ships:
 For a layout without :code:`MapApp`, mount
 :code:`pysepal.solara.components.locale_select.LocaleSelectComponent(locales=...)`
 inside your component. It writes the same locale.
-
-.. important::
-
-    Do not build the shell with the plain :code:`MapApp(...)` constructor. That
-    is the widget :code:`MapApp.element` creates for you. On its own it has no
-    render loop, so nothing in it follows the language and no selector is
-    mounted. The same holds for every widget in :code:`pysepal.sepalwidgets`:
-    they are the parts a Solara component renders, not a way to assemble an
-    application.
 
 .. note::
 
@@ -339,10 +330,6 @@ inside your component. It writes the same locale.
 
 .. warning::
 
-    An ipywidget keeps the text it was given when it was built. Widgets from
-    :code:`pysepal.sepalwidgets` therefore show the language that was active at
-    that moment. Solara components re-render and follow the language live.
-
-    The legacy map/panel notebook scaffolds also bind catalogues, but their
-    imperative widget layouts do not provide live language switching. Use a
-    Solara layout for new applications.
+    An ipywidget keeps the text it was given when it was built, so it shows the
+    language that was active at that moment. Solara components re-render and
+    follow the language live.

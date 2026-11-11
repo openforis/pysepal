@@ -26,17 +26,6 @@ from pysepal import __author__, __version__  # noqa: E402
 package_path = os.path.abspath("../..")
 os.environ["PYTHONPATH"] = ":".join((package_path, os.environ.get("PYTHONPATH", "")))
 
-# The examples still show the deprecated sepalwidgets; the deprecation is in its
-# docstring, so its warning stays out of every executed cell.
-os.environ["PYTHONWARNINGS"] = ",".join(
-    w
-    for w in (
-        "ignore:pysepal.sepalwidgets is deprecated:DeprecationWarning",
-        os.environ.get("PYTHONWARNINGS", ""),
-    )
-    if w
-)
-
 DOC_DIR = Path(__file__).parent
 
 
@@ -76,7 +65,23 @@ templates_path = ["_templates"]
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ["**.ipynb_checkpoints"]
+exclude_patterns = [
+    "**.ipynb_checkpoints",
+    # Pages built on the ipyvuetify 1 widgets removed in pysepal 5. They are kept
+    # until they are rewritten for the Solara components.
+    "widgets/*",
+    "tutorials/add-tile.rst",
+    "tutorials/create-module.rst",
+    "tutorials/custom-widget.rst",
+    "tutorials/decorator.rst",
+    "tutorials/further.rst",
+    "tutorials/io-design.rst",
+    "tutorials/manage-footer.rst",
+    "tutorials/remove-default.rst",
+    "tutorials/send-to-heroku.rst",
+    "tutorials/sepalize.rst",
+    "tutorials/structure.rst",
+]
 
 # to be able to read RST files
 source_suffix = [".rst", ".md"]

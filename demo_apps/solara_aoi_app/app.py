@@ -39,7 +39,6 @@ from typing import Optional
 
 import reacton.ipyvuetify as rv
 import solara
-from solara.util import IPYVUETIFY_V3
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
@@ -54,10 +53,6 @@ from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
-
-# Vuetify 3 renamed these props; solara.util.IPYVUETIFY_V3 says which major is installed.
-SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
-DENSE = {"density": "compact"} if IPYVUETIFY_V3 else {"dense": True}
 
 #: Where the demo keeps the persisted selection between runs.
 #: Catalogs, but no importable package: ``gallery.py`` puts every demo directory
@@ -181,14 +176,14 @@ def _AoiShell():
                         on_click=restore,
                         disabled=not has_saved.value,
                         color="primary",
-                        **SMALL,
+                        size="small",
                         block=True,
                     ),
                     rv.Switch(
                         label=msg("switch.label"),
                         v_model=autoselect.value,
                         on_v_model=autoselect.set,
-                        **DENSE,
+                        density="compact",
                         hint=msg("switch.hint"),
                         persistent_hint=True,
                     ),
@@ -207,7 +202,7 @@ def _AoiShell():
                         on_click=save,
                         disabled=spec.value is None,
                         color="primary",
-                        **SMALL,
+                        size="small",
                         block=True,
                         classes=["mt-2"],
                     ),
