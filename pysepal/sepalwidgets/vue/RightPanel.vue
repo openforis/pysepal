@@ -224,14 +224,24 @@ export default {
 
 .right-panel .section-header {
   padding: 8px 0;
-  border-bottom: 1px solid var(--v-divider-base, rgba(0, 0, 0, 0.12));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
   margin-bottom: 12px;
 }
 
 /* Description styling for both main panel and sections */
 .panel-description {
-  background-color: var(--v-background-lighten1, rgba(0, 0, 0, 0.05));
+  background-color: rgba(0, 0, 0, 0.05);
   border-radius: 4px;
+}
+
+/* Vuetify 2 defines no --v-* theme variables, so the dark colours key off the
+   drawer's own theme class. Same values as Vuetify's dark v-divider. */
+.right-panel.theme--dark .section-header {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.right-panel.theme--dark .panel-description {
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 .section-description {
