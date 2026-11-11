@@ -94,6 +94,18 @@ def test_delete_removes_folder_keeps_link_target(tmp_path):
     assert not (tmp_path / "p").exists() and (keep / "f").is_file()
 
 
+def test_delete_of_a_linked_project_removes_only_the_link(tmp_path):
+    target = tmp_path / "elsewhere"
+    _make(tmp_path, "elsewhere")
+    (target / "data.bin").write_text("x")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "p").symlink_to(target, target_is_directory=True)
+    ProjectStore(root).delete("p")
+    assert not (root / "p").exists() and not (root / "p").is_symlink()
+    assert (target / "data.bin").is_file() and (target / "project.json").is_file()
+
+
 def test_delete_missing_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         ProjectStore(tmp_path).delete("gone")

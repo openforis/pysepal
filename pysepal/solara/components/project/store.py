@@ -89,6 +89,9 @@ class ProjectStore:
     def delete(self, name: str) -> None:
         """Contents first, manifest last: a half-deleted folder no longer lists as a project."""
         folder = self.folder(name)
+        if folder.is_symlink():  # the link goes, never what it points to
+            folder.unlink()
+            return
         manifest = self.manifest_path(name)
         for child in list(folder.iterdir()):
             if child == manifest:
