@@ -52,14 +52,14 @@ def activator(variable: str) -> dict:
     return {"v_bind": f"{variable}.props"} if IPYVUETIFY_V3 else {"v_on": f"{variable}.on"}
 
 
-def tooltip_end(widget, text: str):
+def tooltip_end(widget, text: str, disabled: bool = False):
     """Return ``widget`` wrapped in a tooltip shown on its right side.
 
     ``widget`` must have been built with ``**activator("tooltip")``.
     """
     slot = [{"name": "activator", "variable": "tooltip", "children": widget}]
     placement = {"location": "end"} if IPYVUETIFY_V3 else {"right": True}
-    return rv.Tooltip(v_slots=slot, children=[text], **placement)
+    return rv.Tooltip(v_slots=slot, children=[text], disabled=disabled, **placement)
 
 
 @solara.component
@@ -75,15 +75,16 @@ def NavItem(
 ):
     """Render one drawer entry: an icon, and its title unless the drawer is a rail.
 
-    In rail mode the title moves to a tooltip.
+    In rail mode the title moves to a tooltip. The tooltip is always there and only
+    disabled outside the rail: changing the tree would replace the item widget, and
+    ``use_event`` stays bound to the widget it first saw.
     """
     classes = " ".join(c for c in ["sepal-mapapp__item", class_, active and "active-step"] if c)
     attrs = dict(attributes or {})
     extra = {"href": href} if href else {}
     if href:
         attrs["target"] = "_blank"
-    if rail:
-        extra.update(activator("tooltip"))
+    extra.update(activator("tooltip"))
 
     if IPYVUETIFY_V3:
         item = rv.ListItem(
@@ -118,4 +119,4 @@ def NavItem(
 
     ipyvue.use_event(item, "click", lambda *_: on_click and on_click())
 
-    return tooltip_end(item, title) if rail else item
+    return tooltip_end(item, title, disabled=not rail)
