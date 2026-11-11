@@ -1,5 +1,6 @@
 """The native Solara MapApp shell: a full-screen map with a drawer of steps and a tool panel."""
 
+import contextlib
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Optional, Sequence, Union
 
@@ -7,6 +8,7 @@ import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.message import msg
 from pysepal.solara.theme import ThemeState, resolve_theme_state
 
@@ -27,6 +29,30 @@ NARROW_PANEL_HEIGHT_VH = 45
 RAIL_WIDTH_PX = 60
 DRAWER_WIDTH_PX = 320
 DISPLAYS = ("step", "dialog")
+
+_FIELD = {"color": "primary", "variant": "underlined"}
+_CONTROL = {"color": "primary"}
+V3_DEFAULTS = {
+    **dict.fromkeys(
+        ["VTextField", "VTextarea", "VSelect", "VAutocomplete", "VCombobox", "VFileInput"], _FIELD
+    ),
+    **dict.fromkeys(
+        ["VCheckbox", "VCheckboxBtn", "VRadioGroup", "VRadio", "VSwitch", "VSlider"], _CONTROL
+    ),
+}
+"""Vuetify 3 defaults for everything the shell holds, its dialogs and menus included.
+
+Vuetify 3 fills fields and drops the primary accent of focused and selected
+controls; these give an app the Vuetify 2 look it was designed with. A prop set
+on a component still wins.
+"""
+
+
+def _defaults():
+    """Return the context that gives the shell's content its Vuetify 3 defaults."""
+    if IPYVUETIFY_V3:
+        return rv.DefaultsProvider(defaults=V3_DEFAULTS)
+    return contextlib.nullcontext()
 
 
 def _map_widget(main_map):
@@ -351,68 +377,69 @@ def MapApp(
 
     with rv.Html(tag="div", class_=" ".join(classes), style_=local_vars) as main:
         solara.Style(CSS)
-        ViewportBridge(
-            css_vars=css_vars,
-            body_class="sepal-modal-open" if dialog_open else "",
-            event_window_size=set_window,
-        )
-
-        if has_map:
-            MapContainer(map_widget, on_click=collapse_if_unpinned)
-
-        if step_steps:
-            with rv.Sheet(
-                tile=True,
-                elevation=0,
-                class_="step-content-container sepal-mapapp__step",
-                style_="" if showing_step else "display: none",
-            ):
-                for step in step_steps:
-                    rv.Html(
-                        tag="div",
-                        style_="" if step.get("id") == active_id else "display: none",
-                        children=as_children(step.get("content")),
-                    ).key(f"step-{step.get('id')}")
-
-        Drawer(
-            app_title=app_title,
-            app_icon=app_icon,
-            has_map=has_map,
-            steps=steps,
-            active_step_id=active_id,
-            rail=rail,
-            pinned=pinned,
-            disabled=dialog_open,
-            links=external_links(repo_url, docs_url),
-            theme_state=state,
-            locales=locales,
-            on_map=show_map,
-            on_step=activate,
-            on_pin=lambda: set_pinned(not pinned),
-        )
-        DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail))
-
-        if has_panel:
-            RightPanel(
-                config=right_panel_config,
-                sections=right_panel_content,
-                footer=right_panel_footer,
-                open=panel_open,
-                on_open=set_panel_open,
-                narrow=narrow,
+        with _defaults():
+            ViewportBridge(
+                css_vars=css_vars,
+                body_class="sepal-modal-open" if dialog_open else "",
+                event_window_size=set_window,
             )
 
-        if dialog_steps:
-            target_width = (dialog_step or {}).get("width") or dialog_width
-            StepDialog(
-                open=dialog_open and dialog_step is not None,
-                step=dialog_step,
-                dialog_steps=dialog_steps,
-                width=clamp(target_width, width, width - drawer_px - 40, 800),
-                height=clamp((dialog_step or {}).get("height"), height, height - 80, None),
-                fullscreen=dialog_fullscreen,
-                on_close=close_dialog,
-                on_action=on_action,
+            if has_map:
+                MapContainer(map_widget, on_click=collapse_if_unpinned)
+
+            if step_steps:
+                with rv.Sheet(
+                    tile=True,
+                    elevation=0,
+                    class_="step-content-container sepal-mapapp__step",
+                    style_="" if showing_step else "display: none",
+                ):
+                    for step in step_steps:
+                        rv.Html(
+                            tag="div",
+                            style_="" if step.get("id") == active_id else "display: none",
+                            children=as_children(step.get("content")),
+                        ).key(f"step-{step.get('id')}")
+
+            Drawer(
+                app_title=app_title,
+                app_icon=app_icon,
+                has_map=has_map,
+                steps=steps,
+                active_step_id=active_id,
+                rail=rail,
+                pinned=pinned,
+                disabled=dialog_open,
+                links=external_links(repo_url, docs_url),
+                theme_state=state,
+                locales=locales,
+                on_map=show_map,
+                on_step=activate,
+                on_pin=lambda: set_pinned(not pinned),
             )
+            DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail))
+
+            if has_panel:
+                RightPanel(
+                    config=right_panel_config,
+                    sections=right_panel_content,
+                    footer=right_panel_footer,
+                    open=panel_open,
+                    on_open=set_panel_open,
+                    narrow=narrow,
+                )
+
+            if dialog_steps:
+                target_width = (dialog_step or {}).get("width") or dialog_width
+                StepDialog(
+                    open=dialog_open and dialog_step is not None,
+                    step=dialog_step,
+                    dialog_steps=dialog_steps,
+                    width=clamp(target_width, width, width - drawer_px - 40, 800),
+                    height=clamp((dialog_step or {}).get("height"), height, height - 80, None),
+                    fullscreen=dialog_fullscreen,
+                    on_close=close_dialog,
+                    on_action=on_action,
+                )
 
     return main
