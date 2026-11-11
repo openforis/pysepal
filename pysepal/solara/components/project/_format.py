@@ -12,7 +12,8 @@ from pysepal.message import msg
 
 def relative_time(when: datetime, now: datetime) -> str:
     """'just now', 'N minutes ago', 'N hours ago' or 'N days ago'. A time a
-    little ahead of ``now`` reads 'just now'."""
+    little ahead of ``now`` reads 'just now'.
+    """
     seconds = max(0, int((now - when).total_seconds()))
     if seconds < 60:
         return msg("project.ago_now")
@@ -25,7 +26,8 @@ def relative_time(when: datetime, now: datetime) -> str:
 
 def size_text(n: Optional[int]) -> str:
     """A size on disk: MB below 1 GB (never under 0.1), GB from 1 GB, one
-    decimal in the current locale. ``None`` (not measured yet) is an ellipsis."""
+    decimal in the current locale. ``None`` (not measured yet) is an ellipsis.
+    """
     if n is None:
         return "…"
     locale = normalize_locale(current_locale() or "en").replace("-", "_")
