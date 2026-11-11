@@ -1,10 +1,18 @@
 """Tests for the reusable Solara map legend dataclasses and component."""
 
+import re
 from dataclasses import asdict
+from pathlib import Path
 
 import solara
 
 from pysepal.solara.components.legend import DiscreteEntry, LegendComponent, LegendData
+from tests.test_solara.test_notifications.test_notification_ui_template import (
+    needs_node,
+    run_vue_script,
+)
+
+_TEMPLATE = Path(__file__).resolve().parents[2] / "pysepal" / "solara" / "components" / "Legend.vue"
 
 
 def _render(**props):
@@ -73,3 +81,82 @@ def test_selecting_an_option_calls_back_into_python():
     widget._handle_custom_msg({"event": "set_selected", "data": "area"}, [])
 
     assert picked == ["area"]
+
+
+def test_template_has_no_vue2_only_syntax():
+    """The bar icons and the script render on both Vue majors.
+
+    Vuetify 3 drops ``small``/``x-small``/``dark``/``light`` on ``v-icon``, and a
+    ``props`` block duplicates the traits ipyvue provides as data, which Vue 3
+    reports for each one.
+    """
+    content = _TEMPLATE.read_text()
+    markup = re.sub(r"<!--.*?-->", "", content.split("<script>")[0], flags=re.DOTALL)
+    icons = re.findall(r"<v-icon\b([^>]*)>", markup)
+    assert icons == [" v-bind=\"iconProps('small')\"", " v-bind=\"iconProps('x-small')\""]
+    assert ">>>" not in content
+    assert not re.search(r"^\s*props:", content, re.MULTILINE)
+
+
+@needs_node
+def test_dark_styling_follows_the_vuetify_theme_on_both_majors():
+    """Vuetify 2 has ``theme.dark``; Vuetify 3 has ``theme.global.current``.
+
+    ``current`` is a ref, or already unwrapped when ``$vuetify`` is reactive.
+    """
+    dark = run_vue_script(
+        _TEMPLATE,
+        """
+        const shapes = {
+          v2: (dark) => ({ theme: { dark } }),
+          v3ref: (dark) => ({ theme: { global: { current: { value: { dark } } } } }),
+          v3: (dark) => ({ theme: { global: { current: { dark } } } }),
+        };
+        const out = {};
+        for (const [name, shape] of Object.entries(shapes)) {
+          out[name] = [true, false].map((d) => makeVm({ $vuetify: shape(d) }).isDark);
+        }
+        return out;
+        """,
+    )
+    assert dark == {"v2": [True, False], "v3ref": [True, False], "v3": [True, False]}
+
+
+@needs_node
+def test_the_legend_opens_in_the_collapsed_state_it_is_given():
+    """``collapsed=True`` must render collapsed.
+
+    ``data()`` cannot read the trait under either ipyvue (ipyvue 1 calls it
+    unbound, ipyvue 3 before the traits exist), so ``created()`` copies it.
+    """
+    collapsed = run_vue_script(
+        _TEMPLATE,
+        """
+        return [true, false].map((collapsed) => {
+          const vm = makeVm({ $vuetify: V3, collapsed });
+          options.created.call(vm);
+          return vm.isCollapsed;
+        });
+        """,
+    )
+    assert collapsed == [True, False]
+
+
+@needs_node
+def test_bar_icons_keep_their_vuetify_2_size_and_theme():
+    props = run_vue_script(
+        _TEMPLATE,
+        """
+        const v2 = makeVm({ $vuetify: { theme: { dark: true } } });
+        const v3 = makeVm({ $vuetify: V3 });
+        return {
+          v2: [v2.iconProps("small"), v2.iconProps("x-small")],
+          v3: [v3.iconProps("small"), v3.iconProps("x-small")],
+        };
+        """,
+    )
+    assert props["v2"] == [
+        {"small": True, "dark": True, "light": False},
+        {"x-small": True, "dark": True, "light": False},
+    ]
+    assert props["v3"] == [{"size": 16}, {"size": 12}]

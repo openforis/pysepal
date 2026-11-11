@@ -1,20 +1,18 @@
 <template>
   <div :class="{ 'theme-dark': is_dark, 'theme-light': !is_dark }">
-    <!-- Toast Stack: fixed top-right -->
-    <div class="toast-stack">
+    <!-- Toast Stack: fixed top-right. The click is caught here because Vue 3
+         has no `.native` and Vuetify 2's v-alert does not forward its clicks. -->
+    <div class="toast-stack" @click="_onToastClick">
       <v-alert
         v-for="toast in visibleToasts"
         :key="toast.id"
         :type="toast.color"
         :icon="toast.kind === 'cancel' ? 'mdi-cancel' : undefined"
-        :value="true"
-        :dismissible="!toast.timeout"
-        dense
-        dark
+        v-bind="alertProps(toast)"
         elevation="4"
         class="toast-alert"
         :class="'toast-' + toast.kind"
-        @click.native="_dismissToast(toast.id)"
+        :data-toast-id="toast.id"
       >
         <span class="toast-message">{{ toast.message }}</span>
         <span v-if="toast.count > 1" class="toast-count"
@@ -37,11 +35,11 @@
       <div v-if="logOpen" class="pill-log">
         <div class="pill-log-header">
           <span>
-            <v-icon small class="mr-2">mdi-history</v-icon>
+            <v-icon v-bind="iconSize('small')" class="mr-2">mdi-history</v-icon>
             Logger
           </span>
-          <v-btn icon x-small @click="logOpen = false">
-            <v-icon small>mdi-close</v-icon>
+          <v-btn icon v-bind="logCloseBtnProps" @click="logOpen = false">
+            <v-icon v-bind="iconSize('small')">mdi-close</v-icon>
           </v-btn>
         </div>
         <div ref="logBody" class="pill-log-body" @scroll="_onLogScroll">
@@ -90,11 +88,8 @@
 <script>
 export default {
   name: "NotificationUI",
-  props: {
-    toasts: { type: Array, default: () => [] },
-    tasks: { type: Array, default: () => [] },
-    is_dark: { type: Boolean, default: false },
-  },
+  // toasts, tasks and is_dark are traits: ipyvue adds them as data, and
+  // declaring them as props too makes Vue 3 warn about the duplicate.
   data() {
     return {
       dismissTimers: {},
@@ -105,6 +100,21 @@ export default {
     };
   },
   computed: {
+    v3() {
+      return !!(
+        this.$vuetify &&
+        this.$vuetify.theme &&
+        this.$vuetify.theme.global
+      );
+    },
+    logCloseBtnProps() {
+      // A Vuetify 3 icon button is elevated and 12px wider than its size; these
+      // give back the flat 20px button of Vuetify 2.
+      if (this.v3) {
+        return { size: "x-small", density: "comfortable", variant: "text" };
+      }
+      return { "x-small": true };
+    },
     visibleToasts() {
       const dismissed = new Set(this.dismissedIdsList);
       const active = this.toasts.filter((t) => !dismissed.has(t.id));
@@ -227,12 +237,50 @@ export default {
       this.transitionsEnabled = true;
     }, 400);
   },
+  // Vue 2 calls beforeDestroy, Vue 3 calls beforeUnmount.
   beforeDestroy() {
-    for (const id of Object.keys(this.dismissTimers)) {
-      clearTimeout(this.dismissTimers[id]);
-    }
+    this._clearDismissTimers();
+  },
+  beforeUnmount() {
+    this._clearDismissTimers();
   },
   methods: {
+    alertProps(toast) {
+      const cancel = toast.kind === "cancel";
+      const closable = !toast.timeout;
+      if (this.v3) {
+        return {
+          variant: cancel ? "tonal" : "flat",
+          closable,
+          density: "compact",
+        };
+      }
+      return {
+        text: cancel,
+        value: true,
+        dismissible: closable,
+        dense: true,
+        dark: !cancel,
+      };
+    },
+    iconSize(name) {
+      // Vuetify 3's named icon sizes scale with the font; Vuetify 2's are
+      // these pixels.
+      return this.v3
+        ? { size: { small: 16, "x-small": 12 }[name] }
+        : { [name]: true };
+    },
+    _onToastClick(event) {
+      const alert = event.target.closest("[data-toast-id]");
+      if (alert) {
+        this._dismissToast(alert.getAttribute("data-toast-id"));
+      }
+    },
+    _clearDismissTimers() {
+      for (const id of Object.keys(this.dismissTimers)) {
+        clearTimeout(this.dismissTimers[id]);
+      }
+    },
     _syncToastTimers(newToasts) {
       // Set up auto-dismiss timers for new toasts with timeouts
       for (const toast of newToasts) {
@@ -306,9 +354,10 @@ export default {
   position: fixed;
   top: calc(var(--sepal-top-reserved, 0px) + 4px);
   right: 4px;
-  /* Stay above Vuetify dialogs and their overlays so toasts remain visible
-   * even when a modal is open — notifications are often about the dialog
-   * itself (errors, progress) and cannot be hidden beneath it. */
+  /* Stay above Vuetify dialogs and their overlays (~202 on Vuetify 2, 2000 on
+   * Vuetify 3) so toasts remain visible even when a modal is open —
+   * notifications are often about the dialog itself (errors, progress) and
+   * cannot be hidden beneath it. */
   z-index: 9999;
   width: 440px;
   max-width: calc(100vw - 8px);
@@ -332,61 +381,36 @@ export default {
   padding-bottom: 20px !important;
 }
 
-/* v-alert paints a filled background on its inner .v-alert__wrapper — force
- * that wrapper transparent and set the color on .toast-alert itself.  Use
- * `background-color` (not the shorthand) to avoid clearing other background
- * properties Vuetify sets. */
-.toast-alert >>> .v-alert__wrapper {
-  background-color: transparent !important;
+/* Filled toasts take the theme colours, as any filled alert does, so they match
+ * the app's alerts and buttons in both themes. The opacity lets the map show
+ * through a little, as the toasts always did. */
+.toast-stack .toast-alert {
+  opacity: 0.9;
 }
-
-/* Toasts keep their own palette rather than the theme colours: the light theme's
- * success is Vuetify's #4CAF50, not the SEPAL green, and the dark theme's info is
- * a light grey that white text cannot be read on. Only the background is
- * translucent, so the map shows through and the text stays sharp. A cancel toast
- * is an info toast with its own icon. */
-.theme-dark > .toast-stack .toast-alert.toast-success {
-  background-color: rgba(63, 128, 42, 0.9) !important;
-}
-.theme-dark > .toast-stack .toast-alert.toast-info,
-.theme-dark > .toast-stack .toast-alert.toast-cancel {
-  background-color: rgba(21, 101, 192, 0.9) !important;
-}
-.theme-dark > .toast-stack .toast-alert.toast-warning {
-  background-color: rgba(230, 120, 0, 0.9) !important;
-}
-.theme-dark > .toast-stack .toast-alert.toast-error {
-  background-color: rgba(166, 50, 40, 0.92) !important;
-}
-
-.theme-light > .toast-stack .toast-alert.toast-success {
-  background-color: rgba(91, 182, 36, 0.9) !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-info,
-.theme-light > .toast-stack .toast-alert.toast-cancel {
-  background-color: rgba(33, 150, 243, 0.9) !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-warning {
-  background-color: rgba(251, 140, 0, 0.9) !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-error {
-  background-color: rgba(255, 82, 82, 0.92) !important;
-}
-
 .toast-stack .toast-alert.toast-error {
   border-left: 4px solid #ffcdd2 !important;
 }
 
-/* Align icon and content properly */
-.toast-alert >>> .v-alert__wrapper {
-  align-items: center;
+/* The tint is translucent, so the cancel toast sits on the card surface. */
+.theme-dark > .toast-stack .toast-alert.toast-cancel {
+  background-color: #1e1e1e !important;
+}
+.theme-light > .toast-stack .toast-alert.toast-cancel {
+  background-color: #ffffff !important;
+}
+.toast-alert.toast-cancel .toast-progress {
+  background-color: currentColor;
 }
 
-.toast-alert {
+.toast-alert:not(.toast-cancel) {
   color: #ffffff !important;
 }
 
-.toast-alert >>> .v-alert__content {
+/* `:deep()` reaches the elements Vuetify renders inside a component. Vuetify 3
+ * honours it; ipyvue 1 injects this style uncompiled, so the browser drops these
+ * rules on Vuetify 2, as it always dropped the deprecated combinator they
+ * replace. */
+.toast-alert :deep(.v-alert__content) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -395,8 +419,8 @@ export default {
   overflow-y: auto;
 }
 
-.toast-alert >>> .v-alert__content,
-.toast-alert >>> .v-icon {
+.toast-alert:not(.toast-cancel) :deep(.v-alert__content),
+.toast-alert:not(.toast-cancel) :deep(.v-icon) {
   color: #ffffff !important;
 }
 
@@ -415,7 +439,7 @@ export default {
   font-size: 0.85em;
 }
 
-.toast-alert.toast-error >>> .v-alert__content {
+.toast-alert.toast-error :deep(.v-alert__content) {
   max-height: 500px;
 }
 
@@ -511,7 +535,7 @@ export default {
 }
 
 /* Icons inside the pill use the foreground color */
-.pill-container >>> .v-icon {
+.pill-container :deep(.v-icon) {
   color: var(--pill-fg) !important;
 }
 
@@ -523,11 +547,11 @@ export default {
 }
 
 /* Always-visible log button (v-btn icon, square override)
- * NOTE: Vuetify's v-btn paints its background through a ::before overlay,
- * so we must force that overlay to transparent and set the real
- * background-color on the button element itself.  `background-color` is
- * used explicitly (not the `background` shorthand) to avoid wiping the
- * other background-* properties Vuetify may set.
+ * NOTE: Vuetify's v-btn paints its hover background through an overlay
+ * (::before on Vuetify 2, .v-btn__overlay on Vuetify 3), so we must force that
+ * overlay to transparent and set the real background-color on the button
+ * element itself.  `background-color` is used explicitly (not the `background`
+ * shorthand) to avoid wiping the other background-* properties Vuetify may set.
  */
 .pill-log-btn.v-btn {
   flex-shrink: 0;
@@ -544,11 +568,16 @@ export default {
   background-color: transparent !important;
 }
 
+/* A rule of its own: Vuetify 2 drops a rule whose selector list holds `:deep()`. */
+.pill-log-btn.v-btn :deep(.v-btn__overlay) {
+  background-color: transparent !important;
+}
+
 .pill-log-btn.v-btn:hover {
   background-color: var(--pill-bg-hover) !important;
 }
 
-.pill-log-btn >>> .v-icon {
+.pill-log-btn :deep(.v-icon) {
   color: var(--pill-fg) !important;
 }
 
@@ -572,7 +601,7 @@ export default {
   border-bottom: 1px solid var(--log-divider);
 }
 
-.pill-log-header >>> .v-icon {
+.pill-log-header :deep(.v-icon) {
   color: var(--log-fg) !important;
 }
 
