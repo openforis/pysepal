@@ -9,6 +9,7 @@ import reacton
 import solara
 
 import pysepal.solara.components.inputs.asset_select as asset_select_mod
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.message import msg
 from pysepal.solara.components.inputs.asset_select import AssetSelectComponent
 from pysepal.solara.components.inputs.point_selector import PointsSelectorComponent
@@ -330,6 +331,68 @@ def test_points_keeps_an_incomplete_draft_after_autodetecting_columns(tmp_path, 
             assert find_by_label(root, msg("widgets.table.column.lat")).v_model == "lat"
             find_by_label(root, msg("widgets.table.column.id")).v_model = "id"
             assert held.value["id_column"] == "id"
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_vector_column_list_reaches_the_widget_in_the_shape_of_the_major(monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: VECTORS.parents[1]))
+    held = solara.reactive({"pathname": str(VECTORS), "column": "region", "value": None})
+
+    @solara.component
+    def Harness():
+        VectorSelectorComponent(value=held)
+
+    async def run():
+        root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await wait_until(
+                lambda: bool(getattr(find_by_label(root, msg("widgets.vector.value")), "items", []))
+            )
+            column = find_by_label(root, msg("widgets.vector.column"))
+            value = find_by_label(root, msg("widgets.vector.value"))
+            all_features, divider, *columns = column.items
+            assert columns == ["land_use", "plot_id", "region"]
+            if IPYVUETIFY_V3:
+                assert (all_features["title"], all_features["value"]) == ("All features", "ALL")
+                assert divider["type"] == "divider"
+                assert {w.density for w in (column, value)} == {"compact"}
+                assert {w.variant for w in (column, value)} == {"underlined"}
+            else:
+                assert all_features == {"text": "All features", "value": "ALL"}
+                assert divider == {"divider": True}
+                assert column.dense is value.dense is True
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_points_column_selects_are_dense(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    table = tmp_path / "plots.csv"
+    table.write_text("id,lat,lon\n1,0,0\n")
+    held = solara.reactive({"pathname": str(table)})
+
+    @solara.component
+    def Harness():
+        PointsSelectorComponent(value=held)
+
+    async def run():
+        root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await wait_until(lambda: held.value is not None and "lat_column" in held.value)
+            selects = [
+                find_by_label(root, msg(f"widgets.table.column.{role}"))
+                for role in ("id", "lat", "lng")
+            ]
+            assert all(select.clearable for select in selects)
+            if IPYVUETIFY_V3:
+                assert {(s.density, s.variant) for s in selects} == {("compact", "underlined")}
+            else:
+                assert all(select.dense for select in selects)
         finally:
             rc.close()
 

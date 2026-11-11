@@ -5,6 +5,7 @@ import asyncio
 import solara
 
 import pysepal.solara.components.aoi.admin as admin_mod
+from pysepal._vuetify import IPYVUETIFY_V3, select_items
 from pysepal.message import msg
 from pysepal.solara.components.inputs.admin_selector import AdminLevelSelector
 
@@ -137,3 +138,24 @@ def test_countries_leaves_the_lower_levels_alone(monkeypatch):
 
     items = find_by_label(root, msg("aoi_sel.adm.1")).items
     assert [item["value"] for item in items] == ["1001"]
+
+
+def test_items_reach_the_widget_in_the_shape_of_the_major(monkeypatch):
+    """fetch_admin_items keeps the Vuetify 2 shape; Vuetify 3 reads the label from title."""
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+
+    @solara.component
+    def _Harness():
+        AdminLevelSelector(method="ADMIN1", gee=False, codes=("101",))
+
+    root = _render(_Harness)
+    countries = find_by_label(root, msg("aoi_sel.adm.0"))
+
+    assert countries.items == select_items(_ITEMS[(0, "")])
+    if IPYVUETIFY_V3:
+        assert [item["title"] for item in countries.items] == ["Algeria", "Paraguay"]
+        assert countries.density == "compact"
+        assert countries.variant == "underlined"
+    else:
+        assert [item["text"] for item in countries.items] == ["Algeria", "Paraguay"]
+        assert countries.dense is True

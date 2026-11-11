@@ -11,6 +11,7 @@ import reacton.ipyvuetify as rv
 import solara
 from reacton import ipyvue
 
+from pysepal._vuetify import IPYVUETIFY_V3, density, field_variant, select_items
 from pysepal.message import msg
 from pysepal.solara.components.inputs.gee_assets import use_gee_assets
 from pysepal.solara.hooks import _use_draft
@@ -32,6 +33,26 @@ COLUMN_ALL_ITEMS = [
 ]
 
 _EXCLUDED_PROPERTIES = {"system:index", "Shape_Area", "Shape_Leng"}
+
+
+def _use_commit_on_enter_or_blur(field, commit: Callable[[Optional[str]], None]) -> None:
+    """Hand ``commit`` the typed text when the user presses Enter or leaves ``field``.
+
+    Only on Vuetify 3: a Vuetify 2 combobox moves v_model there itself. The installed
+    major never changes in a process, so the hook order is stable.
+    """
+    if not IPYVUETIFY_V3:
+        return
+
+    def on_enter(widget, *_ignore):
+        commit(widget.v_model)
+
+    def on_focus(widget, _event, focused):
+        if not focused:
+            commit(widget.v_model)
+
+    ipyvue.use_event(field, "keydown.enter", on_enter)
+    ipyvue.use_event(field, "update:focused", on_focus)
 
 
 @solara.component
@@ -86,8 +107,10 @@ def AssetSelectComponent(
         draft.set({**draft.value, "value": value})
 
     asset_items = []
+    listed_ids = set()
     for k in types:
         ids = sorted(e["id"] for e in listing.assets if e.get("type") == k)
+        listed_ids.update(ids)
         if ids:
             asset_items += [
                 {"divider": True},
@@ -195,30 +218,47 @@ def AssetSelectComponent(
     def reload_assets(*_ignore):
         listing.reload()
 
+    # A Vuetify 3 combobox moves v_model on every keystroke, where Vuetify 2 moved it
+    # on blur or Enter. Each move is an asset lookup, so on Vuetify 3 a typed id only
+    # counts once it is complete: a listed asset or an empty field at once, any other
+    # text on blur or Enter, as Vuetify 2 did.
+    def type_asset(text):
+        if not text or text in listed_ids:
+            commit_asset(text)
+
+    def commit_asset(text):
+        if text != (draft.value or {}).get("asset_id"):
+            select_asset(text)
+
     with solara.Column(classes="pa-0 ma-0", style="gap: 8px;"):
         asset_field = rv.Combobox(
             label=msg("widgets.asset_select.label"),
-            items=asset_items,
+            items=select_items(asset_items),
             v_model=asset_id,
-            on_v_model=select_asset,
+            on_v_model=type_asset if IPYVUETIFY_V3 else select_asset,
             clearable=True,
-            dense=True,
             loading=listing.loading or asset_task.pending,
             placeholder=msg("widgets.asset_select.placeholder"),
+            # Vuetify 2 shows a placeholder unfocused; Vuetify 3 needs to be told.
+            **({"persistent_placeholder": True} if IPYVUETIFY_V3 else {}),
             prepend_inner_icon="mdi-sync",
             error=bool(validation_msg),
             error_messages=validation_msg or None,
+            **density(),
+            **field_variant(),
         )
         ipyvue.use_event(asset_field, "click:prepend-inner", reload_assets)
+        _use_commit_on_enter_or_blur(asset_field, commit_asset)
 
         if column_items and not validation_msg:
             with rv.Select(
                 label="Column",
-                items=column_items,
+                items=select_items(column_items),
                 v_model=selected_column,
                 on_v_model=select_column,
-                dense=True,
                 loading=asset_task.pending,
+                **density(),
+                **field_variant(),
             ):
                 pass
 
@@ -228,8 +268,9 @@ def AssetSelectComponent(
                     items=value_items,
                     v_model=selected_value,
                     on_v_model=select_value,
-                    dense=True,
                     clearable=True,
                     loading=value_task.pending,
+                    **density(),
+                    **field_variant(),
                 ):
                     pass
