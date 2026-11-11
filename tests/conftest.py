@@ -18,11 +18,21 @@ import pandas as pd
 import pytest
 from shapely import geometry as sg
 
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import GEEInterface
 from tests._janitor import delete_recursive
 
 su.init_ee()
+
+# The deprecated ipyvuetify widget layer supports ipyvuetify 1 only.
+_LEGACY_SUITES = [
+    "test_sepalwidgets/*",
+    "test_aoi/*",
+    "test_planetapi/*",
+    "test_templates/*",
+]
+collect_ignore_glob = _LEGACY_SUITES if IPYVUETIFY_V3 else []
 
 
 @pytest.fixture(autouse=True, scope="session")
