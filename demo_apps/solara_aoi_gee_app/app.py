@@ -40,11 +40,11 @@ from typing import Optional
 
 import reacton.ipyvuetify as rv
 import solara
+from solara.util import IPYVUETIFY_V3
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_gee_interface,
     get_current_theme_state,
@@ -54,9 +54,14 @@ from pysepal.solara import (
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiSpec, AoiView
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
+
+# Vuetify 3 renamed these props; solara.util.IPYVUETIFY_V3 says which major is installed.
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
+DENSE = {"density": "compact"} if IPYVUETIFY_V3 else {"dense": True}
 
 
 @solara.lab.on_kernel_start
@@ -171,7 +176,7 @@ def _AoiGeeShell():
         spec.set(loaded)
         notifications.info(msg("toasts.restored", method=loaded.method))
 
-    return MapApp.element(
+    return MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-content-save-move-outline",
         locales=messages.available_locales(),
@@ -194,14 +199,14 @@ def _AoiGeeShell():
                         on_click=restore,
                         disabled=not has_saved.value,
                         color="primary",
-                        small=True,
+                        **SMALL,
                         block=True,
                     ),
                     rv.Switch(
                         label=msg("switch.label"),
                         v_model=autoselect.value,
                         on_v_model=autoselect.set,
-                        dense=True,
+                        **DENSE,
                         hint=msg("switch.hint"),
                         persistent_hint=True,
                     ),
@@ -220,7 +225,7 @@ def _AoiGeeShell():
                         on_click=save,
                         disabled=spec.value is None,
                         color="primary",
-                        small=True,
+                        **SMALL,
                         block=True,
                         classes=["mt-2"],
                     ),

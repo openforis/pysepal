@@ -1,10 +1,7 @@
 """Right-panel section holding the standalone layer controls.
 
-This section is a hook returning MapApp content rather than a
-``@solara.component``: it mixes Solara elements with pre-built ipyvuetify
-buttons, and ``solara.display`` re-creates a widget instead of embedding the
-instance, which would drop the ``on_event`` handlers wired below. Handing the
-widgets straight to MapApp's content list keeps them intact.
+A hook returning the section's content, a list of elements that MapApp renders
+one under the other.
 """
 
 import logging
@@ -33,12 +30,15 @@ from component.scripts import (
     upsert_legends,
 )
 from ipyleaflet import PMTilesLayer
+from solara.util import IPYVUETIFY_V3
 
-import pysepal.sepalwidgets as sw
 from pysepal.solara.components.admin import AdminButton
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
 logger = logging.getLogger("SEPALUI.map_app")
+
+# Vuetify 3 spells the small button `size="small"`.
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
 
 
 def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
@@ -96,34 +96,22 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
     )
     radar_btn_props = use_task_button(radar_task, on_start=radar_task)
 
-    def build_layer_buttons():
-        """Build the sync ipyvuetify buttons once; they close over stable reactives."""
-        btn_pmtiles = sw.Btn(msg("buttons.add_pmtiles"), small=True, block=True)
-        btn_remove = sw.Btn(msg("buttons.remove_all"), small=True, block=True)
+    def add_pmtiles_layer():
+        """Add vector tiles, which the layer control drives without Earth Engine."""
+        sepal_map.add_layer(
+            PMTilesLayer(name=msg("layers.pmtiles"), url=PMTILES_URL, style=PMTILES_STYLE),
+            key=PMTILES_LAYER_ID,
+        )
+        sepal_map.center = PMTILES_CENTER
+        sepal_map.zoom = 14
 
-        def add_pmtiles_layer():
-            """Add vector tiles, which the layer control drives without Earth Engine."""
-            sepal_map.add_layer(
-                PMTilesLayer(name=msg("layers.pmtiles"), url=PMTILES_URL, style=PMTILES_STYLE),
-                key=PMTILES_LAYER_ID,
-            )
-            sepal_map.center = PMTILES_CENTER
-            sepal_map.zoom = 14
+    def remove_all_layers():
+        sepal_map.remove_all()
+        sepal_map.center = DEMO_CENTER
+        sepal_map.zoom = 5
+        layer_legends.set(())
+        outputs.set(None)
 
-        def remove_all_layers():
-            sepal_map.remove_all()
-            sepal_map.center = DEMO_CENTER
-            sepal_map.zoom = 5
-            layer_legends.set(())
-            outputs.set(None)
-
-        btn_pmtiles.on_event("click", lambda *args: add_pmtiles_layer())
-        btn_remove.on_event("click", lambda *args: remove_all_layers())
-        return btn_pmtiles, btn_remove
-
-    btn_pmtiles, btn_remove = solara.use_memo(
-        build_layer_buttons, [id(sepal_map), msg("buttons.add_pmtiles")]
-    )
     app_model = solara.use_memo(AppModel, [])
 
     return [
@@ -133,7 +121,7 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
         TaskButtonComponent(
             label=msg("buttons.add_radar"), **radar_btn_props, small=True, block=True
         ),
-        btn_pmtiles,
-        btn_remove,
+        solara.Button(msg("buttons.add_pmtiles"), on_click=add_pmtiles_layer, block=True, **SMALL),
+        solara.Button(msg("buttons.remove_all"), on_click=remove_all_layers, block=True, **SMALL),
         AdminButton(app_model, logger_instance=logger),
     ]

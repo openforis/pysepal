@@ -32,7 +32,7 @@ from component.parameter import DUMMY_DATA_DIR
 from component.tile import ExportPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
 
-from pysepal.sepalwidgets.vue_app import MapApp
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara import (
     get_current_drive_interface,
     get_current_gee_interface,
@@ -136,7 +136,7 @@ def MapAppDemo():
 
     MapLegend(layer_legends)
 
-    MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-earth",
         main_map=[sepal_map],

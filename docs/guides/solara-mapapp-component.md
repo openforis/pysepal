@@ -1,158 +1,161 @@
-# MapAppComponent — Solara-native MapApp layout
+# MapApp — the Solara map application shell
 
-`MapAppComponent` is a first-class Solara component that replaces the
-legacy `MapApp(v.VuetifyTemplate)`. It is usable with `with` syntax,
-exposes typed dataclass props, auto-wires `ThemeState` and the Solara reactive
-locale that `pysepal.i18n.current_locale` reads, and preserves the visual
-design of the original `MapApp.vue` (drawer, narrow-mode bottom sheet,
-dialog steps, right panel).
+`pysepal.solara.components.map_app.MapApp` is the shell of a SEPAL map
+application:
 
-```{important}
-**Availability — not yet shipped.** As of pysepal 3.7.0, `MapAppComponent` and
-the `pysepal.solara.components.layout` package are **not present in the released
-package**: the `layout` module is empty and `from pysepal.solara import
-MapAppComponent` (along with the dataclasses below) raises `ImportError`. The
-API documented here is the **planned target** — verify availability with
-`python -c "from pysepal.solara import MapAppComponent"` before relying on it.
+- a full-screen map;
+- a drawer on the left with the steps, the links, the theme toggle and the
+  language selector;
+- a panel on the right with sections of tools;
+- a dialog for dialog steps.
 
-Until it lands, build the shell with the shipped
-`pysepal.sepalwidgets.vue_app.MapApp.element(...)`. Reacton renders nested
-Solara elements before they reach `MapApp`'s `List(Instance(DOMWidget))` traits,
-so modern `@solara.component` tiles can be passed straight through as step /
-panel `content`. The legacy `MapApp` is therefore **not** effectively deprecated
-yet — it remains the supported shell until `MapAppComponent` ships.
-```
+Below 960px of window width the drawer becomes a 60px rail and the panel docks
+at the bottom of the window.
+
+It is a plain `@solara.component` built from Solara and Vuetify elements, so it
+renders on ipyvuetify 1 (Vuetify 2) and ipyvuetify 3 (Vuetify 3). It replaces
+the legacy `pysepal.sepalwidgets.vue_app.MapApp`, a Vue 2 template that is
+deprecated with the rest of sepalwidgets (see `sepalwidgets-deprecation.md`).
 
 ## Quick start
 
 ```python
 import solara
 
-from pysepal.solara import (
-    MapAppComponent,
-    NotificationProvider,
-    get_current_theme_state,
-)
-from pysepal.solara.components.layout import (
-    ExternalLink,
-    PanelSection,
-    RightPanelConfig,
-    StepConfig,
-)
-
-
-@solara.component
-def AoiStep():
-    solara.Markdown("AOI selector goes here")
-
-
-@solara.component
-def LayerControls():
-    solara.Markdown("Layer toggles go here")
+from pysepal.solara import get_current_theme_state
+from pysepal.solara.components.map_app import MapApp
+from pysepal.solara.notifications import NotificationProvider
 
 
 @solara.component
 def Page():
     NotificationProvider()
     theme_state = get_current_theme_state()
-    sepal_map = use_sepal_map(theme_state=theme_state)  # your own factory
+    sepal_map = use_sepal_map(theme_state)  # your own hook; see the demo apps
 
-    with MapAppComponent(
+    MapApp(
         app_title="My App",
         app_icon="mdi-earth",
-        sepal_map=sepal_map,
+        main_map=[sepal_map],
         theme_state=theme_state,
-        steps=[
-            StepConfig(id=1, name="AOI", icon="mdi-map", content=AoiStep),
-        ],
-        right_panel_config=RightPanelConfig(title="Tools", width=400),
+        locales=messages.available_locales(),
+        right_panel_config={"title": "Tools", "icon": "mdi-tools", "width": 400},
         right_panel_content=[
-            PanelSection(title="Layers", icon="mdi-layers", content=LayerControls),
+            {"title": "Area of interest", "icon": "mdi-map-marker", "content": AoiStep()},
+            {"title": "Layers", "icon": "mdi-layers", "content": [LayerControls()]},
         ],
-        external_links=[ExternalLink("Docs", "https://docs.example")],
-    ):
-        # Optional children — rendered in a slot above the main map.
-        MapToolbar()
+        right_panel_open=True,
+        repo_url="https://github.com/sepal-contrib/my-app",
+    )
 ```
 
-## Typed props
+`demo_apps/solara_map_app/app.py` is a complete app built this way.
 
-| Prop                    | Type                              | Purpose                                                                                             |
-| ----------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `app_title`             | `str`                             | Drawer header text.                                                                                 |
-| `app_icon`              | `str`                             | Drawer header MDI icon.                                                                             |
-| `sepal_map`             | `Optional[Widget]`                | Map widget rendered in the main area.                                                               |
-| `steps`                 | `Sequence[StepConfig]`            | Left-drawer step entries.                                                                           |
-| `right_panel_config`    | `Optional[RightPanelConfig]`      | Display config for the right panel chrome.                                                          |
-| `right_panel_content`   | `Sequence[PanelSection]`          | Section list rendered inside the right panel.                                                       |
-| `right_panel_open`      | `bool` or `solara.Reactive[bool]` | Controlled open/close state.                                                                        |
-| `current_step`          | `Optional[int]` reactive          | Controlled active step id.                                                                          |
-| `initial_step`          | `Optional[int]`                   | Step auto-activated on first mount.                                                                 |
-| `theme_state`           | `Optional[ThemeState]`            | Defaults to `get_current_theme_state()`.                                                            |
-| `locales`               | `Optional[Iterable[str]]`         | Codes the locale selector offers. Not a `Translator`: it subclasses `dict`, which reacton flattens. |
-| `external_links`        | `Sequence[ExternalLink]`          | Drawer footer link tiles.                                                                           |
-| `repo_url` / `docs_url` | `str`                             | Auto-derived links. No Source / Bug link without `repo_url`, no Docs link without `docs_url`.       |
-| `dialog_width`          | `int`                             | Default width for `display="dialog"` steps.                                                         |
-| `dialog_fullscreen`     | `bool`                            | Force dialog steps to render full-screen.                                                           |
-| `on_step_action`        | `Callable[[int, str], None]`      | Fires when a dialog footer button is clicked.                                                       |
-| `on_right_panel_toggle` | `Callable[[bool], None]`          | Fires when the right panel opens/closes.                                                            |
+## Arguments
 
-### `StepConfig.content` is a Solara render function
+| Argument                | Purpose                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `app_title`, `app_icon` | Title and MDI icon at the top of the drawer.                                                                   |
+| `main_map`              | The map widget, or a one-item list holding it (see "The map" below).                                           |
+| `steps_data`            | The drawer steps (see "Steps").                                                                                |
+| `right_panel_config`    | `title`, `icon`, `width` (px), `description` and `toggle_icon` of the right panel.                             |
+| `right_panel_content`   | The panel sections: `title`, `icon`, `description`, `content`, `divider`. No section, no panel.                |
+| `right_panel_footer`    | Elements or widgets pinned below the sections, e.g. an action bar.                                             |
+| `right_panel_open`      | Whether the panel starts open. A later change opens or closes it.                                              |
+| `on_right_panel_open`   | Called with the new state when the user opens or closes the panel.                                             |
+| `initial_step`          | The step to open on mount, if it can show (it has content and its `display` is `"step"` or `"dialog"`).       |
+| `current_step`          | The active step. A later change activates that step; `None` shows the map.                                    |
+| `on_current_step`       | Called with the step the user activates (`None` when they go back to the map).                                 |
+| `step_open`             | A later change to `False` closes the step dialog, to `True` reopens it.                                        |
+| `on_step_open`          | Called when a step opens or closes.                                                                            |
+| `is_pinned`             | Whether the drawer starts pinned open. An unpinned drawer starts as a rail and collapses on a click on the map. |
+| `theme_state`           | The `ThemeState` the toggle and the map follow; defaults to the current scope's.                               |
+| `locales`               | The locale codes the language selector offers, normally `messages.available_locales()`.                        |
+| `repo_url`              | Target of the Source Code and Report Bug links; empty hides both.                                              |
+| `docs_url`              | Target of the Documentation link; empty hides it.                                                              |
+| `dialog_width`          | Default width of dialog steps, in px or `"NN%"` of the window.                                                 |
+| `dialog_fullscreen`     | Show dialog steps full screen.                                                                                 |
 
-```python
-@solara.component
-def AoiStep():
-    solara.Markdown("AOI selector goes here")
+A `content` is an element (`AoiView(...)`), a widget, or a list of them.
 
-StepConfig(id=1, name="AOI", content=AoiStep)
-```
+The shell owns its state. A parent that passes `current_step`,
+`right_panel_open` or `step_open` on every render does not reset what the user
+did. Only a change of the value is an instruction. To follow the user, pass the
+matching `on_*` callback and keep the value in a reactive.
 
-`content` is invoked only while the step is active. The previous
-content's hooks are torn down on deactivation, so resource-heavy
-components (maps, GEE asset loaders) do not stay mounted in the
-background.
+## Steps
 
-### Right panel sections
+Each entry of `steps_data` is a dict:
 
-```python
-PanelSection(
-    title="Legend",
-    icon="mdi-format-list-bulleted",
-    content=LegendComponent,   # @solara.component
-    divider=True,
-    description="Color ramps for each active layer",
-)
-```
+| Key                  | Meaning                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | Unique id, reported through `on_current_step`.                                                                                                                |
+| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                             |
+| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`. |
+| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                               |
+| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                             |
+| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                   |
+| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id).                                        |
+| `width`, `height`    | Size of a dialog step, in px or `"NN%"` of the window.                                                                                                        |
 
-A section's `content` is always mounted (so its state survives panel
-open/close cycles). Use `right_panel_open` if you need to gate work on
-panel visibility.
+All step and section contents stay mounted. The shell only hides the ones that
+are not shown, so a form keeps what the user typed when they leave the step and
+come back. On mount, the shell opens the step named by `current_step` or
+`initial_step`. If there is no map and no such step, it opens the first step
+that can show.
 
-## Migration from the legacy MapApp
+## The map
 
-| Legacy                                                   | New                                                                                    |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `MapApp.element(main_map=[w], theme_toggle=[t])`         | `MapAppComponent(sepal_map=w, theme_state=state)`                                      |
-| `steps_data=[{"id": 1, "name": "...", ...}]`             | `steps=[StepConfig(id=1, name="...", ...)]`                                            |
-| `right_panel=[RightPanel(config=..., content_data=...)]` | `right_panel_config=RightPanelConfig(...)` + `right_panel_content=[PanelSection(...)]` |
-| `right_panel_content=[{"title": ..., "content": [W]}]`   | `right_panel_content=[PanelSection(title=..., content=fn)]`                            |
-| Eager widget construction                                | `content=` is a Solara render function (lazy)                                          |
-| Manual `theme_toggle=ThemeToggle(...)` wiring            | Auto: pass `theme_state=` (or omit; falls back to `get_current_theme_state()`)         |
-| Manual `language_selector=LocaleSelect(translator=...)`  | Auto: pass `locales=messages.available_locales()` (or omit)                            |
-| `model=HasTraits()` auto-link                            | Use `solara.Reactive` props (`current_step=`, `right_panel_open=`)                     |
+The map fills the window behind the drawer and the panel. When the map widget
+has these attributes, the shell keeps them up to date:
 
-## Notifications
+- `viewport_inset_left`, `viewport_inset_right`, `viewport_inset_bottom`: the
+  width of the drawer and of the open panel, and the height of the docked
+  panel. `SepalMap` uses them so that `zoom_bounds` fits the visible part of the
+  map.
+- `canvas_width_px`, `canvas_height_px`: the window size.
+- `bind_theme_state(theme_state)`: the map's basemap and its controls follow the
+  theme.
 
-Mount `NotificationProvider()` at the page root before the
-`MapAppComponent`. Notification UI is automatically positioned to track
-the right panel via the CSS variable
-`--sepal-notification-right-offset` that the shell publishes.
+`SepalMap` has all of these. The Leaflet controls move out from under the
+drawer and the panel.
 
-```python
-@solara.component
-def Page():
-    NotificationProvider()
-    MapAppComponent(...)
-```
+## Theme and language
 
-See `docs/guides/solara-notifications.md` for the full notification API.
+The drawer footer holds a `ThemeToggle` and a `LocaleSelectComponent`, both
+built in. The toggle cycles dark → light → auto:
+
+- It writes the mode to `theme_state.mode`, and the result to
+  `theme_state.dark` and to Solara's theme.
+- `auto` follows the browser's colour-scheme preference.
+- The browser remembers the mode for the next visit.
+
+`ThemeToggle` can also be used on its own:
+`from pysepal.solara.components.map_app import ThemeToggle`.
+
+## Floating components
+
+The shell publishes its geometry as CSS variables on the page root:
+
+- `--sepal-drawer-width`
+- `--sepal-right-panel-width`
+- `--sepal-right-panel-open`
+- `--sepal-notification-right-offset`
+- `--sepal-bottom-reserved`
+
+While a step dialog is open, the shell also puts the class `sepal-modal-open` on
+`body`.
+
+The legend and the notifications use these to stay clear of the panels, so mount
+`NotificationProvider()` and the legend next to the shell and they follow it.
+
+## Moving from the legacy MapApp
+
+| Legacy                                                  | Native                                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `from pysepal.sepalwidgets.vue_app import MapApp`       | `from pysepal.solara.components.map_app import MapApp`                    |
+| `MapApp.element(...)`                                   | `MapApp(...)`, same keyword arguments                                     |
+| `model=HasTraits()`                                     | `current_step` / `on_current_step` and `step_open` / `on_step_open`       |
+| `theme_toggle=`, `language_selector=`                   | built in; pass `theme_state=` and `locales=`                              |
+| content built as widgets to keep their click handlers   | elements work too, e.g. `solara.Button(..., on_click=...)`                |
+| observing the widget's `right_panel_open`, `step_open`  | `on_right_panel_open`, `on_step_open`                                     |

@@ -35,22 +35,27 @@ from chart_options import sample_series
 from chart_widgets import (
     ChartPair,
     build_map_chart_card,
-    build_widget_button,
     nudge_resize,
 )
+from solara.util import IPYVUETIFY_V3
 
 from pysepal import mapping as sm
 from pysepal.mapping.fullscreen_control import FullScreenControl
 from pysepal.mapping.menu_control import MenuControl
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
 )
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
+
+# Vuetify 3 renamed these; solara.util.IPYVUETIFY_V3 says which major is installed.
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
+PanelTitle = rv.ExpansionPanelTitle if IPYVUETIFY_V3 else rv.ExpansionPanelHeader
+PanelText = rv.ExpansionPanelText if IPYVUETIFY_V3 else rv.ExpansionPanelContent
 
 
 @solara.component
@@ -143,10 +148,8 @@ def PageContexts(values: list, on_map, on_regenerate):
                 children=[
                     rv.ExpansionPanel(
                         children=[
-                            rv.ExpansionPanelHeader(children=[msg("contexts.panel.header")]),
-                            rv.ExpansionPanelContent(
-                                children=[ChartPair(values, resize_token=panel_token.value)]
-                            ),
+                            PanelTitle(children=[msg("contexts.panel.header")]),
+                            PanelText(children=[ChartPair(values, resize_token=panel_token.value)]),
                         ]
                     )
                 ],
@@ -197,11 +200,11 @@ def MapContexts(values: list, on_back):
 
     sepal_map, _map_chart = solara.use_memo(build_scene, [])
 
-    back_button = solara.use_memo(
-        lambda: build_widget_button(msg("buttons.back"), on_back), [msg("buttons.back")]
-    )
+    def relayout(*_):
+        """MapApp reports its layout changes, so the charts can be told from Python."""
+        token.set(token.value + 1)
 
-    map_app = MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-chart-box",
         main_map=[sepal_map],
@@ -224,31 +227,22 @@ def MapContexts(values: list, on_back):
             {
                 "title": msg("contexts.right_panel.title"),
                 "icon": "mdi-chart-bar",
-                "content": [ChartPair(values, resize_token=token.value), back_button],
+                "content": [
+                    ChartPair(values, resize_token=token.value),
+                    solara.Button(
+                        msg("buttons.back"), on_click=on_back, block=True, classes=["mt-2"], **SMALL
+                    ),
+                ],
                 "description": msg("contexts.right_panel.description"),
             }
         ],
         right_panel_open=True,
+        on_right_panel_open=relayout,
+        on_step_open=relayout,
         theme_state=theme_state,
         locales=messages.available_locales(),
         dialog_width=750,
     )
-
-    def watch_layout():
-        """MapApp syncs its own geometry, so the charts can be told from Python."""
-        widget = solara.get_widget(map_app)
-        if widget is None:
-            return None
-
-        traits = ["right_panel_open", "right_panel_width", "step_open"]
-
-        def on_layout(change):
-            token.value += 1
-
-        widget.observe(on_layout, traits)
-        return lambda: widget.unobserve(on_layout, traits)
-
-    solara.use_effect(watch_layout, [])
 
 
 @solara.component
