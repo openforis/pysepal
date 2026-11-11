@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pysepal"
-version = "3.8.3"
+version = "3.8.4"
 description = "UI toolkit for building ipyvuetify and Solara dashboards, with first-class SEPAL integration"
 keywords = ["UI", "Python", "widget", "sepal"]
 classifiers = [
@@ -145,7 +145,7 @@ changelog_file = "CHANGELOG.md"
 changelog_incremental = true
 tag_format = "v$major.$minor.$patch$prerelease"
 update_changelog_on_bump = false
-version = "3.8.3"
+version = "3.8.4"
 version_files = [
     "pyproject.toml:version",
     "pysepal/__init__.py:__version__"
