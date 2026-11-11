@@ -8,6 +8,14 @@ import reacton.ipyvuetify as rv
 import reacton.ipyvuetify as v
 import solara
 
+from pysepal._vuetify import (
+    IPYVUETIFY_V3,
+    btn_variant,
+    density,
+    field_variant,
+    select_items,
+    size,
+)
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
 from .export_hook import (
@@ -21,6 +29,13 @@ from .export_hook import (
 from .export_models import TABLE_FILE_FORMATS, ExportKind, validate_asset_id_under_root
 
 IMAGE_SCALE_PRESETS = [10, 15, 20, 30, 60, 100]
+
+# Vuetify 3 radio groups have no ``mandatory``; clicking the picked radio does
+# not clear it there either.
+_RADIO_ROW = {"inline": True} if IPYVUETIFY_V3 else {"mandatory": True, "row": True}
+# Vuetify 2 always shows a placeholder under a floated label; Vuetify 3 only
+# while the field is focused unless asked.
+_PLACEHOLDER = {"persistent_placeholder": True} if IPYVUETIFY_V3 else {}
 
 # Field styling (bands / scale / destination) lives in the sibling CSS file so
 # it stays out of the component bodies; loaded once via ``solara.Style`` in
@@ -90,7 +105,7 @@ def _band_field_label(export_kind: ExportKind | None) -> str:
     return "Properties" if export_kind == "table" else "Bands"
 
 
-def _toggle_button(label: str, *, selected: bool, disabled: bool = False):
+def _toggle_button(label: str, index: int, *, selected: bool, disabled: bool = False):
     """A styled toggle button shared by the band and scale pickers.
 
     Selected buttons get a solid ``secondary`` fill with a white label so they
@@ -98,16 +113,21 @@ def _toggle_button(label: str, *, selected: bool, disabled: bool = False):
     style. The enclosing ``v.BtnToggle`` should also carry ``color="secondary"``
     so the selected accent (border/overlay) is secondary rather than the
     default primary.
+
+    ``index`` is the button's ``value``: the group's ``v_model`` holds child
+    indices, which Vuetify 2 assumes for value-less children but Vuetify 3 does
+    not.
     """
     props: dict[str, object] = {
         "children": [label],
-        "small": True,
-        "depressed": True,
+        "value": index,
+        **size("small"),
+        **btn_variant(depressed=True),
         "disabled": disabled,
     }
     if selected:
         props["color"] = "secondary"
-        props["class_"] = "white--text"
+        props["class_"] = "text-white" if IPYVUETIFY_V3 else "white--text"
     return rv.Btn(**props)
 
 
@@ -170,12 +190,13 @@ def BandSelectorField(
                     on_v_model=_on_indices,
                     multiple=True,
                     mandatory=False,
-                    dense=True,
+                    **density(),
                     color="secondary",
                     class_="sepal-band-toggle",
                     children=[
                         _toggle_button(
                             band,
+                            index,
                             selected=index in selected_index_set,
                             disabled=disabled,
                         )
@@ -214,11 +235,11 @@ def ImageScaleField(scale: solara.Reactive[int]) -> None:
                 on_v_model=_handle_preset_index,
                 multiple=False,
                 mandatory=False,
-                dense=True,
+                **density(),
                 color="secondary",
                 class_="sepal-scale-toggle",
                 children=[
-                    _toggle_button(str(preset), selected=index == selected_preset_index)
+                    _toggle_button(str(preset), index, selected=index == selected_preset_index)
                     for index, preset in enumerate(IMAGE_SCALE_PRESETS)
                 ],
             )
@@ -228,7 +249,8 @@ def ImageScaleField(scale: solara.Reactive[int]) -> None:
                 on_v_model=_handle_custom_scale,
                 type="number",
                 suffix="m",
-                dense=True,
+                **density(),
+                **field_variant(),
                 hide_details=True,
                 placeholder="Custom",
                 class_="sepal-scale-custom",
@@ -332,11 +354,14 @@ def ExportDialog(
                     if source_items:
                         with rv.Select(
                             label="Asset",
-                            items=source_items,
-                            v_model=controller.selected_source_id.value,
+                            items=select_items(source_items),
+                            # Vuetify 3 counts "" as a selection and hides the placeholder.
+                            v_model=controller.selected_source_id.value or None,
                             on_v_model=controller.selected_source_id.set,
-                            dense=True,
+                            **density(),
+                            **field_variant(),
                             placeholder="Select asset",
+                            **_PLACEHOLDER,
                             hide_details=True,
                         ):
                             pass
@@ -356,9 +381,8 @@ def ExportDialog(
                         with rv.RadioGroup(
                             v_model=controller.selected_target.value,
                             on_v_model=controller.selected_target.set,
-                            dense=True,
-                            mandatory=True,
-                            row=True,
+                            **density(),
+                            **_RADIO_ROW,
                             hide_details=True,
                             disabled=fields_disabled,
                         ):
@@ -374,7 +398,8 @@ def ExportDialog(
                             label="Asset ID",
                             v_model=state.gee_asset_id.value,
                             on_v_model=_handle_asset_id_change,
-                            dense=True,
+                            **density(),
+                            **field_variant(),
                             hide_details=True,
                             disabled=fields_disabled,
                         ):
@@ -384,7 +409,8 @@ def ExportDialog(
                             label="Export name",
                             v_model=controller.export_name.value,
                             on_v_model=_handle_name_change,
-                            dense=True,
+                            **density(),
+                            **field_variant(),
                             hide_details=True,
                             disabled=fields_disabled,
                         ):
@@ -394,8 +420,10 @@ def ExportDialog(
                             label="Google Drive folder",
                             v_model=state.drive_folder.value,
                             on_v_model=state.drive_folder.set,
-                            dense=True,
+                            **density(),
+                            **field_variant(),
                             placeholder="Drive root",
+                            **_PLACEHOLDER,
                             hide_details=True,
                             disabled=fields_disabled,
                         ):
@@ -407,10 +435,11 @@ def ExportDialog(
                     }:
                         with rv.Select(
                             label="Table file format",
-                            items=TABLE_FILE_FORMATS,
+                            items=select_items(TABLE_FILE_FORMATS),
                             v_model=state.table_file_format.value,
                             on_v_model=state.table_file_format.set,
-                            dense=True,
+                            **density(),
+                            **field_variant(),
                             hide_details=True,
                             disabled=fields_disabled,
                         ):
@@ -421,8 +450,10 @@ def ExportDialog(
                             label="SEPAL folder",
                             v_model=state.sepal_folder.value,
                             on_v_model=state.sepal_folder.set,
-                            dense=True,
+                            **density(),
+                            **field_variant(),
                             placeholder="Relative to the module results directory",
+                            **_PLACEHOLDER,
                             hide_details=True,
                             disabled=fields_disabled,
                         ):
@@ -450,7 +481,7 @@ def ExportDialog(
                     on_click=controller.close_dialog,
                     text=True,
                     disabled=controller.task.pending,
-                    small=True,
+                    **size("small"),
                 )
                 TaskButtonComponent(
                     label="Export",
