@@ -45,6 +45,7 @@ Use templates from:
 - `assets/shared/`
 - `assets/local-voila/`
 
-Keep the `ipyvuetify<3` pin from `assets/local-voila/pyproject.toml.template`.
+Do not add an `ipyvuetify<3` pin: pysepal 5 needs ipyvuetify 3. On SEPAL, a
+Voila app renders only once the Jupyter server runs ipyvuetify 3.
 
 If a notebook entrypoint is needed, synthesize it from `local-voila-notebook-outline.md`.

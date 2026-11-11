@@ -8,14 +8,8 @@ CLI
 .. autoprogram:: module_deploy:parser
    :prog: module_deploy
 
-.. autoprogram:: module_factory:parser
-   :prog: module_factory
-
 .. autoprogram:: module_venv:parser
    :prog: module_venv
 
 .. autoprogram:: activate_venv:parser
    :prog: activate_venv
-
-.. autoprogram:: sepal_ipyvuetify:parser
-   :prog: sepal_ipyvuetify

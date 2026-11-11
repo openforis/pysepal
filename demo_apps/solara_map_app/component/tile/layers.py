@@ -30,15 +30,11 @@ from component.scripts import (
     upsert_legends,
 )
 from ipyleaflet import PMTilesLayer
-from solara.util import IPYVUETIFY_V3
 
 from pysepal.solara.components.admin import AdminButton
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
 logger = logging.getLogger("SEPALUI.map_app")
-
-# Vuetify 3 spells the small button `size="small"`.
-SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
 
 
 def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
@@ -121,7 +117,11 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
         TaskButtonComponent(
             label=msg("buttons.add_radar"), **radar_btn_props, small=True, block=True
         ),
-        solara.Button(msg("buttons.add_pmtiles"), on_click=add_pmtiles_layer, block=True, **SMALL),
-        solara.Button(msg("buttons.remove_all"), on_click=remove_all_layers, block=True, **SMALL),
+        solara.Button(
+            msg("buttons.add_pmtiles"), on_click=add_pmtiles_layer, block=True, size="small"
+        ),
+        solara.Button(
+            msg("buttons.remove_all"), on_click=remove_all_layers, block=True, size="small"
+        ),
         AdminButton(app_model, logger_instance=logger),
     ]

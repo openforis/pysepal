@@ -9,6 +9,13 @@ pysepal
     compatibility package: ``import sepal_ui`` no longer works, use ``import pysepal``.
     See ``docs/guides/migration-v4.md`` for the full 4.0 migration guide.
 
+.. note::
+
+    pysepal 5 needs ipyvuetify 3 and removed the ipyvuetify 1 widgets (``pysepal.sepalwidgets``
+    and the widgets built on it). Their pages are being rewritten for the Solara components.
+    Until then, read the `guides <https://github.com/openforis/pysepal/tree/main/docs/guides>`__
+    and the `migration note <https://github.com/openforis/pysepal/blob/main/docs/guides/migrating-to-pysepal-5.md>`__.
+
 --------------------------------------------------------------------------------
 
 Currently translated in the following languages:
@@ -21,13 +28,10 @@ You can contribute to the translation effort on our `crowdin project <https://cr
 
 --------------------------------------------------------------------------------
 
-:code:`pysepal` is a lib designed to create elegant python based dashboard in the SEPAL environment. It is designed on top of the amazing `ipyvuetify <https://ipyvuetify.readthedocs.io/en/latest/introduction.html>`_ library and will help developer to easily create interface for their workflows.
+:code:`pysepal` is a lib designed to create elegant python based dashboard in the SEPAL environment. It is designed on top of the amazing `Solara <https://solara.dev/>`_ and `ipyvuetify <https://ipyvuetify.readthedocs.io/en/latest/introduction.html>`_ libraries and will help developer to easily create interface for their workflows.
 By using this libraries, you'll ensure a robust and unified interface for your scripts and a easy and complete integration into the SEPAL dashboard of application.
 
-Demo apps can be launched on Heroku following these links:
-
--   `Map style app <https://sepal-map-app.herokuapp.com>`__
--   `Panel style app <https://sepal-panel-app.herokuapp.com>`__
+Working demo apps live in the `demo_apps <https://github.com/openforis/pysepal/tree/main/demo_apps>`__ folder of the repository.
 
 We are happy to receive feedback and we welcome any kind of contribution.
 
@@ -47,6 +51,5 @@ Meet our :doc:`contributor <./start/authors>`.
 
     start/index
     tutorials/index
-    widgets/index
     API Content <modules/pysepal>
     cli/index

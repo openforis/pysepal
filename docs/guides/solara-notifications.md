@@ -322,8 +322,6 @@ Practical rule:
 - if the app uses `MapApp`, mount `NotificationProvider()` in the same page or
   shell so the overlay can consume the active layout variables
 
-The notification UI renders on ipyvuetify 1 and 3.
-
 ## Safety and Limits
 
 The notification system is safe for live, per-kernel app UX.

@@ -37,7 +37,6 @@ from chart_widgets import (
     build_map_chart_card,
     nudge_resize,
 )
-from solara.util import IPYVUETIFY_V3
 
 from pysepal import mapping as sm
 from pysepal.mapping.fullscreen_control import FullScreenControl
@@ -51,11 +50,6 @@ from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
-
-# Vuetify 3 renamed these; solara.util.IPYVUETIFY_V3 says which major is installed.
-SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
-PanelTitle = rv.ExpansionPanelTitle if IPYVUETIFY_V3 else rv.ExpansionPanelHeader
-PanelText = rv.ExpansionPanelText if IPYVUETIFY_V3 else rv.ExpansionPanelContent
 
 
 @solara.component
@@ -144,12 +138,14 @@ def PageContexts(values: list, on_map, on_regenerate):
             rv.ExpansionPanels(
                 v_model=panel.value,
                 on_v_model=open_panel,
-                accordion=True,
+                variant="accordion",
                 children=[
                     rv.ExpansionPanel(
                         children=[
-                            PanelTitle(children=[msg("contexts.panel.header")]),
-                            PanelText(children=[ChartPair(values, resize_token=panel_token.value)]),
+                            rv.ExpansionPanelTitle(children=[msg("contexts.panel.header")]),
+                            rv.ExpansionPanelText(
+                                children=[ChartPair(values, resize_token=panel_token.value)]
+                            ),
                         ]
                     )
                 ],
@@ -230,7 +226,11 @@ def MapContexts(values: list, on_back):
                 "content": [
                     ChartPair(values, resize_token=token.value),
                     solara.Button(
-                        msg("buttons.back"), on_click=on_back, block=True, classes=["mt-2"], **SMALL
+                        msg("buttons.back"),
+                        on_click=on_back,
+                        block=True,
+                        classes=["mt-2"],
+                        size="small",
                     ),
                 ],
                 "description": msg("contexts.right_panel.description"),

@@ -89,7 +89,9 @@ def docs(session):
     # build the api doc files
     templates = "docs/source/_templates/apidoc"
     modules = "docs/source/modules"
-    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal")
+    # the sepalwidgets stub only raises an ImportError
+    stub = "pysepal/sepalwidgets"
+    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal", stub)
 
     # build the documentation
     source = "docs/source"
