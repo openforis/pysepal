@@ -15,16 +15,10 @@ def lint(session):
     session.run("pre-commit", "run", "--all-files", *session.posargs)
 
 
-IPYVUETIFY_PINS = {"1": "ipyvuetify>=1.8,<3", "3": "ipyvuetify>=3,<4"}
-# sessions that cover the deprecated sepalwidgets too run on ipyvuetify 1
-LEGACY = IPYVUETIFY_PINS["1"]
-
-
 @nox.session(reuse_venv=False)
-@nox.parametrize("ipyvuetify", list(IPYVUETIFY_PINS))
-def test(session, ipyvuetify):
+def test(session):
     """Run all the test using the environment variable of the running machine."""
-    session.install(".[test]", IPYVUETIFY_PINS[ipyvuetify])
+    session.install(".[test]")
     session.run("pip", "list")
 
     # if we are in the sepal-venv, force earthengine api fork
@@ -42,7 +36,7 @@ def test(session, ipyvuetify):
 @nox.session(reuse_venv=False)
 def test_gee(session):
     """Run GEE smoke tests. Requires EARTHENGINE_* credentials."""
-    session.install(".[test]", LEGACY)
+    session.install(".[test]")
     session.run("pip", "list")
 
     if "sepal-user" in session.virtualenv.location:
@@ -68,7 +62,7 @@ def dead_fixtures(session):
     """Check for dead fixtures items."""
     # pytest-deadfixtures 3.1.0 reads FixtureManager._arg2fixturedefs, which
     # pytest 9.2 renamed; drop the cap once upstream PR #61 is released.
-    session.install(".[test]", "pytest<9.2", LEGACY)
+    session.install(".[test]", "pytest<9.2")
     test_files = session.posargs or ["tests"]
     # Clear addopts ("-m 'not gee'") so the scan covers both test lanes;
     # otherwise every GEE fixture reports as unused.
@@ -80,16 +74,14 @@ def bin(session):
     """Run all the bin methods to validate the conda recipe."""
     session.install(".")
     session.run("module_deploy", "--help")
-    session.run("module_factory", "--help")
     session.run("module_venv", "--help")
     session.run("activate_venv", "--help")
-    session.run("sepal_ipyvuetify", "--help")
 
 
 @nox.session(reuse_venv=True)
 def docs(session):
     """Build the documentation."""
-    session.install(".[doc]", LEGACY)
+    session.install(".[doc]")
     # patch version in nox instead of pyproject to avoid blocking conda releases
     session.run("rm", "-rf", "docs/source/modules", external=True)
     session.run("rm", "-rf", "docs/build/html", external=True)
