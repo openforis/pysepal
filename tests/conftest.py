@@ -32,6 +32,7 @@ _LEGACY_SUITES = [
     "test_aoi/test_AoiView.py",
     "test_planetapi/test_PlanetView.py",
     "test_planetapi/test_PlanetWidgets.py",
+    "test_mapping/test_AoiControl.py",
 ]
 collect_ignore_glob = _LEGACY_SUITES if IPYVUETIFY_V3 else []
 

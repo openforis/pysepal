@@ -9,15 +9,36 @@ import ipyvuetify as v
 from deprecated.sphinx import deprecated
 from ipyleaflet import GeoJSON, Map, MapStyle, Marker
 from shapely import geometry as sg
-from traitlets import Bool
+from traitlets import Bool, List, Unicode
 
-from pysepal import sepalwidgets as sw
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping._widget_tree import close_tree, is_open
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts.gee_interface import GEEInterface
+
+
+class _Tree(v.VuetifyTemplate):
+    """The Vuetify 3 tree of the layer values.
+
+    ipyvue gives every widget a default slot, and a Vuetify 3 ``v-treeview`` renders
+    that empty slot instead of its items, so the tree is written as a template.
+    """
+
+    items: List = List().tag(sync=True)
+    "the layers, each with its values as children"
+
+    opened: List = List().tag(sync=True)
+    "the ids of the open layers"
+
+    template: Unicode = Unicode(
+        """<template>
+  <v-treeview v-model:opened="opened" :items="items" item-title="name" item-value="id"
+    density="compact" open-on-click />
+</template>"""
+    ).tag(sync=True)
 
 
 class InspectorControl(MenuControl):
@@ -63,20 +84,24 @@ class InspectorControl(MenuControl):
 
         # create a loading to place it on top of the card. It will always be visible
         # even when the card is scrolled
-        self.w_loading = sw.ProgressLinear(
+        self.w_loading = v.ProgressLinear(
             indeterminate=False,
-            background_color="menu",
+            **({"bg_color": "menu"} if IPYVUETIFY_V3 else {"background_color": "menu"}),
         )
 
         # set up the content
-        self._title = title = sw.CardTitle(children=[msg("inspector_control.title")])
-        self.text = sw.CardText(children=[msg("inspector_control.landing")])
+        self._title = title = v.CardTitle(children=[msg("inspector_control.title")])
+        self.text = v.CardText(children=[msg("inspector_control.landing")])
 
         # create the menu widget
         super().__init__("fa-solid fa-crosshairs", self.text, title, **kwargs)
 
         # avoid closing the inspector when clicking on the map
-        self.menu.close_on_click = False
+        if IPYVUETIFY_V3:
+            self.menu.persistent = True
+            self.menu.no_click_animation = True
+        else:
+            self.menu.close_on_click = False
 
         # create a marker outside of the map [91, 181] and hide it
         self.marker = Marker(location=[91, 181], draggable=False, visible=False)
@@ -158,12 +183,15 @@ class InspectorControl(MenuControl):
 
         # write the coordinates and the scale
         txt = msg("inspector_control.coords", scale=round(self.m.get_scale()))
-        children.append(sw.Html(tag="h4", children=[txt]))
-        children.append(sw.Html(tag="p", children=[f"[{lng:.3f}, {lat:.3f}]"]))
+        children.append(v.Html(tag="h4", children=[txt]))
+        children.append(v.Html(tag="p", children=[f"[{lng:.3f}, {lat:.3f}]"]))
 
         # wrap layer data in a treeview widget
-        tree_view = sw.Treeview(hoverable=True, dense=True, open_on_click=True)
-        children.append(sw.Html(tag="h4", children=[msg("inspector_control.layers")]))
+        if IPYVUETIFY_V3:
+            tree_view = _Tree()
+        else:
+            tree_view = v.Treeview(hoverable=True, dense=True, open_on_click=True)
+        children.append(v.Html(tag="h4", children=[msg("inspector_control.layers")]))
         children.append(tree_view)
 
         # write the layers data
@@ -181,15 +209,16 @@ class InspectorControl(MenuControl):
             else:
                 data = {msg("inspector_control.info.header"): msg("inspector_control.info.text")}
 
-            items.append(
-                {
-                    "id": str(i),
-                    "name": lyr.name,
-                    "children": [{"name": f"{k}: {v}"} for k, v in data.items()],
-                }
-            )
+            leaves = [{"name": f"{k}: {v}"} for k, v in data.items()]
+            if IPYVUETIFY_V3:
+                # a leaf without a value falls back to its title, which may repeat
+                leaves = [{**leaf, "id": f"{i}.{j}"} for j, leaf in enumerate(leaves)]
+            items.append({"id": str(i), "name": lyr.name, "children": leaves})
         tree_view.items = items
-        tree_view.open_ = "0" if self.open_tree else ""
+        if IPYVUETIFY_V3:
+            tree_view.opened = ["0"] if self.open_tree else []
+        else:
+            tree_view.open_ = "0" if self.open_tree else ""
 
         # set them in the card, the previous ones are discarded
         previous = self.text.children

@@ -7,7 +7,7 @@ from ipyleaflet import Map, WidgetControl
 
 from pysepal.frontend.resize_trigger import rt
 from pysepal.mapping._widget_tree import close_parts
-from pysepal.mapping.map_btn import MapBtn
+from pysepal.mapping.map_btn import MapBtn, _icon_name
 
 
 class FullScreenControl(WidgetControl):
@@ -76,7 +76,7 @@ class FullScreenControl(WidgetControl):
         self.zoomed = not self.zoomed
 
         # change button icon
-        self.w_btn.children[0].children = [self.ICONS[self.zoomed]]
+        self.w_btn.children[0].children = [_icon_name(self.ICONS[self.zoomed])]
 
         if self.zoomed:
             self.m.add_class("full-screen-map")

@@ -15,7 +15,6 @@ Example:
         sm.SepalMap(gee=False)
 """
 
-from .aoi_control import *
 from .draw_control import *
 from .fullscreen_control import *
 from .geojson_utils import *
@@ -31,3 +30,13 @@ from .sepal_map import *
 from .tiling import *
 from .visualization import *
 from .zoom_control import *
+
+
+def __getattr__(name: str):
+    # AoiControl is built on the deprecated pysepal.sepalwidgets, imported on first use only
+    if name in ("AoiControl", "aoi_control"):
+        from importlib import import_module
+
+        module = import_module(".aoi_control", __name__)
+        return module if name == "aoi_control" else module.AoiControl
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

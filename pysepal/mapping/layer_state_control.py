@@ -2,13 +2,76 @@
 
 from typing import Optional
 
+import ipyvuetify as v
 import traitlets as t
 from ipyleaflet import Map, WidgetControl
+from ipywidgets import link
 from traitlets import observe
+from typing_extensions import Self
 
-from pysepal import sepalwidgets as sw
+from pysepal._sepal_widget import SepalWidget
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.message import msg
+
+# a Vuetify 3 SystemBar is a layout item: it needs a v-layout parent
+_Bar = v.Sheet if IPYVUETIFY_V3 else v.SystemBar
+
+
+class _StateBar(_Bar, SepalWidget):
+
+    msg: t.Unicode = t.Unicode("").tag(sync=True)
+    "the displayed message"
+
+    loading: t.Bool = t.Bool(False).tag(sync=True)
+    "either or not the circular progress is spinning"
+
+    progress: Optional[v.ProgressCircular] = None
+    "The ProgressCircular widget that will be displayed in the statebar"
+
+    def __init__(self, **kwargs) -> None:
+        """Inline status bar: a small spinner and a message.
+
+        Args:
+            kwargs (optional): any parameter from the bar widget. If set, 'children' will be overwritten.
+        """
+        value = {"model_value": 100} if IPYVUETIFY_V3 else {"value": 100}
+        self.progress = v.ProgressCircular(
+            indeterminate=self.loading, size=15, color="primary", class_="mr-2", **value
+        )
+
+        if IPYVUETIFY_V3:
+            kwargs.setdefault("class_", "d-flex align-center px-2 text-body-2")
+            kwargs.setdefault("height", 24)
+            kwargs.setdefault("color", "surface-light")
+
+        kwargs["children"] = [self.progress, self.msg]
+
+        super().__init__(**kwargs)
+
+        link((self, "loading"), (self.progress, "indeterminate"))
+
+    @observe("loading")
+    def _change_loading(self, *args) -> None:
+        """Change progress wheel state."""
+        self.progress.indeterminate = self.loading
+
+    @observe("msg")
+    def _change_msg(self, *args) -> None:
+        """Change state bar message."""
+        self.children = [self.progress, self.msg]
+
+    def add_msg(self, msg: str, loading: bool = False) -> Self:
+        """Change current status message.
+
+        Args:
+            msg: the message to display
+            loading: the loading status of the progress circular
+        """
+        self.msg = msg
+        self.loading = loading
+
+        return self
 
 
 class LayerStateControl(WidgetControl):
@@ -16,8 +79,8 @@ class LayerStateControl(WidgetControl):
     m: Optional[Map] = None
     "the map connected to the control"
 
-    w_state: Optional[sw.StateBar] = None
-    "sw.StateBar: the stateBar displaying the number of layer loading on the map"
+    w_state: Optional[_StateBar] = None
+    "the stateBar displaying the number of layer loading on the map"
 
     nb_layer: t.Int = t.Int(0).tag(sync=True)
     "the number of layers in the map"
@@ -42,7 +105,7 @@ class LayerStateControl(WidgetControl):
 
         # create a statebar
         text = msg("layer_state.complete", count=self.nb_layer)
-        self.w_state = sw.StateBar(loading=False, msg=text)
+        self.w_state = _StateBar(loading=False, msg=text)
 
         # overwrite the widget set in the kwargs (if any)
         kwargs["widget"] = self.w_state
