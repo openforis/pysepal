@@ -100,7 +100,7 @@ def test_select_items_v3_header_divider_disabled(monkeypatch) -> None:
     monkeypatch.setattr(_vuetify, "IPYVUETIFY_V3", True)
     assert _vuetify.select_items(ITEMS) == [
         {"type": "subheader", "title": "H"},
-        {"type": "divider"},
+        {"type": "divider", "title": ""},
         {"title": "A", "value": "a", "props": {"disabled": True}},
         {"title": "B", "value": "b"},
         "c",

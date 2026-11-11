@@ -85,7 +85,8 @@ def _v3_item(item: Union[dict, str]) -> Union[dict, str]:
     if "header" in item:
         return {"type": "subheader", "title": item["header"]}
     if item.get("divider"):
-        return {"type": "divider"}
+        # without a title Vuetify 3 uses the whole item as one ("[object Object]")
+        return {"type": "divider", "title": ""}
     converted = {("title" if key == "text" else key): value for key, value in item.items()}
     if converted.pop("disabled", False):
         converted["props"] = {**converted.get("props", {}), "disabled": True}
