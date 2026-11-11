@@ -11,6 +11,7 @@ import geopandas as gpd
 import reacton.ipyvuetify as rv
 import solara
 
+from pysepal._vuetify import density, field_variant, select_items
 from pysepal.message import msg
 from pysepal.scripts.filesystem import FileSystem
 from pysepal.solara.components.inputs.file_input import FileInputComponent
@@ -150,11 +151,12 @@ def VectorSelectorComponent(
         if file_path:
             with rv.Select(
                 label=msg("widgets.vector.column"),
-                items=column_items,
+                items=select_items(column_items),
                 v_model=selected_column,
                 on_v_model=select_column,
-                dense=True,
                 loading=column_task.pending,
+                **density(),
+                **field_variant(),
             ):
                 pass
 
@@ -164,8 +166,9 @@ def VectorSelectorComponent(
                     items=value_items,
                     v_model=selected_value,
                     on_v_model=select_value,
-                    dense=True,
                     clearable=True,
                     loading=value_task.pending,
+                    **density(),
+                    **field_variant(),
                 ):
                     pass
