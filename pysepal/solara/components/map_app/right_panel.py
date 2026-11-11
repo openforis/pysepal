@@ -2,27 +2,22 @@
 
 from typing import Callable, Mapping, Optional, Sequence
 
+import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
+from pysepal._vuetify import size
 from pysepal.message import msg
 
-from ._ui import Slot, to_px
-
-PANEL_WIDTH_PX = 300
+from ._ui import IconButton, as_children, text_class
 
 DEFAULT_CONFIG = {
     "title": "Extra Content",
     "icon": "mdi-widgets",
-    "width": PANEL_WIDTH_PX,
+    "width": 300,
     "description": "",
     "toggle_icon": "mdi-chevron-left",
 }
-
-
-def panel_width(config: Optional[Mapping]) -> int:
-    """Return the panel width in px from ``config["width"]``: a number, ``"300"`` or ``"300px"``."""
-    return int(to_px((config or {}).get("width")) or PANEL_WIDTH_PX)
 
 
 @solara.component
@@ -34,22 +29,22 @@ def Section(section: Mapping, last: bool):
             with rv.Html(tag="div", class_="section-header mb-3"):
                 with rv.Html(tag="div", class_="d-flex align-center"):
                     if icon:
-                        rv.Icon(class_="mr-2", small=True, children=[icon])
+                        rv.Icon(class_="mr-2", children=[icon], **size("small"))
                     if title:
                         rv.Html(
                             tag="span",
-                            class_="subtitle-2 font-weight-medium",
+                            class_=text_class("subtitle-2", "font-weight-medium"),
                             children=[title],
                         )
         if section.get("description"):
             with rv.Html(tag="div", class_="section-description mb-3"):
                 rv.Html(
                     tag="p",
-                    class_="body-2 ma-0 text--secondary",
+                    class_=text_class("body-2", "ma-0", "text--secondary"),
                     children=[section["description"]],
                 )
-        # Keyed so the optional header and description above do not remount it.
-        Slot(section.get("content"), item_class="mb-3").key("content")
+        for child in as_children(section.get("content")):
+            rv.Html(tag="div", class_="mb-3", children=[child])
         if section.get("divider") and not last:
             rv.Divider(class_="mt-4")
     return main
@@ -88,7 +83,7 @@ def RightPanel(
     classes.append("sepal-right-panel--open" if open else "sepal-right-panel--closed")
     if narrow:
         classes.append("sepal-right-panel--narrow")
-    style = "" if narrow else f"width: {panel_width(config)}px"
+    style = "" if narrow else f"width: {int(config['width'] or 300)}px"
 
     with rv.Html(tag="div", class_="sepal-right-panel-host") as main:
         with rv.Sheet(
@@ -99,39 +94,36 @@ def RightPanel(
                     rv.Icon(class_="mr-2", children=[config["icon"] or "mdi-widgets"])
                     rv.Html(
                         tag="span",
-                        class_="title font-weight-medium",
+                        class_=text_class("title", "font-weight-medium"),
                         children=[config["title"] or ""],
                     )
                 rv.Spacer()
-                solara.Button(
-                    icon=True,
-                    text=True,
-                    children=[rv.Icon(small=True, children=["mdi-close"])],
-                    attributes={"title": msg("map_app.close_panel")},
+                IconButton(
+                    icon="mdi-close",
+                    title=msg("map_app.close_panel"),
                     on_click=lambda: set_open(False),
                 )
 
-            # Keyed: the optional description would move the body and the
-            # footer, and rebuild every widget in them.
             if config["description"]:
-                with rv.Html(tag="div", class_="panel-description pa-3").key("description"):
+                with rv.Html(tag="div", class_="panel-description pa-3"):
                     rv.Html(
                         tag="p",
-                        class_="body-2 ma-0 text--secondary",
+                        class_=text_class("body-2", "ma-0", "text--secondary"),
                         children=[config["description"]],
                     )
 
             rv.Divider(class_="ma-0 pa-0")
 
-            with rv.Html(tag="div", class_="drawer-top sepal-right-panel__body").key("body"):
+            with rv.Html(tag="div", class_="drawer-top sepal-right-panel__body"):
                 with rv.Html(tag="div", class_="pa-4"):
                     for i, section in enumerate(sections):
                         Section(section, last=i == len(sections) - 1).key(f"section-{i}")
 
             if footer:
-                with rv.Html(tag="div", class_="drawer-footer").key("footer"):
+                with rv.Html(tag="div", class_="drawer-footer"):
                     rv.Divider(class_="ma-0 pa-0")
-                    Slot(footer, item_class="")
+                    for child in as_children(footer):
+                        rv.Html(tag="div", children=[child])
 
         if not open and not disabled:
             PanelTab(icon=config["toggle_icon"] or "mdi-menu-left", on_click=lambda: set_open(True))
@@ -143,12 +135,12 @@ def RightPanel(
 def PanelTab(icon: str, on_click: Callable[[], None]):
     """Render the tab that opens a closed panel."""
     with rv.Html(tag="div", class_="right-panel-tab sepal-right-panel__tab") as main:
-        solara.Button(
+        tab = rv.Btn(
             tile=True,
             color="secondary",
-            classes=["control-btn"],
+            class_="control-btn",
             attributes={"title": msg("map_app.show_panel")},
             children=[rv.Icon(children=[icon])],
-            on_click=on_click,
         )
+    ipyvue.use_event(tab, "click", lambda *_: on_click())
     return main

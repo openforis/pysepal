@@ -1,11 +1,27 @@
-"""Small helpers of the MapApp shell."""
+"""Small pieces of the MapApp shell that differ between the Vuetify majors."""
 
-import math
-from typing import Mapping, Optional, Sequence, Union
+from typing import Callable, Optional
 
+import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 from ipywidgets import Widget
+
+from pysepal._vuetify import IPYVUETIFY_V3, btn_variant, size
+
+# Vuetify 3 renamed the typography and emphasis helper classes.
+_TEXT_CLASSES = {
+    "title": "text-h6",
+    "headline": "text-h5",
+    "subtitle-2": "text-subtitle-2",
+    "body-2": "text-body-2",
+    "text--secondary": "text-medium-emphasis",
+}
+
+
+def text_class(*names: str) -> str:
+    """Return the helper classes ``names`` (Vuetify 2 spelling) for the installed major."""
+    return " ".join(_TEXT_CLASSES.get(name, name) if IPYVUETIFY_V3 else name for name in names)
 
 
 def as_children(content) -> list:
@@ -18,53 +34,88 @@ def as_children(content) -> list:
 
 
 @solara.component
-def Slot(content, item_class: Optional[str] = None, **kwargs):
-    """Render an app's ``content`` in a div, each item in a div of ``item_class`` if given.
+def IconButton(icon: str, on_click: Callable[[], None], title: str = "", class_: str = ""):
+    """Render a small icon button with a native ``title`` hint."""
+    btn = rv.Btn(
+        icon=True,
+        class_=class_,
+        attributes={"title": title} if title else {},
+        children=[rv.Icon(children=[icon], **size("small"))],
+        **btn_variant(text=True),
+    )
+    ipyvue.use_event(btn, "click", lambda *_: on_click())
+    return btn
 
-    Reacton keys are flat within a component, so the app's elements get a
-    component of their own: their keys cannot clash with the shell's.
+
+def activator(variable: str) -> dict:
+    """Return the props that make a widget the activator of a ``variable`` slot."""
+    return {"v_bind": f"{variable}.props"} if IPYVUETIFY_V3 else {"v_on": f"{variable}.on"}
+
+
+def tooltip_end(widget, text: str):
+    """Return ``widget`` wrapped in a tooltip shown on its right side.
+
+    ``widget`` must have been built with ``**activator("tooltip")``.
     """
-    children = as_children(content)
-    if item_class is not None:
-        children = [rv.Html(tag="div", class_=item_class, children=[c]) for c in children]
-    return rv.Html(tag="div", children=children, **kwargs)
+    slot = [{"name": "activator", "variable": "tooltip", "children": widget}]
+    placement = {"location": "end"} if IPYVUETIFY_V3 else {"right": True}
+    return rv.Tooltip(v_slots=slot, children=[text], **placement)
 
 
-def to_px(size: Union[int, float, str, None], viewport: int = 0) -> Optional[float]:
-    """Return ``size`` in px, or None when it is empty or does not read as a size.
+@solara.component
+def NavItem(
+    icon: str,
+    title: str,
+    rail: bool = False,
+    active: bool = False,
+    on_click: Optional[Callable[[], None]] = None,
+    href: str = "",
+    attributes: Optional[dict] = None,
+    class_: str = "",
+):
+    """Render one drawer entry: an icon, and its title unless the drawer is a rail.
 
-    Args:
-        size: A number, ``"600"``, ``"600px"``, or ``"NN%"`` of ``viewport``.
-        viewport: The window size along that axis; 0 until it is measured, in
-            which case a percentage reads as None.
+    In rail mode the title moves to a tooltip.
     """
-    if isinstance(size, str):
-        text = size.strip().lower()
-        try:
-            if text.endswith("%"):
-                size = viewport * float(text[:-1]) / 100 if viewport > 0 else None
-            else:
-                size = float(text.removesuffix("px"))
-        except ValueError:
-            return None
-    if not isinstance(size, (int, float)) or not math.isfinite(size) or size <= 0:
-        return None
-    return size
+    classes = " ".join(c for c in ["sepal-mapapp__item", class_, active and "active-step"] if c)
+    attrs = dict(attributes or {})
+    extra = {"href": href} if href else {}
+    if href:
+        attrs["target"] = "_blank"
+    if rail:
+        extra.update(activator("tooltip"))
 
+    if IPYVUETIFY_V3:
+        item = rv.ListItem(
+            prepend_icon=icon,
+            title=None if rail else title,
+            class_=classes,
+            attributes=attrs,
+            link=bool(href or on_click),
+            append_icon="mdi-open-in-new" if href and not rail else None,
+            **extra,
+        )
+    else:
+        children = [rv.ListItemIcon(children=[rv.Icon(class_="mb-1", children=[icon])])]
+        if not rail:
+            title_children = [title]
+            if href:
+                title_children += [
+                    rv.Spacer(),
+                    rv.Icon(class_="ml-1", small=True, children=["mdi-open-in-new"]),
+                ]
+            title_el = rv.ListItemTitle(
+                class_="font-weight-medium d-flex align-center", children=title_children
+            )
+            children.append(rv.ListItemContent(children=[title_el]))
+        item = rv.ListItem(
+            class_=classes,
+            attributes=attrs,
+            link=bool(href or on_click),
+            children=children,
+            **extra,
+        )
 
-def step_keys(steps: Sequence[Mapping]) -> list:
-    """Return a unique key per step: the shell's handle on it and its reacton key.
+    ipyvue.use_event(item, "click", lambda *_: on_click and on_click())
 
-    The key comes from the ``id``, so a step keeps it when steps around it come
-    and go. Steps that share an id, or have none, are numbered in list order:
-    the shell accepts them as the legacy one did.
-    """
-    keys: list = []
-    for step in steps:
-        base = key = repr(step.get("id"))
-        n = 0
-        while key in keys:
-            n += 1
-            key = f"{base}#{n}"
-        keys.append(key)
-    return keys
+    return tooltip_end(item, title) if rail else item

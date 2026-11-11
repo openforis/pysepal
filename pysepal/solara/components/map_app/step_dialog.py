@@ -2,23 +2,29 @@
 
 from typing import Callable, Mapping, Optional, Sequence, Union
 
+import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
-from ._ui import Slot, to_px
+from pysepal._vuetify import btn_variant, size
+
+from ._ui import IconButton, as_children, text_class
 
 
-def clamp(targets: Sequence[Union[int, str, None]], viewport: int, cap: int) -> Optional[int]:
-    """Return the first of ``targets`` that reads as a size, in px, or None if none does.
+def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optional[int]):
+    """Return a dialog size in px, or None for none.
 
     Args:
-        targets: Sizes in order of preference: px as a number, ``"600"`` or
-            ``"600px"``, or ``"NN%"`` of ``viewport``.
+        target: The size asked for, in px or as ``"NN%"`` of ``viewport``.
         viewport: The window size along that axis; 0 until it is measured,
             which caps nothing.
         cap: The largest size that fits.
+        default: The size when ``target`` is empty.
     """
-    value = next((px for px in (to_px(t, viewport) for t in targets) if px), None)
+    if isinstance(target, str) and target.endswith("%"):
+        value = viewport * int(target[:-1]) / 100 if viewport > 0 else default
+    else:
+        value = target or default
     if value is None:
         return None
     if viewport > 0:
@@ -27,10 +33,23 @@ def clamp(targets: Sequence[Union[int, str, None]], viewport: int, cap: int) -> 
 
 
 @solara.component
+def ActionButton(action: Mapping, on_click: Callable[[Mapping], None]):
+    """Render one footer button of a dialog step."""
+    btn = rv.Btn(
+        color="primary",
+        children=[action.get("label", "")],
+        **btn_variant(outlined=bool(action.get("cancel"))),
+        **size("small"),
+    )
+    ipyvue.use_event(btn, "click", lambda *_: on_click(action))
+    return btn
+
+
+@solara.component
 def StepDialog(
     open: bool,
-    active_key: Optional[str],
-    dialog_steps: Mapping[str, Mapping],
+    step: Optional[Mapping],
+    dialog_steps: Sequence[Mapping],
     width: Optional[int],
     height: Optional[int],
     fullscreen: bool,
@@ -41,19 +60,9 @@ def StepDialog(
 
     Every dialog step's content stays mounted and only the active one shows, so
     a form keeps what the user typed when the dialog closes and reopens.
-
-    Args:
-        open: Whether the dialog shows.
-        active_key: The key of the active step, from ``step_keys``.
-        dialog_steps: The dialog steps with content, by key.
-        width: The dialog width in px.
-        height: The card height in px, or None to fit the content.
-        fullscreen: Show the dialog full screen.
-        on_close: Called when the user closes the dialog.
-        on_action: Called with the footer action the user clicks.
     """
-    step = dialog_steps.get(active_key) if active_key is not None else None
     actions = list(step.get("actions") or []) if step else []
+    active_id = step.get("id") if step else None
 
     def on_v_model(value):
         if not value:
@@ -68,32 +77,23 @@ def StepDialog(
     ) as main:
         card_style = f"height: {height}px" if height else ""
         with rv.Card(class_="dialog-card", style_=card_style):
-            with rv.CardTitle(class_="headline d-flex justify-space-between"):
+            with rv.CardTitle(class_=text_class("headline", "d-flex", "justify-space-between")):
                 rv.Html(tag="span", children=[step.get("name", "") if step else ""])
-                solara.Button(
-                    icon=True,
-                    text=True,
-                    children=[rv.Icon(small=True, children=["mdi-close"])],
-                    on_click=on_close,
-                )
+                IconButton(icon="mdi-close", on_click=on_close)
             rv.Divider()
             with rv.CardText(class_="dialog-content pt-4"):
-                for key, item in dialog_steps.items():
-                    Slot(
-                        item.get("content"),
+                for item in dialog_steps:
+                    hidden = "" if item.get("id") == active_id else "display: none"
+                    rv.Html(
+                        tag="div",
                         class_="jupyter-widget-container",
-                        style_="" if key == active_key else "display: none",
-                    ).key(f"step:{key}")
+                        style_=hidden,
+                        children=as_children(item.get("content")),
+                    ).key(f"dialog-step-{item.get('id')}")
             if actions:
                 rv.Divider()
                 with rv.CardActions():
                     rv.Spacer()
                     for i, action in enumerate(actions):
-                        solara.Button(
-                            action.get("label", ""),
-                            color="primary",
-                            outlined=bool(action.get("cancel")),
-                            small=True,
-                            on_click=lambda action=action: on_action(action),
-                        ).key(f"action-{i}")
+                        ActionButton(action, on_click=on_action).key(f"action-{i}")
     return main

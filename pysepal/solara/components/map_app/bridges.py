@@ -1,7 +1,8 @@
-"""A headless widget through which the MapApp shell talks to the browser page.
+"""Headless widgets through which the MapApp shell talks to the browser page.
 
-Python cannot read the window size nor write on ``document.documentElement``;
-this template does it for the shell.
+Python cannot read the window size or the colour-scheme preference, nor write on
+``document.documentElement``; these two templates do it for the shell. They are
+plain Vue with no Vuetify tags, so they run unchanged on both ipyvuetify majors.
 """
 
 from typing import Callable, Dict, Optional
@@ -24,4 +25,22 @@ def ViewportBridge(
         body_class: A class kept on ``document.body`` while it is not empty.
         event_window_size: Called with ``{"w": int, "h": int}`` on mount and on
             every window resize.
+    """
+
+
+@solara.component_vue("ColorSchemeBridge.vue")
+def ColorSchemeBridge(
+    mode: str = "",
+    event_prefers_dark: Optional[Callable[[bool], None]] = None,
+    event_stored_mode: Optional[Callable[[str], None]] = None,
+):
+    """Report the browser's colour-scheme preference and remember the theme mode.
+
+    Args:
+        mode: The theme mode to store in the browser (``"dark"``, ``"light"`` or
+            ``"auto"``); empty stores nothing.
+        event_prefers_dark: Called with the ``prefers-color-scheme: dark`` match
+            on mount and whenever the preference changes.
+        event_stored_mode: Called once on mount with the mode stored by an
+            earlier visit, if there is one.
     """

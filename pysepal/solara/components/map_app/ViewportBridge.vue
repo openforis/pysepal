@@ -3,6 +3,7 @@
 </template>
 
 <script>
+// Plain Vue only (no Vuetify tags), so the same file runs on Vue 2 and Vue 3.
 module.exports = {
   mounted() {
     this.appliedVars = [];
@@ -17,6 +18,9 @@ module.exports = {
   beforeDestroy() {
     this.teardown();
   },
+  beforeUnmount() {
+    this.teardown();
+  },
   watch: {
     css_vars(value) {
       this.applyVars(value);
@@ -29,11 +33,7 @@ module.exports = {
     applyVars(vars) {
       const root = document.documentElement;
       const next = vars || {};
-      const reserved = () =>
-        ["--sepal-top-reserved", "--sepal-bottom-reserved"]
-          .map((name) => root.style.getPropertyValue(name))
-          .join();
-      const reservedBefore = reserved();
+      const bottomBefore = root.style.getPropertyValue("--sepal-bottom-reserved");
       this.appliedVars
         .filter((name) => !(name in next))
         .forEach((name) => root.style.removeProperty(name));
@@ -42,9 +42,8 @@ module.exports = {
       );
       this.appliedVars = Object.keys(next);
       // Leaflet only re-measures on a window resize, and the map's height
-      // changes when the top bar comes or goes and the bottom sheet opens or
-      // closes.
-      if (reserved() !== reservedBefore) {
+      // changes when the bottom sheet opens or closes.
+      if (root.style.getPropertyValue("--sepal-bottom-reserved") !== bottomBefore) {
         this.$nextTick(() => window.dispatchEvent(new Event("resize")));
       }
     },
