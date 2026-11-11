@@ -23,7 +23,6 @@ from pysepal.mapping.visualization import (
     process_vis_params,
 )
 from pysepal.scripts.gee_interface import GEEInterface
-from pysepal.sepalwidgets.vue_app import ThemeToggle
 from pysepal.solara.theme import ThemeState
 
 if any(var in os.environ for var in GDAL_ENV_VARS):
@@ -49,7 +48,6 @@ from traitlets import Int as _TInt
 from typing_extensions import Self
 
 from pysepal import color as scolors
-from pysepal import sepalwidgets as sw
 from pysepal.frontend import styles as ss
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.basemaps import basemap_tiles
@@ -66,6 +64,8 @@ from pysepal.scripts import utils as su
 
 if TYPE_CHECKING:
     from matplotlib import colors as mpc
+
+    from pysepal.sepalwidgets.vue_app import ThemeToggle
 
 __all__ = ["SepalMap"]
 
@@ -95,7 +95,7 @@ class SepalMap(ipl.Map):
     _id: str = ""
     "A unique 6 letters str to identify the map in the DOM"
 
-    state: Optional[sw.StateBar] = None
+    state: Optional[LayerStateControl] = None
     "The statebar to inform the user about tile loading"
 
     viewport_inset_left = _TInt(0)
@@ -120,7 +120,7 @@ class SepalMap(ipl.Map):
         vinspector: bool = False,
         gee: bool = True,
         statebar: bool = False,
-        theme_toggle: ThemeToggle = None,
+        theme_toggle: "ThemeToggle" = None,
         theme_state: Optional[ThemeState] = None,
         gee_session: Optional[EESession] = None,
         gee_interface: Optional[GEEInterface] = None,
@@ -370,7 +370,7 @@ class SepalMap(ipl.Map):
 
     @staticmethod
     def _resolve_theme_source(
-        theme_state: Optional[ThemeState], theme_toggle: Optional[ThemeToggle]
+        theme_state: Optional[ThemeState], theme_toggle: Optional["ThemeToggle"]
     ):
         """Resolve the theme source used to initialize and drive the map theme."""
         if theme_state is not None:
@@ -387,7 +387,7 @@ class SepalMap(ipl.Map):
         reason="SepalMap(theme_toggle=...) is deprecated; pass theme_state=... instead.",
         category=DeprecationWarning,
     )
-    def _resolve_deprecated_theme_toggle_source(theme_toggle: ThemeToggle):
+    def _resolve_deprecated_theme_toggle_source(theme_toggle: "ThemeToggle"):
         """Resolve the legacy theme_toggle constructor path."""
         if hasattr(theme_toggle, "get_theme_state"):
             bound_theme_state = theme_toggle.get_theme_state()

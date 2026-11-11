@@ -1,18 +1,117 @@
 """Extend functionalities of the ipyleaflet layer control."""
 
 from types import SimpleNamespace
-from typing import Optional
+from typing import Optional, Sequence
 
+import ipyvuetify as v
+import traitlets as t
 from ipyleaflet import GeoJSON, Layer, Map, TileLayer
 from ipywidgets import link
 
-from pysepal import sepalwidgets as sw
+from pysepal._sepal_widget import SepalWidget
+from pysepal._vuetify import IPYVUETIFY_V3
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.message import msg
 
+# a Vuetify 3 input lets its grid shrink below the control, which then overflows the cell
+_FIT_CELL = "min-width: max-content;"
 
-class HeaderRow(sw.Html):
+
+def _checkbox(**kwargs) -> v.VuetifyWidget:
+    """Return a checkbox showing neither label nor messages, to fit in a table cell."""
+    if IPYVUETIFY_V3:
+        return v.Checkbox(density="compact", hide_details=True, style_=_FIT_CELL, **kwargs)
+    return v.SimpleCheckbox(**kwargs)
+
+
+def _slider(**kwargs) -> v.Slider:
+    """Return a slider showing no messages, so it can be centred in a table cell."""
+    if IPYVUETIFY_V3:
+        kwargs.update(density="compact", hide_details=True, color="primary")
+    return v.Slider(class_="v-no-messages", **kwargs)
+
+
+class _Radio(v.Radio):
+    """A radio exposing whether it is the selected one of its group."""
+
+    active: t.Bool = t.Bool(allow_none=True).tag(sync=True)
+    "True when the radio is the selected one, False when not"
+
+    def __init__(self, **kwargs) -> None:
+        if IPYVUETIFY_V3:
+            kwargs.update(density="compact", color="primary")
+        super().__init__(**kwargs)
+
+
+class _SoloGroup(v.RadioGroup):
+    """A Vuetify 3 radio group holding one radio, its ``v_model`` mirrors ``active``.
+
+    A Vuetify 3 radio reports a click through its group only (it declares
+    ``modelValue``, so Vue drops the ``update:modelValue`` listener on its way to
+    the selection control), and a group around the whole table would also drive
+    the checkboxes of the other rows: a selection control reads the nearest group.
+    """
+
+    def __init__(self, radio: _Radio) -> None:
+        self._radio = radio
+        super().__init__(children=[radio], density="compact", hide_details=True, style_=_FIT_CELL)
+        self._from_radio()
+        radio.observe(self._from_radio, "active")
+        self.observe(self._from_group, "v_model")
+
+    def _from_radio(self, *args) -> None:
+        self.v_model = self._radio.value if self._radio.active else None
+
+    def _from_group(self, change: dict) -> None:
+        if change["new"] == self._radio.value:
+            self._radio.active = True
+
+
+class _RadioSync:
+    """Keep the ``v_model`` of a group and the ``active`` trait of its radios in sync.
+
+    The radios sit deep in the table rows, so the group is given them.
+    """
+
+    def __init__(self, radios: Sequence[_Radio], **kwargs) -> None:
+        self._radios = list(radios)
+        super().__init__(**kwargs)
+        self._update_radios()
+        self.observe(self._update_radios, "v_model")
+        for radio in self._radios:
+            radio.observe(self._update_v_model, "active")
+
+    def _update_v_model(self, change: dict) -> None:
+        """Select the radio that became active."""
+        if change["new"] is True:
+            self.v_model = change["owner"].value
+
+    def _update_radios(self, *args) -> None:
+        """Activate the radio matching the ``v_model`` and deactivate the others."""
+        for radio in self._radios:
+            radio.active = radio.value == self.v_model
+
+
+class _RadioGroup(_RadioSync, v.RadioGroup):
+    """The Vuetify 2 radio group wrapping the table.
+
+    A Vuetify 2 radio cannot be used alone (vuetifyjs/vuetify#2345).
+    """
+
+
+class _Selection(_RadioSync, t.HasTraits):
+    """The selected basemap of a Vuetify 3 table, whose radios each sit in a ``_SoloGroup``."""
+
+    v_model: t.Any = t.Any(None)
+    "the value of the selected radio"
+
+
+class _Card(v.Card, SepalWidget):
+    """The card holding the table, ``get_children`` reaches the rows."""
+
+
+class HeaderRow(v.Html, SepalWidget):
     def __init__(self, title: str) -> None:
         """Html Row element including a single title of 3 colspan.
 
@@ -22,11 +121,11 @@ class HeaderRow(sw.Html):
             title: the line value
         """
         attr = {"colspan": 3}
-        head = sw.Html(tag="th", attributes=attr, children=title)
+        head = v.Html(tag="th", attributes=attr, children=title)
         super().__init__(tag="tr", class_="v-no-hover", children=[head])
 
 
-class _LinkedRow(sw.Html):
+class _LinkedRow(v.Html, SepalWidget):
     """A row whose widgets are linked to the traits of a layer."""
 
     _links: tuple = ()
@@ -44,7 +143,7 @@ class _LinkedRow(sw.Html):
 
 class BaseRow(_LinkedRow):
 
-    w_radio: Optional[sw.SimpleCheckbox] = None
+    w_radio: Optional[_Radio] = None
     "the radio to hide/show the layer"
 
     def __init__(self, layer: TileLayer) -> None:
@@ -57,17 +156,18 @@ class BaseRow(_LinkedRow):
             layer: the layer associated to the row
         """
         # create the checkbox, by default layer are visible
-        self.w_radio = sw.Radio(small=True, value=layer.name)
-        kwargs = {"style": "width: 10%;", "tag": "td"}
-        radio_cell = sw.Html(children=[self.w_radio], **kwargs)
+        self.w_radio = _Radio(value=layer.name)
+        radio = _SoloGroup(self.w_radio) if IPYVUETIFY_V3 else self.w_radio
+        kwargs = {"style_": "width: 10%;", "tag": "td"}
+        radio_cell = v.Html(children=[radio], **kwargs)
 
         # create the label
         kwargs = {"style_": "width: 40%;", "tag": "td"}
-        label_cell = sw.Html(children=[layer.name], **kwargs)
+        label_cell = v.Html(children=[layer.name], **kwargs)
 
         # create an empty row to align on
         kwargs = {"style_": "width: 50%;", "tag": "td"}
-        empty_cell = sw.Html(children=[""], **kwargs)
+        empty_cell = v.Html(children=[""], **kwargs)
 
         # build a html tr from it
         super().__init__(tag="tr", children=[label_cell, empty_cell, radio_cell])
@@ -78,10 +178,10 @@ class BaseRow(_LinkedRow):
 
 class LayerRow(_LinkedRow):
 
-    w_checkbox: Optional[sw.SimpleCheckbox] = None
+    w_checkbox: Optional[v.VuetifyWidget] = None
     "the ckeckbox to hide/show the layer"
 
-    w_slider: Optional[sw.SimpleSlider] = None
+    w_slider: Optional[v.Slider] = None
     "the slider linked to the opacity of the layer"
 
     def __init__(self, layer: TileLayer) -> None:
@@ -95,20 +195,18 @@ class LayerRow(_LinkedRow):
             layer: the layer associated to the row
         """
         # create the checkbox, by default layer are visible
-        self.w_checkbox = sw.SimpleCheckbox(
-            v_model=True, small=True, label=layer.name, color="primary"
-        )
-        kwargs = {"style": "width: 10%;", "tag": "td"}
-        checkbox_cell = sw.Html(children=[self.w_checkbox], **kwargs)
+        self.w_checkbox = _checkbox(v_model=True, color="primary")
+        kwargs = {"style_": "width: 10%;", "tag": "td"}
+        checkbox_cell = v.Html(children=[self.w_checkbox], **kwargs)
 
         # create the label
         kwargs = {"style_": "width: 40%;", "tag": "td"}
-        label_cell = sw.Html(children=[layer.name], **kwargs)
+        label_cell = v.Html(children=[layer.name], **kwargs)
 
         # create the slider
-        self.w_slider = sw.SimpleSlider(v_model=1, max=1, step=0.01, small=True)
+        self.w_slider = _slider(v_model=1, max=1, step=0.01)
         kwargs = {"style_": "width: 50%;", "tag": "td"}
-        slider_cell = sw.Html(children=[self.w_slider], **kwargs)
+        slider_cell = v.Html(children=[self.w_slider], **kwargs)
 
         # build a html tr from it
         super().__init__(tag="tr", children=[label_cell, slider_cell, checkbox_cell])
@@ -129,7 +227,7 @@ class LayerRow(_LinkedRow):
 
 class VectorRow(_LinkedRow):
 
-    w_checkbox: Optional[sw.SimpleCheckbox] = None
+    w_checkbox: Optional[v.VuetifyWidget] = None
     "the ckeckbox to hide/show the layer"
 
     def __init__(self, layer: TileLayer) -> None:
@@ -143,19 +241,17 @@ class VectorRow(_LinkedRow):
             layer: the vector layer associated to the row
         """
         # create the checkbox, by default layer are visible
-        self.w_checkbox = sw.SimpleCheckbox(
-            v_model=True, small=True, label=layer.name, color="primary"
-        )
-        kwargs = {"style": "width: 10%;", "tag": "td"}
-        checkbox_cell = sw.Html(children=[self.w_checkbox], **kwargs)
+        self.w_checkbox = _checkbox(v_model=True, color="primary")
+        kwargs = {"style_": "width: 10%;", "tag": "td"}
+        checkbox_cell = v.Html(children=[self.w_checkbox], **kwargs)
 
         # create the label
         kwargs = {"style_": "width: 40%;", "tag": "td"}
-        label_cell = sw.Html(children=[layer.name], **kwargs)
+        label_cell = v.Html(children=[layer.name], **kwargs)
 
         # create the slider
         kwargs = {"style_": "width: 50%;", "tag": "td"}
-        empty_cell = sw.Html(children=[""], **kwargs)
+        empty_cell = v.Html(children=[""], **kwargs)
 
         # build a html tr from it
         super().__init__(tag="tr", children=[label_cell, empty_cell, checkbox_cell])
@@ -164,9 +260,9 @@ class VectorRow(_LinkedRow):
         self._links = (link((layer, "visible"), (self.w_checkbox, "v_model")),)
 
 
-class ToggleRow(sw.Html):
+class ToggleRow(v.Html, SepalWidget):
 
-    w_checkbox: Optional[sw.SimpleCheckbox] = None
+    w_checkbox: Optional[v.VuetifyWidget] = None
     "the checkbox to hide/show the layer"
 
     def __init__(self, layer: Layer, control: "LayersControl", index: int) -> None:
@@ -192,19 +288,17 @@ class ToggleRow(sw.Html):
         self.index = index
 
         # create the checkbox, by default layer are visible
-        self.w_checkbox = sw.SimpleCheckbox(
-            v_model=layer not in control.hidden, small=True, label=layer.name, color="primary"
-        )
-        kwargs = {"style": "width: 10%;", "tag": "td"}
-        checkbox_cell = sw.Html(children=[self.w_checkbox], **kwargs)
+        self.w_checkbox = _checkbox(v_model=layer not in control.hidden, color="primary")
+        kwargs = {"style_": "width: 10%;", "tag": "td"}
+        checkbox_cell = v.Html(children=[self.w_checkbox], **kwargs)
 
         # create the label
         kwargs = {"style_": "width: 40%;", "tag": "td"}
-        label_cell = sw.Html(children=[layer.name], **kwargs)
+        label_cell = v.Html(children=[layer.name], **kwargs)
 
         # create an empty row to align on
         kwargs = {"style_": "width: 50%;", "tag": "td"}
-        empty_cell = sw.Html(children=[""], **kwargs)
+        empty_cell = v.Html(children=[""], **kwargs)
 
         # build a html tr from it
         super().__init__(tag="tr", children=[label_cell, empty_cell, checkbox_cell])
@@ -235,13 +329,13 @@ class LayersControl(MenuControl):
     hidden: Optional[dict] = None
     "the layers this control removed from the map to hide them, and their row position"
 
-    group: Optional[sw.RadioGroup] = None
+    group: Optional[_RadioSync] = None
     "As radio button cannot behave individually we add an extra GroupRadio to wrap the table"
 
-    tile: Optional[sw.Tile] = None
-    "the tile holding the table"
+    tile: Optional[v.Card] = None
+    "the card holding the table"
 
-    w_loading: Optional[sw.ProgressLinear] = None
+    w_loading: Optional[v.ProgressLinear] = None
     "a progress bar, not displayed"
 
     def __init__(self, m: Map, **kwargs) -> None:
@@ -259,11 +353,11 @@ class LayersControl(MenuControl):
 
         # create a loading to place it on top of the card. It will always be visible
         # even when the card is scrolled
-        self.w_loading = sw.ProgressLinear(
+        self.w_loading = v.ProgressLinear(
             indeterminate=False,
-            background_color="menu",
+            **({"bg_color": "menu"} if IPYVUETIFY_V3 else {"background_color": "menu"}),
         )
-        self.tile = sw.Tile("nested", "")
+        self.tile = _Card(elevation=0)
 
         # set the kwargs parameters
         kwargs.setdefault("position", "topright")
@@ -288,8 +382,7 @@ class LayersControl(MenuControl):
         """Stop following the map and close the table."""
         if self.m is not None:
             self.m.unobserve(self.update_table, "layers")
-        # nest() keeps the title out of the tile children
-        close_tree(self.tile, getattr(self.tile, "title", None), self.w_loading)
+        close_tree(self.tile, self.w_loading)
         self.hidden = {}
         super().close()
 
@@ -335,23 +428,29 @@ class LayersControl(MenuControl):
         # create another table of basemapLine it should always be a basemap
         # the error raised if you delete the last one is a feature
         bases = [lyr for lyr in self.m.layers if lyr.base is True]
-        base_rows = []
+        base_rows, radios = [], []
         current = next((lyr for lyr in bases if lyr.visible is True), SimpleNamespace(name=None))
         if len(bases) > 0:
             head = [HeaderRow(msg("layer_control.basemap.header"))]
-            empy_cell = sw.Html(tag="td", children=[" "], attributes={"colspan": 3})
-            empty_row = sw.Html(tag="tr", class_="v-no-hever", children=[empy_cell])
-            rows = [BaseRow(lyr) for lyr in bases] + [empty_row]
-            base_rows = head + rows
+            empy_cell = v.Html(tag="td", children=[" "], attributes={"colspan": 3})
+            empty_row = v.Html(tag="tr", class_="v-no-hover", children=[empy_cell])
+            rows = [BaseRow(lyr) for lyr in bases]
+            radios = [row.w_radio for row in rows]
+            base_rows = head + rows + [empty_row]
 
         # create a table from these rows and wrap it in the radioGroup
-        tbody = sw.Html(tag="tbody", children=vector_rows + layer_rows + base_rows)
-        table = sw.SimpleTable(children=[tbody], dense=True, class_="v-no-border")
-        self.group = sw.RadioGroup(v_model=current.name, children=[table])
+        tbody = v.Html(tag="tbody", children=vector_rows + layer_rows + base_rows)
+        if IPYVUETIFY_V3:
+            table = v.Table(children=[tbody], density="compact", class_="v-no-border")
+            self.group = _Selection(radios, v_model=current.name)
+            content = table
+        else:
+            table = v.SimpleTable(children=[tbody], dense=True, class_="v-no-border")
+            self.group = content = _RadioGroup(radios, v_model=current.name, children=[table])
 
         # set the table as children of the widget, the previous one is discarded
         previous = self.tile.children
-        self.tile.children = [self.group]
+        self.tile.children = [content]
         close_tree(*previous)
 
         return
