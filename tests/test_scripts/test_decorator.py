@@ -209,7 +209,6 @@ def test_loading_button() -> None:
 
 def test_switch() -> None:
     """Test the switch decorator."""
-
     # create a fake object that uses the decorator
     class Obj:
         def __init__(self):

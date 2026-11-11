@@ -11,7 +11,8 @@ module.exports = {
     this.media = window.matchMedia
       ? window.matchMedia("(prefers-color-scheme: dark)")
       : null;
-    this.onChange = () => this.prefers_dark(!!(this.media && this.media.matches));
+    this.onChange = () =>
+      this.prefers_dark(!!(this.media && this.media.matches));
     if (this.media && this.media.addEventListener) {
       this.media.addEventListener("change", this.onChange);
     } else if (this.media && this.media.addListener) {

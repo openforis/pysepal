@@ -57,33 +57,39 @@ def test_import_on_v3_raises_clear_error():
 
 @v2_only
 def test_import_warns_on_v2():
-    result = _run("""
+    result = _run(
+        """
         import warnings
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             import pysepal.sepalwidgets
         messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
         assert any("pysepal.sepalwidgets is deprecated" in m for m in messages), messages
-        """)
+        """
+    )
     assert result.returncode == 0, result.stderr
 
 
 def test_the_solara_surface_does_not_import_sepalwidgets():
     imports = "; ".join(f"import {name}" for name in SOLARA_SURFACE)
-    result = _run(f"""
+    result = _run(
+        f"""
         import sys; {imports}
         loaded = sorted(m for m in sys.modules if m.startswith("pysepal.sepalwidgets"))
         assert not loaded, loaded
-        """)
+        """
+    )
     assert result.returncode == 0, result.stderr
 
 
 def test_models_import_without_their_widgets():
-    result = _run("""
+    result = _run(
+        """
         import sys
         from pysepal.aoi import AoiModel
         from pysepal.planetapi import PlanetModel
         assert "pysepal.aoi.aoi_view" not in sys.modules
         assert "pysepal.planetapi.planet_view" not in sys.modules
-        """)
+        """
+    )
     assert result.returncode == 0, result.stderr
