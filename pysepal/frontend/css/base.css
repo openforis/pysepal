@@ -102,6 +102,12 @@ header.v-app-bar {
   border: none !important;
 }
 
+/* Vuetify 3 compact rows are taller than Vuetify 2 dense ones */
+.v-no-border.v-table--density-compact {
+  --v-table-row-height: 32px;
+  --v-table-header-height: 32px;
+}
+
 /* extra css rules to make the messages disappear beneath the SimpleSlider */
 .v-no-messages .v-messages {
   display: none;
@@ -134,6 +140,13 @@ header.v-app-bar {
   min-width: 0px;
   width: 30px;
   height: 30px;
+}
+
+/* Vuetify 3 renders a map control without its own app wrapper, so the outlined
+ * button would have no background; give it the theme's background. */
+.leaflet-widgetcontrol .v-btn.v-map-btn.v-btn--variant-outlined {
+  background-color: rgb(var(--v-theme-background));
+  color: rgb(var(--v-theme-on-background));
 }
 
 /* add specific css for the zoom btn of the map */
