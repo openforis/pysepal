@@ -19,6 +19,8 @@ import solara
 from reacton import ipyvue
 from reacton import ipyvuetify as rv
 
+from pysepal._vuetify import IPYVUETIFY_V3, icon_start, size
+
 
 def use_task_button(
     task: Any,
@@ -129,18 +131,23 @@ def TaskButtonComponent(
             )
         )
     elif btn_icon:
-        children.append(v.Icon(left=True, small=small, children=[btn_icon]))
+        # A Vuetify 3 button sizes its icon itself; a small icon there is smaller than
+        # the Vuetify 2 one.
+        icon_size = {} if IPYVUETIFY_V3 else {"small": small}
+        children.append(v.Icon(**icon_start(), **icon_size, children=[btn_icon]))
 
     children.append(btn_label)
 
     # Use rv.Btn directly — never Vuetify's native loading prop which
-    # disables the button and hides children.
+    # disables the button and hides children. Vuetify 3 card actions default their
+    # buttons to text style, so the filled look is asked for explicitly there.
     btn = rv.Btn(
         children=children,
         color=btn_color,
         disabled=disabled,
-        small=small,
         block=block,
+        **size("small" if small else None),
+        **({"variant": "elevated"} if IPYVUETIFY_V3 else {}),
         style_=style_,
     )
     ipyvue.use_event(btn, "click", handle_click)
