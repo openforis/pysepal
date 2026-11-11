@@ -47,6 +47,7 @@ def test_process_admin_closes_created_interface(monkeypatch):
     result = asyncio.run(admin.process_admin("ADMIN0", "62", gee=True))
 
     assert result.admin == "62"
+    assert result.admin_source == "FAO GAUL 2024 (GEE Community Catalog)"
     assert created[0].closed is True
     assert created[0].calls == [{"iso3_code": "COL", "gaul0_name": "Colombia"}]
 

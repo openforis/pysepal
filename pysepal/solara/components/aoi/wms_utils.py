@@ -18,6 +18,7 @@ def create_wms_preview_layer(
     level: int,
     admin_code: str,
     name: str = WMS_PREVIEW_LAYER_NAME,
+    attribution: str = "",
 ) -> WMSLayer:
     """Create an ipyleaflet WMSLayer for previewing an admin boundary.
 
@@ -28,6 +29,7 @@ def create_wms_preview_layer(
         level: Administrative level (0, 1, or 2)
         admin_code: The admin code to highlight
         name: Layer name for identification (default: "aoi_wms_preview")
+        attribution: Attribution shown in the map corner while the layer is visible
 
     Returns:
         ipyleaflet.WMSLayer configured to display the admin boundary
@@ -54,6 +56,7 @@ def create_wms_preview_layer(
         format="image/png",
         transparent=True,
         name=name,
+        attribution=attribution,
     )
 
 
