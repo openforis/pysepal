@@ -86,7 +86,7 @@
 </template>
 
 <script>
-export default {
+module.exports = {
   name: "NotificationUI",
   // toasts, tasks and is_dark are traits: ipyvue adds them as data, and
   // declaring them as props too makes Vue 3 warn about the duplicate.
