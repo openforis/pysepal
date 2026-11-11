@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import sys
+import time
 from typing import Any, Callable, Optional
 
 import ee
@@ -47,6 +48,10 @@ def _container_path() -> str:
     return f"projects/{project_id}/assets/pysepal-tests"
 
 
+_DELETE_ATTEMPTS = 3
+_RETRY_DELAY = 5  # seconds
+
+
 def delete_recursive(asset_id: str) -> None:
     """Delete an asset, and everything under it when it is a folder.
 
@@ -57,12 +62,33 @@ def delete_recursive(asset_id: str) -> None:
 
     Args:
         asset_id: the full asset name, e.g. ``projects/p/assets/folder``.
+
+    Raises:
+        RuntimeError: the folder still has children after ``_DELETE_ATTEMPTS``
+            listings.
     """
-    if ee.data.getAsset(asset_id)["type"] == "FOLDER":
+    if ee.data.getAsset(asset_id)["type"] != "FOLDER":
+        ee.data.deleteAsset(asset_id)
+        return
+
+    # A child can appear after the listing (a late export, or a listing that
+    # lags behind a finished task), so list again when GEE refuses the delete.
+    for attempt in range(_DELETE_ATTEMPTS):
+        if attempt:
+            time.sleep(_RETRY_DELAY)
         for child in ee.data.listAssets({"parent": asset_id}).get("assets", []):
             delete_recursive(child["name"])
+        try:
+            ee.data.deleteAsset(asset_id)
+            return
+        except ee.EEException as exc:
+            if "delete its children" not in str(exc):
+                raise
+            error = exc
 
-    ee.data.deleteAsset(asset_id)
+    raise RuntimeError(
+        f"{asset_id} still has children after {_DELETE_ATTEMPTS} attempts"
+    ) from error
 
 
 def _parse_update_time(raw: Any) -> Optional[dt.datetime]:
