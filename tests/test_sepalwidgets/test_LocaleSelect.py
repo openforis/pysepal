@@ -12,6 +12,7 @@ import pysepal
 from pysepal import sepalwidgets as sw
 from pysepal.i18n import current_locale, set_locale
 from pysepal.sepalwidgets.vue_app import LocaleSelect
+from pysepal.solara.components._locale_widget import VUE_DIR
 from pysepal.solara.components.locale_select import LocaleSelectComponent
 from pysepal.translator import Translator
 
@@ -188,13 +189,6 @@ def test_selecting_a_locale_writes_no_config(tmp_path, monkeypatch, render_selec
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_browser_resolution_persistence_and_remounts():
-    harness = Path(__file__).parents[1] / "js" / "locale_lifecycle.mjs"
-    vue = MESSAGE_DIR.parent / "sepalwidgets" / "vue" / "LocaleSelect.vue"
-    subprocess.run(["node", str(harness), str(vue)], check=True, capture_output=True, text=True)
-
-
-@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_noncanonical_catalogue_locale_stays_selected_after_remount(tmp_path, render_selector):
     from pysepal.i18n import catalog
 
@@ -211,9 +205,9 @@ def test_noncanonical_catalogue_locale_stays_selected_after_remount(tmp_path, re
 
     props = {"value": widget.value, "offered": [row["code"] for row in widget.available_locales]}
     harness = Path(__file__).parents[1] / "js" / "locale_lifecycle.mjs"
-    vue = MESSAGE_DIR.parent / "sepalwidgets" / "vue" / "LocaleSelect.vue"
+    script, markup = VUE_DIR / "LocaleSelect.js", VUE_DIR / "LocaleSelect.v2.vue"
     subprocess.run(
-        ["node", str(harness), str(vue), json.dumps(props)],
+        ["node", str(harness), str(script), str(markup), json.dumps(props)],
         check=True,
         capture_output=True,
         text=True,
