@@ -98,8 +98,8 @@
       :aria-label="isCollapsed ? 'Show legend' : 'Hide legend'"
       :aria-expanded="String(!isCollapsed)"
     >
-      <v-icon small :dark="isDark" :light="!isDark">mdi-map-legend</v-icon>
-      <v-icon x-small :dark="isDark" :light="!isDark">{{
+      <v-icon v-bind="iconProps('small')">mdi-map-legend</v-icon>
+      <v-icon v-bind="iconProps('x-small')">{{
         isCollapsed ? "mdi-chevron-up" : "mdi-chevron-down"
       }}</v-icon>
     </div>
@@ -108,41 +108,36 @@
 
 <script>
 module.exports = {
-  props: {
-    legend_data: {
-      type: Object,
-      default: () => ({}),
-    },
-    visible: {
-      type: Boolean,
-      default: true,
-    },
-    collapsed: {
-      type: Boolean,
-      default: false,
-    },
-    selector_options: {
-      type: Array,
-      default: () => [],
-    },
-    selected: {
-      type: String,
-      default: null,
-    },
-  },
+  // legend_data, visible, collapsed, selector_options and selected are traits:
+  // ipyvue adds them as data, and declaring them as props too makes Vue 3 warn
+  // about the duplicate.
   data() {
     return {
-      internalCollapsed: this.collapsed,
+      internalCollapsed: false,
     };
   },
+  // Not in data(): the traits cannot be read there under either ipyvue.
+  created() {
+    this.internalCollapsed = !!this.collapsed;
+  },
   computed: {
-    isDark() {
-      // Reactive: changes when the user toggles the Vuetify theme at runtime.
-      return (
+    v3() {
+      return !!(
         this.$vuetify &&
         this.$vuetify.theme &&
-        this.$vuetify.theme.dark === true
+        this.$vuetify.theme.global
       );
+    },
+    isDark() {
+      // Reactive: changes when the user toggles the Vuetify theme at runtime.
+      const theme = this.$vuetify && this.$vuetify.theme;
+      if (!theme) return false;
+      if (!this.v3) return theme.dark === true;
+      const current = theme.global.current;
+      // A ref, unless the reactive $vuetify has already unwrapped it.
+      const definition =
+        current && "value" in current ? current.value : current;
+      return !!(definition && definition.dark);
     },
     isCollapsed() {
       return this.internalCollapsed;
@@ -193,6 +188,14 @@ module.exports = {
     },
   },
   methods: {
+    iconProps(size) {
+      if (this.v3) {
+        // Vuetify 3's named icon sizes scale with the font; Vuetify 2's are these
+        // pixels. Vuetify 3 icons take the bar's themed text colour.
+        return { size: { small: 16, "x-small": 12 }[size] };
+      }
+      return { [size]: true, dark: this.isDark, light: !this.isDark };
+    },
     toggleCollapse() {
       const nextCollapsed = !this.internalCollapsed;
       this.internalCollapsed = nextCollapsed;
