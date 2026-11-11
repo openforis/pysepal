@@ -14,11 +14,11 @@ ExportTarget = Literal["gee", "drive", "sepal"]
 ExportKind = Literal["image", "table"]
 
 TABLE_FILE_FORMATS = [
-    {"text": "CSV", "value": "CSV"},
-    {"text": "GeoJSON", "value": "GEO_JSON"},
-    {"text": "Shapefile", "value": "SHP"},
-    {"text": "KML", "value": "KML"},
-    {"text": "KMZ", "value": "KMZ"},
+    {"title": "CSV", "value": "CSV"},
+    {"title": "GeoJSON", "value": "GEO_JSON"},
+    {"title": "Shapefile", "value": "SHP"},
+    {"title": "KML", "value": "KML"},
+    {"title": "KMZ", "value": "KMZ"},
 ]
 DEFAULT_TABLE_FILE_FORMAT = "SHP"
 TARGET_LABELS = {

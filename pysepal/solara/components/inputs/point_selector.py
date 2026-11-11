@@ -11,7 +11,6 @@ import pandas as pd
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal._vuetify import density, field_variant
 from pysepal.message import msg
 from pysepal.scripts.filesystem import FileSystem
 from pysepal.solara.components.inputs.file_input import FileInputComponent
@@ -143,8 +142,8 @@ def PointsSelectorComponent(
                 on_v_model=lambda column: select_column("id_column", column),
                 loading=column_task.pending,
                 clearable=True,
-                **density(),
-                **field_variant(),
+                density="compact",
+                variant="underlined",
             ):
                 pass
 
@@ -155,8 +154,8 @@ def PointsSelectorComponent(
                 on_v_model=lambda column: select_column("lat_column", column),
                 loading=column_task.pending,
                 clearable=True,
-                **density(),
-                **field_variant(),
+                density="compact",
+                variant="underlined",
             ):
                 pass
 
@@ -167,7 +166,7 @@ def PointsSelectorComponent(
                 on_v_model=lambda column: select_column("lng_column", column),
                 loading=column_task.pending,
                 clearable=True,
-                **density(),
-                **field_variant(),
+                density="compact",
+                variant="underlined",
             ):
                 pass

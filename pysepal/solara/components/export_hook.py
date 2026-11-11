@@ -159,11 +159,10 @@ def get_source_items(sources: Sequence[ExportSource]) -> list[dict[str, object]]
     populated_groups = [(kind, label) for kind, label in _SOURCE_KIND_GROUPS if grouped[kind]]
 
     def _source_item(source: ExportSource) -> dict[str, object]:
-        return {
-            "text": source.label,
-            "value": source.id,
-            "disabled": source.disabled,
-        }
+        item: dict[str, object] = {"title": source.label, "value": source.id}
+        if source.disabled:
+            item["props"] = {"disabled": True}
+        return item
 
     if len(populated_groups) <= 1:
         return [_source_item(source) for source in sources]
@@ -171,8 +170,9 @@ def get_source_items(sources: Sequence[ExportSource]) -> list[dict[str, object]]
     items: list[dict[str, object]] = []
     for index, (kind, label) in enumerate(populated_groups):
         if index > 0:
-            items.append({"divider": True})
-        items.append({"header": label})
+            # without a title Vuetify uses the whole item as one ("[object Object]")
+            items.append({"type": "divider", "title": ""})
+        items.append({"type": "subheader", "title": label})
         items.extend(_source_item(source) for source in grouped[kind])
     return items
 
@@ -180,12 +180,12 @@ def get_source_items(sources: Sequence[ExportSource]) -> list[dict[str, object]]
 def get_target_items(sepal_client: SepalClient | None) -> list[dict[str, object]]:
     """Return the destination radio items; SEPAL is disabled when no client is available."""
     return [
-        {"text": TARGET_LABELS["gee"], "value": "gee"},
-        {"text": TARGET_LABELS["drive"], "value": "drive"},
+        {"title": TARGET_LABELS["gee"], "value": "gee"},
+        {"title": TARGET_LABELS["drive"], "value": "drive"},
         {
-            "text": TARGET_LABELS["sepal"],
+            "title": TARGET_LABELS["sepal"],
             "value": "sepal",
-            "disabled": sepal_client is None,
+            "props": {"disabled": sepal_client is None},
         },
     ]
 

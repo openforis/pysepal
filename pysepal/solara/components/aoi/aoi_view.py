@@ -25,7 +25,6 @@ import solara
 from deprecated.sphinx import versionadded, versionchanged
 
 from pysepal import mapping as sm
-from pysepal._vuetify import IPYVUETIFY_V3, density, field_variant, select_items
 from pysepal.mapping import get_ipygeojson
 from pysepal.message import msg
 from pysepal.scripts import utils as su
@@ -165,19 +164,19 @@ def MethodSelect(
         current_type = m["type"]
 
         if prev_type != current_type:
-            items.append({"header": msg(TYPE_LABEL_KEYS[current_type])})
+            items.append({"type": "subheader", "title": msg(TYPE_LABEL_KEYS[current_type])})
         prev_type = current_type
 
-        items.append({"text": msg(m["label_key"]), "value": k})
+        items.append({"title": msg(m["label_key"]), "value": k})
 
-    # No method is "" here; a Vuetify 3 select counts "" as a pick and floats its label.
+    # No method is "" here; a select counts "" as a pick and floats its label.
     with rv.Select(
         label=msg("aoi_sel.method"),
-        items=select_items(items),
-        v_model=(reactive_value.value or None) if IPYVUETIFY_V3 else reactive_value.value,
+        items=items,
+        v_model=reactive_value.value or None,
         on_v_model=lambda method: reactive_value.set(method or ""),
-        **density(),
-        **field_variant(),
+        density="compact",
+        variant="underlined",
     ):
         pass
 
@@ -783,8 +782,8 @@ def AoiView(
                     label=msg("aoi_sel.aoi_name"),
                     v_model=draw_name.value,
                     on_v_model=draw_name.set,
-                    **field_variant(outlined=True),
-                    **density(),
+                    variant="outlined",
+                    density="compact",
                 ):
                     pass
             else:

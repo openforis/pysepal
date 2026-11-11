@@ -2,20 +2,19 @@
    solara.Style so the component bodies stay free of inline style strings. */
 
 /* Body rhythm: solara.Column supplies the single 16px gap between fields; this
-   just adds top breathing room and zeroes Vuetify's extra top spacing (radio
-   groups add margin-top:16px + padding-top:4px) so the gap is the ONLY spacing
-   between fields. Every input uses hide_details=True, so heights are fixed. */
+   just adds top breathing room and zeroes any extra top spacing on the radio
+   group so the gap is the ONLY spacing between fields. Every input uses
+   hide_details=True, so heights are fixed. */
 .sepal-export-body {
   padding-top: 8px;
 }
 
-.sepal-export-body .v-input--selection-controls,
 .sepal-export-body .v-selection-control-group {
   margin-top: 0 !important;
   padding-top: 0 !important;
 }
 
-/* Vuetify 3 inline radios sit edge to edge; space them like Vuetify 2 rows. */
+/* Inline radios sit edge to edge; space them out. */
 .sepal-export-body .v-selection-control-group--inline {
   column-gap: 16px;
 }
@@ -44,7 +43,7 @@
 }
 
 .sepal-export-error {
-  color: var(--v-error-base, #ff5252);
+  color: #ff5252;
   font-size: 0.8125rem;
   /* Match the reserved row height exactly so a single-line message fills it
      without growing the modal. */
@@ -73,9 +72,8 @@
   width: fit-content;
 }
 
-/* Vuetify 3 (.v-btn-group) only. Its groups have a fixed height that squeezes
-   wrapped rows into one, and frameless surface-coloured buttons; match the
-   Vuetify 2 small toggles instead. */
+/* Button groups have a fixed height that squeezes wrapped rows into one, and
+   frameless surface-coloured buttons; frame each toggle and let rows wrap. */
 .sepal-band-toggle.v-btn-group,
 .sepal-scale-toggle.v-btn-group {
   height: auto;

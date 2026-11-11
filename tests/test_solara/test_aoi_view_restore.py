@@ -20,8 +20,8 @@ DATA = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_pol
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
 _ITEMS = {
-    (0, ""): [{"text": "Algeria", "value": "101"}],
-    (1, "101"): [{"text": "Adrar", "value": "1001"}],
+    (0, ""): [{"title": "Algeria", "value": "101"}],
+    (1, "101"): [{"title": "Adrar", "value": "1001"}],
 }
 
 

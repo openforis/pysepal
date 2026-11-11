@@ -163,7 +163,7 @@ def fetch_admin_items(
         parent_code: Parent admin code to filter results. Empty string for level 0.
 
     Returns:
-        List of dicts with 'text' (display name) and 'value' (admin code) keys.
+        List of dicts with 'title' (display name) and 'value' (admin code) keys.
 
     Example:
         ```python
@@ -184,7 +184,7 @@ def fetch_admin_items(
     item_list = []
     for _, r in df.iterrows():
         text = su.normalize_str(r[name_col], folder=False)
-        item_list.append({"text": text, "value": str(r[code_col])})
+        item_list.append({"title": text, "value": str(r[code_col])})
 
     return item_list
 

@@ -7,7 +7,6 @@ import reacton.ipyvuetify as rv
 import solara
 from deprecated.sphinx import versionadded, versionchanged
 
-from pysepal._vuetify import density, field_variant, select_items
 from pysepal.message import msg
 
 
@@ -138,13 +137,13 @@ def AdminLevelSelector(
                 continue
             with rv.Autocomplete(
                 label=msg(f"aoi_sel.adm.{level}"),
-                items=select_items(items),
+                items=items,
                 v_model=_code_at(level),
                 clearable=True,
                 loading=loading.value,
                 disabled=not enabled,
                 on_v_model=partial(_select, level),
-                **density(),
-                **field_variant(),
+                density="compact",
+                variant="underlined",
             ):
                 pass
