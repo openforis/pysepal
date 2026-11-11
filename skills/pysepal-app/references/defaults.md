@@ -80,15 +80,21 @@ Default output set:
 
 Local apps still use:
 
-- pysepal Solara components
+- pysepal Solara components, never `pysepal.sepalwidgets`
 - `solara.reactive()` AppState
 - pyproject-managed Python dependencies
 - pre-commit tooling
 - `catalog()`/`msg()` i18n structure
 
+Local/Voila apps pin `ipyvuetify<3` in `pyproject.toml`. SEPAL's Jupyter server
+serves one ipyvuetify 1 frontend to every Voila app, and a widget renders only
+when its kernel has the same major.
+
 ## Dependency Defaults
 
-`pyproject.toml` owns Python dependencies.
+`pyproject.toml` owns Python dependencies. Both templates require
+`pysepal>=4.2`, the first release with the native `MapApp` and ipyvuetify 3
+support.
 
 `sepal_environment.yml` owns conda-level or compiled dependencies and installs the local project with:
 

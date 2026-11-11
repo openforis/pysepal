@@ -36,6 +36,29 @@ Use `import reacton.ipyvuetify as rv` when:
 
 Always prefer native Solara components when available.
 
+### Write for both ipyvuetify majors
+
+pysepal runs on ipyvuetify 1 (Vuetify 2) and ipyvuetify 3 (Vuetify 3). A
+converted component must render on both. The `sepalwidgets` original ran on
+Vuetify 2 only, so check every `rv.*` call and template you carry over:
+
+- Vuetify 3 renamed props (`dense` → `density`, `small` → `size`, `outlined` /
+  `text` → `variant`) and removed components (`v-list-item-content`,
+  `v-flex`, `v-tabs-items`).
+- Activator slots bind `props`, not `on`. Select items read `title`, not `text`.
+- Inside pysepal, use the helpers in `pysepal/_vuetify.py` (`density()`,
+  `size()`, `btn_variant()`, `select_items()`, ...) or branch on its
+  `IPYVUETIFY_V3`. A template keeps one script and one markup file per major
+  (`vuetify_markup`, `compose_vue`); FileInput and LocaleSelect are built this
+  way.
+- Run the tests in both nox lanes, `nox -s "test(ipyvuetify='1')"` and
+  `"test(ipyvuetify='3')"`, and render the component in a browser on both
+  majors with `scripts/browser_probe.mjs --console`
+  ([browser-testing.md](./browser-testing.md)).
+
+[solara-upstream.md](./solara-upstream.md) lists the template rules learned on
+the way.
+
 ### GEE + SessionManager Migration Rule
 
 When migrating an ipywidgets or traitlets component that talks to Earth
@@ -564,24 +587,43 @@ Shows: AppState singleton, MapApp layout, `use_thread` for long operations, `use
 
 ## 9. Widget Conversion Status
 
-### Already converted (Solara-native)
+`pysepal.sepalwidgets` is deprecated in 4.2 and removed in 5.0
+([sepalwidgets-deprecation.md](./sepalwidgets-deprecation.md)). The Solara
+layer runs on both ipyvuetify majors.
+
+### Converted (Solara-native)
 
 - `AdminButton` → `pysepal/solara/components/admin.py`
 - `AoiView` → `pysepal/solara/components/aoi/aoi_view.py`
 - `AoiResult` → `pysepal/solara/components/aoi/aoi_result.py`
+- `MapApp`, `ThemeToggle`, `RightPanel` → `pysepal/solara/components/map_app/`
+- `TaskButton` → `TaskButtonComponent` in `pysepal/solara/components/task_button.py`
+- `AssetSelect`, `VectorField`, `LoadTableField` → `AssetSelectComponent`,
+  `VectorSelectorComponent`, `PointsSelectorComponent` in
+  `pysepal/solara/components/inputs/`
+- `Alert`, `StateBar`, `Banner` (event feedback) → `pysepal.solara.notifications`
 
-### Bridge wrappers (ipyvuetify widget exposed via Solara, not truly converted)
+### Template widgets in the Solara layer
 
-- `FileInputComponent` → `pysepal/sepalwidgets/file_input.py` (wraps the ipyvuetify `FileInput` via `.element()` with manual state sync — not a Solara-native component)
+These keep a `VuetifyTemplate`, with one shared script and one markup file per
+major. They do not depend on sepalwidgets.
 
-### Pending conversion (in `pysepal/sepalwidgets/`)
+- `FileInputComponent` → `pysepal/solara/components/inputs/file_input.py`,
+  around `FileInputWidget` (`_file_input_widget.py`, `vue/FileInput.*`)
+- `LocaleSelectComponent` → `pysepal/solara/components/locale_select.py`,
+  around `LocaleSelectWidget` (`_locale_widget.py`, `vue/LocaleSelect.*`)
 
-- `Btn`, `DownloadBtn`, `TaskButton` (btn.py)
-- `Alert`, `StateBar`, `Banner`, `Divider` (alert.py)
-- `DatePicker`, `FileInput`, `AssetSelect`, `NumberField`, `SimpleSlider` (inputs.py)
+### Not converted (deprecated, in `pysepal/sepalwidgets/`)
+
+Use Solara layout or plain `rv.*` elements instead; these will not be converted.
+
+- `Btn`, `DownloadBtn` (btn.py)
+- `Divider` (alert.py)
+- `DatePicker`, `NumberField`, `PasswordField`, `SimpleSlider` (inputs.py)
 - `Tile`, `TileAbout`, `TileDisclaimer` (tile.py)
 - `Radio`, `RadioGroup` (radio.py)
 - `Markdown`, `CopyToClip`, `StateIcon` (widget.py)
-- `Dialog`, `Tooltip` (sepalwidget.py)
-- `MapApp`, `ThemeToggle`, `RightPanel` (vue_app.py) — already work with Solara via Vue templates
-- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer` (app.py) — legacy layout, MapApp is the replacement
+- `Dialog` (sepalwidget.py). The `SepalWidget` mixin and `Tooltip` moved to
+  `pysepal/_sepal_widget.py`.
+- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer` (app.py): `MapApp` is
+  the replacement

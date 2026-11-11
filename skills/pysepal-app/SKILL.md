@@ -31,7 +31,9 @@ For app architecture:
 - `docs/guides/solara-gee-patterns.md` for async GEE work
 - `docs/guides/solara-notifications.md` when the app has async work, task progress, toasts, or `MapApp`
 - `docs/guides/solara-export.md` when the app produces `ee.Image` or `ee.FeatureCollection` layers users can export
-- `docs/guides/ipyvuetify-widgets.md` when creating or extending `VuetifyTemplate`/Vue-backed widgets
+- `docs/guides/solara-mapapp-component.md` when the app uses `MapApp`
+- `docs/guides/sepalwidgets-deprecation.md` when the app imports `pysepal.sepalwidgets`
+- `docs/guides/ipyvuetify-widgets.md` when creating or extending `VuetifyTemplate`/Vue-backed widgets; it was written for the deprecated sepalwidgets layer, so also follow "ipyvuetify 1 and 3" in the `pysepal` skill
 
 For repo-specific defaults and scaffold workflow:
 
@@ -44,6 +46,10 @@ For repo-specific defaults and scaffold workflow:
 ## Core Rules
 
 - New Solara apps use `solara.reactive()` AppState.
+- The map shell is `MapApp(...)` from `pysepal.solara.components.map_app`.
+- Never scaffold `pysepal.sepalwidgets`: it is deprecated since 4.2 and raises `ImportError` on ipyvuetify 3.
+- App code with its own `rv.*`, `solara.v` or `.vue` widgets must run on the ipyvuetify major the app installs; branch on `solara.util.IPYVUETIFY_V3`.
+- Local/Voila apps pin `ipyvuetify<3`: SEPAL's Voila server serves one ipyvuetify 1 frontend to every app.
 - New GEE flows use `solara.lab.use_task(..., prefer_threaded=False)`.
 - Retrieve session-bound interfaces inside components with `get_current_gee_interface()` and related getters.
 - An app needing neither GEE, `SepalClient` nor Drive omits `@with_sepal_sessions` and keeps `setup_sessions()`; see "Apps that don't use Earth Engine" in `docs/guides/solara-app-builder.md`.

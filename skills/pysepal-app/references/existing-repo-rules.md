@@ -18,6 +18,10 @@ Inspect these before editing:
 - current environment files
 - current docker files if present
 - current component tree
+- imports of `pysepal.sepalwidgets` and calls to `MapApp.element`: move them to
+  the Solara components with `docs/guides/sepalwidgets-deprecation.md`
+- the installed ipyvuetify major, and whether the app runs under Voila (then it
+  keeps `ipyvuetify<3`)
 
 ## When To Stop And Ask
 
@@ -26,3 +30,4 @@ Stop and ask if:
 - the repo mixes incompatible patterns and the migration path is ambiguous
 - existing files already implement the same responsibilities with a different architecture
 - the requested scaffold would require deleting meaningful user code
+- a sepalwidgets widget holds app logic that has no Solara replacement yet

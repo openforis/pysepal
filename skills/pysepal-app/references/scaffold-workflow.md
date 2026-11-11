@@ -22,6 +22,8 @@ For existing repos:
 - inspect the current file tree
 - inspect git status if available
 - identify files that already implement app entrypoints, state, and environment setup
+- find `pysepal.sepalwidgets` imports and `MapApp.element` calls; they move to the
+  Solara components
 
 ## 3. Generate the Base Scaffold
 
@@ -34,7 +36,8 @@ Use the templates in `assets/` as the base layer. Replace placeholders immediate
 Map the user material into the scaffold:
 
 - notebook cell logic becomes `component/scripts/` functions and AppState fields
-- UI sections become `component/tile/` or `component/widget/`
+- UI sections become `component/tile/` or `component/widget/`, built from
+  Solara components (never `pysepal.sepalwidgets`)
 - constants and paths become `component/parameter/`
 - user file access becomes `SepalClient` operations for GEE/container apps,
   never container-local `Path`/`os` filesystem reads or writes

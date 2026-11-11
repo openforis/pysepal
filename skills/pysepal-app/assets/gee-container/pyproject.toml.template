@@ -8,9 +8,9 @@ version = "0.1.0"
 description = "{{project_description}}"
 requires-python = ">=3.12"
 dependencies = [
-    "pysepal",
+    "pysepal>=4.2",
     "solara",
-    "ee-client>=3.1.0,<4",
+    "ee-client>=3.2.1,<4",
 ]
 
 [project.optional-dependencies]

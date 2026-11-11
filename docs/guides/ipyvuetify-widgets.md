@@ -1,5 +1,28 @@
 # Creating ipyvuetify VuetifyTemplate Widgets
 
+> **This guide describes the deprecated `pysepal.sepalwidgets` layer.** It works
+> only on ipyvuetify 1 (Vue 2) and is removed in pysepal 5.0
+> ([sepalwidgets-deprecation.md](./sepalwidgets-deprecation.md)). Data sync,
+> events and the troubleshooting below still apply. A new template must also run
+> on ipyvuetify 3 (Vue 3):
+>
+> - Keep one shared script and one markup file per major: `X.js`, `X.v2.vue`,
+>   `X.v3.vue`. In Python, build the template with
+>   `compose_vue(vuetify_markup(VUE_DIR / "X"), VUE_DIR / "X.js")` from
+>   `pysepal/_vuetify.py`. FileInput
+>   (`pysepal/solara/components/inputs/_file_input_widget.py`) and LocaleSelect
+>   (`pysepal/solara/components/_locale_widget.py`) are built this way. A small
+>   template with no markup difference stays one file.
+> - Write `module.exports = {...}`, not `export default`. Do not declare the
+>   synced traits as `props`: they arrive as data, and on Vue 3 the template
+>   would read the unset props instead.
+> - Define `beforeUnmount` next to `beforeDestroy`. Avoid components that Vuetify
+>   3 removed, such as `v-list-item-content` below.
+> - The `SepalWidget` mixin now lives in `pysepal/_sepal_widget.py`.
+>
+> The examples below still show the Vue 2 form. The template rules are listed in
+> [solara-upstream.md](./solara-upstream.md) (ipyvuetify 3 entry).
+
 Guide for building custom Vue.js widgets with Python backend integration using
 ipyvuetify's `VuetifyTemplate` in pysepal.
 
@@ -107,17 +130,17 @@ pysepal/sepalwidgets/
 
 Existing pysepal VuetifyTemplate widgets follow this layout:
 
-| Widget       | Python file      | Vue template           |
-| ------------ | ---------------- | ---------------------- |
-| MapApp       | `vue_app.py`     | `vue/MapApp.vue`       |
-| ThemeToggle  | `vue_app.py`     | `vue/Theming.vue`      |
-| RightPanel   | `vue_app.py`     | `vue/RightPanel.vue`   |
+| Widget       | Python file                                         | Vue template                                                           |
+| ------------ | --------------------------------------------------- | ---------------------------------------------------------------------- |
+| MapApp       | `vue_app.py`                                        | `vue/MapApp.vue`                                                       |
+| ThemeToggle  | `vue_app.py`                                        | `vue/Theming.vue`                                                      |
+| RightPanel   | `vue_app.py`                                        | `vue/RightPanel.vue`                                                   |
 | FileInput    | `../solara/components/inputs/_file_input_widget.py` | `../solara/components/inputs/vue/FileInput.js` + `.v2.vue` / `.v3.vue` |
-| TaskButton   | `btn.py`         | `vue/TaskButton.vue`   |
-| Dialog       | `sepalwidget.py` | `vue/Dialog.vue`       |
-| Tabs         | `vue_widgets.py` | `vue/Tabs.vue`         |
-| LocaleSelect | `../solara/components/_locale_widget.py` | `../solara/components/vue/LocaleSelect.js` + `.v2.vue` / `.v3.vue` |
-| DrawerItem   | `app.py`         | `vue/DrawerItem.vue`   |
+| TaskButton   | `btn.py`                                            | `vue/TaskButton.vue`                                                   |
+| Dialog       | `sepalwidget.py`                                    | `vue/Dialog.vue`                                                       |
+| Tabs         | `vue_widgets.py`                                    | `vue/Tabs.vue`                                                         |
+| LocaleSelect | `../solara/components/_locale_widget.py`            | `../solara/components/vue/LocaleSelect.js` + `.v2.vue` / `.v3.vue`     |
+| DrawerItem   | `app.py`                                            | `vue/DrawerItem.vue`                                                   |
 
 ## Python Backend
 

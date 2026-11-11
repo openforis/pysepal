@@ -4,7 +4,6 @@ import solara
 
 from pysepal import mapping as sm
 from pysepal.logger import setup_logging
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_gee_interface,
     get_current_theme_state,
@@ -13,6 +12,8 @@ from pysepal.solara import (
     setup_theme_colors,
     with_sepal_sessions,
 )
+from pysepal.solara.components.map_app import MapApp
+from pysepal.solara.notifications import NotificationProvider
 
 from component.model.state_manager import app_state
 
@@ -52,7 +53,7 @@ def Page():
         #     "name": "Step Name",
         #     "icon": "mdi-map-marker-check",
         #     "display": "step",          # or "dialog"
-        #     "content": MyTile(...),     # ipyvuetify widget or Solara component
+        #     "content": MyTile(...),     # Solara element, widget, or a list of them
         #     "content_enabled": True,    # False to disable navigation to this step
         # },
     ]
@@ -68,13 +69,14 @@ def Page():
         # {
         #     "title": "Section title",
         #     "icon": "mdi-cog",
-        #     "content": [MySolaraComponent()],  # list — Solara components supported
+        #     "content": [MySolaraComponent()],
         # },
     ]
 
     solara.Title("{{app_title}}")
+    NotificationProvider()
 
-    MapApp.element(
+    MapApp(
         app_title="{{app_title}}",
         app_icon="{{app_icon}}",
         main_map=[sepal_map],

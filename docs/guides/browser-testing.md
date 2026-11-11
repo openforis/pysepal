@@ -18,6 +18,8 @@ It has no dependencies beyond Node ≥ 22 and a Chrome/Chromium binary.
   human to reload — iterate without round-trips.
 - Any "what does this render to?" question: does this element exist, what color
   is it, how many of them are there, which theme class is applied.
+- Checking that a component or a `.vue` template renders on both ipyvuetify
+  majors (see below).
 
 It is **not** a replacement for `nox -s test`. Use it for rendered-DOM
 questions; use pytest for Python logic.
@@ -55,6 +57,31 @@ node scripts/browser_probe.mjs --url http://127.0.0.1:8900/ --wait '.pill-wrappe
 node scripts/browser_probe.mjs --url http://127.0.0.1:8910/ --wait '.pill-wrapper' --eval @scripts/probe.example.js > /tmp/voila.json
 diff <(jq -S . /tmp/solara.json) <(jq -S . /tmp/voila.json)
 ```
+
+### Compare the two ipyvuetify majors
+
+pysepal runs on ipyvuetify 1 (Vuetify 2, Vue 2) and ipyvuetify 3 (Vuetify 3,
+Vue 3). Python tests cannot see a Vue 3 template error: Vue reports an unknown
+component or a bad template only in the browser console. So run the same app
+in two environments, one per major, on two ports, and probe both with
+`--console`:
+
+```bash
+node scripts/browser_probe.mjs --url http://127.0.0.1:8900/ --wait '.sepal-mapapp' \
+  --console --eval "({ items: document.querySelectorAll('.sepal-mapapp__item').length })" \
+  --screenshot /tmp/v2.png
+```
+
+With `--console` the output is `{ value, console }`. On Vue 3, a
+`Failed to resolve component` or a template compile warning means the markup is
+wrong. On Vue 2, `Failed to evaluate Vue script and find module.exports` means
+a template script uses `export default` instead of `module.exports`. Look at
+both screenshots too.
+
+Class names differ between the majors: an open dialog is `.v-dialog--active` on
+Vuetify 2 and `.v-overlay--active` on Vuetify 3, and `theme--dark` became
+`v-theme--dark`. Wait on a class of your own (`class_=` on the element) when the
+probe must run on both.
 
 ## Interacting before you measure
 
@@ -123,7 +150,7 @@ Pass it inline with `--eval "(...)"` or from a file with `--eval @path/to/probe.
 | `--settle-after <ms>`       | wait after each `--click`/`--resize` (default 1200)                                                                                                                                      |
 | `--wait-js <expr>`          | after the clicks, poll until this expression is truthy (same `--timeout` budget), e.g. until every leaflet tile has loaded                                                               |
 | `--screenshot <png>`        | write a PNG of the viewport after `--eval`                                                                                                                                               |
-| `--console`                 | also collect console warnings/errors and uncaught exceptions; output becomes `{ value, console }`. Vue reports unknown components and bad templates only there.                         |
+| `--console`                 | also collect console warnings/errors and uncaught exceptions; output becomes `{ value, console }`. Vue reports unknown components and bad templates only there.                          |
 | `--timeout <ms>`            | readiness budget (default 30000)                                                                                                                                                         |
 | `--force-theme dark\|light` | set the Solara and pysepal theme keys in localStorage and reload (Voila ignores them)                                                                                                    |
 | `--chrome <path>`           | Chrome binary (default: autodetect)                                                                                                                                                      |
@@ -179,7 +206,6 @@ Each conclusion came from a computed-style read, not a guess.
 - **Restricted sandboxes.** Inside some CI/agent sandboxes Chrome is
   signal-killed on launch; run from a normal shell (the `--no-sandbox` flag the
   script passes is for Chrome's own sandbox, a separate thing).
-- **Interactions.** The probe can click/type via more CDP calls, but the script
-  ships read-only by default. Extend it with `Input.dispatchMouseEvent` or by
-  evaluating `el.click()` if you need to drive a flow (e.g. toggle the theme and
-  re-read).
+- **Interactions.** `--click` and `--resize` cover clicks and viewport changes.
+  Typing is not built in: extend the script with `Input.dispatchKeyEvent` if a
+  flow needs it.

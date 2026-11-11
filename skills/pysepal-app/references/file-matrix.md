@@ -45,4 +45,6 @@ Use templates from:
 - `assets/shared/`
 - `assets/local-voila/`
 
+Keep the `ipyvuetify<3` pin from `assets/local-voila/pyproject.toml.template`.
+
 If a notebook entrypoint is needed, synthesize it from `local-voila-notebook-outline.md`.
