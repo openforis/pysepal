@@ -40,12 +40,13 @@ documentation under `docs/` lags behind the code: the Voila tutorials,
 guide for depth. When a document and this skill disagree, follow the skill and
 treat the document as stale.
 
-Two rules come before everything else:
+Three rules come before everything else:
 
 - An application is a `@solara.component`, and `MapApp(...)` from
-  `pysepal.solara.components.map_app` is its shell (new in 4.2). The legacy
-  `pysepal.sepalwidgets.vue_app.MapApp`, used as `MapApp.element(...)`, still
-  works; new code uses the native one.
+  `pysepal.solara.components.map_app` is its shell.
+- New code never imports `pysepal.sepalwidgets`. It is deprecated since 4.2 and
+  raises `ImportError` on ipyvuetify 3. Each widget has a Solara replacement:
+  `docs/guides/sepalwidgets-deprecation.md`.
 - Every user-facing string comes from a JSON catalogue through `msg()`. See
   "Translations" below.
 
@@ -63,6 +64,9 @@ Pass `--repo-root <checkout>` to inspect a checkout instead.
 
 Use the output as the only source of truth for component names and import
 paths. If the script fails, ask the user for the correct pysepal repo path.
+
+It lists the Solara layer, which now holds the `VuetifyTemplate` widgets too
+(FileInput, LocaleSelect). Nothing in `pysepal.sepalwidgets` belongs in a new app.
 
 ## GEE Async Pattern (Session-Backed)
 
@@ -105,14 +109,15 @@ Two patterns:
 
 - `@solara.component_vue("Widget.vue")` — auto-generates traitlets from
   the function signature. Preferred for new widgets.
-- `v.VuetifyTemplate` subclass + `.element()` — more control, used by
-  existing pysepal widgets (the legacy MapApp, FileInput, TaskButton).
+- `v.VuetifyTemplate` subclass + `.element()` — more control. pysepal's
+  FileInput and LocaleSelect use it.
 
 For simple inputs, buttons, state display — use `@solara.component` with
 `rv.*` elements (cheaper, testable in pure Python).
 
-Read `docs/guides/ipyvuetify-widgets.md` for the full
-guide with examples of both approaches.
+A template must run on the ipyvuetify major the app installs: see "ipyvuetify 1
+and 3" below. `docs/guides/ipyvuetify-widgets.md` covers data sync and events,
+but it was written for the deprecated sepalwidgets layer (Vue 2 only).
 
 ### rv. vs v. inside context managers
 
@@ -189,10 +194,10 @@ field, it shows as a shadow strip in the light theme (hard to see in dark). Use
 ### MapApp layout
 
 All map-based pysepal apps use `MapApp` as the layout shell. Do not build
-custom `solara.Columns` layouts. `MapApp` is a plain `@solara.component`. Steps
-and panel sections are plain dicts; a `content` is a Solara element, a widget,
-or a list of them, so `@solara.component` tiles and
-`solara.Button(..., on_click=...)` go straight in.
+custom `solara.Columns` layouts. `MapApp` is a plain `@solara.component` and
+renders on both ipyvuetify majors. Steps and panel sections are plain dicts; a
+`content` is a Solara element, a widget, or a list of them, so
+`@solara.component` tiles and `solara.Button(..., on_click=...)` go straight in.
 
 ```python
 from pysepal.solara import get_current_theme_state
@@ -237,8 +242,7 @@ MapApp(..., current_step=step.value, on_current_step=step.set)
 # same pairs: step_open / on_step_open, right_panel_open / on_right_panel_open
 ```
 
-Every argument, and the move from the legacy `MapApp.element`:
-`docs/guides/solara-mapapp-component.md`.
+Every argument: `docs/guides/solara-mapapp-component.md`.
 
 A step's `actions` list draws the buttons under a dialog step. `"close": True`
 closes the step, `"next": <step id>` opens any step (so Back is `next` set to the
@@ -261,8 +265,8 @@ reactive. Showing it again then needs no Earth Engine request. Reset `shown` in
 an effect on the input the layer depends on, if a new input must show the layer
 again.
 
-`SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`;
-pass `theme_state=` instead. See `docs/guides/migration-notes-v3.4.md` § 7.
+`SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`; pass
+`theme_state=` instead.
 
 ### Reference templates
 
@@ -281,10 +285,10 @@ new app to see the patterns in action:
 ### Dialogs inside MapApp content
 
 An `rv.Dialog` inside `right_panel_content` or `steps_data` mounts when it
-opens; it does not need `eager=True`. The legacy `MapApp.element` embedded
-content through `<jupyter-widget>`, where it did. Drop `eager=True` when you
-move an app: an eager dialog is built with the page, so its tasks run at page
-load, once per session, not on each open.
+opens, on both majors; it does not need `eager=True`. The legacy Vue `MapApp`
+embedded content through `<jupyter-widget>`, where it did. Drop `eager=True`
+when you move an app: an eager dialog is built with the page, so its tasks run
+at page load, once per session, not on each open.
 
 ### value/on_value pattern
 
@@ -447,17 +451,20 @@ with track_task("Exporting", total_steps=2) as task:
   `--sepal-right-panel-width`, `--sepal-drawer-width`,
   `--sepal-bottom-reserved`). No DOM polling. Mount `NotificationProvider()`
   and the legend next to the shell and they follow it.
-- The `@catch_errors` decorator is NOT modified. It continues to work
-  with legacy Alert widgets only. The notification system is independent.
+- `@catch_errors` reports into a sepalwidgets `Alert` (it calls `add_msg`), so
+  it has no place in a Solara app. Publish errors through the notification API.
 
 **Events go to the bus; state stays on the page.** A reason that holds until the
 user changes something, such as why an action is disabled, is state:
 
 - Always render the action button. Disable it with `external_busy` until its
   inputs are complete; do not hide it until a choice is made.
-- Give the reasons once per section: one `rv.Alert(type="warning", text=True, dense=True)` with one short line per item ("Sub-indicator A is not ready: …").
-  Not one outlined alert per item. `text=True` is the filled style `sw.Alert`
-  uses by default.
+- Give the reasons once per section: one tonal, compact warning alert with one
+  short line per item ("Sub-indicator A is not ready: …"). Not one outlined
+  alert per item. On ipyvuetify 1 that is
+  `rv.Alert(type="warning", text=True, dense=True)`; on 3,
+  `rv.Alert(type="warning", variant="tonal", density="compact")` (`text` is
+  the alert's text there).
 - For one control, use its `hint` with `persistent_hint=True` and name what the
   reason belongs to.
 - Do not repeat a reason another element already shows, and do not add a dialog
@@ -591,12 +598,65 @@ An `asyncio.to_thread` worker has no kernel context. Do not call `msg()` or
 `notify()` in it. Return the result and publish after the `await`. See
 "Translations" § "Workers and the locale".
 
+## ipyvuetify 1 and 3
+
+pysepal 4.2 runs on ipyvuetify 1 (Vuetify 2, Vue 2) and ipyvuetify 3 (Vuetify 3,
+Vue 3). The Solara components, `SepalMap` and the models work on both. The
+app's own `ipyvuetify`, `rv.*`, `solara.v` and `.vue` code must work on the major
+the app installs:
+
+- Vuetify 3 renamed props: `dense` → `density="compact"`, `small` →
+  `size="small"`, `outlined` / `text` / `depressed` → `variant`, icon `left` →
+  `start`.
+- It removed components: `v-list-item-content`, `v-list-item-icon`, `v-flex`,
+  `v-tabs-items`, `v-expansion-panel-header` / `-content` (now `-title` /
+  `-text`). A removed class raises `AttributeError` in Python. An unknown prop
+  is dropped with only a `DeprecationWarning`.
+- Activator slots bind `props`, not `on`: `v-bind="props"` in a template,
+  `v_bind="x.props"` on a Python widget (`v_on="x.on"` on 1).
+- Select and autocomplete items read `title`, not `text`.
+
+Branch with `solara.util.IPYVUETIFY_V3`; pysepal follows the same switch:
+
+```python
+from solara.util import IPYVUETIFY_V3
+
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
+solara.Button("Run", on_click=run, **SMALL)
+```
+
+A Voila app on SEPAL must pin `ipyvuetify<3` in its `requirements.txt`. SEPAL's
+Jupyter server has one `jupyter-vuetify` frontend for every app, and a widget
+renders only when its kernel has the same major. A Solara app ships its own
+frontend, so it can run on either.
+
+A `.vue` template that must run on both majors:
+
+- Keep every binding inside the exported object. ipyvue 3 evaluates only that
+  object, so a top-level `const` is undefined on Vue 3. Synced traits arrive as
+  data: do not also declare them as `props`.
+- Use only standard component options. ipyvue 1 drops a custom top-level key, so
+  put constants in a method.
+- Write `module.exports = {...}`. ipyvue 1 warns on `export default` and falls
+  back to an older parser.
+- Define `beforeUnmount` next to `beforeDestroy`, with the same handler. Vue 3
+  has no `beforeDestroy`.
+- When the markup differs, keep one script and one markup file per major
+  (`X.js`, `X.v2.vue`, `X.v3.vue`). pysepal's FileInput and LocaleSelect do
+  this (`vuetify_markup` and `compose_vue` in `pysepal/_vuetify.py`).
+
+Vue 3 reports an unknown component or a template error only in the browser
+console. Render each template on both majors and run
+`node scripts/browser_probe.mjs --url <app> --console`
+(`docs/guides/browser-testing.md`).
+
 ## Translations (`pysepal.i18n`)
 
 Every user-facing string comes from a JSON catalogue through one lookup,
 `msg("dotted.key")`. `Translator` attribute lookups (`ms.section.key`),
 `pysepal.message.ms`, `LocaleState`, `use_locale()` and `locale_state=` are
-gone from Solara apps. `Translator` survives only for the legacy Voila widgets.
+gone from Solara apps. `Translator` survives only for the deprecated
+sepalwidgets.
 
 **Layout.** The app owns `component/message/`: one `__init__.py` and one folder
 per locale. English is the source of truth. Every other locale is an overlay,
@@ -801,9 +861,14 @@ ECharts from a CDN at mount, and rebuilds the chart on every update. The guide's
 "Why not `solara.FigureEcharts`?" section holds the full comparison — read it
 before re-opening the question when an upstream release touches that component.
 
-A chart follows the size of its container by itself since ipecharts 1.4.2, also
-in a container that changes width or starts hidden (a map `MenuControl`).
-Require `ipecharts>=1.4.2` and write no resize code.
+A chart measures its container once and redraws only when something calls
+`resize()`. Measured across seven mount points in `demo_apps/solara_chart_app`,
+two go wrong: a container that changes width with no window resize, and a chart
+built inside a container that is in the DOM but hidden (a map `MenuControl`).
+Lazy containers — collapsed panels, unopened tabs, dialog steps — are fine.
+Telling the chart from Python only works after the browser has applied the
+layout; a nudge in the same batch redraws at the old width. Recipe:
+`docs/guides/ipecharts.md` § "Responsive Charts".
 
 Read `docs/guides/ipecharts.md` before creating any
 chart. It covers both approaches (`EChartsRawWidget` for quick prototypes,
@@ -845,8 +910,8 @@ quickest way to count requests while you click through the app.
   and slots".
 - To count Earth Engine requests, render the real tree with a fake
   `gee_interface` whose `*_async` methods record their calls. Drive a MapApp
-  step with `vue_click(None)` on its drawer item: the widget with a `vue_click`
-  method and `item_attributes["data-step-id"] == str(id)`.
+  step with `fire_event("click", None)` on its drawer item: the widget with the
+  class `sepal-mapapp__item` and `attributes["data-step-id"] == str(id)`.
 - Reproduce a UI bug in a test before fixing it. The remount in "Keep stateful
   siblings in place with keys" fails a test that clicks once and looks for
   Cancel.
@@ -863,6 +928,13 @@ quickest way to count requests while you click through the app.
 
 **Cause:** a conditional sibling appeared before it and remounted it. The task
 keeps running unseen. **Fix:** see "Keep stateful siblings in place with keys".
+
+### `ImportError` from `pysepal.sepalwidgets`, or `AttributeError: module 'ipyvuetify' has no attribute ...`
+
+**Cause:** the environment installed ipyvuetify 3. sepalwidgets and Vuetify 2
+components such as `ListItemContent` do not exist there. **Fix:** move the code
+to the Solara components and branch on `IPYVUETIFY_V3` (see "ipyvuetify 1 and
+3"), or pin `ipyvuetify<3` until it is ready. A Voila app keeps the pin.
 
 ### `TypeError: Expected element, not '<some text>'`
 
@@ -933,16 +1005,17 @@ after `asset_id` changed.
 
 Solara components use `OriginalName + Component` suffix:
 
-| Component                 | Package                                 |
-| ------------------------- | --------------------------------------- |
-| `FileInputComponent`      | `pysepal.solara.components.inputs`      |
-| `AssetSelectComponent`    | `pysepal.solara.components.inputs`      |
-| `PointsSelectorComponent` | `pysepal.solara.components.inputs`      |
-| `VectorSelectorComponent` | `pysepal.solara.components.inputs`      |
-| `TaskButtonComponent`     | `pysepal.solara.components.task_button` |
-| `AoiView`                 | `pysepal.solara.components.aoi`         |
-| `MapApp`, `ThemeToggle`   | `pysepal.solara.components.map_app`     |
-| `NotificationProvider`    | `pysepal.solara.notifications`          |
+| Component                 | Package                                   |
+| ------------------------- | ----------------------------------------- |
+| `FileInputComponent`      | `pysepal.solara.components.inputs`        |
+| `AssetSelectComponent`    | `pysepal.solara.components.inputs`        |
+| `PointsSelectorComponent` | `pysepal.solara.components.inputs`        |
+| `VectorSelectorComponent` | `pysepal.solara.components.inputs`        |
+| `TaskButtonComponent`     | `pysepal.solara.components.task_button`   |
+| `LocaleSelectComponent`   | `pysepal.solara.components.locale_select` |
+| `AoiView`                 | `pysepal.solara.components.aoi`           |
+| `MapApp`, `ThemeToggle`   | `pysepal.solara.components.map_app`       |
+| `NotificationProvider`    | `pysepal.solara.notifications`            |
 
 `AoiView` and `MapApp` keep their legacy names. Run discovery for the full
 current list — do not rely on this table.
@@ -951,19 +1024,20 @@ current list — do not rely on this table.
 
 ### pysepal guides (`docs/guides/`)
 
-| Guide                        | When to read                                                                      |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `solara-gee-patterns.md`     | Any GEE work in Solara                                                            |
-| `solara-app-builder.md`      | Scaffolding or restructuring an app                                               |
-| `solara-export.md`           | Adding export to EE asset / Drive / SEPAL workspace                               |
-| `solara-mapapp-component.md` | Every `MapApp` argument; moving from the legacy `MapApp.element`                  |
-| `solara-migration.md`        | Converting ipyvuetify widget to Solara                                            |
-| `ipyvuetify-widgets.md`      | Creating a new `v.VuetifyTemplate` widget                                         |
-| `ipecharts.md`               | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
-| `local-tile-servers.md`      | Serving localtileserver / vectortileserver tiles to the browser                   |
-| `migration-notes-v3.4.md`    | Auditing an existing app for stale patterns                                       |
-| `migration-v4.md`            | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
-| `solara-upstream.md`         | What an upstream Solara release means for pysepal; why the pin sits where it does |
+| Guide                         | When to read                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `solara-gee-patterns.md`      | Any GEE work in Solara                                                            |
+| `solara-app-builder.md`       | Scaffolding or restructuring an app                                               |
+| `solara-export.md`            | Adding export to EE asset / Drive / SEPAL workspace                               |
+| `solara-mapapp-component.md`  | Every `MapApp` argument; moving from the legacy `MapApp.element`                  |
+| `sepalwidgets-deprecation.md` | Replacing a `pysepal.sepalwidgets` widget; the Voila `ipyvuetify<3` pin           |
+| `solara-migration.md`         | Converting ipyvuetify widget to Solara                                            |
+| `ipyvuetify-widgets.md`       | Data sync and events in a `v.VuetifyTemplate` (written for the deprecated layer)  |
+| `ipecharts.md`                | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
+| `local-tile-servers.md`       | Serving localtileserver / vectortileserver tiles to the browser                   |
+| `migration-notes-v3.4.md`     | Auditing an existing app for stale patterns                                       |
+| `migration-v4.md`             | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
+| `solara-upstream.md`          | What an upstream Solara release means for pysepal; why the pin sits where it does |
 
 Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
 plural nodes, `check()`.
@@ -1015,8 +1089,10 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `"layer(s)"`-style strings where a plural node with `count=` belongs
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
-- [ ] The legacy `pysepal.sepalwidgets.vue_app.MapApp`, as `MapApp.element(...)` or constructed directly (move to the native `MapApp(...)` from `pysepal.solara.components.map_app`; see `solara-mapapp-component.md`)
-- [ ] `model=`, `theme_toggle=` or `language_selector=` on the native `MapApp` (it has none: use `current_step` / `on_current_step`, `step_open` / `on_step_open`, `theme_state=`, `locales=`)
+- [ ] A `pysepal.sepalwidgets` import (`sw.*`, `vue_app.MapApp`, `vue_app.ThemeToggle`, `vue_app.LocaleSelect`), `pysepal.aoi.AoiTile` / `pysepal.aoi.AoiView` or `pysepal.planetapi.PlanetView` (deprecated in 4.2, `ImportError` on ipyvuetify 3; see `sepalwidgets-deprecation.md`)
+- [ ] `MapApp(model=...)`, `theme_toggle=` or `language_selector=` (the native `MapApp` has none: use `current_step` / `on_current_step`, `step_open` / `on_step_open`, `theme_state=`, `locales=`)
+- [ ] Vuetify 2-only props or components in the app's own `rv.*`, `solara.v` or `.vue` code (`dense`, `small`, `outlined`, `text=True`, `v-list-item-content`, activator `on`, select items with `text`) on an app that may install ipyvuetify 3, with no `IPYVUETIFY_V3` branch
+- [ ] A Voila app without `ipyvuetify<3` in its `requirements.txt`
 - [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
 - [ ] A conditional element before a sibling that holds a `use_task`, with no `.key()` on either (the sibling remounts and loses its task)
 - [ ] `ExportSource.resolve` making Earth Engine requests (it runs on every render)

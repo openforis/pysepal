@@ -151,7 +151,7 @@ locale — when the kernel shuts down. Without it that state accumulates one ent
 per connection for the life of the process.
 
 Everything that is not a credential still works: theme, locale, notifications
-and every `sepalwidgets` component. `get_current_theme_state()` never raises, by
+and every Solara component. `get_current_theme_state()` never raises, by
 design. `get_current_sepal_client()` returns `None`, and
 `get_current_gee_interface()` raises `SepalSessionError` — do not call it.
 
@@ -182,10 +182,10 @@ module. In an app-launcher container that file is the platform service account.
 Since 4.0 a session-less `GEEInterface` **raises `SepalSessionError` in a
 per-connection runtime**, and the map inherits that: `SepalMap()` with no
 `gee_interface` fails in a container instead of rendering on the platform
-identity. The same guard covers `AoiModel`, the `sepalwidgets` asset inputs and
-`process_admin`, which all have the same `gee_interface or GEEInterface()`
-fallback. Elsewhere — a notebook, a script, a SEPAL sandbox — nothing changes:
-those runtimes own their machine credentials.
+identity. The same guard covers `AoiModel`, the deprecated `sepalwidgets` asset
+inputs and `process_admin`, which all have the same
+`gee_interface or GEEInterface()` fallback. Elsewhere — a notebook, a script, a
+SEPAL sandbox — nothing changes: those runtimes own their machine credentials.
 
 So in a container app, always pass one or the other:
 
@@ -589,32 +589,53 @@ widget inside it, so a map built without the flag keeps ipyleaflet's default
 400 px height and renders as a strip across the top. Every demo under
 `demo_apps/` passes it.
 
-`MapApp` is a `@solara.component` from `pysepal.solara.components.map_app`,
-new in pysepal 4.2. A `content` is an element, a widget, or a list of them. To
-follow the user, pass `on_current_step`, `on_step_open` or
+`MapApp` is a `@solara.component` from `pysepal.solara.components.map_app`. It
+renders on ipyvuetify 1 and 3. A `content` is an element, a widget, or a list
+of them. To follow the user, pass `on_current_step`, `on_step_open` or
 `on_right_panel_open`; there is no `model=`. Every argument is in
 [MapApp](./solara-mapapp-component.md). Read a message anywhere in the app with
 `msg("key")` — see `docs/source/tutorials/translate-app.rst`.
 
-> The legacy `pysepal.sepalwidgets.vue_app.MapApp`, used as
-> `MapApp.element(...)`, still works; new apps use the native one.
-> `SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`;
-> pass `theme_state=`. See `migration-notes-v3.4.md` § 7.
+> The legacy `pysepal.sepalwidgets.vue_app.MapApp` is deprecated with the rest of
+> sepalwidgets; see [sepalwidgets-deprecation.md](./sepalwidgets-deprecation.md).
+> `SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`; pass
+> `theme_state=`.
 
 ## 6. Button & Icon Sizing
 
-The right panel and dialogs are narrow (~450 px). Use `small=True` on all
+The right panel and dialogs are narrow (~450 px). Use the small size on all
 buttons and chips inside them. Navigation drawer icons keep default size.
 
-| Context                                                      | Rule                                           |
-| ------------------------------------------------------------ | ---------------------------------------------- |
-| Buttons in right panel / sidebar content                     | `small=True` (add `block=True` for full-width) |
-| Icon-only buttons (close, edit, toolbar)                     | `icon=True, small=True`                        |
-| Chips (stats, tags, year selectors)                          | `small=True` (or `x_small=True` for inline)    |
-| Dialog action buttons (OK / Cancel)                          | `small=True`                                   |
-| Navigation drawer icons (`steps_data`, `right_panel_config`) | Default size — never `small=True`              |
+Vuetify 3 renamed the size props: `small=True` is `size="small"` there. Branch
+once on `solara.util.IPYVUETIFY_V3`, as the demo apps do:
+
+```python
+from solara.util import IPYVUETIFY_V3
+
+SMALL = {"size": "small"} if IPYVUETIFY_V3 else {"small": True}
+X_SMALL = {"size": "x-small"} if IPYVUETIFY_V3 else {"x_small": True}
+
+solara.Button("Run", on_click=run, block=True, **SMALL)
+```
+
+| Context                                                      | Rule                                      |
+| ------------------------------------------------------------ | ----------------------------------------- |
+| Buttons in right panel / sidebar content                     | `SMALL` (add `block=True` for full-width) |
+| Icon-only buttons (close, edit, toolbar)                     | `icon=True, **SMALL`                      |
+| Chips (stats, tags, year selectors)                          | `SMALL` (or `X_SMALL` for inline)         |
+| Dialog action buttons (OK / Cancel)                          | `SMALL`                                   |
+| Navigation drawer icons (`steps_data`, `right_panel_config`) | Default size — never small                |
 
 ## 7. Deployment
+
+### ipyvuetify major
+
+A Solara app ships its own frontend, so it runs on ipyvuetify 1 or 3. pysepal
+supports both. The app's own `rv.*`, `solara.v` and `.vue` code must work on the
+major it installs (see § 6 and
+[sepalwidgets-deprecation.md](./sepalwidgets-deprecation.md)). If the app also
+runs under Voila on SEPAL, for example from a `ui.ipynb`, pin `ipyvuetify<3`:
+SEPAL's Jupyter server has one `jupyter-vuetify` frontend for every Voila app.
 
 ### `.env` file
 

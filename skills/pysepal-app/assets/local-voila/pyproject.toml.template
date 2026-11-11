@@ -8,9 +8,11 @@ version = "0.1.0"
 description = "{{project_description}}"
 requires-python = ">=3.12"
 dependencies = [
-    "pysepal",
+    "pysepal>=4.2",
     "solara",
     "voila",
+    # SEPAL's Jupyter server serves one ipyvuetify 1 frontend to every Voila app.
+    "ipyvuetify<3",
 ]
 
 [project.optional-dependencies]

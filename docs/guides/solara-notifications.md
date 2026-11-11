@@ -312,21 +312,17 @@ The notification UI is designed to coexist with `MapApp`
 (`pysepal.solara.components.map_app`).
 
 The shell publishes its geometry as CSS custom properties on the page root:
-`--sepal-notification-right-offset`, `--sepal-notification-pill-display`,
-`--sepal-top-reserved`, `--sepal-right-panel-width`, `--sepal-drawer-width` and
-`--sepal-bottom-reserved`. The notification UI reads
-`--sepal-notification-right-offset` to keep the task pill clear of the right
-panel, `--sepal-notification-pill-display` to hide the pill and the logger on a
-narrow window, and `--sepal-top-reserved` to keep the toasts under its top bar.
-The legend reads the right panel, drawer and bottom variables. The legacy
-`pysepal.sepalwidgets.vue_app.MapApp` publishes only
 `--sepal-notification-right-offset`, `--sepal-right-panel-width`,
-`--sepal-drawer-width` and `--sepal-bottom-reserved`.
+`--sepal-drawer-width` and `--sepal-bottom-reserved`. The notification UI reads
+`--sepal-notification-right-offset` to keep the task pill clear of the right
+panel. The legend reads the other three.
 
 Practical rule:
 
 - if the app uses `MapApp`, mount `NotificationProvider()` in the same page or
   shell so the overlay can consume the active layout variables
+
+The notification UI renders on ipyvuetify 1 and 3.
 
 ## Safety and Limits
 
