@@ -6,7 +6,7 @@ import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
-from pysepal._vuetify import btn_variant, size
+from pysepal._vuetify import IPYVUETIFY_V3, btn_variant, size
 
 from ._ui import IconButton, as_children, text_class
 
@@ -34,13 +34,13 @@ def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optio
 
 @solara.component
 def ActionButton(action: Mapping, on_click: Callable[[Mapping], None]):
-    """Render one footer button of a dialog step."""
-    btn = rv.Btn(
-        color="primary",
-        children=[action.get("label", "")],
-        **btn_variant(outlined=bool(action.get("cancel"))),
-        **size("small"),
+    """Render one footer button of a dialog step: outlined to cancel, filled otherwise."""
+    cancel = bool(action.get("cancel"))
+    # Vuetify 3 card actions make their buttons text-style unless asked otherwise.
+    style = (
+        btn_variant(outlined=True) if cancel else ({"variant": "elevated"} if IPYVUETIFY_V3 else {})
     )
+    btn = rv.Btn(color="primary", children=[action.get("label", "")], **style, **size("small"))
     ipyvue.use_event(btn, "click", lambda *_: on_click(action))
     return btn
 
