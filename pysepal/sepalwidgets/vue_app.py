@@ -56,8 +56,19 @@ _MODEL_DEPRECATED = (
 )
 
 
+_MAPAPP_DEPRECATED = (
+    "pysepal.sepalwidgets.vue_app.MapApp is deprecated and needs ipyvuetify 1. Use "
+    "pysepal.solara.components.map_app.MapApp: same keyword arguments, called as "
+    "MapApp(...) instead of MapApp.element(...)."
+)
+
+
 class MapApp(v.VuetifyTemplate):
     """The map application shell. Render it with ``MapApp.element(...)``.
+
+    .. deprecated:: 4.2.0
+        Use :func:`pysepal.solara.components.map_app.MapApp`, which renders on
+        both ipyvuetify majors.
 
     An application is a Solara component, and this is the shell it renders:
     ``MapApp.element(...)`` mounts the language selector and lets every nested
@@ -154,6 +165,8 @@ class MapApp(v.VuetifyTemplate):
     def element(cls, **kwargs):
         """Let Reacton render the selector before constructing the widget shell."""
         from pysepal.solara.components.locale_select import LocaleSelectComponent
+
+        warnings.warn(_MAPAPP_DEPRECATED, DeprecationWarning, stacklevel=2)
 
         if not kwargs.get("language_selector"):
             kwargs["language_selector"] = [LocaleSelectComponent(locales=kwargs.get("locales"))]

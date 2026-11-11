@@ -15,6 +15,50 @@ repository.
 
 ---
 
+## ipyvuetify 3 — supported side by side (pysepal 4.2, issue #1073)
+
+pysepal now requires `ipyvuetify>=1.8,<4`. It runs on ipyvuetify 1 (Vuetify 2)
+and on ipyvuetify 3 (Vuetify 3), the same way Solara does since 1.61.
+
+- `pysepal/_vuetify.py` has the switch, `IPYVUETIFY_V3`. It follows the rule of
+  `solara.util.IPYVUETIFY_V3`, so pysepal and Solara always agree.
+- It also has helpers that write a Vuetify 2 prop the way the installed major
+  needs it: `density()`, `size()`, `btn_variant()`, `icon_start()`,
+  `field_variant()`, `select_items()`.
+- A template with real logic keeps one shared script (`X.js`) and one markup
+  file per major (`X.v2.vue`, `X.v3.vue`). `compose_vue()` puts them together.
+  FileInput and LocaleSelect are built this way.
+- A small template stays one file that works on both majors, and branches at
+  run time on `this.$vuetify.theme.global`. NotificationUI and Legend are built
+  this way.
+- The `MapApp` shell is native Solara (`pysepal.solara.components.map_app`). It
+  positions its own sheets, so it does not depend on the layout system, which
+  differs between the two Vuetify majors.
+- `pysepal.sepalwidgets` stays on ipyvuetify 1: it raises an `ImportError` on 3
+  and is deprecated (`sepalwidgets-deprecation.md`). `pysepal.mapping` no
+  longer imports it.
+- Tests run in two nox lanes: `nox -s "test(ipyvuetify='1')"` and
+  `"test(ipyvuetify='3')"`. On 3, `tests/conftest.py` skips the legacy suites.
+
+Template rules learned on the way, all checked in a browser:
+
+- ipyvue 3 evaluates only the exported object of a template script, so a
+  top-level `const` outside it is undefined on Vue 3.
+- ipyvue 1 keeps only the standard component options, so a custom top-level key
+  is dropped on Vue 2. Put constants in a method.
+- ipyvue 1 runs `module.exports = {...}` directly. With `export default` it logs
+  a warning and falls back to an older parser.
+- Vue 3 has no `beforeDestroy`. Define `beforeUnmount` next to it, with the same
+  handler.
+- Run `scripts/browser_probe.mjs --console`: Vue 3 reports an unknown component
+  or a template error only in the console.
+
+Voila on SEPAL is still the open question. Its Jupyter server provides one
+`jupyter-vuetify` frontend for every app, so Voila apps must pin `ipyvuetify<3`
+until that server moves to 3.
+
+---
+
 ## 1.66.0 – 1.66.2 (reviewed 2026-11-09)
 
 1.66.1 was tagged but never published. 1.66.2 contains its fix.
@@ -160,7 +204,8 @@ Move the floor to `1.65.1` when one of these becomes true:
 - If upstream removes one of the three private APIs, pysepal fails at import
   with a clear `ImportError` (`pysepal/_runtime_context.py`,
   `pysepal/solara/_topology.py`, `pysepal/solara/theme.py`).
-- The known break, Vuetify 3, is already blocked by `ipyvuetify>=1.8,<3`.
+- The known break, Vuetify 3, is handled: pysepal supports ipyvuetify 1 and 3 side by side
+  (see the entry at the top).
 - A minor cap only delays a behaviour change such as [#1192]. This review is
   what finds it. If a release breaks pysepal, exclude it with `!=X.Y.Z` in a
   pysepal patch release. An app that needs a fixed environment pins exact
@@ -336,7 +381,7 @@ pysepal.
 [#1244]: https://github.com/widgetti/solara/pull/1244
 [#1270]: https://github.com/widgetti/solara/pull/1270
 
-### Blocked — ipyvuetify 3 is now the default install
+### Blocked — ipyvuetify 3 is now the default install (lifted in 4.2, see the top entry)
 
 The 1.61 entry below says that ipyvuetify 3 is a prerelease. That is no longer
 true: ipyvuetify 3.0.0 reached PyPI on 2026-08-12, and 3.1.0 is the newest
@@ -400,7 +445,7 @@ pysepal charts stay on `ipecharts`. The reasoning, and why the upstream fix does
 not apply to us, is recorded in `docs/guides/ipecharts.md` §
 "Why not `solara.FigureEcharts`?".
 
-### Blocked — ipyvuetify 3 (1.61)
+### Blocked — ipyvuetify 3 (1.61) (lifted in 4.2, see the top entry)
 
 Solara 1.61 supports ipyvuetify 1 and 3 side by side, selected by the installed
 version and exposed as `solara.util.IPYVUETIFY_V3`. ipyvuetify 3 is a
