@@ -1,9 +1,10 @@
-import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from pysepal import message
+from pysepal.i18n import catalog
 from pysepal.solara.components.project._format import relative_time, size_text
 
 NOW = datetime(2026, 1, 10, 12, 0, 0)
@@ -38,13 +39,12 @@ def test_size_text(n, expected):
     assert size_text(n) == expected
 
 
-def _flat(node, prefix=""):
-    if isinstance(node, dict) and not set(node) <= {"one", "other", "many", "few", "two", "zero"}:
-        return {k for key, v in node.items() for k in _flat(v, f"{prefix}{key}.")}
-    return {prefix}
-
-
-def test_every_key_exists_in_each_shipped_language():
-    root = Path(__file__).parents[2] / "pysepal" / "message"
-    keys = {l: _flat(json.loads((root / l / "project.json").read_text())) for l in ("en", "es", "fr")}
-    assert keys["es"] == keys["en"] == keys["fr"]
+def test_es_and_fr_translate_every_project_message():
+    """Missing or extra keys, plural forms and placeholders, as pysepal's own check sees them."""
+    problems = catalog(Path(message.__file__).parent).check()
+    assert [
+        p
+        for p in problems
+        if p.locale in ("es", "fr")
+        and (p.key.startswith("project.") or p.code == "unreadable_locale")
+    ] == []
