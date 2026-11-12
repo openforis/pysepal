@@ -19,15 +19,7 @@ Usage::
     )
 """
 
-from .dialogs import ConfirmDeleteDialog, ManageProjectsDialog, NameForm
 from .panel import ProjectPanel
 from .store import ProjectInfo, ProjectStore
 
-__all__ = [
-    "ConfirmDeleteDialog",
-    "ManageProjectsDialog",
-    "NameForm",
-    "ProjectInfo",
-    "ProjectPanel",
-    "ProjectStore",
-]
+__all__ = ["ProjectInfo", "ProjectPanel", "ProjectStore"]

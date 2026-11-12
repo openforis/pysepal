@@ -134,20 +134,50 @@ def test_manage_open_gate():
     assert _open_btn(_manage(infos, selected="a", busy=True)).disabled
 
 
+def _locks(ns):
+    pencils = _icon_buttons(ns.rc, "mdi-pencil-outline")
+    trashes = _icon_buttons(ns.rc, "mdi-delete-outline")
+    return [b.disabled for b in pencils + trashes]
+
+
 def test_manage_current_badge_and_lock():
-    ns = _manage([_info("a"), _info("b")], current="a", lock_current=True)
+    infos = [_info("a"), _info("b")]
+    ns = _manage(infos, current="a", lock_rename=True, lock_delete=True)
     badges = [
         c
         for c in ns.rc.find(v.Chip).widgets
         if c.children == [msg("project.chip_open")]
     ]
     assert len(badges) == 1
-    pencils = _icon_buttons(ns.rc, "mdi-pencil-outline")
-    trashes = _icon_buttons(ns.rc, "mdi-delete-outline")
-    assert [b.disabled for b in pencils + trashes] == [True, False, True, False]
+    assert _locks(ns) == [True, False, True, False]
+    ns.rc.close()
+    # Each flag locks only its own action on the open project.
+    ns = _manage(infos, current="a", lock_rename=True)
+    assert _locks(ns) == [True, False, False, False]
+    ns.rc.close()
+    ns = _manage(infos, current="a", lock_delete=True)
+    assert _locks(ns) == [False, False, True, False]
     ns.rc.close()
     ns = _manage([_info("a")], current="a")
-    assert not _icon_buttons(ns.rc, "mdi-pencil-outline")[0].disabled
+    assert _locks(ns) == [False, False]
+    ns.rc.close()
+
+
+def test_manage_busy_cannot_be_dismissed():
+    ns = _manage([_info("a")], busy=True)
+    assert ns.rc.find(v.Dialog).widget.persistent is True
+    assert _button(ns.rc, msg("project.cancel")).disabled
+    ns.rc.close()
+
+
+def test_manage_search_is_cleared_on_reopen():
+    ns = _manage([_info("North"), _info("south")])
+    ns.rc.find(v.TextField, label=msg("project.search")).widget.v_model = "nor"
+    assert _titles(ns.rc) == ["North"]
+    ns.open.set(False)
+    ns.open.set(True)
+    assert ns.rc.find(v.TextField, label=msg("project.search")).widget.v_model == ""
+    assert _titles(ns.rc) == ["North", "south"]
     ns.rc.close()
 
 
@@ -200,6 +230,18 @@ def test_delete_waits_for_the_exact_name():
     field.v_model = " north "
     assert not _delete_btn(ns).disabled
     _delete_btn(ns).fire_event("click", None)
+    assert ns.calls == ["confirm"]
+    ns.rc.close()
+
+
+def test_delete_enter_confirms_only_the_matching_name():
+    ns = _confirm()
+    field = ns.rc.find(v.TextField).widget
+    field.v_model = "south"
+    field.fire_event("keyup.enter", None)
+    assert ns.calls == []
+    field.v_model = "north"
+    field.fire_event("keyup.enter", None)
     assert ns.calls == ["confirm"]
     ns.rc.close()
 

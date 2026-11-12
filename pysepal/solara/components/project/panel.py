@@ -80,7 +80,7 @@ def ProjectPanel(
     Each callback returns True (done: the panel's window closes, and after open, create and
     duplicate ``on_close()`` runs) or False (refused: everything stays as it is); it may raise,
     and its text then shows in the window that started it. Without ``on_rename`` / ``on_delete``
-    the panel moves or deletes the folder itself and the open project is locked against both.
+    the panel moves or deletes the folder itself and locks that action on the open project.
     ``status`` renders into the open project's card, ``extra_actions`` under Manage; a change
     of ``refresh`` reads the list again.
     """
@@ -214,6 +214,7 @@ def ProjectPanel(
     def _open_manage():
         selected.set(current)
         set_error(None)
+        set_sizes({})  # counted again: "…" until then, not last time's value
         _again()  # another tab may have made or removed a project
         set_manage_open(True)
 
@@ -306,7 +307,8 @@ def ProjectPanel(
             busy=busy,
             covered=form is not None or deleting is not None,
             error=_error("manage"),
-            lock_current=on_rename is None or on_delete is None,
+            lock_rename=on_rename is None,
+            lock_delete=on_delete is None,
         )
         delete_name, blocked = deleting or (None, None)
         ConfirmDeleteDialog(

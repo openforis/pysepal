@@ -190,7 +190,7 @@ def test_current_card_and_opening_current_only_closes(tmp_path):
         await _open_manage(root)
         assert _row(root, "old")  # the list was read
         manage = _dialog(root, msg("project.title_manage"))
-        # Manage opens with nothing selected; pick the open project and Open.
+        # Pick the open project (Manage pre-selects it) and Open.
         group = next(w for w in walk(manage) if isinstance(w, v.ListItemGroup))
         group.v_model = "old"
         _click(_button(manage, msg("project.open_selected")))
@@ -322,9 +322,40 @@ def test_current_is_locked_without_callbacks(tmp_path):
         assert _icon(root, msg("project.rename")) is None
         await _open_manage(root)
         assert _icon(_row(root, "old"), msg("project.rename"), False).disabled
+        assert _icon(_row(root, "old"), msg("project.delete"), False).disabled
         assert not _icon(_row(root, "recent"), msg("project.rename"), False).disabled
+        assert not _icon(_row(root, "recent"), msg("project.delete"), False).disabled
 
     _session(_store(tmp_path), scenario, current="old")
+
+
+def test_on_rename_unlocks_only_rename_of_current(tmp_path):
+    async def scenario(root, ns):
+        await _loaded(root)
+        assert _icon(root, msg("project.rename")) is not None  # the card agrees with Manage
+        await _open_manage(root)
+        assert not _icon(_row(root, "old"), msg("project.rename"), False).disabled
+        assert _icon(_row(root, "old"), msg("project.delete"), False).disabled
+
+    _session(_store(tmp_path), scenario, current="old", record=("rename",))
+
+
+def test_manage_recounts_sizes_on_each_opening(tmp_path):
+    store = _store(tmp_path)
+
+    async def scenario(root, ns):
+        await _loaded(root)
+        await _open_manage(root)
+        await wait_until(lambda: size_text(102) in _texts(_row(root, "recent")))
+        _click(_button(_dialog(root, msg("project.title_manage")), msg("project.cancel")))
+        await wait_until(lambda: _dialog(root, msg("project.title_manage")) is None)
+        (tmp_path / "recent" / "data.bin").write_bytes(b"x" * 3_000_000)
+        await _open_manage(root)
+        # Not last time's value while it counts again, then the new one.
+        assert size_text(102) not in _texts(_row(root, "recent"))
+        await wait_until(lambda: size_text(3_000_002) in _texts(_row(root, "recent")))
+
+    _session(store, scenario, current="old")
 
 
 def test_on_rename_given_renames_current_from_the_card(tmp_path):

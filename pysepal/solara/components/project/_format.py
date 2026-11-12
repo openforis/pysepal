@@ -36,4 +36,5 @@ def size_text(n: Optional[int]) -> str:
     def num(x: float) -> str:
         return format_decimal(x, format="0.0", locale=locale)
 
-    return f"{num(n / 1e9)} GB" if n >= 1e9 else f"{num(max(n / 1e6, 0.1))} MB"
+    mb = round(n / 1e6, 1)  # the unit follows the rounded value: never "1000.0 MB"
+    return f"{num(n / 1e9)} GB" if mb >= 1000 else f"{num(max(mb, 0.1))} MB"

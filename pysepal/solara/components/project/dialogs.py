@@ -16,7 +16,7 @@ from ._format import relative_time, size_text
 from .store import ProjectInfo
 
 _MUTED = "opacity:0.7;"
-_META = "display:flex;flex-wrap:wrap;gap:0 12px;align-items:center;"
+_META_LINE = "display:flex;flex-wrap:wrap;gap:0 12px;align-items:center;"
 # Right-aligned with tabular digits, so the sizes line up from row to row.
 _SIZE = "font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;min-width:56px;text-align:right;"
 _ACTIONS = "justify-content:flex-end;gap:8px;"
@@ -41,7 +41,7 @@ def ChipRow(info: ProjectInfo):
 
 def MetaLine(info: ProjectInfo, now: datetime):
     """A project's subtitle (with its icon) and its age, side by side."""
-    with rv.Html(tag="div", style_=_META):
+    with rv.Html(tag="div", style_=_META_LINE):
         if not info.readable:
             solara.Text(msg("project.unreadable"))
             return
@@ -85,9 +85,12 @@ def ManageProjectsDialog(
     busy: bool = False,
     covered: bool = False,
     error: Optional[str] = None,
-    lock_current: bool = False,
+    lock_rename: bool = False,
+    lock_delete: bool = False,
 ):
     """Search, open, rename and delete the saved projects.
+
+    ``lock_rename`` / ``lock_delete``: the open project's row cannot be renamed / deleted.
 
     ``covered``: a dialog opened from this one is on top. Two open dialogs that both retain
     focus pull it back and forth, so this one lets go. Only the list scrolls.
@@ -116,6 +119,8 @@ def ManageProjectsDialog(
         eager=True,
         retain_focus=not covered,
         scrollable=True,
+        # ESC or a click outside must not close it while an action runs.
+        persistent=busy,
     ):
         with rv.Card():
             rv.CardTitle(children=[msg("project.title_manage")])
@@ -152,7 +157,7 @@ def ManageProjectsDialog(
                             v_model=selected, on_v_model=on_select, color="primary"
                         ):
                             for info in shown:
-                                locked = lock_current and info.name == current
+                                is_current = info.name == current
                                 with rv.ListItem(value=info.name):
                                     with rv.ListItemContent():
                                         title = [info.name]
@@ -187,19 +192,23 @@ def ManageProjectsDialog(
                                             "mdi-pencil-outline",
                                             msg("project.rename"),
                                             lambda n=info.name: on_rename(n),
-                                            disabled=locked,
+                                            disabled=lock_rename and is_current,
                                         )
                                         _icon_button(
                                             "mdi-delete-outline",
                                             msg("project.delete"),
                                             lambda n=info.name: on_delete(n),
                                             color="error",
-                                            disabled=locked,
+                                            disabled=lock_delete and is_current,
                                         )
             rv.Divider()
             with rv.CardActions(style_=_ACTIONS):
                 solara.Button(
-                    msg("project.cancel"), text=True, small=True, on_click=on_cancel
+                    msg("project.cancel"),
+                    text=True,
+                    small=True,
+                    disabled=busy,
+                    on_click=on_cancel,
                 )
                 solara.Button(
                     msg("project.open_selected"),
@@ -265,7 +274,7 @@ def ConfirmDeleteDialog(
     size = (
         msg("project.size_counting")
         if size_bytes is None
-        else msg("project.delete_size", size=size_text(max(size_bytes, 1)))
+        else msg("project.delete_size", size=size_text(size_bytes))
     )
 
     with rv.Dialog(
@@ -335,7 +344,6 @@ def _NameFields(
     action_label,
     action_icon,
     initial,
-    hint,
     match,
     on_open_existing,
     busy,
@@ -372,7 +380,7 @@ def _NameFields(
                 dense=True,
                 outlined=True,
                 autofocus=True,
-                hint=hint or msg("project.name_hint"),
+                hint=msg("project.name_hint"),
                 persistent_hint=True,
                 # Live, but not before anything is typed: an empty form is not wrong yet.
                 error_messages=[msg(_NAME_ERRORS[live])] if name and live else [],
@@ -422,7 +430,6 @@ def NameForm(
     action_label: Optional[str] = None,
     action_icon: str = "mdi-plus",
     initial: str = "",
-    hint: Optional[str] = None,
     match: Callable[[str], Optional[str]] = lambda typed: None,
     on_open_existing: Callable[[str], None] = lambda name: None,
     busy: bool = False,
@@ -448,7 +455,6 @@ def NameForm(
                 action_label,
                 action_icon,
                 initial,
-                hint,
                 match,
                 on_open_existing,
                 busy,
