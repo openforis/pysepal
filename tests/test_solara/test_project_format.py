@@ -1,3 +1,5 @@
+"""The project manager's text formatters and its translations."""
+
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,7 +35,14 @@ def test_relative_time_of_an_aware_time_against_a_naive_now():
 
 @pytest.mark.parametrize(
     "n,expected",
-    [(None, "…"), (0, "0.1 MB"), (200_000, "0.2 MB"), (14_600_000, "14.6 MB"), (2_300_000_000, "2.3 GB"), (999_999_999, "1.0 GB")],
+    [
+        (None, "…"),
+        (0, "0.1 MB"),
+        (200_000, "0.2 MB"),
+        (14_600_000, "14.6 MB"),
+        (2_300_000_000, "2.3 GB"),
+        (999_999_999, "1.0 GB"),
+    ],
 )
 def test_size_text(n, expected):
     assert size_text(n) == expected

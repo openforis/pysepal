@@ -1,3 +1,5 @@
+"""The project manager's dialogs, rendered on their own."""
+
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -59,9 +61,7 @@ def _manage(infos, selected=None, **kw):
 
 
 def _render_with(component, props):
-    ns = SimpleNamespace(
-        calls=[], open=solara.reactive(True), name=solara.reactive(None)
-    )
+    ns = SimpleNamespace(calls=[], open=solara.reactive(True), name=solara.reactive(None))
 
     @solara.component
     def Page():
@@ -143,11 +143,7 @@ def _locks(ns):
 def test_manage_current_badge_and_lock():
     infos = [_info("a"), _info("b")]
     ns = _manage(infos, current="a", lock_rename=True, lock_delete=True)
-    badges = [
-        c
-        for c in ns.rc.find(v.Chip).widgets
-        if c.children == [msg("project.chip_open")]
-    ]
+    badges = [c for c in ns.rc.find(v.Chip).widgets if c.children == [msg("project.chip_open")]]
     assert len(badges) == 1
     assert _locks(ns) == [True, False, True, False]
     ns.rc.close()
@@ -285,10 +281,7 @@ def test_name_live_validation_and_unchanged_initial():
     ns = _name_form(validate=lambda t: "chars" if "!" in t else None)
     assert not _field(ns).error_messages and _create_btn(ns).disabled is False
     _field(ns).v_model = "a!"
-    assert (
-        _field(ns).error_messages == [msg("project.name_chars")]
-        and _create_btn(ns).disabled
-    )
+    assert _field(ns).error_messages == [msg("project.name_chars")] and _create_btn(ns).disabled
     ns.rc.close()
     ns = _name_form(initial="old")
     assert _create_btn(ns).disabled
@@ -318,9 +311,7 @@ def test_name_submit_revalidates_and_strips():
 
 def test_name_match_offers_open_existing():
     opened = []
-    ns = _name_form(
-        match=lambda t: "Alpha" if t else None, on_open_existing=opened.append
-    )
+    ns = _name_form(match=lambda t: "Alpha" if t else None, on_open_existing=opened.append)
     _field(ns).v_model = "alpha"
     _button(ns.rc, msg("project.open_instead", name="Alpha")).fire_event("click", None)
     assert opened == ["Alpha"]

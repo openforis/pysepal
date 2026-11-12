@@ -46,16 +46,12 @@ def MetaLine(info: ProjectInfo, now: datetime):
             solara.Text(msg("project.unreadable"))
             return
         if info.subtitle:
-            with rv.Html(
-                tag="span", style_="display:inline-flex;align-items:center;gap:3px;"
-            ):
+            with rv.Html(tag="span", style_="display:inline-flex;align-items:center;gap:3px;"):
                 if info.subtitle_icon:
                     rv.Icon(x_small=True, children=[info.subtitle_icon])
                 solara.Text(info.subtitle)
         if info.updated_at is not None:
-            solara.Text(
-                msg("project.modified", time_ago=relative_time(info.updated_at, now))
-            )
+            solara.Text(msg("project.modified", time_ago=relative_time(info.updated_at, now)))
 
 
 def _icon_button(icon: str, label: str, on_click, color=None, disabled=False):
@@ -182,11 +178,8 @@ def ManageProjectsDialog(
                                         rv.Html(
                                             tag="span",
                                             children=[size_text(size)],
-                                            style_=_SIZE
-                                            + ("opacity:0.5;" if size is None else ""),
-                                            attributes={
-                                                "title": msg("project.size_on_disk")
-                                            },
+                                            style_=_SIZE + ("opacity:0.5;" if size is None else ""),
+                                            attributes={"title": msg("project.size_on_disk")},
                                         )
                                         _icon_button(
                                             "mdi-pencil-outline",
@@ -262,9 +255,7 @@ def ConfirmDeleteDialog(
     solara.use_effect(_reset_typed, [open, name])
 
     # Exact and case-sensitive (the folder goes); only blanks around it are forgiven.
-    can_delete = (
-        bool(name) and (typed or "").strip() == name and not blocked and not busy
-    )
+    can_delete = bool(name) and (typed or "").strip() == name and not blocked and not busy
 
     def _confirm_if_typed():
         # A press sent before the last keystroke reached the kernel still lands here.
@@ -406,9 +397,7 @@ def _NameFields(
                     children=[shown_error],
                 )
         with rv.CardActions(style_=_ACTIONS):
-            solara.Button(
-                msg("project.cancel"), text=True, small=True, on_click=on_cancel
-            )
+            solara.Button(msg("project.cancel"), text=True, small=True, on_click=on_cancel)
             solara.Button(
                 action_label or msg("project.create"),
                 icon_name=action_icon,

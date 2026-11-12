@@ -1,3 +1,5 @@
+"""ProjectStore: listing, naming, sizing, renaming and deleting project folders."""
+
 import pytest
 
 from pysepal.solara.components.project import ProjectInfo, ProjectStore
@@ -53,7 +55,14 @@ def test_unreadable_project_is_logged(tmp_path, caplog):
 
 @pytest.mark.parametrize(
     "name,code",
-    [("", "empty"), ("  ", "empty"), ("a/b", "chars"), ("..", "chars"), ("ALPHA", "exists"), ("new one_2-x", None)],
+    [
+        ("", "empty"),
+        ("  ", "empty"),
+        ("a/b", "chars"),
+        ("..", "chars"),
+        ("ALPHA", "exists"),
+        ("new one_2-x", None),
+    ],
 )
 def test_validate_name(tmp_path, name, code):
     _make(tmp_path, "Alpha")

@@ -16,6 +16,17 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9 _-]+$")
 
 @dataclass(frozen=True)
 class ProjectInfo:
+    """What the Project window shows of one saved project.
+
+    Attributes:
+        name: The project's folder name.
+        updated_at: When it was last saved; naive local time or timezone-aware, None to hide.
+        chips: ``(label, accent)`` pairs; accented chips use the primary color.
+        subtitle: A line under the name, e.g. the area of interest.
+        subtitle_icon: An mdi icon name shown before the subtitle.
+        readable: False when ``describe`` raised: listed, but it cannot be opened.
+    """
+
     name: str
     updated_at: Optional[datetime] = None
     chips: tuple[tuple[str, bool], ...] = ()  # (label, accent)
@@ -25,7 +36,10 @@ class ProjectInfo:
 
 
 class ProjectStore:
+    """Folder-per-project storage under ``root``; subclass it to describe the projects."""
+
     def __init__(self, root: Path, manifest: str = "project.json"):
+        """Store under ``root``; ``manifest`` names a project's file and may use ``{name}``."""
         self.root = Path(root)
         self.manifest = manifest
 
@@ -36,14 +50,17 @@ class ProjectStore:
         return self.root / name
 
     def manifest_path(self, name: str) -> Path:
+        """The manifest file of project ``name``."""
         return self.folder(name) / self.manifest.format(name=name)
 
     def names(self) -> list[str]:
+        """Every folder under root, with or without a manifest: the names already taken."""
         if not self.root.is_dir():
             return []
         return [d.name for d in self.root.iterdir() if d.is_dir()]
 
     def infos(self) -> list[ProjectInfo]:
+        """The listed projects (folders with a manifest), sorted by name ignoring case."""
         infos = []
         for name in sorted(self.names(), key=str.casefold):
             if not self.manifest_path(name).is_file():
@@ -64,6 +81,7 @@ class ProjectStore:
         return ProjectInfo(name, updated_at=datetime.fromtimestamp(mtime))
 
     def validate_name(self, name: str, exclude: Optional[str] = None) -> Optional[str]:
+        """Return "empty", "chars", "exists" (case-insensitive, except ``exclude``) or None."""
         text = (name or "").strip()
         if not text:
             return "empty"
@@ -73,6 +91,7 @@ class ProjectStore:
         return "exists" if text.casefold() in taken else None
 
     def size(self, name: str) -> int:
+        """The bytes of the project's files, links not followed."""
         total = 0
         for dirpath, _, files in os.walk(self.folder(name)):  # os.walk does not follow dir links
             for f in files:
@@ -82,6 +101,7 @@ class ProjectStore:
         return total
 
     def rename(self, old: str, new: str) -> None:
+        """Move the folder (and a ``{name}`` manifest); FileExistsError if ``new`` exists."""
         src, dst = self.folder(old), self.folder(new)
         if dst.exists():  # os.rename would silently replace an empty folder
             raise FileExistsError(str(dst))
