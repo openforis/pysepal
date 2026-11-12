@@ -61,4 +61,5 @@ def test_call_site_renders(path: str, line: int, key: str, names: Set[str]) -> N
         key: the catalogue key it asks for
         names: the placeholder names it passes
     """
-    msg(key, **{name: "x" for name in names})
+    # A plural message picks its form from ``count``, which must be a number.
+    msg(key, **{name: 1 if name == "count" else "x" for name in names})
