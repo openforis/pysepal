@@ -21,8 +21,8 @@ Inspect these before editing:
 - imports of `pysepal.sepalwidgets` (removed in 5.0) and calls to
   `MapApp.element`: move them to the Solara components with
   `docs/guides/migrating-to-pysepal-5.md`
-- whether the app runs under Voila on SEPAL: then it stays on `pysepal<5` until
-  SEPAL's Jupyter server runs ipyvuetify 3
+- whether the app is also used as a notebook in JupyterLab: there the widgets
+  render only where the Jupyter server has ipyvuetify 3
 
 ## When To Stop And Ask
 

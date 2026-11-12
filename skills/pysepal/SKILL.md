@@ -622,9 +622,10 @@ rv.ExpansionPanels(variant="accordion", children=[...])
 
 The full table is in `docs/guides/migrating-to-pysepal-5.md`.
 
-A Voila app on SEPAL renders only when SEPAL's Jupyter server runs ipyvuetify 3.
-Until that switch it stays on `pysepal<5`. A Solara app ships its own frontend
-and is not affected.
+A Solara app and a Voila app in SEPAL's app catalog ship their own widget
+frontend (SEPAL's Voila loads the extensions from the app's environment). A
+notebook opened in JupyterLab uses the server's extensions, so it renders only
+where the server has ipyvuetify 3.
 
 Template rules for a `.vue` file:
 
@@ -911,8 +912,7 @@ keeps running unseen. **Fix:** see "Keep stateful siblings in place with keys".
 `AoiView` from `pysepal.aoi`, `PlanetView`, `AoiControl` and Vuetify 2
 components such as `ListItemContent` do not exist there. **Fix:** move the code
 to the Solara components and Vuetify 3 (`docs/guides/migrating-to-pysepal-5.md`),
-or pin `pysepal<5` until it is ready. A Voila app on SEPAL keeps the pin until
-SEPAL's Jupyter server moves to ipyvuetify 3.
+or pin `pysepal<5` until it is ready.
 
 ### `TypeError: Expected element, not '<some text>'`
 
@@ -1008,7 +1008,7 @@ current list — do not rely on this table.
 | `solara-app-builder.md`      | Scaffolding or restructuring an app                                               |
 | `solara-export.md`           | Adding export to EE asset / Drive / SEPAL workspace                               |
 | `solara-mapapp-component.md` | Every `MapApp` argument; moving from the removed `MapApp.element`                 |
-| `migrating-to-pysepal-5.md`  | Replacing a removed widget; Vuetify 3 spellings; the Voila `pysepal<5` pin        |
+| `migrating-to-pysepal-5.md`  | Replacing a removed widget; Vuetify 3 spellings; the `pysepal<5` pin              |
 | `solara-migration.md`        | Converting ipyvuetify widget to Solara                                            |
 | `ipyvuetify-widgets.md`      | Writing a `component_vue` / `v.VuetifyTemplate`: template rules, data, events     |
 | `ipecharts.md`               | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
@@ -1070,7 +1070,7 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] A `pysepal.sepalwidgets` import (`sw.*`, `vue_app.MapApp`, `vue_app.ThemeToggle`, `vue_app.LocaleSelect`), `pysepal.aoi.AoiTile` / `pysepal.aoi.AoiView`, `pysepal.planetapi.PlanetView`, `mapping.AoiControl`, `thread_controller`, `@catch_errors` or `@loading_button` (removed in 5.0; see `migrating-to-pysepal-5.md`)
 - [ ] `MapApp(model=...)`, `theme_toggle=` or `language_selector=` (the native `MapApp` has none: use `current_step` / `on_current_step`, `step_open` / `on_step_open`, `theme_state=`, `locales=`)
 - [ ] Vuetify 2 props or components in the app's own `rv.*`, `solara.v` or `.vue` code (`dense`, `small`, `outlined`, `text=True`, `v-list-item-content`, `ExpansionPanelHeader`, activator `on`, select items with `text`), or a leftover `IPYVUETIFY_V3` branch (pysepal 5 is Vuetify 3 only)
-- [ ] A Voila app on SEPAL that requires pysepal 5 before SEPAL's Jupyter server runs ipyvuetify 3 (pin `pysepal<5` until then)
+- [ ] An app used as a JupyterLab notebook that requires pysepal 5 where the Jupyter server still has ipyvuetify 1
 - [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
 - [ ] A conditional element before a sibling that holds a `use_task`, with no `.key()` on either (the sibling remounts and loses its task)
 - [ ] `ExportSource.resolve` making Earth Engine requests (it runs on every render)

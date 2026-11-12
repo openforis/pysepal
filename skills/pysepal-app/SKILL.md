@@ -49,7 +49,7 @@ For repo-specific defaults and scaffold workflow:
 - The map shell is `MapApp(...)` from `pysepal.solara.components.map_app`.
 - pysepal 5 is Vuetify 3 only. Never scaffold `pysepal.sepalwidgets`: it was removed in 5.0.
 - Write the app's own `rv.*`, `solara.v` and `.vue` code for Vuetify 3 (`size="small"`, `density="compact"`, `variant=...`), with no `IPYVUETIFY_V3` branch; see "Vuetify 3" in the `pysepal` skill.
-- A Voila app on SEPAL renders on pysepal 5 only once SEPAL's Jupyter server runs ipyvuetify 3; until then an existing Voila app stays on `pysepal<5`.
+- A Voila app in SEPAL's app catalog brings its own widget frontend (SEPAL's Voila loads the extensions from the app's environment), so it can require pysepal 5 as soon as its code is ready.
 - New GEE flows use `solara.lab.use_task(..., prefer_threaded=False)`.
 - Retrieve session-bound interfaces inside components with `get_current_gee_interface()` and related getters.
 - An app needing neither GEE, `SepalClient` nor Drive omits `@with_sepal_sessions` and keeps `setup_sessions()`; see "Apps that don't use Earth Engine" in `docs/guides/solara-app-builder.md`.
