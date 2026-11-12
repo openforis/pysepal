@@ -248,10 +248,13 @@ def geojson_to_ee(
     Returns:
         the created featurecollection
     """
+    # EE refuses the geodesic argument on point geometries (no edges to bend)
+    point_types = ("Point", "MultiPoint")
+
     # from a featureCollection
     if geo_json["type"] == "FeatureCollection":
         for feature in geo_json["features"]:
-            if feature["geometry"]["type"] != "Point":
+            if feature["geometry"]["type"] not in point_types:
                 feature["geometry"]["geodesic"] = geodesic
         features = ee.FeatureCollection(geo_json)
         return features
@@ -259,12 +262,9 @@ def geojson_to_ee(
     # from a single feature
     elif geo_json["type"] == "Feature":
         geom = None
-        # Checks whether it is a point
-        if geo_json["geometry"]["type"] == "Point":
-            coordinates = geo_json["geometry"]["coordinates"]
-            longitude = coordinates[0]
-            latitude = coordinates[1]
-            geom = ee.Geometry.Point(longitude, latitude)
+        # Checks whether it is a point or a multipoint
+        if geo_json["geometry"]["type"] in point_types:
+            geom = ee.Geometry(geo_json["geometry"])
         # for every other geometry simply create a geometry
         else:
             geom = ee.Geometry(geo_json["geometry"], "", geodesic)

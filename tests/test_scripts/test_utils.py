@@ -258,6 +258,14 @@ def test_geojson_to_ee() -> None:
     assert isinstance(ee_point, ee.Geometry)
     assert ee_point.coordinates().getInfo() == [0, 1]
 
+    # test multipoints, as a featurecollection and as a single feature
+    multipoint = gpd.GeoDataFrame(geometry=[sg.MultiPoint(points)], crs=4326)
+    ee_multipoint = su.geojson_to_ee(multipoint.__geo_interface__)
+    assert ee_multipoint.geometry().coordinates().length().getInfo() == len(points)
+    feature = multipoint.__geo_interface__["features"][0]
+    ee_multipoint = su.geojson_to_ee(feature)
+    assert ee_multipoint.coordinates().length().getInfo() == len(points)
+
     # test a badly shaped dict
     dict_ = {"type": ""}  # minimal feature from __geo_interface__
     with pytest.raises(ValueError):
