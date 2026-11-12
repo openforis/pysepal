@@ -38,7 +38,7 @@
     },
     "right_panel": {
       "title": "5. El panel derecho de MapApp — correcto",
-      "description": "Al cerrarse, el panel se desliza fuera de la vista sin cambiar de ancho, así que el gráfico conserva una caja fiable. Aun así la aplicación observa los traits de MapApp, que es lo que haría falta si el panel cambiara de ancho."
+      "description": "Al cerrarse, el panel se desliza fuera de la vista sin cambiar de ancho, así que el gráfico conserva una caja fiable. Aun así la aplicación escucha los callbacks de diseño de MapApp, que es lo que haría falta si el panel cambiara de ancho."
     },
     "dialog": {
       "title": "6. Un paso en diálogo — correcto"

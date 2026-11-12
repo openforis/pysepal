@@ -18,6 +18,8 @@ Inspect these before editing:
 - current environment files
 - current docker files if present
 - current component tree
+- calls to `MapApp.element` from `pysepal.sepalwidgets.vue_app`: move them to
+  the native `MapApp` with `docs/guides/solara-mapapp-component.md`
 
 ## When To Stop And Ask
 

@@ -38,7 +38,7 @@
     },
     "right_panel": {
       "title": "5. MapApp's right panel — fine",
-      "description": "Closing the panel slides it out of view without changing its width, so the chart inside keeps a box it can still trust. The app watches MapApp's own traits anyway, which is what a panel that did change width would need."
+      "description": "Closing the panel slides it out of view without changing its width, so the chart inside keeps a box it can still trust. The app listens to MapApp's layout callbacks anyway, which is what a panel that did change width would need."
     },
     "dialog": {
       "title": "6. A dialog step — fine"

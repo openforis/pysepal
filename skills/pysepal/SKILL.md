@@ -36,14 +36,16 @@ disagree, the installed package's docstrings win. Suggest `claude plugin update 
 
 This skill is the source of truth for how to build a pysepal app. The package
 documentation under `docs/` lags behind the code: the Voila tutorials,
-`sw.App` + `ui.ipynb`, `Translator` attribute lookups, and the
-`MapAppComponent` guide are out of date. Read a guide for depth. When a document
-and this skill disagree, follow the skill and treat the document as stale.
+`sw.App` + `ui.ipynb` and `Translator` attribute lookups are out of date. Read a
+guide for depth. When a document and this skill disagree, follow the skill and
+treat the document as stale.
 
 Two rules come before everything else:
 
-- An application is a `@solara.component`, and `MapApp.element(...)` is its
-  shell. Never build the shell with the plain `MapApp(...)` constructor.
+- An application is a `@solara.component`, and `MapApp(...)` from
+  `pysepal.solara.components.map_app` is its shell (new in 4.2). The legacy
+  `pysepal.sepalwidgets.vue_app.MapApp`, used as `MapApp.element(...)`, still
+  works; new code uses the native one.
 - Every user-facing string comes from a JSON catalogue through `msg()`. See
   "Translations" below.
 
@@ -104,7 +106,7 @@ Two patterns:
 - `@solara.component_vue("Widget.vue")` — auto-generates traitlets from
   the function signature. Preferred for new widgets.
 - `v.VuetifyTemplate` subclass + `.element()` — more control, used by
-  existing pysepal widgets (MapApp, FileInput, TaskButton).
+  existing pysepal widgets (the legacy MapApp, FileInput, TaskButton).
 
 For simple inputs, buttons, state display — use `@solara.component` with
 `rv.*` elements (cheaper, testable in pure Python).
@@ -186,29 +188,31 @@ field, it shows as a shadow strip in the light theme (hard to see in dark). Use
 
 ### MapApp layout
 
-All map-based pysepal apps use `MapApp.element()` as the layout shell.
-Do not build custom `solara.Columns` layouts. Steps and panel sections are
-plain dicts; both `content` lists accept ipyvuetify widgets _and_ Solara
-elements, so `@solara.component` tiles can be passed straight through.
+All map-based pysepal apps use `MapApp` as the layout shell. Do not build
+custom `solara.Columns` layouts. `MapApp` is a plain `@solara.component`. Steps
+and panel sections are plain dicts; a `content` is a Solara element, a widget,
+or a list of them, so `@solara.component` tiles and
+`solara.Button(..., on_click=...)` go straight in.
 
 ```python
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import get_current_theme_state
+from pysepal.solara.components.map_app import MapApp
 
-# Scope-keyed theme state — no manual ThemeToggle wiring needed
+# Scope-keyed theme state — the shell's built-in toggle and the map follow it
 theme_state = get_current_theme_state()
 sepal_map = SepalMap(fullscreen=True, theme_state=theme_state, gee=True)
 
-MapApp.element(
+MapApp(
     app_title="My App",
     app_icon="mdi-earth",
     main_map=[sepal_map],
     steps_data=[
         {"id": 1, "name": "AOI", "icon": "mdi-map",
          "display": "step",  # or "dialog"
-         "content": [AoiTile()]},
+         "content": AoiStep()},
     ],
     theme_state=theme_state,
+    locales=messages.available_locales(),  # the built-in language selector
     right_panel_config={"title": "Tools", "icon": "mdi-cog", "width": 400},
     right_panel_content=[
         {"title": "Section", "icon": "mdi-cog", "content": [LayerControls()],
@@ -221,15 +225,20 @@ MapApp.element(
 )
 ```
 
-To read or drive the active step, pass it as a controlled prop with its
-`on_` callback. `MapApp(model=...)` is deprecated: it binds only the model
-passed on the first render.
+`fullscreen=True` on the map is what makes it fill the shell. The shell has no
+`model=`, `theme_toggle=` or `language_selector=`: the toggle and the selector
+are built in. It owns its state, so a value passed on every render does not undo
+what the user did; only a change of the value is an instruction. To follow or
+drive the active step, keep it in a reactive and pass the matching callback:
 
 ```python
 step = solara.use_reactive(1)
-MapApp.element(..., current_step=step.value, on_current_step=step.set)
-# same pair for step_open / on_step_open
+MapApp(..., current_step=step.value, on_current_step=step.set)
+# same pairs: step_open / on_step_open, right_panel_open / on_right_panel_open
 ```
+
+Every argument, and the move from the legacy `MapApp.element`:
+`docs/guides/solara-mapapp-component.md`.
 
 A step's `actions` list draws the buttons under a dialog step. `"close": True`
 closes the step, `"next": <step id>` opens any step (so Back is `next` set to the
@@ -252,15 +261,8 @@ reactive. Showing it again then needs no Earth Engine request. Reset `shown` in
 an effect on the input the layer depends on, if a new input must show the layer
 again.
 
-`MapAppComponent` — typed dataclass props, `with` syntax — is designed but
-**not shipped**: `pysepal.solara.components.layout` does not exist and the
-import raises `ImportError`. Check with
-`python -c "from pysepal.solara import MapAppComponent"` before relying on
-anything in `docs/guides/solara-mapapp-component.md`.
-
-`SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`
-(`MapApp` accepts it silently). See `docs/guides/migration-notes-v3.4.md`
-§ 7 for migration details.
+`SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`;
+pass `theme_state=` instead. See `docs/guides/migration-notes-v3.4.md` § 7.
 
 ### Reference templates
 
@@ -276,18 +278,13 @@ new app to see the patterns in action:
   (dataclasses in reactives), `scripts/` (Earth Engine work, no UI), `tile/`
   (right-panel sections), `widget/` (map, layer lifecycle, floating legend).
 
-### eager=True for dialogs in jupyter-widget contexts
+### Dialogs inside MapApp content
 
-Dialogs inside MapApp's `right_panel_content` or `steps_data` need
-`eager=True` or the content fails to mount silently.
-
-This is about an `rv.Dialog` you place inside that content. MapApp's own step
-windows (`"display": "dialog"`) mount when opened, so they are lazy. An eager
-`rv.Dialog` is built with the page, while hidden:
-
-- Its tasks run at page load, once per session, not on each open. Work that must
-  follow the dialog goes in a `use_task` keyed on its open state; cancel a
-  pending run when it closes.
+An `rv.Dialog` inside `right_panel_content` or `steps_data` mounts when it
+opens; it does not need `eager=True`. The legacy `MapApp.element` embedded
+content through `<jupyter-widget>`, where it did. Drop `eager=True` when you
+move an app: an eager dialog is built with the page, so its tasks run at page
+load, once per session, not on each open.
 
 ### value/on_value pattern
 
@@ -344,7 +341,7 @@ from pysepal.solara.notifications import NotificationProvider
 @solara.component
 def Page():
     NotificationProvider()
-    MapApp.element(...)
+    MapApp(...)
 ```
 
 **Inside Solara components** — use the hook:
@@ -444,9 +441,11 @@ with track_task("Exporting", total_steps=2) as task:
   reading `.value` in the render body. This prevents notification changes
   from triggering parent component re-renders (which would disrupt
   MapApp layout).
-- The task pill position tracks MapApp's right panel via CSS variable
-  `--sepal-notification-right-offset` set on `document.documentElement`
-  by `MapApp.vue`. No DOM polling.
+- The task pill and the legend track the shell through CSS variables that
+  `MapApp` publishes on the page root (`--sepal-notification-right-offset`,
+  `--sepal-right-panel-width`, `--sepal-drawer-width`,
+  `--sepal-bottom-reserved`). No DOM polling. Mount `NotificationProvider()`
+  and the legend next to the shell and they follow it.
 - The `@catch_errors` decorator is NOT modified. It continues to work
   with legacy Alert widgets only. The notification system is independent.
 
@@ -642,7 +641,7 @@ from component.message import messages, msg
 @solara.component
 def Page():
     NotificationProvider()
-    MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         locales=messages.available_locales(),  # the shell mounts the language selector
     )
@@ -837,8 +836,9 @@ quickest way to count requests while you click through the app.
   A slot added after mount is not on the page: see "Elements passed as props,
   and slots".
 - To count Earth Engine requests, render the real tree with a fake
-  `gee_interface` whose `*_async` methods record their calls. Drive MapApp steps
-  with `vue_handle_step_activation(id)`.
+  `gee_interface` whose `*_async` methods record their calls. Drive a MapApp
+  step with `fire_event("click", None)` on its drawer item: the widget with the
+  class `sepal-mapapp__item` and `attributes["data-step-id"] == str(id)`.
 - Reproduce a UI bug in a test before fixing it. The remount in "Keep stateful
   siblings in place with keys" fails a test that clicks once and looks for
   Cancel.
@@ -933,26 +933,29 @@ Solara components use `OriginalName + Component` suffix:
 | `VectorSelectorComponent` | `pysepal.solara.components.inputs`      |
 | `TaskButtonComponent`     | `pysepal.solara.components.task_button` |
 | `AoiView`                 | `pysepal.solara.components.aoi`         |
+| `MapApp`, `ThemeToggle`   | `pysepal.solara.components.map_app`     |
 | `NotificationProvider`    | `pysepal.solara.notifications`          |
 
-Run discovery for the full current list — do not rely on this table.
+`AoiView` and `MapApp` keep their legacy names. Run discovery for the full
+current list — do not rely on this table.
 
 ## Guides (read when needed)
 
 ### pysepal guides (`docs/guides/`)
 
-| Guide                     | When to read                                                                      |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `solara-gee-patterns.md`  | Any GEE work in Solara                                                            |
-| `solara-app-builder.md`   | Scaffolding or restructuring an app                                               |
-| `solara-export.md`        | Adding export to EE asset / Drive / SEPAL workspace                               |
-| `solara-migration.md`     | Converting ipyvuetify widget to Solara                                            |
-| `ipyvuetify-widgets.md`   | Creating a new `v.VuetifyTemplate` widget                                         |
-| `ipecharts.md`            | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
-| `local-tile-servers.md`   | Serving localtileserver / vectortileserver tiles to the browser                   |
-| `migration-notes-v3.4.md` | Auditing an existing app for stale patterns                                       |
-| `migration-v4.md`         | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
-| `solara-upstream.md`      | What an upstream Solara release means for pysepal; why the pin sits where it does |
+| Guide                        | When to read                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `solara-gee-patterns.md`     | Any GEE work in Solara                                                            |
+| `solara-app-builder.md`      | Scaffolding or restructuring an app                                               |
+| `solara-export.md`           | Adding export to EE asset / Drive / SEPAL workspace                               |
+| `solara-mapapp-component.md` | Every `MapApp` argument; moving from the legacy `MapApp.element`                  |
+| `solara-migration.md`        | Converting ipyvuetify widget to Solara                                            |
+| `ipyvuetify-widgets.md`      | Creating a new `v.VuetifyTemplate` widget                                         |
+| `ipecharts.md`               | Creating charts/graphs (ipecharts is the standard for pysepal apps)               |
+| `local-tile-servers.md`      | Serving localtileserver / vectortileserver tiles to the browser                   |
+| `migration-notes-v3.4.md`    | Auditing an existing app for stale patterns                                       |
+| `migration-v4.md`            | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
+| `solara-upstream.md`         | What an upstream Solara release means for pysepal; why the pin sits where it does |
 
 Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
 plural nodes, `check()`.
@@ -999,12 +1002,13 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] Reading `bus.toasts.value` or `bus.tasks.value` in a Solara render body (use `Reactive.subscribe()` in `use_effect` to avoid triggering parent re-renders)
 - [ ] Manual `ThemeToggle()` + `theme.observe(...)` wiring, or `theme_toggle=` on `SepalMap` / `MapApp` (use `get_current_theme_state()` + `theme_state=`)
 - [ ] `Translator(...)`, `from component.message import ms`, or `ms.` attribute lookups (use `catalog()` + `msg("dotted.key")`)
-- [ ] `use_locale()`, `LocaleState`, `locale_state=`, `LocaleSelect.bind_locale_state()` (use `current_locale()` / `set_locale()`; pass `locales=` to `MapApp.element`)
+- [ ] `use_locale()`, `LocaleState`, `locale_state=`, `LocaleSelect.bind_locale_state()` (use `current_locale()` / `set_locale()`; pass `locales=` to `MapApp`)
 - [ ] Positional or formatted placeholders in JSON catalogues (`{0}`, `{area:.2f}`, `{obj.attr}`) (named `{name}` only; format in the caller)
 - [ ] `"layer(s)"`-style strings where a plural node with `count=` belongs
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
-- [ ] `MapApp(...)` constructed directly instead of `MapApp.element(...)` inside a `@solara.component`
+- [ ] The legacy `pysepal.sepalwidgets.vue_app.MapApp`, as `MapApp.element(...)` or constructed directly (move to the native `MapApp(...)` from `pysepal.solara.components.map_app`; see `solara-mapapp-component.md`)
+- [ ] `model=`, `theme_toggle=` or `language_selector=` on the native `MapApp` (it has none: use `current_step` / `on_current_step`, `step_open` / `on_step_open`, `theme_state=`, `locales=`)
 - [ ] `solara.FileBrowser` / `solara.FileBrowserMultiple` anywhere in an app (they read the process filesystem and take no client, so they break on SEPAL; use `FileInputComponent`)
 - [ ] A conditional element before a sibling that holds a `use_task`, with no `.key()` on either (the sibling remounts and loses its task)
 - [ ] `ExportSource.resolve` making Earth Engine requests (it runs on every render)

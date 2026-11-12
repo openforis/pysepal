@@ -740,16 +740,26 @@ def PanelChart(option, resize_token: int):
     solara.lab.use_task(follow, dependencies=[resize_token], prefer_threaded=False)
 ```
 
-Under `MapApp` the token comes from the shell itself: `right_panel_open`,
-`right_panel_width` and `step_open` are synced traits, so `solara.get_widget` on
-the `MapApp.element` and an `observe` on those three is all an app needs.
+Under `MapApp` the token comes from the shell's callbacks. Pass
+`on_right_panel_open` and `on_step_open`, and bump a counter in each, as
+`demo_apps/solara_chart_app` does:
+
+```python
+token = solara.use_reactive(0)
+
+def relayout(*_):
+    token.set(token.value + 1)
+
+MapApp(..., on_right_panel_open=relayout, on_step_open=relayout)
+```
 
 **A window `resize` event fixes every chart on the page at once**, debounced and
-acted on by `ipecharts`. `MapApp.vue` already dispatches one inside a
-`$nextTick` when the bottom panel toggles, because leaflet has the same blind
-spot — that covers MapApp's own layout modes, and there is nothing further to
-extend there: `right_panel_width` is a static prop with no drag handle, and
-opening or closing the panel slides it without changing its width.
+acted on by `ipecharts`. `MapApp` already dispatches one when the panel docked
+at the bottom of a narrow window opens or closes, because leaflet has the same
+blind spot. That covers the shell's own layout modes, and there is nothing
+further to extend there: the panel width comes from `right_panel_config` and has
+no drag handle, and opening or closing the panel slides it without changing its
+width.
 
 Which leaves the two broken cases to the app, through the deferred nudge above.
 What would retire that workaround is a `ResizeObserver` on the chart element in

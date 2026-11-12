@@ -38,7 +38,7 @@
     },
     "right_panel": {
       "title": "5. Le panneau droit de MapApp — correct",
-      "description": "À la fermeture, le panneau glisse hors de vue sans changer de largeur : le graphique garde une boîte fiable. L'application observe tout de même les traits de MapApp, ce qu'il faudrait si le panneau changeait de largeur."
+      "description": "À la fermeture, le panneau glisse hors de vue sans changer de largeur : le graphique garde une boîte fiable. L'application écoute tout de même les callbacks de mise en page de MapApp, ce qu'il faudrait si le panneau changeait de largeur."
     },
     "dialog": {
       "title": "6. Une étape en dialogue — correct"

@@ -7,7 +7,7 @@ that out on its own.
 """
 
 import asyncio
-from typing import Callable, Optional
+from typing import Optional
 
 import ipyvuetify as v
 import solara
@@ -100,17 +100,6 @@ def ChartPair(values: list[int], resize_token: int, line: bool = False):
         ContextChart(values, resize_token=resize_token, follow_layout=False, line=line)
         solara.Text(msg("chart.nudged"), style={"font-size": "0.75rem", "opacity": "0.7"})
         ContextChart(values, resize_token=resize_token, follow_layout=True, line=line)
-
-
-def build_widget_button(label: str, on_click: Callable[[], None]) -> v.Btn:
-    """A plain ipyvuetify button, for the widget-only slots MapApp exposes.
-
-    Its label is set at construction, so the caller rebuilds it on a language
-    change the way ``solara_raster_app`` does: nothing re-renders a widget.
-    """
-    button = v.Btn(children=[label], small=True, block=True, class_="mt-2")
-    button.on_event("click", lambda *args: on_click())
-    return button
 
 
 def build_map_chart_card(
