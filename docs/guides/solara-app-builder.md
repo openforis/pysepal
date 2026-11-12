@@ -624,10 +624,10 @@ solara.Button("Run", on_click=run, block=True, size="small")
 pysepal 5 needs ipyvuetify 3, so the app's own `rv.*`, `solara.v` and `.vue`
 code is Vuetify 3 (see § 6 and
 [migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md)). A Solara app ships
-its own frontend, so it runs anywhere. If the app also runs under Voila on
-SEPAL, for example from a `ui.ipynb`, it stays on `pysepal<5` until SEPAL's
-Jupyter server moves to ipyvuetify 3: that server has one `jupyter-vuetify`
-frontend for every Voila app.
+its own frontend, so it runs anywhere. A Voila app in SEPAL's app catalog does
+too: SEPAL's Voila loads the widget extensions from the app's environment. A
+notebook opened in JupyterLab uses the server's own extensions instead, so it
+renders only where the server has ipyvuetify 3.
 
 ### `.env` file
 

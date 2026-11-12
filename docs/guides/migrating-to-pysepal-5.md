@@ -64,12 +64,14 @@ that reads `item["text"]` must read `item["title"]`. This covers:
 **Solara apps** (`solara run`, the SEPAL container apps) ship their own
 frontend. They can move to pysepal 5 as soon as their code is ready.
 
-**Voila apps on SEPAL** are rendered by SEPAL's Jupyter server. That server has
-one `jupyter-vuetify` frontend for every app, and a widget renders only when the
-app's kernel has the same ipyvuetify major. Today that frontend is ipyvuetify 1.
-So every Voila app on SEPAL must stay on pysepal 4 for now, whether or not it
-uses sepalwidgets. The same rule holds for any Jupyter server: its own
-ipyvuetify must be 3 before an app on pysepal 5 renders there.
+**Voila apps in SEPAL's app catalog** bring their own frontend too: SEPAL's
+Voila loads the widget extensions from the app's own environment first. Each
+app moves to pysepal 5 when its code is ready, with no change on SEPAL's side.
+
+**Notebooks opened in JupyterLab**, and Voila servers that don't load the app's
+extensions, use the `jupyter-vuetify` installed with the Jupyter server. The
+widgets render only when the server and the kernel have the same ipyvuetify
+major, so there the server needs ipyvuetify 3 before pysepal 5 renders.
 
 ## What to do
 
@@ -161,16 +163,4 @@ pysepal 5 always runs on ipyvuetify 3, so remove any branch on
 ### 5. Remove the pin
 
 When the app runs on the Solara components and Vuetify 3, require `pysepal>=5`
-and remove the `pysepal<5` pin. A Voila app on SEPAL does this only after the
-server switch below.
-
-## The SEPAL server switch
-
-SEPAL's maintainers will move SEPAL's Jupyter server to ipyvuetify 3, and will
-ask app owners to upgrade their Voila apps first. After the switch:
-
-- a Voila app on pysepal 5 (or any other ipyvuetify 3 stack) renders;
-- a Voila app still on pysepal 4 or ipyvuetify 1 starts, but its widgets do not
-  render.
-
-Solara apps are not affected by the switch: they ship their own frontend.
+and remove the `pysepal<5` pin.

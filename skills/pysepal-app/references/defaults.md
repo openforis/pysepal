@@ -86,9 +86,8 @@ Local apps still use:
 - pre-commit tooling
 - `catalog()`/`msg()` i18n structure
 
-pysepal 5 needs ipyvuetify 3. A Voila app on SEPAL renders only once SEPAL's
-Jupyter server runs ipyvuetify 3 too: that server serves one frontend to every
-Voila app.
+pysepal 5 needs ipyvuetify 3. A Voila app in SEPAL's app catalog brings its own
+widget frontend: SEPAL's Voila loads the extensions from the app's environment.
 
 ## Dependency Defaults
 

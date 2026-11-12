@@ -26,8 +26,9 @@ stays on ipyvuetify 1 (`<3`).
   raises an `ImportError` that points to `migrating-to-pysepal-5.md`.
 - The `MapApp` shell is native Solara (`pysepal.solara.components.map_app`). It
   positions its own sheets and does not depend on Vuetify's layout system.
-- Voila apps on SEPAL stay on `pysepal<5` until SEPAL's Jupyter server moves to
-  ipyvuetify 3: that server has one `jupyter-vuetify` frontend for every app.
+- Solara apps and Voila apps in SEPAL's app catalog ship their own
+  `jupyter-vuetify` (SEPAL's Voila loads the widget extensions from the app's
+  environment). A notebook in JupyterLab uses the server's extensions.
 
 Template rules, all checked in a browser:
 
