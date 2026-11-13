@@ -88,7 +88,8 @@ Local apps still use:
 
 ## Dependency Defaults
 
-`pyproject.toml` owns Python dependencies.
+`pyproject.toml` owns Python dependencies. The GEE/container template
+requires `pysepal>=4.2`, the first release with the native `MapApp`.
 
 `sepal_environment.yml` owns conda-level or compiled dependencies and installs the local project with:
 

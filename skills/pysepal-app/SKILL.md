@@ -31,6 +31,7 @@ For app architecture:
 - `docs/guides/solara-gee-patterns.md` for async GEE work
 - `docs/guides/solara-notifications.md` when the app has async work, task progress, toasts, or `MapApp`
 - `docs/guides/solara-export.md` when the app produces `ee.Image` or `ee.FeatureCollection` layers users can export
+- `docs/guides/solara-mapapp-component.md` when the app uses `MapApp`
 - `docs/guides/ipyvuetify-widgets.md` when creating or extending `VuetifyTemplate`/Vue-backed widgets
 
 For repo-specific defaults and scaffold workflow:
@@ -44,6 +45,7 @@ For repo-specific defaults and scaffold workflow:
 ## Core Rules
 
 - New Solara apps use `solara.reactive()` AppState.
+- The map shell is `MapApp(...)` from `pysepal.solara.components.map_app`, not the legacy `pysepal.sepalwidgets.vue_app.MapApp.element(...)`.
 - New GEE flows use `solara.lab.use_task(..., prefer_threaded=False)`.
 - Retrieve session-bound interfaces inside components with `get_current_gee_interface()` and related getters.
 - An app needing neither GEE, `SepalClient` nor Drive omits `@with_sepal_sessions` and keeps `setup_sessions()`; see "Apps that don't use Earth Engine" in `docs/guides/solara-app-builder.md`.

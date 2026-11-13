@@ -550,8 +550,8 @@ so a persisted spec restores in either deployment.
 from component.message import messages, msg
 
 from pysepal import mapping as sm
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import get_current_theme_state
+from pysepal.solara.components.map_app import MapApp
 
 @solara.component
 def Page():
@@ -571,9 +571,8 @@ def Page():
         [id(gee_interface)],
     )
 
-    # The shell. Rendered as an element inside this component: it mounts the
-    # language selector, and every nested element follows the locale.
-    MapApp.element(
+    # The shell. Its drawer holds the theme toggle and the language selector.
+    MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-earth",
         main_map=[sepal_map],
@@ -585,20 +584,22 @@ def Page():
 ```
 
 `fullscreen=True` is what makes the map fill the shell. `MapApp` lays its
-drawers and panels over a fixed, viewport-sized container and never sizes the
+drawer and panels over a fixed, viewport-sized container and never sizes the
 widget inside it, so a map built without the flag keeps ipyleaflet's default
 400 px height and renders as a strip across the top. Every demo under
 `demo_apps/` passes it.
 
-`MapApp` is a shell, not a way to assemble an app: an application is the
-`@solara.component` above, and the shell is rendered inside it with
-`.element(...)`. The plain `MapApp(...)` constructor builds the bare widget,
-with no selector and nothing that follows a language change. Read a message
-anywhere in the app with `msg("key")` — see
-`docs/source/tutorials/translate-app.rst`.
+`MapApp` is a `@solara.component` from `pysepal.solara.components.map_app`,
+new in pysepal 4.2. A `content` is an element, a widget, or a list of them. To
+follow the user, pass `on_current_step`, `on_step_open` or
+`on_right_panel_open`; there is no `model=`. Every argument is in
+[MapApp](./solara-mapapp-component.md). Read a message anywhere in the app with
+`msg("key")` — see `docs/source/tutorials/translate-app.rst`.
 
-> `SepalMap(theme_toggle=...)` / `MapApp.element(theme_toggle=[...])` still
-> work but emit a `DeprecationWarning`. See `migration-notes-v3.4.md` § 7.
+> The legacy `pysepal.sepalwidgets.vue_app.MapApp`, used as
+> `MapApp.element(...)`, still works; new apps use the native one.
+> `SepalMap(theme_toggle=...)` still works but emits a `DeprecationWarning`;
+> pass `theme_state=`. See `migration-notes-v3.4.md` § 7.
 
 ## 6. Button & Icon Sizing
 

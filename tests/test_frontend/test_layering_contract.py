@@ -22,6 +22,7 @@ import pysepal.solara as solara_pkg
 
 BASE_CSS = ss.CSS_DIR / "base.css"
 MAP_APP_VUE = Path(sw.__file__).parent / "vue" / "MapApp.vue"
+MAP_APP_CSS = Path(solara_pkg.__file__).parent / "components" / "map_app" / "map_app.css"
 LEGEND_VUE = Path(solara_pkg.__file__).parent / "components" / "Legend.vue"
 NOTIFICATION_VUE = Path(solara_pkg.__file__).parent / "notifications" / "NotificationUI.vue"
 
@@ -34,6 +35,8 @@ APP_LAYERS = {
     "header.v-app-bar": BASE_CSS,
     ".sepal-legend": LEGEND_VUE,
     ".pill-wrapper": NOTIFICATION_VUE,
+    ".sepal-mapapp__drawer": MAP_APP_CSS,
+    ".sepal-right-panel": MAP_APP_CSS,
 }
 
 # Rules that pin Vuetify's own modal elements. `.v-overlay__scrim` is exempt:
@@ -84,7 +87,7 @@ def _rules(text: str):
 
 def test_no_stylesheet_pins_the_vuetify_modal_z_index():
     """Pinning the scrim or the dialog breaks click-outside-to-close."""
-    for path in (BASE_CSS, MAP_APP_VUE, LEGEND_VUE, NOTIFICATION_VUE):
+    for path in (BASE_CSS, MAP_APP_VUE, MAP_APP_CSS, LEGEND_VUE, NOTIFICATION_VUE):
         for selector, body in _rules(path.read_text()):
             if not any(pin in selector for pin in FORBIDDEN_PINS):
                 continue

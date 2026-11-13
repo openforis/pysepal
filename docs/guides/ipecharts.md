@@ -683,80 +683,15 @@ height = max(200, 50 + 75 * num_categories)
 chart = EChartsWidget(option=option, height=f"{height}px")
 ```
 
-`width: 100%` stretches the container, but ECharts lays its canvas out once and
-only redraws when something calls `resize()`. `ipecharts` calls it on a window
-`resize` (debounced 100ms), on Lumino `resize` messages, on `after-attach`, and
-whenever `style` or the CSS classes change — see `baseWidgetView.ts`. It does
-**not** watch the container with a `ResizeObserver`.
+`width: 100%` makes the chart fill its container. Since ipecharts 1.4.2 the
+chart watches its element with a `ResizeObserver` and draws again whenever the
+element changes size, including when a hidden container is shown. A card that
+changes width, a map `MenuControl`, a dialog step and `MapApp`'s right panel need
+no resize code. `demo_apps/solara_chart_app` mounts a chart in seven such places.
 
-`demo_apps/solara_chart_app` mounts the same chart in seven places and measures
-each one. Two of the seven come out wrong:
-
-| Context                                                     | Result                                          |
-| ----------------------------------------------------------- | ----------------------------------------------- |
-| A container that changes width, no window resize            | **wrong**: 510px canvas in a 1020px box         |
-| A chart built inside a rendered but hidden menu             | **wrong**: 100px canvas in a 128px box          |
-| A collapsed expansion panel, an unopened tab, a dialog step | fine: the content mounts when it is shown       |
-| MapApp's right panel opening and closing                    | fine: the panel slides, its width never changes |
-| A plain page column                                         | fine: a window resize is a path it listens on   |
-
-The same table holds under Voila. Lumino sends its resize messages when its own
-layout changes, not when CSS moves something inside a single output, so running
-the component from `ui.ipynb` gets both cases wrong in the same way — measured,
-not assumed.
-
-So the rule is narrower than "charts break in panels": a chart is wrong when its
-box changes without a window resize, or when it is built inside a container that
-is in the DOM but not visible. Vuetify's own lazy containers save you from most
-of the second case.
-
-**Telling it takes a delay.** The widget has no resize API, and both levers that
-reach `resize()` from Python — swapping a CSS class, writing `style` — are
-applied the moment the trait lands, which can be before the browser has applied
-the layout change that prompted it. Measured: the class arrived on the element
-and the canvas still redrew at the old width. Wait for the layout first:
-
-```python
-@solara.component
-def PanelChart(option, resize_token: int):
-    """``resize_token`` is anything that changes when the chart's box changes."""
-    chart = EChartsWidget.element(option=option, style={"height": "300px"})
-    widget_ref = solara.use_ref(None)
-
-    def capture():
-        # get_widget needs a render context, which a task body does not have.
-        widget_ref.current = solara.get_widget(chart)
-
-    solara.use_effect(capture, [])
-
-    async def follow():
-        if widget_ref.current is None:
-            return
-        await asyncio.sleep(0.25)
-        # Any class change reaches update_classes, which calls chart.resize().
-        widget_ref.current.remove_class(f"chart-resize-{(resize_token + 1) % 2}")
-        widget_ref.current.add_class(f"chart-resize-{resize_token % 2}")
-
-    solara.lab.use_task(follow, dependencies=[resize_token], prefer_threaded=False)
-```
-
-Under `MapApp` the token comes from the shell itself: `right_panel_open`,
-`right_panel_width` and `step_open` are synced traits, so `solara.get_widget` on
-the `MapApp.element` and an `observe` on those three is all an app needs.
-
-**A window `resize` event fixes every chart on the page at once**, debounced and
-acted on by `ipecharts`. `MapApp.vue` already dispatches one inside a
-`$nextTick` when the bottom panel toggles, because leaflet has the same blind
-spot — that covers MapApp's own layout modes, and there is nothing further to
-extend there: `right_panel_width` is a static prop with no drag handle, and
-opening or closing the panel slides it without changing its width.
-
-Which leaves the two broken cases to the app, through the deferred nudge above.
-What would retire that workaround is a `ResizeObserver` on the chart element in
-`ipecharts`' `setupResizeListener`, catching both a container that changes width
-and an element that becomes visible. That is upstream work in
-[`ipecharts`](https://github.com/trungleduc/ipecharts), deliberately not taken on
-here: until it exists, tell the chart yourself and leave it a beat to settle.
+Require `ipecharts>=1.4.2`. Older versions draw again only on a window resize, so
+a chart in a container that changes width, or that starts hidden, keeps the
+wrong size.
 
 ### 6. Reusable Components
 

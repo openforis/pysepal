@@ -206,28 +206,11 @@ boilerplate; swap `theme_toggle=` for `theme_state=` on `SepalMap` and `MapApp`.
       wiring; use `get_current_theme_state()` and pass `theme_state=` to
       `SepalMap` / `MapApp` instead.
 
-## 8. MapApp → MapAppComponent
+## 8. MapApp → native Solara MapApp
 
-```{important}
-**Not yet available** (as of pysepal 3.7.0): `MapAppComponent` and
-`pysepal.solara.components.layout` are not in the released package — the module
-is empty and the imports raise `ImportError`. Keep using `MapApp.element`
-(reacton renders `@solara.component` tiles passed as `content`). The guidance
-below describes the **planned target**, not the current state.
-```
-
-Once it ships, prefer `pysepal.solara.components.layout.MapAppComponent`
-(re-exported as `pysepal.solara.MapAppComponent`) over the
-`pysepal.sepalwidgets.vue_app.MapApp` VuetifyTemplate. The new component:
-
-- Is a `@solara.component` usable with `with MapAppComponent(...): ...`.
-- Exposes typed dataclass props: `StepConfig`, `PanelSection`,
-  `RightPanelConfig`, `StepAction`, `ExternalLink`.
-- Auto-wires `ThemeState` and `Translator` (no manual `ThemeToggle()`
-  construction needed).
-- Renders only the active step's content (lazy `content=` callables).
-- Preserves the visual design of `MapApp.vue` (drawer, narrow-mode
-  bottom sheet, dialog steps, right panel).
-
-See `docs/guides/solara-mapapp-component.md` for the migration map. The
-legacy class still works but emits a `DeprecationWarning`.
+`MapAppComponent`, planned here in 3.4, never shipped. Since pysepal 4.2 the
+native shell is `pysepal.solara.components.map_app.MapApp`, a
+`@solara.component` called as `MapApp(...)` with the keyword arguments of the
+legacy `MapApp.element(...)`, minus `model=`, `theme_toggle=` and
+`language_selector=`. See `docs/guides/solara-mapapp-component.md` for the
+migration map. The legacy `pysepal.sepalwidgets.vue_app.MapApp` still works.
