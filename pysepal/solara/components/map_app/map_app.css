@@ -192,8 +192,11 @@
   left: var(--sepal-mapapp-drawer);
   transform: translateY(-50%);
   z-index: 161;
-  margin-left: -5px;
   transition: left 0.2s ease;
+}
+
+.sepal-mapapp .sepal-mapapp__drawer-toggle .control-btn {
+  border-radius: 0 3px 3px 0 !important;
 }
 
 .sepal-mapapp--narrow-bottom .sepal-mapapp__drawer-toggle {
