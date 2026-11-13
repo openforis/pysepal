@@ -1,22 +1,14 @@
 """ipecharts in the places a pysepal app actually mounts a chart.
 
-ECharts lays its canvas out once and redraws only when something calls
-``resize()``. ipecharts calls it on a window resize, on Lumino resize messages,
-on ``after-attach``, and when ``style`` or the CSS classes change -- and its
-debouncer skips the redraw while the element is under 10px, which is the state of
-anything mounted inside a closed panel. None of that covers a container that
-changes width on its own, which is what MapApp's right panel does.
-
-So every context here shows the same data twice: once as ipecharts mounts it, and
-once with the app passing on what it knows about the layout. Flip a panel, switch
-a tab, drag the panel edge, and watch which of the two follows.
+ECharts lays its canvas out when it draws. Since ipecharts 1.4.2 the chart also
+watches its element with a ``ResizeObserver`` and draws again when the element
+changes size or becomes visible, so none of these contexts carries resize code.
+Change a layout and check that the chart follows: a card that changes width, a
+collapsed panel, an unopened tab, MapApp's right panel, a dialog step, and a menu
+on the map.
 
 The UI lives in :func:`ChartAppDemo` so both runtimes share it -- ``Page`` is the
-Solara entrypoint, ``ui.ipynb`` the Voila one. Voila puts the charts in a Lumino
-layout, which is where ipecharts' resize messages come from, so it looks like it
-should behave differently. Measured: it does not. Lumino sends those messages
-when its own layout changes, not when CSS moves something inside one output, so
-both runtimes get the same two cases wrong.
+Solara entrypoint, ``ui.ipynb`` the Voila one.
 
 To run:
 
@@ -26,20 +18,13 @@ pysepal$ voila demo_apps/solara_chart_app/ui.ipynb --port 8902
 ```
 """
 
-import itertools
-
 import reacton.ipyvuetify as rv
 import solara
 from chart_messages import messages, msg
 from chart_options import sample_series
-from chart_widgets import (
-    ChartPair,
-    build_map_chart_card,
-    nudge_resize,
-)
+from chart_widgets import ContextChart, build_map_chart_card
 
 from pysepal import mapping as sm
-from pysepal.mapping.fullscreen_control import FullScreenControl
 from pysepal.mapping.menu_control import MenuControl
 from pysepal.solara import (
     get_current_theme_state,
@@ -89,20 +74,10 @@ def ChartLab():
 
 @solara.component
 def PageContexts(values: list, on_map, on_regenerate):
-    """The contexts a plain Solara page can hold, control case first."""
+    """The contexts a plain Solara page can hold."""
     wide = solara.use_reactive(False)
     panel = solara.use_reactive(None)
-    panel_token = solara.use_reactive(0)
     tab = solara.use_reactive(0)
-    tab_token = solara.use_reactive(0)
-
-    def open_panel(index):
-        panel.value = index
-        panel_token.value += 1
-
-    def switch_tab(index):
-        tab.value = index
-        tab_token.value += 1
 
     # The gallery hands a demo a 100vh box and no chrome, so this page scrolls itself.
     with solara.Column(
@@ -123,29 +98,25 @@ def PageContexts(values: list, on_map, on_regenerate):
 
         with solara.Card(title=msg("contexts.column.title")):
             solara.Markdown(msg("contexts.column.description"))
-            # No token: nothing here changes the box but the window, which
-            # ipecharts already listens for. This is what working looks like.
-            ChartPair(values, resize_token=0)
+            ContextChart(values)
 
         with solara.Card(title=msg("contexts.width.title")):
             solara.Markdown(msg("contexts.width.description"))
             solara.Switch(label=msg("buttons.wide"), value=wide.value, on_value=wide.set)
             with solara.Column(style={"width": "100%" if wide.value else "50%"}):
-                ChartPair(values, resize_token=int(wide.value), line=True)
+                ContextChart(values, line=True)
 
         with solara.Card(title=msg("contexts.panel.title")):
             solara.Markdown(msg("contexts.panel.description"))
             rv.ExpansionPanels(
                 v_model=panel.value,
-                on_v_model=open_panel,
+                on_v_model=panel.set,
                 accordion=True,
                 children=[
                     rv.ExpansionPanel(
                         children=[
                             rv.ExpansionPanelHeader(children=[msg("contexts.panel.header")]),
-                            rv.ExpansionPanelContent(
-                                children=[ChartPair(values, resize_token=panel_token.value)]
-                            ),
+                            rv.ExpansionPanelContent(children=[ContextChart(values)]),
                         ]
                     )
                 ],
@@ -153,21 +124,19 @@ def PageContexts(values: list, on_map, on_regenerate):
 
         with solara.Card(title=msg("contexts.tabs.title")):
             solara.Markdown(msg("contexts.tabs.description"))
-            with solara.lab.Tabs(value=tab.value, on_value=switch_tab):
+            with solara.lab.Tabs(value=tab.value, on_value=tab.set):
                 with solara.lab.Tab(msg("contexts.tabs.first")):
                     solara.Markdown(msg("contexts.tabs.first_body"))
                 with solara.lab.Tab(msg("contexts.tabs.second")):
-                    ChartPair(values, resize_token=tab_token.value, line=True)
+                    ContextChart(values, line=True)
 
 
 @solara.component
 def MapContexts(values: list, on_back):
-    """The MapApp shell: a panel that changes width, a dialog step, a map overlay."""
+    """The MapApp shell: a right panel, a dialog step, a menu on the map."""
     theme_state = get_current_theme_state()
-    token = solara.use_reactive(0)
 
-    def build_scene():
-        """Map, overlay chart, and the fullscreen button wired to redraw it."""
+    def build_map():
         sepal_map = sm.SepalMap(
             zoom=3,
             center=[0, 0],
@@ -176,29 +145,18 @@ def MapContexts(values: list, on_back):
             fullscreen_control=True,
             theme_state=theme_state,
         )
-        card, chart = build_map_chart_card(values, msg("contexts.map.card_title"), width="360px")
         sepal_map.add(
             MenuControl(
                 "mdi-chart-bar",
-                card,
+                build_map_chart_card(values, width="360px"),
                 m=sepal_map,
                 card_title=msg("contexts.map.card_title"),
                 position="topright",
             )
         )
-        # Fullscreen changes the map's box without touching the window, so the
-        # overlay hears it from the button that caused it.
-        ticks = itertools.count(1)
-        for control in sepal_map.controls:
-            if isinstance(control, FullScreenControl):
-                control.w_btn.on_event("click", lambda *args: nudge_resize(chart, next(ticks)))
-        return sepal_map, chart
+        return sepal_map
 
-    sepal_map, _map_chart = solara.use_memo(build_scene, [])
-
-    def relayout(*_):
-        """MapApp reports its layout changes, so the charts can be told from Python."""
-        token.set(token.value + 1)
+    sepal_map = solara.use_memo(build_map, [])
 
     MapApp(
         app_title=msg("app.title"),
@@ -210,7 +168,7 @@ def MapContexts(values: list, on_back):
                 "name": msg("contexts.dialog.title"),
                 "icon": "mdi-window-maximize",
                 "display": "dialog",
-                "content": [ChartPair(values, resize_token=token.value)],
+                "content": [ContextChart(values)],
             }
         ],
         right_panel_config={
@@ -224,7 +182,7 @@ def MapContexts(values: list, on_back):
                 "title": msg("contexts.right_panel.title"),
                 "icon": "mdi-chart-bar",
                 "content": [
-                    ChartPair(values, resize_token=token.value),
+                    ContextChart(values),
                     solara.Button(
                         msg("buttons.back"),
                         on_click=on_back,
@@ -237,8 +195,6 @@ def MapContexts(values: list, on_back):
             }
         ],
         right_panel_open=True,
-        on_right_panel_open=relayout,
-        on_step_open=relayout,
         theme_state=theme_state,
         locales=messages.available_locales(),
         dialog_width=750,

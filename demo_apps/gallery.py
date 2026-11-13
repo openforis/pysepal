@@ -76,9 +76,9 @@ DEMOS = [
         "Chart Contexts",
         "The same ipecharts chart in every place a pysepal app mounts one: a page "
         "column, a card that changes width, a collapsed panel, an unopened tab, "
-        "MapApp's right panel, a dialog step, and an overlay on the map. Each "
-        "context draws it twice -- untouched, and told when its box changed -- so "
-        "which layouts need telling is visible. No session and no credentials.",
+        "MapApp's right panel, a dialog step, and an overlay on the map. The "
+        "chart follows each layout change with no resize code. No session and "
+        "no credentials.",
     ),
 ]
 

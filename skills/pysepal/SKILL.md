@@ -788,14 +788,9 @@ ECharts from a CDN at mount, and rebuilds the chart on every update. The guide's
 "Why not `solara.FigureEcharts`?" section holds the full comparison — read it
 before re-opening the question when an upstream release touches that component.
 
-A chart measures its container once and redraws only when something calls
-`resize()`. Measured across seven mount points in `demo_apps/solara_chart_app`,
-two go wrong: a container that changes width with no window resize, and a chart
-built inside a container that is in the DOM but hidden (a map `MenuControl`).
-Lazy containers — collapsed panels, unopened tabs, dialog steps — are fine.
-Telling the chart from Python only works after the browser has applied the
-layout; a nudge in the same batch redraws at the old width. Recipe:
-`docs/guides/ipecharts.md` § "Responsive Charts".
+A chart follows the size of its container by itself since ipecharts 1.4.2, also
+in a container that changes width or starts hidden (a map `MenuControl`).
+Require `ipecharts>=1.4.2` and write no resize code.
 
 Read `docs/guides/ipecharts.md` before creating any
 chart. It covers both approaches (`EChartsRawWidget` for quick prototypes,
