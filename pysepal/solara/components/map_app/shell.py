@@ -107,14 +107,14 @@ def MapContainer(map_widget, on_click: Callable[[], None]):
 def DrawerToggle(rail: bool, on_click: Callable[[], None]):
     """Render the tab that collapses or expands the drawer."""
     with rv.Html(tag="div", class_="sidebar-controls sepal-mapapp__drawer-toggle") as main:
-        btn = rv.Btn(
+        solara.Button(
             tile=True,
             color="primary",
-            class_="control-btn mb-2",
+            classes=["control-btn", "mb-2"],
             attributes={"title": msg("map_app.expand" if rail else "map_app.collapse")},
             children=[rv.Icon(children=["mdi-menu-right" if rail else "mdi-menu-left"])],
+            on_click=on_click,
         )
-    ipyvue.use_event(btn, "click", lambda *_: on_click())
     return main
 
 

@@ -2,11 +2,10 @@
 
 from typing import Callable, Mapping, Optional, Sequence, Union
 
-import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
-from ._ui import IconButton, as_children
+from ._ui import as_children
 
 
 def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optional[int]):
@@ -28,19 +27,6 @@ def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optio
     if viewport > 0:
         value = min(cap, value)
     return int(value)
-
-
-@solara.component
-def ActionButton(action: Mapping, on_click: Callable[[Mapping], None]):
-    """Render one footer button of a dialog step: outlined to cancel, filled otherwise."""
-    btn = rv.Btn(
-        color="primary",
-        outlined=bool(action.get("cancel")),
-        small=True,
-        children=[action.get("label", "")],
-    )
-    ipyvue.use_event(btn, "click", lambda *_: on_click(action))
-    return btn
 
 
 @solara.component
@@ -77,7 +63,12 @@ def StepDialog(
         with rv.Card(class_="dialog-card", style_=card_style):
             with rv.CardTitle(class_="headline d-flex justify-space-between"):
                 rv.Html(tag="span", children=[step.get("name", "") if step else ""])
-                IconButton(icon="mdi-close", on_click=on_close)
+                solara.Button(
+                    icon=True,
+                    text=True,
+                    children=[rv.Icon(small=True, children=["mdi-close"])],
+                    on_click=on_close,
+                )
             rv.Divider()
             with rv.CardText(class_="dialog-content pt-4"):
                 for item in dialog_steps:
@@ -93,5 +84,12 @@ def StepDialog(
                 with rv.CardActions():
                     rv.Spacer()
                     for i, action in enumerate(actions):
-                        ActionButton(action, on_click=on_action).key(f"action-{i}")
+                        # outlined to cancel, filled otherwise
+                        solara.Button(
+                            action.get("label", ""),
+                            color="primary",
+                            outlined=bool(action.get("cancel")),
+                            small=True,
+                            on_click=lambda action=action: on_action(action),
+                        ).key(f"action-{i}")
     return main

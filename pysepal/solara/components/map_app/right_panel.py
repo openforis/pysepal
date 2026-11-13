@@ -2,13 +2,12 @@
 
 from typing import Callable, Mapping, Optional, Sequence
 
-import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.message import msg
 
-from ._ui import IconButton, as_children
+from ._ui import as_children
 
 DEFAULT_CONFIG = {
     "title": "Extra Content",
@@ -97,9 +96,11 @@ def RightPanel(
                         children=[config["title"] or ""],
                     )
                 rv.Spacer()
-                IconButton(
-                    icon="mdi-close",
-                    title=msg("map_app.close_panel"),
+                solara.Button(
+                    icon=True,
+                    text=True,
+                    children=[rv.Icon(small=True, children=["mdi-close"])],
+                    attributes={"title": msg("map_app.close_panel")},
                     on_click=lambda: set_open(False),
                 )
 
@@ -134,12 +135,12 @@ def RightPanel(
 def PanelTab(icon: str, on_click: Callable[[], None]):
     """Render the tab that opens a closed panel."""
     with rv.Html(tag="div", class_="right-panel-tab sepal-right-panel__tab") as main:
-        tab = rv.Btn(
+        solara.Button(
             tile=True,
             color="secondary",
-            class_="control-btn",
+            classes=["control-btn"],
             attributes={"title": msg("map_app.show_panel")},
             children=[rv.Icon(children=[icon])],
+            on_click=on_click,
         )
-    ipyvue.use_event(tab, "click", lambda *_: on_click())
     return main

@@ -2,7 +2,6 @@
 
 from typing import Optional
 
-import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
@@ -76,6 +75,10 @@ def ThemeToggle(theme_state: Optional[ThemeState] = None, enable_auto: bool = Tr
         ColorSchemeBridge(
             mode=mode, dark=dark, event_prefers_dark=set_prefers_dark, event_stored_mode=adopt
         )
-        btn = rv.Btn(icon=True, text=True, children=[rv.Icon(small=True, children=[ICONS[mode]])])
-    ipyvue.use_event(btn, "click", lambda *_: state.set_mode(next_mode(mode, enable_auto)))
+        solara.Button(
+            icon=True,
+            text=True,
+            children=[rv.Icon(small=True, children=[ICONS[mode]])],
+            on_click=lambda: state.set_mode(next_mode(mode, enable_auto)),
+        )
     return main

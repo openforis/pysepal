@@ -16,7 +16,7 @@ from pysepal.solara.theme import ThemeState
 
 
 def walk(widget):
-    """Walk the tree through children and slots: drawer items sit in a tooltip slot."""
+    """Walk the tree through children and slots."""
     yield widget
     children = list(getattr(widget, "children", ()) or ())
     for slot in getattr(widget, "v_slots", None) or []:
@@ -48,11 +48,16 @@ def _with_class(root, name: str) -> List[Any]:
     return [w for w in walk(root) if name in _classes(w).split()]
 
 
+def _nav_items(root) -> List[Any]:
+    """Return the drawer entries, the widgets of ``NavItem.vue``."""
+    return [w for w in walk(root) if hasattr(w, "vue_click")]
+
+
 def _item(root, step_id) -> Any:
     items = [
         w
-        for w in _with_class(root, "sepal-mapapp__item")
-        if (w.attributes or {}).get("data-step-id") == str(step_id)
+        for w in _nav_items(root)
+        if (w.item_attributes or {}).get("data-step-id") == str(step_id)
     ]
     assert len(items) == 1, f"no drawer item for step {step_id}"
     return items[0]
@@ -60,9 +65,7 @@ def _item(root, step_id) -> Any:
 
 def _map_item(root) -> Any:
     return next(
-        w
-        for w in _with_class(root, "sepal-mapapp__item")
-        if "data-step-id" not in (w.attributes or {})
+        w for w in _nav_items(root) if not w.href and "data-step-id" not in (w.item_attributes or {})
     )
 
 
@@ -152,7 +155,7 @@ def test_step_display_step_replaces_map():
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
     assert not _visible(_step_container(box))
 
-    _item(box, 1).fire_event("click", None)
+    _item(box, 1).vue_click(None)
 
     assert _visible(_step_container(box))
     assert "step one" in _text(_step_container(box))
@@ -164,7 +167,7 @@ def test_dialog_step_opens_and_closes():
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
     assert _dialog(box).v_model is False
 
-    _item(box, 2).fire_event("click", None)
+    _item(box, 2).vue_click(None)
     assert _dialog(box).v_model is True
     assert "dialog two" in _text(_dialog(box))
 
@@ -175,7 +178,7 @@ def test_dialog_step_opens_and_closes():
 
 def test_dialog_next_action_moves_to_another_step():
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
-    _item(box, 2).fire_event("click", None)
+    _item(box, 2).vue_click(None)
 
     next_btn = next(w for w in walk(_dialog(box)) if "Next" in (getattr(w, "children", None) or []))
     next_btn.fire_event("click", None)
@@ -188,7 +191,7 @@ def test_dialog_next_action_moves_to_another_step():
 def test_action_step_reports_current_step_only():
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
 
-    _item(box, 3).fire_event("click", None)
+    _item(box, 3).vue_click(None)
 
     assert calls["current"] == [3]
     assert not _visible(_step_container(box))
@@ -203,7 +206,7 @@ def test_step_without_content_runs_the_panel_action_only():
     panel = _with_class(box, "sepal-right-panel")[0]
     assert "sepal-right-panel--open" in _classes(panel)
 
-    _item(box, 4).fire_event("click", None)
+    _item(box, 4).vue_click(None)
 
     panel = _with_class(box, "sepal-right-panel")[0]
     assert "sepal-right-panel--closed" in _classes(panel)
@@ -212,9 +215,9 @@ def test_step_without_content_runs_the_panel_action_only():
 
 def test_map_entry_shows_the_map_again():
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
-    _item(box, 1).fire_event("click", None)
+    _item(box, 1).vue_click(None)
 
-    _map_item(box).fire_event("click", None)
+    _map_item(box).vue_click(None)
 
     assert not _visible(_step_container(box))
     assert calls["current"] == [1, None]
@@ -319,7 +322,7 @@ def test_open_dialog_marks_the_body():
     box, _, _ = _render(main_map=FakeMap(), steps_data=_steps())
     assert _bridge(box).body_class == ""
 
-    _item(box, 2).fire_event("click", None)
+    _item(box, 2).vue_click(None)
 
     assert _bridge(box).body_class == "sepal-modal-open"
 
@@ -334,8 +337,8 @@ def test_open_dialog_marks_the_body():
 )
 def test_links_follow_the_urls(repo, docs, expected):
     box, _, _ = _render(main_map=FakeMap(), repo_url=repo, docs_url=docs)
-    links = _with_class(box, "link-item")
-    assert [_text(link) for link in links] == expected
+    links = [w for w in _nav_items(box) if w.href]
+    assert [link.title for link in links] == expected
 
 
 def test_next_mode_cycle():
@@ -383,7 +386,7 @@ def test_drawer_items_still_click_after_the_rail_toggles():
     _bridge(box).vue_window_size({"w": 800, "h": 600})
     _bridge(box).vue_window_size({"w": 1400, "h": 900})
 
-    _item(box, 1).fire_event("click", None)
+    _item(box, 1).vue_click(None)
 
     assert calls["current"] == [1]
     assert _visible(_step_container(box))
