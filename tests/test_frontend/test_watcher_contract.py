@@ -96,9 +96,9 @@ def test_synced_traits_are_watched_with_plain_functions(cls, vue_file):
 def test_the_scan_finds_the_templates():
     """Guard the guard: an empty scan would make the parametrised test vacuous."""
     found = {param.id: param.values for param in _template_widgets()}
-    expected = {"FileInput", "LocaleSelect", "Legend", "NotificationUI", "ColorSchemeBridge"}
+    expected = {"FileInput", "LocaleSelect", "Legend", "NotificationUI", "ThemeToggle"}
     assert expected <= set(found)
-    assert "mode" in found["ColorSchemeBridge"][0].class_trait_names(sync=True)
+    assert "mode" in found["ThemeToggle"][0].class_trait_names(sync=True)
 
 
 def test_the_parser_reads_the_object_form(tmp_path):

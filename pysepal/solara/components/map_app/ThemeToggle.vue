@@ -1,7 +1,7 @@
 <template>
   <span class="sepal-theme-toggle">
-    <v-btn icon text @click="cycle()">
-      <v-icon small>{{ icon() }}</v-icon>
+    <v-btn icon variant="text" @click="cycle()">
+      <v-icon size="small">{{ icon() }}</v-icon>
     </v-btn>
   </span>
 </template>
@@ -28,7 +28,7 @@ module.exports = {
       this.apply();
     }
   },
-  beforeDestroy() {
+  beforeUnmount() {
     if (!this.media) return;
     if (this.media.removeEventListener) {
       this.media.removeEventListener("change", this.onSchemeChange);
@@ -68,7 +68,16 @@ module.exports = {
       // Set on the page, not only through Python: under Voila the page follows
       // ipyvuetify's own theme, not Solara's per-kernel one.
       const theme = this.$vuetify && this.$vuetify.theme;
-      if (theme) theme.dark = dark;
+      const name = dark ? "dark" : "light";
+      if (!theme) {
+        // no Vuetify on the page: nothing to apply
+      } else if (typeof theme.change === "function") {
+        theme.change(name);
+      } else if (theme.global.name && typeof theme.global.name === "object") {
+        theme.global.name.value = name;
+      } else {
+        theme.global.name = name;
+      }
       this.set_dark(dark);
     },
     readStored() {
