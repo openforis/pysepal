@@ -54,7 +54,7 @@ def Page():
         #     "icon": "mdi-map-marker-check",
         #     "display": "step",          # or "dialog"
         #     "content": MyTile(...),     # Solara element, widget, or a list of them
-        #     "content_enabled": True,    # False to disable navigation to this step
+        #     "content_enabled": True,    # False: not highlighted or opened on mount
         # },
     ]
 

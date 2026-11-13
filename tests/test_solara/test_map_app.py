@@ -144,6 +144,11 @@ def test_initial_step_id_rules():
         ("50%", 1000, 2000, 800, 500),
         ("50%", 0, 0, 800, 800),
         (None, 900, 820, None, None),
+        ("600", 1000, 2000, 800, 600),
+        ("600px", 1000, 2000, 800, 600),
+        ("600px", 0, 0, 800, 600),
+        ("33.5%", 1000, 2000, 800, 335),
+        ("auto", 1000, 2000, 800, 800),
     ],
 )
 def test_clamp(target, viewport, cap, default, expected):
@@ -279,6 +284,132 @@ def test_controlled_current_step():
 
     step.value = None
     assert not _visible(_step_container(box))
+
+
+def _assert_unlocked(box):
+    assert _dialog(box).v_model is False
+    assert _with_class(box, "sepal-mapapp__drawer--disabled") == []
+    assert _bridge(box).body_class == ""
+
+
+def test_moving_off_an_open_dialog_unlocks_the_drawer():
+    step = solara.reactive(None)
+
+    @solara.component
+    def Page():
+        MapApp(
+            main_map=FakeMap(),
+            steps_data=_steps(),
+            current_step=step.value,
+            on_current_step=step.set,
+        )
+
+    box, _ = solara.render(Page(), handle_error=False)
+    _item(box, 2).vue_click(None)
+    assert _bridge(box).body_class == "sepal-modal-open"
+
+    step.value = 1  # the app moves on once the dialog's form is submitted
+
+    _assert_unlocked(box)
+    assert _visible(_step_container(box))
+    _map_item(box).vue_click(None)
+    assert step.value is None
+
+
+def test_a_dialog_step_without_content_does_not_lock_the_drawer():
+    steps = [
+        {
+            "id": 1,
+            "name": "Form",
+            "display": "dialog",
+            "content": [solara.Text("form")],
+            "actions": [{"label": "Next", "next": 2}],
+        },
+        {"id": 2, "name": "Empty", "display": "dialog", "content": []},
+    ]
+    box, _, _ = _render(main_map=FakeMap(), steps_data=steps)
+    _item(box, 1).vue_click(None)
+
+    next_btn = next(w for w in walk(_dialog(box)) if "Next" in (getattr(w, "children", None) or []))
+    next_btn.fire_event("click", None)
+
+    _assert_unlocked(box)
+
+
+@solara.component
+def Counter(tag: str):
+    count, set_count = solara.use_state(0)
+    solara.Button(f"{tag} {count}", on_click=lambda: set_count(count + 1))
+
+
+def _assert_counter_survives(rc, flip):
+    rc.find(v.Btn, children=["panel 0"]).widget.click()
+    rc.find(v.Btn, children=["panel 1"]).assert_single()
+    flip()
+    rc.find(v.Btn, children=["panel 1"]).assert_single()
+
+
+def test_panel_content_survives_a_step_getting_content():
+    ready = solara.reactive(False)
+
+    @solara.component
+    def Page():
+        content = [solara.Text("results")] if ready.value else []
+        MapApp(
+            main_map=FakeMap(),
+            steps_data=[{"id": 1, "name": "Results", "display": "step", "content": content}],
+            right_panel_content=[{"title": "Tools", "content": Counter("panel")}],
+            right_panel_open=True,
+        )
+
+    _, rc = solara.render(Page(), handle_error=False)
+    _assert_counter_survives(rc, lambda: ready.set(True))
+
+
+@pytest.mark.parametrize("in_footer", [False, True])
+def test_panel_content_survives_the_panel_description_appearing(in_footer):
+    desc = solara.reactive("")
+
+    @solara.component
+    def Page():
+        counter = Counter("panel")
+        MapApp(
+            main_map=FakeMap(),
+            right_panel_config={"description": desc.value},
+            right_panel_content=[{"title": "Tools", "content": [] if in_footer else counter}],
+            right_panel_footer=[counter] if in_footer else [],
+        )
+
+    _, rc = solara.render(Page(), handle_error=False)
+    _assert_counter_survives(rc, lambda: desc.set("Now with a description"))
+
+
+@pytest.mark.parametrize("field", ["title", "icon", "description"])
+def test_section_content_survives_its_header_appearing(field):
+    value = solara.reactive("")
+
+    @solara.component
+    def Page():
+        MapApp(
+            main_map=FakeMap(),
+            right_panel_content=[{field: value.value, "content": Counter("panel")}],
+        )
+
+    _, rc = solara.render(Page(), handle_error=False)
+    _assert_counter_survives(rc, lambda: value.set("mdi-cog" if field == "icon" else "Text"))
+
+
+def test_steps_with_repeated_or_missing_ids_render():
+    steps = [
+        {"name": "A", "display": "step", "content": [solara.Text("a")]},
+        {"name": "B", "display": "step", "content": [solara.Text("b")]},
+        {"id": 7, "name": "C", "display": "dialog", "content": [solara.Text("c")]},
+        {"id": 7, "name": "D", "display": "dialog", "content": [solara.Text("d")]},
+    ]
+
+    box, _, _ = _render(main_map=FakeMap(), steps_data=steps)
+
+    assert "a" in _text(_step_container(box)) and "b" in _text(_step_container(box))
 
 
 def test_wide_window_publishes_layout_vars_and_insets():

@@ -832,8 +832,8 @@ quickest way to count requests while you click through the app.
   and slots".
 - To count Earth Engine requests, render the real tree with a fake
   `gee_interface` whose `*_async` methods record their calls. Drive a MapApp
-  step with `fire_event("click", None)` on its drawer item: the widget with the
-  class `sepal-mapapp__item` and `attributes["data-step-id"] == str(id)`.
+  step with `vue_click(None)` on its drawer item: the widget with a `vue_click`
+  method and `item_attributes["data-step-id"] == str(id)`.
 - Reproduce a UI bug in a test before fixing it. The remount in "Keep stateful
   siblings in place with keys" fails a test that clicks once and looks for
   Cancel.

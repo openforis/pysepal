@@ -10,7 +10,7 @@ import solara
 from pysepal.message import msg
 from pysepal.solara.theme import ThemeState, resolve_theme_state
 
-from ._ui import as_children
+from ._ui import as_children, step_keys
 from .bridges import ViewportBridge
 from .drawer import Drawer, external_links
 from .right_panel import RightPanel
@@ -210,6 +210,10 @@ def MapApp(
     dialog_open, set_dialog_open = solara.use_state(_is_dialog(_find(steps, active_id)))
     panel_open, set_panel_state = solara.use_state(bool(right_panel_open))
     active_step = _find(steps, active_id)
+    dialog_step = active_step if _is_dialog(active_step) else None
+    # The drawer locks only while a dialog is on screen: an open dialog step
+    # without content renders no dialog the user could close.
+    modal = dialog_open and _has_content(dialog_step)
 
     def report(step_id: Optional[int], is_open: bool):
         if on_current_step is not None:
@@ -223,7 +227,7 @@ def MapApp(
             on_right_panel_open(value)
 
     def activate(step: Mapping):
-        if dialog_open:
+        if modal:
             return
         action = step.get("right_panel_action")
         if action in ("open", "close", "toggle"):
@@ -235,7 +239,7 @@ def MapApp(
         report(step.get("id"), True)
 
     def show_map():
-        if dialog_open:
+        if modal:
             return
         set_active_id(None)
         set_dialog_open(False)
@@ -260,8 +264,7 @@ def MapApp(
             step = _find(steps, value)
             if step is not None:
                 set_active_id(value)
-                if _is_dialog(step):
-                    set_dialog_open(True)
+                set_dialog_open(_is_dialog(step))
         elif value is None and active_id is not None:
             set_active_id(None)
             set_dialog_open(False)
@@ -347,18 +350,19 @@ def MapApp(
     step_steps = [s for s in steps if s.get("display") == "step" and _has_content(s)]
     dialog_steps = [s for s in steps if _is_dialog(s) and _has_content(s)]
     showing_step = active_step is not None and active_step.get("display") == "step"
-    dialog_step = active_step if _is_dialog(active_step) else None
 
+    # The children are keyed: three are conditional, and a position-keyed
+    # sibling after one that appears would remount with the user's content.
     with rv.Html(tag="div", class_=" ".join(classes), style_=local_vars) as main:
         solara.Style(CSS)
         ViewportBridge(
             css_vars=css_vars,
-            body_class="sepal-modal-open" if dialog_open else "",
+            body_class="sepal-modal-open" if modal else "",
             event_window_size=set_window,
-        )
+        ).key("viewport-bridge")
 
         if has_map:
-            MapContainer(map_widget, on_click=collapse_if_unpinned)
+            MapContainer(map_widget, on_click=collapse_if_unpinned).key("map")
 
         if step_steps:
             with rv.Sheet(
@@ -366,13 +370,13 @@ def MapApp(
                 elevation=0,
                 class_="step-content-container sepal-mapapp__step",
                 style_="" if showing_step else "display: none",
-            ):
-                for step in step_steps:
+            ).key("steps"):
+                for step, key in zip(step_steps, step_keys(step_steps, "step")):
                     rv.Html(
                         tag="div",
                         style_="" if step.get("id") == active_id else "display: none",
                         children=as_children(step.get("content")),
-                    ).key(f"step-{step.get('id')}")
+                    ).key(key)
 
         Drawer(
             app_title=app_title,
@@ -382,15 +386,15 @@ def MapApp(
             active_step_id=active_id,
             rail=rail,
             pinned=pinned,
-            disabled=dialog_open,
+            disabled=modal,
             links=external_links(repo_url, docs_url),
             theme_state=state,
             locales=locales,
             on_map=show_map,
             on_step=activate,
             on_pin=lambda: set_pinned(not pinned),
-        )
-        DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail))
+        ).key("drawer")
+        DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail)).key("drawer-toggle")
 
         if has_panel:
             RightPanel(
@@ -400,12 +404,12 @@ def MapApp(
                 open=panel_open,
                 on_open=set_panel_open,
                 narrow=narrow,
-            )
+            ).key("right-panel")
 
         if dialog_steps:
             target_width = (dialog_step or {}).get("width") or dialog_width
             StepDialog(
-                open=dialog_open and dialog_step is not None,
+                open=modal,
                 step=dialog_step,
                 dialog_steps=dialog_steps,
                 width=clamp(target_width, width, width - drawer_px - 40, 800),
@@ -413,6 +417,6 @@ def MapApp(
                 fullscreen=dialog_fullscreen,
                 on_close=close_dialog,
                 on_action=on_action,
-            )
+            ).key("dialog")
 
     return main
