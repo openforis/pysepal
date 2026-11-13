@@ -1,6 +1,6 @@
 """The left drawer of the MapApp shell: title, steps, links, theme and language."""
 
-from typing import Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 import reacton.ipyvuetify as rv
 import solara
@@ -9,10 +9,36 @@ from pysepal.message import msg
 from pysepal.solara.components.locale_select import LocaleSelectComponent
 from pysepal.solara.theme import ThemeState
 
-from ._ui import IconButton, NavItem
 from .theme_toggle import ThemeToggle
 
 DEFAULT_STEP_ICON = "mdi-checkbox-blank-circle-outline"
+
+
+@solara.component_vue("NavItem.vue")
+def NavItem(
+    icon: str,
+    title: str,
+    rail: bool = False,
+    active: bool = False,
+    href: str = "",
+    item_class: str = "",
+    item_attributes: Optional[dict] = None,
+    event_click: Optional[Callable[[Any], None]] = None,
+):
+    """Render one drawer entry: an icon, and its title unless the drawer is a rail.
+
+    In rail mode the title moves to a tooltip on the right.
+
+    Args:
+        icon: The entry's icon.
+        title: The entry's title, and the tooltip text in rail mode.
+        rail: Whether the drawer is a rail.
+        active: Highlight the entry as the current step.
+        href: Open this URL in a new tab instead of calling ``event_click``.
+        item_class: Extra classes on the list item.
+        item_attributes: Extra HTML attributes on the list item.
+        event_click: Called when the user clicks the entry.
+    """
 
 
 def external_links(repo_url: str, docs_url: str) -> list:
@@ -63,9 +89,13 @@ def Drawer(
                     )
             if not rail:
                 rv.Spacer()
-                IconButton(
-                    icon="mdi-pin" if pinned else "mdi-pin-outline",
-                    title=msg("map_app.unpin" if pinned else "map_app.pin"),
+                solara.Button(
+                    icon=True,
+                    text=True,
+                    children=[
+                        rv.Icon(children=["mdi-pin" if pinned else "mdi-pin-outline"], size="small")
+                    ],
+                    attributes={"title": msg("map_app.unpin" if pinned else "map_app.pin")},
                     on_click=on_pin,
                 )
 
@@ -79,7 +109,7 @@ def Drawer(
                         title=msg("map_app.map"),
                         rail=rail,
                         active=active_step_id is None,
-                        on_click=on_map,
+                        event_click=lambda _: on_map(),
                     )
                 for step in steps:
                     NavItem(
@@ -88,8 +118,8 @@ def Drawer(
                         rail=rail,
                         active=active_step_id == step.get("id")
                         and step.get("content_enabled") is not False,
-                        on_click=lambda step=step: on_step(step),
-                        attributes={"data-step-id": str(step.get("id"))},
+                        item_attributes={"data-step-id": str(step.get("id"))},
+                        event_click=lambda _, step=step: on_step(step),
                     )
 
         with rv.Html(tag="div", class_="sepal-mapapp__drawer-bottom"):
@@ -102,7 +132,7 @@ def Drawer(
                             title=msg(f"map_app.links.{link['key']}"),
                             rail=rail,
                             href=link["url"],
-                            class_="link-item",
+                            item_class="link-item",
                         )
                 rv.Divider(class_="mt-2 mb-4")
             with rv.Html(
