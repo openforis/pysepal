@@ -41,8 +41,9 @@ def Section(section: Mapping, last: bool):
                     class_="body-2 ma-0 text--secondary",
                     children=[section["description"]],
                 )
-        for child in as_children(section.get("content")):
-            rv.Html(tag="div", class_="mb-3", children=[child])
+        # Keyed so the optional header and description above do not remount them.
+        for i, child in enumerate(as_children(section.get("content"))):
+            rv.Html(tag="div", class_="mb-3", children=[child]).key(f"content-{i}")
         if section.get("divider") and not last:
             rv.Divider(class_="mt-4")
     return main
@@ -122,8 +123,8 @@ def RightPanel(
             if footer:
                 with rv.Html(tag="div", class_="drawer-footer"):
                     rv.Divider(class_="ma-0 pa-0")
-                    for child in as_children(footer):
-                        rv.Html(tag="div", children=[child])
+                    for i, child in enumerate(as_children(footer)):
+                        rv.Html(tag="div", children=[child]).key(f"footer-{i}")
 
         if not open and not disabled:
             PanelTab(icon=config["toggle_icon"] or "mdi-menu-left", on_click=lambda: set_open(True))

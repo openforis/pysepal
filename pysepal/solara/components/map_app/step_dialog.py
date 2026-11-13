@@ -5,23 +5,33 @@ from typing import Callable, Mapping, Optional, Sequence, Union
 import reacton.ipyvuetify as rv
 import solara
 
-from ._ui import as_children
+from ._ui import as_children, step_keys
+
+
+def _to_px(target: Union[int, float, str, None], viewport: int) -> Optional[float]:
+    if not isinstance(target, str):
+        return target
+    text = target.strip()
+    try:
+        if text.endswith("%"):
+            return viewport * float(text[:-1]) / 100 if viewport > 0 else None
+        return float(text.removesuffix("px"))
+    except ValueError:
+        return None
 
 
 def clamp(target: Union[int, str, None], viewport: int, cap: int, default: Optional[int]):
     """Return a dialog size in px, or None for none.
 
     Args:
-        target: The size asked for, in px or as ``"NN%"`` of ``viewport``.
+        target: The size asked for: px as a number, ``"600"`` or ``"600px"``,
+            or ``"NN%"`` of ``viewport``. Anything else counts as empty.
         viewport: The window size along that axis; 0 until it is measured,
             which caps nothing.
         cap: The largest size that fits.
         default: The size when ``target`` is empty.
     """
-    if isinstance(target, str) and target.endswith("%"):
-        value = viewport * int(target[:-1]) / 100 if viewport > 0 else default
-    else:
-        value = target or default
+    value = _to_px(target, viewport) or default
     if value is None:
         return None
     if viewport > 0:
@@ -71,20 +81,19 @@ def StepDialog(
                 )
             rv.Divider()
             with rv.CardText(class_="dialog-content pt-4"):
-                for item in dialog_steps:
+                for item, key in zip(dialog_steps, step_keys(dialog_steps, "dialog-step")):
                     hidden = "" if item.get("id") == active_id else "display: none"
                     rv.Html(
                         tag="div",
                         class_="jupyter-widget-container",
                         style_=hidden,
                         children=as_children(item.get("content")),
-                    ).key(f"dialog-step-{item.get('id')}")
+                    ).key(key)
             if actions:
                 rv.Divider()
                 with rv.CardActions():
                     rv.Spacer()
                     for i, action in enumerate(actions):
-                        # outlined to cancel, filled otherwise
                         solara.Button(
                             action.get("label", ""),
                             color="primary",
