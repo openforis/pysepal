@@ -11,7 +11,6 @@ import traitlets
 from pysepal.solara.components.map_app import MapApp, ThemeToggle
 from pysepal.solara.components.map_app.shell import initial_step_id
 from pysepal.solara.components.map_app.step_dialog import clamp
-from pysepal.solara.components.map_app.theme_toggle import next_mode
 from pysepal.solara.theme import ThemeState
 
 
@@ -341,43 +340,32 @@ def test_links_follow_the_urls(repo, docs, expected):
     assert [link.title for link in links] == expected
 
 
-def test_next_mode_cycle():
-    assert [next_mode(m) for m in ("dark", "light", "auto")] == ["light", "auto", "dark"]
-    assert next_mode("light", enable_auto=False) == "dark"
+def _theme_button(root):
+    return next(w for w in walk(root) if hasattr(w, "vue_set_dark"))
 
 
-def test_toggle_cycles_mode_and_resolves_dark():
+def test_toggle_writes_what_the_browser_resolves():
     state = ThemeState(mode="dark")
     box, _ = solara.render(ThemeToggle(theme_state=state), handle_error=False)
-    btn = next(w for w in walk(box) if type(w).__name__ == "Btn")
-    bridge = _bridge_scheme(box)
+    button = _theme_button(box)
 
-    btn.fire_event("click", None)
-    assert (state.mode, state.dark, solara.lab.theme.dark) == ("light", False, False)
+    button.vue_set_mode("auto")  # a click
+    assert (state.mode, button.mode) == ("auto", "auto")
 
-    btn.fire_event("click", None)
-    bridge.vue_prefers_dark(True)
-    assert (state.mode, state.dark, solara.lab.theme.dark) == ("auto", True, True)
-
-    btn.fire_event("click", None)
-    assert (state.mode, state.dark) == ("dark", True)
-    assert bridge.dark is True  # the bridge applies it to the page's Vuetify too
+    button.vue_set_dark(True)  # auto, resolved against the browser's preference
+    assert (state.dark, solara.lab.theme.dark) == (True, True)
 
 
-def test_stored_mode_adopted_once():
-    state = ThemeState(mode="auto")
-    box, _ = solara.render(ThemeToggle(theme_state=state), handle_error=False)
-    bridge = _bridge_scheme(box)
+def test_toggle_follows_the_state_and_skips_auto_when_disabled():
+    state = ThemeState(mode="light")
+    box, _ = solara.render(ThemeToggle(theme_state=state, enable_auto=False), handle_error=False)
+    button = _theme_button(box)
 
-    bridge.vue_stored_mode("dark")
-    bridge.vue_stored_mode("light")
+    button.vue_set_mode("auto")
+    assert state.mode == "light"
 
-    assert state.mode == "dark"
-    assert bridge.mode == "dark"
-
-
-def _bridge_scheme(root):
-    return next(w for w in walk(root) if hasattr(w, "vue_prefers_dark"))
+    state.set_mode("dark")
+    assert button.mode == "dark"
 
 
 def test_drawer_items_still_click_after_the_rail_toggles():

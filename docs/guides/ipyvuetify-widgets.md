@@ -121,11 +121,11 @@ Existing pysepal VuetifyTemplate widgets follow this layout:
 
 Apps use the native Solara `MapApp`, new in 4.2
 (`pysepal/solara/components/map_app/`), not the `vue_app.py` template above. It
-is built from Solara elements, with two small `@solara.component_vue` bridges
-(`ViewportBridge.vue`, `ColorSchemeBridge.vue`) for what Python cannot do in
-the browser: read the window size and the colour-scheme preference, and set CSS
-variables on the page root. The template examples below still describe the
-legacy widget.
+is built from Solara elements, with small `@solara.component_vue` templates
+where the browser does the work: `ViewportBridge.vue` reads the window size and
+sets CSS variables on the page root, `ThemeToggle.vue` follows the colour-scheme
+preference and remembers the theme, and `NavItem.vue` draws a drawer entry with
+its rail tooltip. The template examples below still describe the legacy widget.
 
 ## Python Backend
 
