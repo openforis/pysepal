@@ -25,4 +25,3 @@ def ViewportBridge(
         event_window_size: Called with ``{"w": int, "h": int}`` on mount and on
             every window resize.
     """
-

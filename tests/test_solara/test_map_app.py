@@ -54,9 +54,7 @@ def _nav_items(root) -> List[Any]:
 
 def _item(root, step_id) -> Any:
     items = [
-        w
-        for w in _nav_items(root)
-        if (w.item_attributes or {}).get("data-step-id") == str(step_id)
+        w for w in _nav_items(root) if (w.item_attributes or {}).get("data-step-id") == str(step_id)
     ]
     assert len(items) == 1, f"no drawer item for step {step_id}"
     return items[0]
@@ -64,7 +62,9 @@ def _item(root, step_id) -> Any:
 
 def _map_item(root) -> Any:
     return next(
-        w for w in _nav_items(root) if not w.href and "data-step-id" not in (w.item_attributes or {})
+        w
+        for w in _nav_items(root)
+        if not w.href and "data-step-id" not in (w.item_attributes or {})
     )
 
 
