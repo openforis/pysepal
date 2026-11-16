@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import time
 from typing import Optional
 
@@ -27,44 +28,41 @@ class TaskTracker:
         self._finished = False
 
     def step(self, message: str) -> None:
-        """Add a named milestone and increment current_step."""
-        if self._finished:
-            return
-        current = self._get_task()
-        if current is None:
-            return
-        milestone = TaskMilestone(message=message)
-        self._bus.update_task(
-            self._task_id,
-            milestones=(*current.milestones, milestone),
-            current_step=current.current_step + 1,
-            status=TaskStatus.RUNNING,
-        )
+        """Add a named milestone and increment current_step.
 
-    def set_progress(self, value: Optional[float], detail: Optional[str] = None) -> None:
-        """Update continuous progress. Does NOT create a milestone.
-
-        Unlike :meth:`step`, this never lands in the milestone log, so it
-        won't flood it with per-item updates. It still replaces the whole
-        task list and pushes it to the browser on every call, so callers
-        should throttle high-frequency sources (for example, only on a
-        whole-percent change) rather than calling it for every item.
-
-        Args:
-            value: Progress fraction from 0.0 to 1.0, or ``None`` to reset
-                the task to indeterminate. Per-item runs use ``None``
-                between items so a finished item's 100% ring doesn't
-                linger before the next one starts from 0.
-            detail: A short display string for the current progress (e.g.
-                ``"Downloading — tile 10/30"``), shown by the pill
-                alongside the percentage. It is display-only and never
-                lands in the milestone log. It is shown even while
-                ``value`` is ``None`` (e.g. a wait reason on an
-                indeterminate task). Omitting it clears any previous
-                detail so a stale string can't outlive its value.
+        Clears the progress detail: a detail describes the item in progress,
+        and a new step means that item is over.
         """
         if self._finished:
             return
+        milestone = TaskMilestone(message=message)
+        self._bus.modify_task(
+            self._task_id,
+            lambda t: {
+                "milestones": (*t.milestones, milestone),
+                "current_step": t.current_step + 1,
+                "status": TaskStatus.RUNNING,
+                "progress_detail": None,
+            },
+        )
+
+    def set_progress(self, value: Optional[float], detail: Optional[str] = None) -> None:
+        """Update continuous progress. Never writes to the milestone log.
+
+        See "Task Tracking" in ``docs/guides/solara-notifications.md``.
+
+        Args:
+            value: Fraction done, clamped to 0.0-1.0, or ``None`` (and NaN)
+                for an indeterminate ring.
+            detail: Short display text for the current item, shown by the
+                pill. Omitting it clears the previous one.
+        """
+        if self._finished:
+            return
+        if value is not None:
+            value = float(value)
+            # NaN would reach the browser as invalid JSON and freeze the pill.
+            value = None if math.isnan(value) else min(1.0, max(0.0, value))
         self._bus.update_task(self._task_id, progress=value, progress_detail=detail)
 
     def update(self, title: str) -> None:
@@ -83,14 +81,13 @@ class TaskTracker:
             "progress": 1.0,
             "completed_at": time.time(),
         }
-        if message:
-            current = self._get_task()
-            if current:
-                changes["milestones"] = (
-                    *current.milestones,
-                    TaskMilestone(message=message),
-                )
-        self._bus.update_task(self._task_id, **changes)
+        if not message:
+            self._bus.update_task(self._task_id, **changes)
+            return
+        milestone = TaskMilestone(message=message)
+        self._bus.modify_task(
+            self._task_id, lambda t: {**changes, "milestones": (*t.milestones, milestone)}
+        )
 
     def fail(self, message: str) -> None:
         """Explicitly mark the task as failed."""

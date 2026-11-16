@@ -9,6 +9,11 @@ from .state import Toast, ToastType
 
 logger = logging.getLogger(__name__)
 
+#: A pool thread has no kernel, so the scope lookup cannot find the provider.
+_WORKER_HINT = (
+    "In a worker thread, create the notifier or tracker on the kernel's side " "and pass it in."
+)
+
 _TYPE_MAP = {
     "success": ToastType.SUCCESS,
     "info": ToastType.INFO,
@@ -30,7 +35,7 @@ def notify(message: str, type_: str = "info") -> None:
     if bus is None:
         logger.warning(
             "notify() called without a mounted NotificationProvider. "
-            f"Dropped: {type_}={message!r}"
+            f"{_WORKER_HINT} Dropped: {type_}={message!r}"
         )
         return
 
@@ -50,7 +55,8 @@ def track_task(title: str, total_steps: Optional[int] = None):
     bus = get_current_bus()
     if bus is None:
         logger.warning(
-            "track_task() called without a mounted NotificationProvider. " f"Dropped: {title!r}"
+            "track_task() called without a mounted NotificationProvider. "
+            f"{_WORKER_HINT} Dropped: {title!r}"
         )
         return NoopNotifier().track(title, total_steps=total_steps)
 

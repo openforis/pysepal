@@ -1,11 +1,13 @@
 """Scope-keyed notification bus: state management and registry."""
 
+import contextlib
 import logging
 import threading
 from dataclasses import replace
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import solara
+from solara.server import kernel_context
 
 from pysepal._scope_registry import ScopeRegistry
 
@@ -37,6 +39,26 @@ class NotificationBus:
         self._published_toasts: list[Toast] = self._toasts
         self._published_tasks: list[TrackedTask] = self._tasks
         self._publishing = False
+        # Under ``solara run`` a reactive write lands in the *calling* thread's
+        # kernel store. A worker thread has none, so the bus keeps the kernel it
+        # was created in and publishes through it. None in Voila and Jupyter.
+        self._context = (
+            kernel_context.get_current_context() if kernel_context.has_current_context() else None
+        )
+
+    def _owner_context(self):
+        """Return what to enter for a reactive write: this bus's kernel, or nothing.
+
+        Entering a ``VirtualKernelContext`` pushes it on a per-thread stack and
+        pops it on exit, so a pooled worker thread is left with no kernel and
+        the next kernel's job on that thread publishes to its own bus.
+        """
+        context = self._context
+        if context is None or (
+            kernel_context.has_current_context() and kernel_context.get_current_context() is context
+        ):
+            return contextlib.nullcontext()
+        return context
 
     def _publish(self) -> None:
         """Push pending state onto the reactives, one dispatch at a time.
@@ -61,15 +83,21 @@ class NotificationBus:
                         # another writer cannot defer to a departing publisher.
                         self._publishing = False
                         return
+                # A job can outlive its browser tab: keep the state, skip the UI.
+                if self._context is not None and self._context.closed_event.is_set():
+                    with self._lock:
+                        self._published_toasts, self._published_tasks = toasts, tasks
+                    continue
                 # Outside the lock: these fire subscribers, which may mutate.
-                if toasts_changed:
-                    self.toasts.value = toasts
-                    with self._lock:
-                        self._published_toasts = toasts
-                if tasks_changed:
-                    self.tasks.value = tasks
-                    with self._lock:
-                        self._published_tasks = tasks
+                with self._owner_context():
+                    if toasts_changed:
+                        self.toasts.value = toasts
+                        with self._lock:
+                            self._published_toasts = toasts
+                    if tasks_changed:
+                        self.tasks.value = tasks
+                        with self._lock:
+                            self._published_tasks = tasks
         except BaseException:
             with self._lock:
                 self._publishing = False
@@ -143,6 +171,17 @@ class NotificationBus:
         """Update a tracked task by ID. Unknown IDs are silently ignored."""
         with self._lock:
             self._tasks = [replace(t, **changes) if t.id == task_id else t for t in self._tasks]
+        self._publish()
+
+    def modify_task(self, task_id: str, changes: Callable[[TrackedTask], dict]) -> None:
+        """Update a task from its current state, read and written under one lock.
+
+        ``update_task`` cannot do this: a caller that reads the task first and
+        writes later loses a parallel worker's update made in between.
+        ``changes`` must not call back into the bus. Unknown IDs are ignored.
+        """
+        with self._lock:
+            self._tasks = [replace(t, **changes(t)) if t.id == task_id else t for t in self._tasks]
         self._publish()
 
     def remove_task(self, task_id: str) -> None:
