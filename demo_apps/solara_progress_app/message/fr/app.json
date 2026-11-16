@@ -8,12 +8,14 @@
   },
   "section": {
     "title": "Exécutions",
-    "description": "Étapes : des phases nommées, chacune écrite dans le journal. Fraction : set_progress(value) remplit l'anneau et n'écrit rien. Téléchargement : set_progress(value, detail=...) alterne le titre et la tuile en cours, et le journal ne garde que les étapes par couche."
+    "description": "Étapes : des phases nommées, chacune écrite dans le journal. Fraction : set_progress(value) remplit l'anneau et n'écrit rien. Téléchargement : set_progress(value, detail=...) alterne le titre et la tuile en cours, et le journal ne garde que les étapes par couche. Threads : le même téléchargement depuis un thread de travail ; lancez celui du pool partagé dans deux onglets, et chaque pastille ne montre que sa propre exécution."
   },
   "buttons": {
     "steps": "Exécuter avec des étapes",
     "fraction": "Exécuter avec une fraction",
-    "download": "Lancer un téléchargement par tuiles"
+    "download": "Lancer un téléchargement par tuiles",
+    "to_thread": "Télécharger dans asyncio.to_thread",
+    "pool": "Télécharger dans un pool de threads partagé"
   },
   "tasks": {
     "steps": {

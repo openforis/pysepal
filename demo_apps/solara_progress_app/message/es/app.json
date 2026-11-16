@@ -8,12 +8,14 @@
   },
   "section": {
     "title": "Ejecuciones",
-    "description": "Pasos: fases con nombre, cada una escrita en el registro. Fracción: set_progress(value) llena el anillo y no escribe nada. Descarga: set_progress(value, detail=...) alterna el título con la tesela actual, y el registro solo guarda los pasos por capa."
+    "description": "Pasos: fases con nombre, cada una escrita en el registro. Fracción: set_progress(value) llena el anillo y no escribe nada. Descarga: set_progress(value, detail=...) alterna el título con la tesela actual, y el registro solo guarda los pasos por capa. Hilos: la misma descarga desde un hilo de trabajo; lance la del pool compartido en dos pestañas, y cada píldora muestra solo su propia ejecución."
   },
   "buttons": {
     "steps": "Ejecutar con pasos",
     "fraction": "Ejecutar con una fracción",
-    "download": "Ejecutar una descarga por teselas"
+    "download": "Ejecutar una descarga por teselas",
+    "to_thread": "Descargar en asyncio.to_thread",
+    "pool": "Descargar en un pool de hilos compartido"
   },
   "tasks": {
     "steps": {

@@ -17,6 +17,11 @@ The download run is the case the detail exists for: several layers, each made
 of many tiles, where the title says which layer is running and the detail says
 how far into it the run is. Nothing is downloaded -- the tiles are timed sleeps.
 
+The same download also runs off the kernel's event loop: through
+``asyncio.to_thread``, through a one-worker ``ThreadPoolExecutor`` that every
+connection shares (start it in two browser tabs at once: each pill shows only
+its own run).
+
 The UI lives in :func:`ProgressAppDemo` so the same code serves both runtimes --
 ``Page`` is the Solara entrypoint and ``ui.ipynb`` is a thin Voila one.
 
@@ -28,6 +33,8 @@ pysepal$ ./run_solara.sh demo_apps/solara_progress_app/app.py --port 8901
 """
 
 import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import solara
@@ -59,6 +66,9 @@ TILE_SECONDS = 0.1
 #: How long the download waits for a free slot before its first layer starts.
 WAIT_SECONDS = 3.0
 
+#: One worker for every connection, so two tabs' downloads share one thread.
+SHARED_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="progress-demo")
+
 
 async def run_steps(notifications) -> None:
     """A few named phases: ``step()`` only, the pill's long-standing behaviour."""
@@ -78,35 +88,81 @@ async def run_fraction(notifications) -> None:
         task.complete(msg("tasks.fraction.done"))
 
 
+def layer_texts() -> list[dict]:
+    """Translate every message a layer needs, on the kernel's side.
+
+    ``msg()`` reads the connection's locale from its kernel, and a worker thread
+    has none, so a worker gets these strings ready-made. ``tile`` keeps a
+    ``{tile}`` placeholder for the worker to fill.
+    """
+    return [
+        {
+            "name": layer,
+            "title": msg("tasks.download.layer", index=index, total=len(LAYERS), layer=layer),
+            "tile": msg("tasks.download.tile", layer=layer, tile="{tile}", total=TILES_PER_LAYER),
+            "done": msg("tasks.download.layer_done", layer=layer),
+        }
+        for index, layer in enumerate(LAYERS, start=1)
+    ]
+
+
+def report_tile(task, layer: dict, tile: int, last_pct) -> int:
+    """Publish one tile's progress on whole-percent changes only; return the percent.
+
+    set_progress pushes the whole task list to the browser, so a many-item
+    source skips the calls that would not change what the pill shows.
+    """
+    pct = tile * 100 // TILES_PER_LAYER
+    if pct != last_pct:
+        task.set_progress(tile / TILES_PER_LAYER, detail=layer["tile"].format(tile=tile))
+    return pct
+
+
 async def run_download(notifications) -> None:
-    """Many tiles over several layers: title per layer, detail per tile."""
+    """Many tiles over several layers, on the kernel's event loop."""
     with notifications.track(msg("tasks.download.title")) as task:
         # A detail with no value: the ring spins and the pill says why it waits.
         task.set_progress(None, detail=msg("tasks.download.waiting"))
         await asyncio.sleep(WAIT_SECONDS)
         task.step(msg("tasks.download.started", layers=len(LAYERS)))
 
-        for index, layer in enumerate(LAYERS, start=1):
-            task.update(msg("tasks.download.layer", index=index, total=len(LAYERS), layer=layer))
+        for layer in layer_texts():
+            task.update(layer["title"])
             # Between items: back to indeterminate, so the previous layer's 100%
             # does not sit on the ring while the next one starts.
             task.set_progress(None)
             last_pct = None
             for tile in range(1, TILES_PER_LAYER + 1):
                 await asyncio.sleep(TILE_SECONDS)
-                # set_progress pushes the whole task list to the browser, so a
-                # many-item source publishes on whole-percent changes only.
-                pct = tile * 100 // TILES_PER_LAYER
-                if pct == last_pct:
-                    continue
-                last_pct = pct
-                task.set_progress(
-                    tile / TILES_PER_LAYER,
-                    detail=msg(
-                        "tasks.download.tile", layer=layer, tile=tile, total=TILES_PER_LAYER
-                    ),
-                )
-            task.step(msg("tasks.download.layer_done", layer=layer))
+                last_pct = report_tile(task, layer, tile, last_pct)
+            task.step(layer["done"])
+        task.complete(msg("tasks.download.done"))
+
+
+def download_blocking(task, layers: list[dict]) -> None:
+    """The same download as blocking code, for a worker thread."""
+    for layer in layers:
+        task.update(layer["title"])
+        task.set_progress(None)
+        last_pct = None
+        for tile in range(1, TILES_PER_LAYER + 1):
+            time.sleep(TILE_SECONDS)
+            last_pct = report_tile(task, layer, tile, last_pct)
+        task.step(layer["done"])
+
+
+async def run_to_thread(notifications) -> None:
+    """The tracker opens here, on the kernel's side, and the worker reports through it."""
+    with notifications.track(msg("tasks.download.title")) as task:
+        await asyncio.to_thread(download_blocking, task, layer_texts())
+        task.complete(msg("tasks.download.done"))
+
+
+async def run_pool(notifications) -> None:
+    """Through the pool every connection shares: two tabs, one thread, two pills."""
+    with notifications.track(msg("tasks.download.title")) as task:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(SHARED_POOL, download_blocking, task, layer_texts())
         task.complete(msg("tasks.download.done"))
 
 
@@ -150,6 +206,8 @@ def _ProgressShell():
         "steps": use_run(run_steps),
         "fraction": use_run(run_fraction),
         "download": use_run(run_download),
+        "to_thread": use_run(run_to_thread),
+        "pool": use_run(run_pool),
     }
 
     def run_button(name: str, icon: str):
@@ -186,6 +244,8 @@ def _ProgressShell():
                     run_button("steps", "mdi-format-list-numbered"),
                     run_button("fraction", "mdi-circle-slice-5"),
                     run_button("download", "mdi-cloud-download-outline"),
+                    run_button("to_thread", "mdi-swap-horizontal"),
+                    run_button("pool", "mdi-account-multiple-outline"),
                 ],
                 "description": msg("section.description"),
             }

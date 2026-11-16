@@ -8,12 +8,14 @@
   },
   "section": {
     "title": "Runs",
-    "description": "Steps: named phases, each one written to the log. Fraction: set_progress(value) fills the ring and writes nothing. Download: set_progress(value, detail=...) alternates the title with the current tile, and the log keeps only the per-layer steps."
+    "description": "Steps: named phases, each one written to the log. Fraction: set_progress(value) fills the ring and writes nothing. Download: set_progress(value, detail=...) alternates the title with the current tile, and the log keeps only the per-layer steps. Threads: the same download from a worker thread; start the shared pool run in two tabs, and each pill shows only its own run."
   },
   "buttons": {
     "steps": "Run with steps",
     "fraction": "Run with a fraction",
-    "download": "Run a tiled download"
+    "download": "Run a tiled download",
+    "to_thread": "Download in asyncio.to_thread",
+    "pool": "Download in a shared thread pool"
   },
   "tasks": {
     "steps": {
