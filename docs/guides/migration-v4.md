@@ -1,10 +1,8 @@
 # Migrating to pysepal 4.0
 
-> This page records the 4.0 changes. Since 4.2, `MapApp` is also a native
-> Solara component, `pysepal.solara.components.map_app.MapApp(...)` with no
-> `.element`, and new apps use it. The `MapApp.element(...)` calls below still
-> work with the legacy `pysepal.sepalwidgets.vue_app.MapApp`. See
-> [solara-mapapp-component.md](./solara-mapapp-component.md).
+> This page records the 4.0 changes. pysepal 5 removed `pysepal.sepalwidgets`
+> and the Vue `MapApp.element`, and needs ipyvuetify 3: see
+> [migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md).
 
 Everything listed here is **removed**, not deprecated: there is no shim, no
 `DeprecationWarning`, and no fallback path. Work through the sections in order —

@@ -23,7 +23,7 @@ build:
     post_install:
       - pip install sphinx
     pre_build:
-      - sphinx-apidoc --force --module-first --templatedir=docs/source/_templates/apidoc -o docs/source/modules ./pysepal
+      - sphinx-apidoc --force --module-first --templatedir=docs/source/_templates/apidoc -o docs/source/modules ./pysepal ./pysepal/sepalwidgets
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

@@ -45,4 +45,6 @@ Use templates from:
 - `assets/shared/`
 - `assets/local-voila/`
 
+Do not add an `ipyvuetify<3` pin: pysepal 5 needs ipyvuetify 3.
+
 If a notebook entrypoint is needed, synthesize it from `local-voila-notebook-outline.md`.

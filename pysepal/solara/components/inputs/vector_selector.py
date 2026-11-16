@@ -21,8 +21,9 @@ from pysepal.solara.utils import _reader_filesystem
 VECTOR_EXTENSIONS = [".shp", ".geojson", ".gpkg", ".kml"]
 
 COLUMN_ALL_ITEMS = [
-    {"text": "All features", "value": "ALL"},
-    {"divider": True},
+    {"title": "All features", "value": "ALL"},
+    # without a title Vuetify uses the whole item as one ("[object Object]")
+    {"type": "divider", "title": ""},
 ]
 
 
@@ -153,8 +154,9 @@ def VectorSelectorComponent(
                 items=column_items,
                 v_model=selected_column,
                 on_v_model=select_column,
-                dense=True,
                 loading=column_task.pending,
+                density="compact",
+                variant="underlined",
             ):
                 pass
 
@@ -164,8 +166,9 @@ def VectorSelectorComponent(
                     items=value_items,
                     v_model=selected_value,
                     on_v_model=select_value,
-                    dense=True,
                     clearable=True,
                     loading=value_task.pending,
+                    density="compact",
+                    variant="underlined",
                 ):
                     pass

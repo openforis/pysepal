@@ -15,6 +15,36 @@ repository.
 
 ---
 
+## ipyvuetify 3 only (pysepal 5, issue #1073)
+
+pysepal 5 requires `ipyvuetify>=3.1,<4`: Vuetify 3 and Vue 3 only. The 4.x line
+stays on ipyvuetify 1 (`<3`).
+
+- Every component, template and CSS rule is written for Vuetify 3. There is no
+  major switch and no `IPYVUETIFY_V3` branch left in pysepal.
+- `pysepal.sepalwidgets` and the widgets built on it are removed. Importing it
+  raises an `ImportError` that points to `migrating-to-pysepal-5.md`.
+- The `MapApp` shell is native Solara (`pysepal.solara.components.map_app`). It
+  positions its own sheets and does not depend on Vuetify's layout system.
+- Solara apps and Voila apps in SEPAL's app catalog ship their own
+  `jupyter-vuetify` (SEPAL's Voila loads the widget extensions from the app's
+  environment). A notebook in JupyterLab uses the server's extensions.
+
+Template rules, all checked in a browser:
+
+- Write `module.exports = {...}`, not `export default`.
+- ipyvue 3 evaluates only the exported object of a template script, so a
+  top-level `const` outside it is undefined. Keep every binding inside the
+  object.
+- Synced traits arrive as data. Do not also declare them as `props`: the
+  template would read the unset props.
+- Vue 3 has no `beforeDestroy`. Use `beforeUnmount`.
+- Activator slots bind `props`: `v-bind="props"`.
+- Run `scripts/browser_probe.mjs --console`: Vue 3 reports an unknown component
+  or a template error only in the console.
+
+---
+
 ## 1.66.0 – 1.66.2 (reviewed 2026-11-09)
 
 1.66.1 was tagged but never published. 1.66.2 contains its fix.
@@ -160,7 +190,8 @@ Move the floor to `1.65.1` when one of these becomes true:
 - If upstream removes one of the three private APIs, pysepal fails at import
   with a clear `ImportError` (`pysepal/_runtime_context.py`,
   `pysepal/solara/_topology.py`, `pysepal/solara/theme.py`).
-- The known break, Vuetify 3, is already blocked by `ipyvuetify>=1.8,<3`.
+- The known break, Vuetify 3, is handled: pysepal 5 is Vuetify 3 only (see the
+  entry at the top).
 - A minor cap only delays a behaviour change such as [#1192]. This review is
   what finds it. If a release breaks pysepal, exclude it with `!=X.Y.Z` in a
   pysepal patch release. An app that needs a fixed environment pins exact
@@ -322,8 +353,8 @@ pysepal.
 - **1.64.1** — `define_module(dependencies=...)` on the Solara server
   ([#1244]): same reason.
 - **1.62.1, 1.64.1, 1.65.2** — Vuetify 3 fixes for the file browser, `AppLayout`
-  and `GridDraggable` ([#1203], [#1239], [#1270]). pysepal runs on Vuetify 2;
-  see Blocked below.
+  and `GridDraggable` ([#1203], [#1239], [#1270]). pysepal ran on Vuetify 2
+  then; see Blocked below.
 - **1.65.1** — Shift-click range selection in the file browser ([#1205]). The
   admin panel uses `solara.FileBrowser()` (`pysepal/solara/components/admin.py`)
   and gets it for free.
@@ -336,7 +367,7 @@ pysepal.
 [#1244]: https://github.com/widgetti/solara/pull/1244
 [#1270]: https://github.com/widgetti/solara/pull/1270
 
-### Blocked — ipyvuetify 3 is now the default install
+### Blocked — ipyvuetify 3 is now the default install (lifted in pysepal 5, see the top entry)
 
 The 1.61 entry below says that ipyvuetify 3 is a prerelease. That is no longer
 true: ipyvuetify 3.0.0 reached PyPI on 2026-08-12, and 3.1.0 is the newest
@@ -400,7 +431,7 @@ pysepal charts stay on `ipecharts`. The reasoning, and why the upstream fix does
 not apply to us, is recorded in `docs/guides/ipecharts.md` §
 "Why not `solara.FigureEcharts`?".
 
-### Blocked — ipyvuetify 3 (1.61)
+### Blocked — ipyvuetify 3 (1.61) (lifted in pysepal 5, see the top entry)
 
 Solara 1.61 supports ipyvuetify 1 and 3 side by side, selected by the installed
 version and exposed as `solara.util.IPYVUETIFY_V3`. ipyvuetify 3 is a

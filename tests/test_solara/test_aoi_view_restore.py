@@ -20,8 +20,8 @@ DATA = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_pol
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
 _ITEMS = {
-    (0, ""): [{"text": "Algeria", "value": "101"}],
-    (1, "101"): [{"text": "Adrar", "value": "1001"}],
+    (0, ""): [{"title": "Algeria", "value": "101"}],
+    (1, "101"): [{"title": "Adrar", "value": "1001"}],
 }
 
 
@@ -401,9 +401,9 @@ def test_explicit_clear_resets_an_incomplete_points_form(tmp_path):
             )
             find_by_label(root, msg("widgets.table.column.id")).v_model = None
             clear_ref.current()
-            await wait_until(lambda: of_type(root, "FileInput")[0].v_model == "")
+            await wait_until(lambda: of_type(root, "FileInputWidget")[0].v_model == "")
             assert _method_select(root).v_model == "POINTS"
-            assert of_type(root, "FileInput")[0].v_model == ""
+            assert of_type(root, "FileInputWidget")[0].v_model == ""
         finally:
             rc.close()
 
@@ -436,7 +436,7 @@ def test_clearing_while_processing_cancels_the_run(monkeypatch):
         try:
             await asyncio.wait_for(started.wait(), 3)
             clear_ref.current()
-            await wait_until(lambda: of_type(root, "FileInput")[0].v_model == "")
+            await wait_until(lambda: of_type(root, "FileInputWidget")[0].v_model == "")
 
             # Releasing a run that was not cancelled would publish "late" here.
             # Nothing arriving is the assertion, so this waits by time on purpose.

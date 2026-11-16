@@ -129,18 +129,21 @@ def TaskButtonComponent(
             )
         )
     elif btn_icon:
-        children.append(v.Icon(left=True, small=small, children=[btn_icon]))
+        # The button sizes its icon itself.
+        children.append(v.Icon(start=True, children=[btn_icon]))
 
     children.append(btn_label)
 
     # Use rv.Btn directly — never Vuetify's native loading prop which
-    # disables the button and hides children.
+    # disables the button and hides children. Card actions default their buttons
+    # to text style, so the filled look is asked for explicitly.
     btn = rv.Btn(
         children=children,
         color=btn_color,
         disabled=disabled,
-        small=small,
         block=block,
+        **({"size": "small"} if small else {}),
+        variant="elevated",
         style_=style_,
     )
     ipyvue.use_event(btn, "click", handle_click)

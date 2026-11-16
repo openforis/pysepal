@@ -98,8 +98,10 @@
       :aria-label="isCollapsed ? 'Show legend' : 'Hide legend'"
       :aria-expanded="String(!isCollapsed)"
     >
-      <v-icon small :dark="isDark" :light="!isDark">mdi-map-legend</v-icon>
-      <v-icon x-small :dark="isDark" :light="!isDark">{{
+      <!-- px: the named icon sizes scale with the font; the icons take the
+           bar's themed text colour -->
+      <v-icon :size="16">mdi-map-legend</v-icon>
+      <v-icon :size="12">{{
         isCollapsed ? "mdi-chevron-up" : "mdi-chevron-down"
       }}</v-icon>
     </div>
@@ -108,41 +110,28 @@
 
 <script>
 module.exports = {
-  props: {
-    legend_data: {
-      type: Object,
-      default: () => ({}),
-    },
-    visible: {
-      type: Boolean,
-      default: true,
-    },
-    collapsed: {
-      type: Boolean,
-      default: false,
-    },
-    selector_options: {
-      type: Array,
-      default: () => [],
-    },
-    selected: {
-      type: String,
-      default: null,
-    },
-  },
+  // legend_data, visible, collapsed, selector_options and selected are traits:
+  // ipyvue adds them as data, and declaring them as props too makes Vue warn
+  // about the duplicate.
   data() {
     return {
-      internalCollapsed: this.collapsed,
+      internalCollapsed: false,
     };
+  },
+  // Not in data(): ipyvue calls it before the traits exist.
+  created() {
+    this.internalCollapsed = !!this.collapsed;
   },
   computed: {
     isDark() {
       // Reactive: changes when the user toggles the Vuetify theme at runtime.
-      return (
-        this.$vuetify &&
-        this.$vuetify.theme &&
-        this.$vuetify.theme.dark === true
-      );
+      const theme = this.$vuetify && this.$vuetify.theme;
+      if (!theme) return false;
+      const current = theme.global.current;
+      // A ref, unless the reactive $vuetify has already unwrapped it.
+      const definition =
+        current && "value" in current ? current.value : current;
+      return !!(definition && definition.dark);
     },
     isCollapsed() {
       return this.internalCollapsed;

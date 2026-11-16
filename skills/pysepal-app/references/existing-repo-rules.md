@@ -18,8 +18,11 @@ Inspect these before editing:
 - current environment files
 - current docker files if present
 - current component tree
-- calls to `MapApp.element` from `pysepal.sepalwidgets.vue_app`: move them to
-  the native `MapApp` with `docs/guides/solara-mapapp-component.md`
+- imports of `pysepal.sepalwidgets` (removed in 5.0) and calls to
+  `MapApp.element`: move them to the Solara components with
+  `docs/guides/migrating-to-pysepal-5.md`
+- whether the app is also used as a notebook in JupyterLab: there the widgets
+  render only where the Jupyter server has ipyvuetify 3
 
 ## When To Stop And Ask
 
@@ -28,3 +31,4 @@ Stop and ask if:
 - the repo mixes incompatible patterns and the migration path is ambiguous
 - existing files already implement the same responsibilities with a different architecture
 - the requested scaffold would require deleting meaningful user code
+- a removed sepalwidgets widget holds app logic that has no Solara replacement

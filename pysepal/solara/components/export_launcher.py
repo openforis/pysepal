@@ -71,7 +71,7 @@ def ExportLauncher(
                         icon_name=icon,
                         color="primary",
                         disabled=True,
-                        small=small,
+                        **({"size": "small"} if small else {}),
                         block=block,
                     )
         else:
@@ -81,7 +81,7 @@ def ExportLauncher(
                 icon_name=icon,
                 color="primary",
                 disabled=False,
-                small=small,
+                **({"size": "small"} if small else {}),
                 block=block,
             )
 

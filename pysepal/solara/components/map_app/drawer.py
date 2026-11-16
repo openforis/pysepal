@@ -128,7 +128,7 @@ def Drawer(
                 if not rail:
                     rv.Html(
                         tag="span",
-                        class_="title font-weight-medium",
+                        class_="text-h6 font-weight-medium",
                         children=[app_title],
                     )
             if not rail:
@@ -137,7 +137,7 @@ def Drawer(
                     icon=True,
                     text=True,
                     children=[
-                        rv.Icon(small=True, children=["mdi-pin" if pinned else "mdi-pin-outline"])
+                        rv.Icon(children=["mdi-pin" if pinned else "mdi-pin-outline"], size="small")
                     ],
                     attributes={"title": msg("map_app.unpin" if pinned else "map_app.pin")},
                     on_click=on_pin,
@@ -146,14 +146,14 @@ def Drawer(
         rv.Divider(class_="ma-0 pa-0")
 
         with rv.Html(tag="div", class_="sepal-mapapp__drawer-top"):
-            with rv.List(class_="pa-0 ma-0", dense=True):
+            with rv.List(class_="pa-0 ma-0", density="compact"):
                 for entry in _step_entries(has_map, steps, active_index, on_map, on_step):
                     NavItem(rail=rail, **entry)
 
         with rv.Html(tag="div", class_="sepal-mapapp__drawer-bottom"):
             rv.Divider(class_="mb-4")
             if links:
-                with rv.List(class_="pa-0 ma-0", dense=True):
+                with rv.List(class_="pa-0 ma-0", density="compact"):
                     for entry in _link_entries(links):
                         NavItem(rail=rail, **entry)
                 rv.Divider(class_="mt-2 mb-4")
@@ -208,20 +208,19 @@ def split_belt(entries: Sequence, slots: int) -> tuple:
 def BeltMenu(entries: Sequence[Mapping]):
     """Render the belt's menu button and the entries that did not fit."""
     activator = rv.ListItem(
-        v_on="menu.on",
+        v_bind="menu.props",
         link=True,
+        prepend_icon="mdi-dots-horizontal",
         class_="sepal-mapapp__item"
         + (" active-step" if any(e.get("active") for e in entries) else ""),
         attributes={"title": msg("map_app.more"), "aria-label": msg("map_app.more")},
-        children=[rv.ListItemIcon(children=[rv.Icon(children=["mdi-dots-horizontal"])])],
     )
     with rv.Menu(
-        offset_y=True,
-        left=True,
+        location="bottom end",
         content_class="sepal-mapapp__belt-menu",
         v_slots=[{"name": "activator", "variable": "menu", "children": activator}],
     ) as main:
-        with rv.List(class_="pa-0 ma-0", dense=True):
+        with rv.List(class_="pa-0 ma-0", density="compact"):
             for entry in entries:
                 NavItem(**entry)
     return main
@@ -260,10 +259,10 @@ def Belt(
         rv.Icon(class_="sepal-mapapp__belt-icon", children=[app_icon or "mdi-earth"])
         rv.Html(
             tag="span",
-            class_="title font-weight-medium sepal-mapapp__belt-title",
+            class_="text-h6 font-weight-medium sepal-mapapp__belt-title",
             children=[app_title],
         )
-        with rv.List(class_="pa-0 ma-0 sepal-mapapp__belt-items", dense=True):
+        with rv.List(class_="pa-0 ma-0 sepal-mapapp__belt-items", density="compact"):
             for entry in shown:
                 NavItem(rail=True, tooltip="bottom", **entry)
             if more:

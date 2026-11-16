@@ -14,7 +14,7 @@ module.exports = {
     this.applyVars(this.css_vars);
     this.applyBodyClass(this.body_class);
   },
-  beforeDestroy() {
+  beforeUnmount() {
     this.teardown();
   },
   watch: {

@@ -8,6 +8,10 @@ pysepal
     `sepal-ui` has been renamed to `pysepal`. pysepal 4.0 removed the ``sepal_ui``
     compatibility package: ``import sepal_ui`` no longer works, use ``import pysepal``.
 
+.. note::
+
+    pysepal 5 needs ipyvuetify 3 and removed the ipyvuetify 1 widgets (``pysepal.sepalwidgets`` and the widgets built on it). An app that still uses them stays on ``pysepal<5`` until it moves to the Solara components. See `the migration note <docs/guides/migrating-to-pysepal-5.md>`__.
+
 .. image:: https://img.shields.io/badge/License-MIT-yellow.svg?logo=opensourceinitiative&logoColor=white
     :target: https://opensource.org/licenses/MIT
     :alt: License: MIT

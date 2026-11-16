@@ -141,9 +141,10 @@ def AdminLevelSelector(
                 v_model=_code_at(level),
                 auto_select_first=True,
                 clearable=True,
-                dense=True,
                 loading=loading.value,
                 disabled=not enabled,
                 on_v_model=partial(_select, level),
+                density="compact",
+                variant="underlined",
             ):
                 pass

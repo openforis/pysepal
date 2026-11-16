@@ -245,7 +245,6 @@ Here's the basic structure for a Solara-based SEPAL application:
     from pathlib import Path
     import solara
 
-    from pysepal.sepalwidgets.file_input import FileInput
     from pysepal.solara import (
         setup_sessions,
         with_sepal_sessions,
@@ -254,6 +253,7 @@ Here's the basic structure for a Solara-based SEPAL application:
         setup_theme_colors,
         setup_solara_server,
     )
+    from pysepal.solara.components.inputs import FileInputComponent
 
     # Initializes the Solara server with optional asset locations (can be .css or .js files)
     setup_solara_server(extra_asset_locations=[])
@@ -280,7 +280,7 @@ Here's the basic structure for a Solara-based SEPAL application:
         solara.Markdown("# Welcome to Your SEPAL Application")
 
         # Add your components
-        FileInput.element(sepal_client=sepal_client)
+        FileInputComponent(sepal_client=sepal_client)
 
 
 To run the application, use the provided ``run_solara.sh`` script as shown in the previous section, providing the path to your application file. If everything is set up correctly, your application should launch in the browser and the file system should show the files from your SEPAL workspace.
@@ -309,8 +309,8 @@ section rather than copying the skeleton below.
 .. code-block:: python
 
     from pysepal.mapping import SepalMap
-    from pysepal.solara import get_current_gee_interface, get_current_theme_state
     from pysepal.solara.components.map_app import MapApp
+    from pysepal.solara import get_current_gee_interface, get_current_theme_state
 
     @solara.component
     @with_sepal_sessions(module_name="your_map_module")
@@ -361,15 +361,8 @@ section rather than copying the skeleton below.
             dialog_width=750,
         )
 
-A ``content`` is a Solara element, a widget, or a list of them, so
-``@solara.component`` tiles and ``solara.Button(..., on_click=...)`` go
-straight in. The theme toggle and the language selector are built into the
-drawer. Every argument is in ``docs/guides/solara-mapapp-component.md``.
-
-.. note::
-   This ``MapApp`` is new in pysepal 4.2. The legacy
-   ``pysepal.sepalwidgets.vue_app.MapApp``, used as ``MapApp.element(...)``,
-   still works; new apps use the native one.
+Both ``content`` lists accept ipyvuetify widgets and Solara elements, so modern
+``@solara.component`` tiles can be passed straight through.
 
 .. note::
    Keep user feedback in the notification system rather than in

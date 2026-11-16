@@ -11,10 +11,10 @@ from pysepal.solara.components.inputs.admin_selector import AdminLevelSelector
 from ._harness import find_by_label
 
 _ITEMS = {
-    (0, ""): [{"text": "Algeria", "value": "101"}, {"text": "Paraguay", "value": "206"}],
-    (1, "101"): [{"text": "Adrar", "value": "1001"}],
-    (1, "206"): [{"text": "Amambay", "value": "2184"}],
-    (2, "1001"): [{"text": "Aoulef", "value": "100001"}],
+    (0, ""): [{"title": "Algeria", "value": "101"}, {"title": "Paraguay", "value": "206"}],
+    (1, "101"): [{"title": "Adrar", "value": "1001"}],
+    (1, "206"): [{"title": "Amambay", "value": "2184"}],
+    (2, "1001"): [{"title": "Aoulef", "value": "100001"}],
 }
 
 
@@ -137,6 +137,21 @@ def test_countries_leaves_the_lower_levels_alone(monkeypatch):
 
     items = find_by_label(root, msg("aoi_sel.adm.1")).items
     assert [item["value"] for item in items] == ["1001"]
+
+
+def test_items_reach_the_widget_unchanged(monkeypatch):
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+
+    @solara.component
+    def _Harness():
+        AdminLevelSelector(method="ADMIN1", gee=False, codes=("101",))
+
+    root = _render(_Harness)
+    countries = find_by_label(root, msg("aoi_sel.adm.0"))
+
+    assert countries.items == _ITEMS[(0, "")]
+    assert countries.density == "compact"
+    assert countries.variant == "underlined"
 
 
 def test_every_level_highlights_its_first_match(monkeypatch):

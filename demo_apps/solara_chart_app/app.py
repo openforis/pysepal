@@ -111,12 +111,12 @@ def PageContexts(values: list, on_map, on_regenerate):
             rv.ExpansionPanels(
                 v_model=panel.value,
                 on_v_model=panel.set,
-                accordion=True,
+                variant="accordion",
                 children=[
                     rv.ExpansionPanel(
                         children=[
-                            rv.ExpansionPanelHeader(children=[msg("contexts.panel.header")]),
-                            rv.ExpansionPanelContent(children=[ContextChart(values)]),
+                            rv.ExpansionPanelTitle(children=[msg("contexts.panel.header")]),
+                            rv.ExpansionPanelText(children=[ContextChart(values)]),
                         ]
                     )
                 ],
@@ -188,7 +188,7 @@ def MapContexts(values: list, on_back):
                         on_click=on_back,
                         block=True,
                         classes=["mt-2"],
-                        small=True,
+                        size="small",
                     ),
                 ],
                 "description": msg("contexts.right_panel.description"),

@@ -36,6 +36,22 @@ Use `import reacton.ipyvuetify as rv` when:
 
 Always prefer native Solara components when available.
 
+### Write for Vuetify 3
+
+pysepal 5 runs on ipyvuetify 3 (Vuetify 3) only. Code carried over from a
+pysepal 4 app was written for Vuetify 2, so check every `rv.*` call and template:
+
+- Vuetify 3 renamed props (`dense` → `density`, `small` → `size`, `outlined` /
+  `text` → `variant`) and removed components (`v-list-item-content`,
+  `v-flex`, `v-tabs-items`).
+- Activator slots bind `props`, not `on`. Select items read `title`, not `text`.
+- The full spelling table is in
+  [migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md); the template rules
+  are in [ipyvuetify-widgets.md](./ipyvuetify-widgets.md).
+- Render the component in a browser with `scripts/browser_probe.mjs --console`
+  ([browser-testing.md](./browser-testing.md)): Vue reports an unknown component
+  only in the console.
+
 ### GEE + SessionManager Migration Rule
 
 When migrating an ipywidgets or traitlets component that talks to Earth
@@ -564,25 +580,42 @@ Shows: AppState singleton, MapApp layout, `use_thread` for long operations, `use
 
 ## 9. Widget Conversion Status
 
-### Already converted (Solara-native)
+pysepal 5 removed `pysepal.sepalwidgets`
+([migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md)). What replaced its
+widgets:
+
+### Converted (Solara-native)
 
 - `AdminButton` → `pysepal/solara/components/admin.py`
 - `AoiView` → `pysepal/solara/components/aoi/aoi_view.py`
 - `AoiResult` → `pysepal/solara/components/aoi/aoi_result.py`
 - `MapApp`, `ThemeToggle`, `RightPanel` → `pysepal/solara/components/map_app/`
-  (new in 4.2; the `vue_app.py` originals still work)
+- `TaskButton` → `TaskButtonComponent` in `pysepal/solara/components/task_button.py`
+- `AssetSelect`, `VectorField`, `LoadTableField` → `AssetSelectComponent`,
+  `VectorSelectorComponent`, `PointsSelectorComponent` in
+  `pysepal/solara/components/inputs/`
+- `Alert`, `StateBar`, `Banner` (event feedback) → `pysepal.solara.notifications`
 
-### Bridge wrappers (ipyvuetify widget exposed via Solara, not truly converted)
+### Template widgets in the Solara layer
 
-- `FileInputComponent` → `pysepal/sepalwidgets/file_input.py` (wraps the ipyvuetify `FileInput` via `.element()` with manual state sync — not a Solara-native component)
+These keep a `VuetifyTemplate` with one `.vue` file.
 
-### Pending conversion (in `pysepal/sepalwidgets/`)
+- `FileInputComponent` → `pysepal/solara/components/inputs/file_input.py`,
+  around `FileInputWidget` (`_file_input_widget.py`, `vue/FileInput.vue`)
+- `LocaleSelectComponent` → `pysepal/solara/components/locale_select.py`,
+  around `LocaleSelectWidget` (`_locale_widget.py`, `vue/LocaleSelect.vue`)
 
-- `Btn`, `DownloadBtn`, `TaskButton` (btn.py)
-- `Alert`, `StateBar`, `Banner`, `Divider` (alert.py)
-- `DatePicker`, `FileInput`, `AssetSelect`, `NumberField`, `SimpleSlider` (inputs.py)
-- `Tile`, `TileAbout`, `TileDisclaimer` (tile.py)
-- `Radio`, `RadioGroup` (radio.py)
-- `Markdown`, `CopyToClip`, `StateIcon` (widget.py)
-- `Dialog`, `Tooltip` (sepalwidget.py)
-- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer` (app.py) — legacy layout, the native `MapApp` is the replacement
+### Removed without a Solara version
+
+Use Solara layout or plain `rv.*` elements instead.
+
+- `Btn`, `DownloadBtn`
+- `Divider`
+- `DatePicker`, `NumberField`, `PasswordField`, `SimpleSlider`
+- `Tile`, `TileAbout`, `TileDisclaimer`
+- `Radio`, `RadioGroup`
+- `Markdown`, `CopyToClip`, `StateIcon`
+- `Dialog`. The `SepalWidget` mixin and `Tooltip` moved to
+  `pysepal/_sepal_widget.py`.
+- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer`: `MapApp` is the
+  replacement

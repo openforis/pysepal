@@ -103,7 +103,7 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
             color="primary",
             loading=process_task.pending,
             disabled=process_task.pending or not has_aoi,
-            small=True,
+            size="small",
             block=True,
         )
         solara.Button(
@@ -113,6 +113,6 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
             outlined=True,
             loading=failing_task.pending,
             disabled=failing_task.pending,
-            small=True,
+            size="small",
             block=True,
         )

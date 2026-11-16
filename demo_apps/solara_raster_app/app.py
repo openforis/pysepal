@@ -253,11 +253,7 @@ def RasterPanel():
                         label=msg("buttons.large"), **large_props, small=True, block=True
                     ),
                     solara.Button(
-                        msg("buttons.clear_rasters"),
-                        on_click=clear,
-                        color="primary",
-                        block=True,
-                        small=True,
+                        msg("buttons.clear_rasters"), on_click=clear, block=True, size="small"
                     ),
                 ],
                 "description": msg(

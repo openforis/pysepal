@@ -1,7 +1,8 @@
 """Test MapBtn widget."""
 
+import ipyvuetify as v
+
 from pysepal import mapping as sm
-from pysepal import sepalwidgets as sw
 
 
 def test_init() -> None:
@@ -9,12 +10,13 @@ def test_init() -> None:
     # fa-solid icon
     map_btn = sm.MapBtn("fa-solid fa-folder")
     assert isinstance(map_btn, sm.MapBtn)
-    assert isinstance(map_btn.children[0], sw.Icon)
-    assert map_btn.children[0].children[0] == "fa-solid fa-folder"
+    assert isinstance(map_btn.children[0], v.Icon)
+    # Vuetify 3 renders a Font Awesome name as is only behind the class: prefix
+    assert map_btn.children[0].children[0] == "class:fa-solid fa-folder"
 
     # mdi icon
     map_btn = sm.MapBtn("mdi-folder")
-    assert isinstance(map_btn.children[0], sw.Icon)
+    assert isinstance(map_btn.children[0], v.Icon)
     assert map_btn.children[0].children[0] == "mdi-folder"
 
     # small text

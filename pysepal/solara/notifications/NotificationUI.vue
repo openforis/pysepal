@@ -1,20 +1,20 @@
 <template>
   <div :class="{ 'theme-dark': is_dark, 'theme-light': !is_dark }">
-    <!-- Toast Stack: fixed top-right -->
-    <div class="toast-stack">
+    <!-- Toast Stack: fixed top-right. One click handler on the stack finds the
+         clicked toast by its data-toast-id. -->
+    <div class="toast-stack" @click="_onToastClick">
       <v-alert
         v-for="toast in visibleToasts"
         :key="toast.id"
         :type="toast.color"
         :icon="toast.kind === 'cancel' ? 'mdi-cancel' : undefined"
-        :value="true"
-        :dismissible="!toast.timeout"
-        dense
-        dark
+        variant="flat"
+        :closable="!toast.timeout"
+        density="compact"
         elevation="4"
         class="toast-alert"
         :class="'toast-' + toast.kind"
-        @click.native="_dismissToast(toast.id)"
+        :data-toast-id="toast.id"
       >
         <span class="toast-message">{{ toast.message }}</span>
         <span v-if="toast.count > 1" class="toast-count"
@@ -37,11 +37,19 @@
       <div v-if="logOpen" class="pill-log">
         <div class="pill-log-header">
           <span>
-            <v-icon small class="mr-2">mdi-history</v-icon>
+            <!-- px: the named icon sizes scale with the font -->
+            <v-icon :size="16" class="mr-2">mdi-history</v-icon>
             Logger
           </span>
-          <v-btn icon x-small @click="logOpen = false">
-            <v-icon small>mdi-close</v-icon>
+          <!-- a flat 20px button: an icon button is elevated and wider than its size -->
+          <v-btn
+            icon
+            size="x-small"
+            density="comfortable"
+            variant="text"
+            @click="logOpen = false"
+          >
+            <v-icon :size="16">mdi-close</v-icon>
           </v-btn>
         </div>
         <div ref="logBody" class="pill-log-body" @scroll="_onLogScroll">
@@ -88,13 +96,10 @@
 </template>
 
 <script>
-export default {
+module.exports = {
   name: "NotificationUI",
-  props: {
-    toasts: { type: Array, default: () => [] },
-    tasks: { type: Array, default: () => [] },
-    is_dark: { type: Boolean, default: false },
-  },
+  // toasts, tasks and is_dark are traits: ipyvue adds them as data, and
+  // declaring them as props too makes Vue 3 warn about the duplicate.
   data() {
     return {
       dismissTimers: {},
@@ -219,20 +224,29 @@ export default {
   mounted() {
     this._syncToastTimers(this.toasts);
     // Enable the right-edge transition only AFTER initial layout has
-    // settled — the RightPanel v-navigation-drawer registers with
-    // $vuetify.application a few ticks after MapApp mounts, which in turn
+    // settled — the RightPanel v-navigation-drawer registers with the
+    // Vuetify layout a few ticks after MapApp mounts, which in turn
     // drives the --sepal-notification-right-offset CSS var.  Gating with a
     // short timeout lets that first position lock in instantly (no slide).
     setTimeout(() => {
       this.transitionsEnabled = true;
     }, 400);
   },
-  beforeDestroy() {
-    for (const id of Object.keys(this.dismissTimers)) {
-      clearTimeout(this.dismissTimers[id]);
-    }
+  beforeUnmount() {
+    this._clearDismissTimers();
   },
   methods: {
+    _onToastClick(event) {
+      const alert = event.target.closest("[data-toast-id]");
+      if (alert) {
+        this._dismissToast(alert.getAttribute("data-toast-id"));
+      }
+    },
+    _clearDismissTimers() {
+      for (const id of Object.keys(this.dismissTimers)) {
+        clearTimeout(this.dismissTimers[id]);
+      }
+    },
     _syncToastTimers(newToasts) {
       // Set up auto-dismiss timers for new toasts with timeouts
       for (const toast of newToasts) {
@@ -261,7 +275,7 @@ export default {
         clearTimeout(this.dismissTimers[id]);
         delete this.dismissTimers[id];
       }
-      // Instantly hide in Vue (array push is reactive in Vue 2)
+      // Instantly hide in Vue
       if (!this.dismissedIdsList.includes(id)) {
         this.dismissedIdsList.push(id);
       }
@@ -306,9 +320,10 @@ export default {
   position: fixed;
   top: calc(var(--sepal-top-reserved, 0px) + 4px);
   right: 4px;
-  /* Stay above Vuetify dialogs and their overlays so toasts remain visible
-   * even when a modal is open — notifications are often about the dialog
-   * itself (errors, progress) and cannot be hidden beneath it. */
+  /* Stay above Vuetify dialogs and their overlays (z-index 2000) so toasts
+   * remain visible even when a modal is open —
+   * notifications are often about the dialog itself (errors, progress) and
+   * cannot be hidden beneath it. */
   z-index: 9999;
   width: 440px;
   max-width: calc(100vw - 8px);
@@ -330,14 +345,6 @@ export default {
   min-height: 72px !important;
   padding-top: 20px !important;
   padding-bottom: 20px !important;
-}
-
-/* v-alert paints a filled background on its inner .v-alert__wrapper — force
- * that wrapper transparent and set the color on .toast-alert itself.  Use
- * `background-color` (not the shorthand) to avoid clearing other background
- * properties Vuetify sets. */
-.toast-alert >>> .v-alert__wrapper {
-  background-color: transparent !important;
 }
 
 /* Toasts keep their own palette rather than the theme colours: the light theme's
@@ -377,16 +384,12 @@ export default {
   border-left: 4px solid #ffcdd2 !important;
 }
 
-/* Align icon and content properly */
-.toast-alert >>> .v-alert__wrapper {
-  align-items: center;
-}
-
 .toast-alert {
   color: #ffffff !important;
 }
 
-.toast-alert >>> .v-alert__content {
+/* `:deep()` reaches the elements Vuetify renders inside a component. */
+.toast-alert :deep(.v-alert__content) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -395,8 +398,8 @@ export default {
   overflow-y: auto;
 }
 
-.toast-alert >>> .v-alert__content,
-.toast-alert >>> .v-icon {
+.toast-alert :deep(.v-alert__content),
+.toast-alert :deep(.v-icon) {
   color: #ffffff !important;
 }
 
@@ -415,7 +418,7 @@ export default {
   font-size: 0.85em;
 }
 
-.toast-alert.toast-error >>> .v-alert__content {
+.toast-alert.toast-error :deep(.v-alert__content) {
   max-height: 500px;
 }
 
@@ -511,7 +514,7 @@ export default {
 }
 
 /* Icons inside the pill use the foreground color */
-.pill-container >>> .v-icon {
+.pill-container :deep(.v-icon) {
   color: var(--pill-fg) !important;
 }
 
@@ -523,11 +526,10 @@ export default {
 }
 
 /* Always-visible log button (v-btn icon, square override)
- * NOTE: Vuetify's v-btn paints its background through a ::before overlay,
- * so we must force that overlay to transparent and set the real
- * background-color on the button element itself.  `background-color` is
- * used explicitly (not the `background` shorthand) to avoid wiping the
- * other background-* properties Vuetify may set.
+ * NOTE: Vuetify's v-btn paints its hover background through an overlay
+ * (.v-btn__overlay), so we must force that overlay to transparent and set the real background-color on the button
+ * element itself.  `background-color` is used explicitly (not the `background`
+ * shorthand) to avoid wiping the other background-* properties Vuetify may set.
  */
 .pill-log-btn.v-btn {
   flex-shrink: 0;
@@ -540,7 +542,7 @@ export default {
   min-height: 36px !important;
 }
 
-.pill-log-btn.v-btn::before {
+.pill-log-btn.v-btn :deep(.v-btn__overlay) {
   background-color: transparent !important;
 }
 
@@ -548,7 +550,7 @@ export default {
   background-color: var(--pill-bg-hover) !important;
 }
 
-.pill-log-btn >>> .v-icon {
+.pill-log-btn :deep(.v-icon) {
   color: var(--pill-fg) !important;
 }
 
@@ -572,7 +574,7 @@ export default {
   border-bottom: 1px solid var(--log-divider);
 }
 
-.pill-log-header >>> .v-icon {
+.pill-log-header :deep(.v-icon) {
   color: var(--log-fg) !important;
 }
 

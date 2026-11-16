@@ -1,6 +1,11 @@
 """FileInputComponent with multiple=True syncs a list of paths both ways."""
 
 import asyncio
+import json
+import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,9 +13,13 @@ import reacton
 import solara
 
 from pysepal.scripts.filesystem import LocalFileSystem
+from pysepal.solara.components.inputs._file_input_widget import VUE_DIR, FileInputWidget
 from pysepal.solara.components.inputs.file_input import FileInputComponent
 
 from ._harness import of_type, wait_until
+
+# `python -c` imports pysepal from its cwd; a test elsewhere chdirs and never restores.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture
@@ -25,7 +34,7 @@ def _run(component, interact):
     async def run():
         root, rc = reacton.render(component, handle_error=False)
         try:
-            await interact(of_type(root, "FileInput")[0])
+            await interact(of_type(root, "FileInputWidget")[0])
         finally:
             rc.close()
 
@@ -156,6 +165,58 @@ def test_select_folders_reaches_the_widget(batch: Path) -> None:
         await wait_until(lambda: held.value == [sub])
 
     _run(Harness(), interact)
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        r"<v-list-item-(content|action|group)\b",
+        r'v-on="on"',
+        r"\s(dense|small|x-small|outlined|depressed|text|left|right)(\s|/?>)",
+    ],
+)
+def test_markup_has_no_vuetify2_spellings(spelling: str) -> None:
+    """Vuetify 3 drops unknown props and only warns about removed components."""
+    markup = FileInputWidget().template.template.split("<script>")[0]
+    assert not re.search(spelling, markup)
+
+
+def test_template_holds_markup_script_and_style() -> None:
+    template = FileInputWidget().template.template
+
+    assert re.search(r'v-slot:activator="\{ props \}"', template)
+    assert "module.exports = {" in template
+    assert "<style>" in template
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_selection_logic() -> None:
+    """The Vue side toggles files, keeps them across folders and clears them all."""
+    harness = Path(__file__).parents[1] / "js" / "file_input_selection.mjs"
+    traits = {
+        name: trait.default()
+        for name, trait in FileInputWidget.class_own_traits(sync=True).items()
+        if name not in ("template", "template_file")
+    }
+    subprocess.run(
+        ["node", str(harness), str(VUE_DIR / "FileInput.vue"), json.dumps(traits)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_the_inputs_do_not_import_sepalwidgets() -> None:
+    """pysepal.sepalwidgets does not import on ipyvuetify 3, so the inputs must not need it."""
+    code = (
+        "import sys, pysepal.solara.components.inputs\n"
+        "print('LEGACY', [m for m in sys.modules if m.startswith('pysepal.sepalwidgets')])"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], check=True, capture_output=True, text=True, cwd=REPO_ROOT
+    )
+
+    assert "LEGACY []" in result.stdout.splitlines()
 
 
 def test_the_bounds_are_resolved_once_per_folder(batch: Path, monkeypatch) -> None:

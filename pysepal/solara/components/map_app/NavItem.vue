@@ -1,33 +1,21 @@
 <template>
   <v-tooltip
-    :right="tooltip !== 'bottom'"
-    :bottom="tooltip === 'bottom'"
+    :location="tooltip === 'bottom' ? 'bottom' : 'end'"
     :disabled="!rail"
+    :text="title"
   >
-    <template v-slot:activator="{ on }">
+    <template v-slot:activator="{ props }">
       <v-list-item
-        v-bind="item_attributes || {}"
-        v-on="on"
+        v-bind="Object.assign({}, props, item_attributes || {})"
         :class="['sepal-mapapp__item', item_class, active ? 'active-step' : '']"
+        :prepend-icon="icon"
+        :title="rail ? undefined : title"
+        :append-icon="href && !rail ? 'mdi-open-in-new' : undefined"
         :href="href || undefined"
         :target="href ? '_blank' : undefined"
         link
         @click="click()"
-      >
-        <v-list-item-icon>
-          <v-icon class="mb-1">{{ icon }}</v-icon>
-        </v-list-item-icon>
-        <v-list-item-content v-if="!rail">
-          <v-list-item-title class="font-weight-medium d-flex align-center">
-            {{ title }}
-            <template v-if="href">
-              <v-spacer></v-spacer>
-              <v-icon class="ml-1" small>mdi-open-in-new</v-icon>
-            </template>
-          </v-list-item-title>
-        </v-list-item-content>
-      </v-list-item>
+      ></v-list-item>
     </template>
-    <span>{{ title }}</span>
   </v-tooltip>
 </template>

@@ -17,7 +17,7 @@ import tomli
 from anyascii import anyascii
 from deprecated.sphinx import deprecated, versionadded
 
-import pysepal
+from pysepal._sepal_widget import SepalWidget
 
 # check_input takes a `msg` parameter, which shadows the lookup.
 from pysepal.message import msg as _msg
@@ -38,7 +38,7 @@ def hide_component(widget: v.VuetifyWidget) -> v.VuetifyWidget:
     Returns:
         the widget
     """
-    if isinstance(widget, pysepal.sepalwidgets.sepalwidget.SepalWidget):
+    if isinstance(widget, SepalWidget):
         widget.hide()
 
     elif "d-none" not in str(widget.class_):
@@ -56,7 +56,7 @@ def show_component(widget: v.VuetifyWidget) -> v.VuetifyWidget:
     Returns:
         the widget
     """
-    if isinstance(widget, pysepal.sepalwidgets.sepalwidget.SepalWidget):
+    if isinstance(widget, SepalWidget):
         widget.show()
 
     elif "d-none" in str(widget.class_):
@@ -419,8 +419,6 @@ def get_changelog(repo_folder: Pathlike = Path.cwd()) -> str:
 #
 
 # fmt: off
-catch_errors = deprecated(version='3.0', reason="use pysepal.scripts.decorator.catch_errors instead")(sd.catch_errors)
 need_ee = deprecated(version='3.0', reason="use pysepal.scripts.decorator.need_ee instead")(sd.need_ee)
-loading_button = deprecated(version='3.0', reason="use pysepal.scripts.decorator.need_ee instead")(sd.loading_button)
 switch = deprecated(version='3.0', reason="use pysepal.scripts.decorator.switch instead")(sd.switch)
 # fmt: on

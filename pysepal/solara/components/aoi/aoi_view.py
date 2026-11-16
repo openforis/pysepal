@@ -164,17 +164,19 @@ def MethodSelect(
         current_type = m["type"]
 
         if prev_type != current_type:
-            items.append({"header": msg(TYPE_LABEL_KEYS[current_type])})
+            items.append({"type": "subheader", "title": msg(TYPE_LABEL_KEYS[current_type])})
         prev_type = current_type
 
-        items.append({"text": msg(m["label_key"]), "value": k})
+        items.append({"title": msg(m["label_key"]), "value": k})
 
+    # No method is "" here; a select counts "" as a pick and floats its label.
     with rv.Select(
         label=msg("aoi_sel.method"),
         items=items,
-        v_model=reactive_value.value,
-        dense=True,
-        on_v_model=reactive_value.set,
+        v_model=reactive_value.value or None,
+        on_v_model=lambda method: reactive_value.set(method or ""),
+        density="compact",
+        variant="underlined",
     ):
         pass
 
@@ -797,8 +799,8 @@ def AoiView(
                     label=msg("aoi_sel.aoi_name"),
                     v_model=draw_name.value,
                     on_v_model=draw_name.set,
-                    outlined=True,
-                    dense=True,
+                    variant="outlined",
+                    density="compact",
                 ):
                     pass
             else:

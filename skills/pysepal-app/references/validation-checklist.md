@@ -9,8 +9,12 @@ Run this checklist before presenting the finished scaffold.
 - New app state uses `solara.reactive()`.
 - No new traitlets observer architecture was scaffolded.
 - Every referenced pysepal component exists in the live discovery output.
+- Nothing imports `pysepal.sepalwidgets`.
 - Map apps use `MapApp(...)` from `pysepal.solara.components.map_app`, with no
   `.element`, `model=`, `theme_toggle=` or `language_selector=`.
+- The app's own `rv.*`, `solara.v` and `.vue` code is Vuetify 3, with no
+  `IPYVUETIFY_V3` branch.
+- The app requires `pysepal>=5` and does not pin `ipyvuetify<3`.
 - GEE flows inside Solara components avoid blocking sync calls.
 - GEE/container user-file operations use `SepalClient`, not `Path`, `os`,
   `shutil`, `glob`, `open()`, or container-local filesystem writes.

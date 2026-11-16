@@ -25,17 +25,6 @@ By the end, you will have an overview of the library usage and you'll be able to
     :hidden:
 
     solara
-    create-module
-    structure
-    custom-widget
-    decorator
-    manage-footer
     translate-app
-    remove-default
-    add-tile
-    io-design
-    sepalize
     create_asset
     send-to-sepal
-    send-to-heroku
-    further

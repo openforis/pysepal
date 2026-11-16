@@ -34,18 +34,18 @@ def Section(section: Mapping, last: bool):
             with rv.Html(tag="div", class_="section-header mb-3"):
                 with rv.Html(tag="div", class_="d-flex align-center"):
                     if icon:
-                        rv.Icon(class_="mr-2", small=True, children=[icon])
+                        rv.Icon(class_="mr-2", children=[icon], size="small")
                     if title:
                         rv.Html(
                             tag="span",
-                            class_="subtitle-2 font-weight-medium",
+                            class_="text-subtitle-2 font-weight-medium",
                             children=[title],
                         )
         if section.get("description"):
             with rv.Html(tag="div", class_="section-description mb-3"):
                 rv.Html(
                     tag="p",
-                    class_="body-2 ma-0 text--secondary",
+                    class_="text-body-2 ma-0 text-medium-emphasis",
                     children=[section["description"]],
                 )
         # Keyed so the optional header and description above do not remount it.
@@ -99,14 +99,14 @@ def RightPanel(
                     rv.Icon(class_="mr-2", children=[config["icon"] or "mdi-widgets"])
                     rv.Html(
                         tag="span",
-                        class_="title font-weight-medium",
+                        class_="text-h6 font-weight-medium",
                         children=[config["title"] or ""],
                     )
                 rv.Spacer()
                 solara.Button(
                     icon=True,
                     text=True,
-                    children=[rv.Icon(small=True, children=["mdi-close"])],
+                    children=[rv.Icon(children=["mdi-close"], size="small")],
                     attributes={"title": msg("map_app.close_panel")},
                     on_click=lambda: set_open(False),
                 )
@@ -117,7 +117,7 @@ def RightPanel(
                 with rv.Html(tag="div", class_="panel-description pa-3").key("description"):
                     rv.Html(
                         tag="p",
-                        class_="body-2 ma-0 text--secondary",
+                        class_="text-body-2 ma-0 text-medium-emphasis",
                         children=[config["description"]],
                     )
 

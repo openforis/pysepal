@@ -1,9 +1,9 @@
 /*******************************************************************************
  * The native MapApp shell (pysepal.solara.components.map_app).
  *
- * The shell positions its own sheets instead of using Vuetify's layout system,
- * whose API changes in Vuetify 3. Its layers stay below Vuetify's
- * modal baseline: see the layering contract in frontend/css/base.css.
+ * The shell positions its own sheets instead of using Vuetify's layout system.
+ * Its layers stay below Vuetify's modal baseline: see the layering contract in
+ * frontend/css/base.css.
  * The --sepal-mapapp-* variables are set inline on the shell root.
  */
 
@@ -78,7 +78,7 @@
   transition: width 0.2s ease, bottom 0.3s ease;
 }
 
-.sepal-mapapp__drawer.theme--dark {
+.sepal-mapapp__drawer.v-theme--dark {
   border-right-color: rgba(255, 255, 255, 0.12);
 }
 
@@ -134,8 +134,8 @@
   padding-right: 18px !important;
 }
 
-.sepal-mapapp__drawer--rail .v-list-item__icon {
-  margin-right: 0 !important;
+.sepal-mapapp__drawer--rail .v-list-item__prepend > .v-icon {
+  margin-inline-end: 0 !important;
 }
 
 /* belt: the drawer of a narrow window, a bar across the top */
@@ -153,7 +153,7 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
-.sepal-mapapp__belt.theme--dark {
+.sepal-mapapp__belt.v-theme--dark {
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
@@ -177,6 +177,7 @@
   display: flex;
   flex: 0 0 auto;
   height: 100%;
+  overflow: hidden;
   background: transparent !important;
 }
 
@@ -186,27 +187,36 @@
   padding: 0 12px !important;
 }
 
-/* Vuetify gives an icon that is not its item's only child a 16px left margin,
- * and the click ripple is a second child: without this the icon jumps right on
- * every click. */
-.sepal-mapapp__belt .v-list-item__icon {
-  margin-left: 0 !important;
-  margin-right: 0 !important;
+/* A belt item is its icon alone: the item is a grid, whose spacer and empty
+ * content column would still take 72px. */
+.sepal-mapapp__belt .v-list-item__prepend > .v-icon {
+  margin-inline-end: 0 !important;
 }
 
-.sepal-mapapp__belt > .v-divider--vertical {
+.sepal-mapapp__belt .v-list-item__spacer,
+.sepal-mapapp__belt .v-list-item__content {
+  display: none !important;
+}
+
+.sepal-mapapp__belt > .v-divider--vertical,
+.sepal-mapapp__belt > .v-divider__wrapper--vertical {
   align-self: center;
   height: 24px;
   min-height: 24px;
   max-height: 24px;
 }
 
+/* The divider comes as two halves around an empty content box. */
+.sepal-mapapp__belt .v-divider__content {
+  display: none;
+}
+
 .sepal-mapapp__belt-menu .active-step {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(var(--v-theme-on-surface), 0.1);
 }
 
 .sepal-mapapp .active-step {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: rgba(var(--v-theme-on-surface), 0.1);
 }
 
 .sepal-mapapp a,
@@ -233,7 +243,7 @@
 
 /* The language button is a text button, darker than the theme toggle, an icon
  * button, in the light theme: it takes the icon button colour. */
-.sepal-mapapp__config .v-btn.theme--light {
+.sepal-mapapp__config .v-btn.v-theme--light {
   color: rgba(0, 0, 0, 0.54) !important;
 }
 
@@ -343,11 +353,11 @@
   border-radius: 4px;
 }
 
-.sepal-right-panel.theme--dark .section-header {
+.sepal-right-panel.v-theme--dark .section-header {
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
-.sepal-right-panel.theme--dark .panel-description {
+.sepal-right-panel.v-theme--dark .panel-description {
   background-color: rgba(255, 255, 255, 0.05);
 }
 

@@ -1,29 +1,33 @@
 // Drives FileInput.vue's own selection methods, so the browser side of
 // multiple mode is tested rather than trusted.
+//
+// node file_input_selection.mjs <FileInput.vue> <JSON of the widget's trait defaults>
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 const source = readFileSync(process.argv[2], "utf8");
 const script = source.split("<script>")[1].split("</script>")[0];
-const literal = script
-  .slice(script.search(/^export default/m) + "export default".length)
-  .trim()
-  .replace(/;\s*$/, "");
+const traits = JSON.parse(process.argv[3]);
 
+// Evaluated as a CommonJS body that sets module.exports
 let now = 10_000;
-const component = runInNewContext(`(${literal})`, {
+const module = { exports: {} };
+runInNewContext(script, {
+  module,
+  exports: module.exports,
   window: {},
   Date: { now: () => now },
   setTimeout: () => 0,
 });
+const component = module.exports;
+
+// Like ipyvue, the synced traits are the component's data: the template must not
+// declare them as props, which Vue 3 would read in their place.
+assert.equal(component.props, undefined);
 
 function mount(props = {}) {
-  const instance = { $refs: {}, $nextTick() {} };
-  for (const [name, prop] of Object.entries(component.props)) {
-    instance[name] =
-      typeof prop.default === "function" ? prop.default() : prop.default;
-  }
+  const instance = { $refs: {}, $nextTick() {}, ...structuredClone(traits) };
   Object.assign(instance, component.data(), props);
   for (const [name, method] of Object.entries(component.methods)) {
     instance[name] = method.bind(instance);
@@ -133,3 +137,17 @@ assert.equal(both.countLabel, "1 item");
 both.onFileSelect(folder("/r/sub"));
 assert.equal(both.current_folder, "/r/sub");
 assert.deepEqual([...both.value], ["/r/sub"]);
+
+// icons and the keyboard-selected row use the Vuetify 3 theme colours
+const themed = mount();
+assert.equal(themed.getIconColor(file("/r/a.csv")), "secondary-contrast");
+assert.equal(themed.getIconColor(folder("/r/sub")), "primary-contrast");
+assert.equal(themed.getIconColor(file("/r/notes.xyz")), "anchor");
+assert.equal(Object.keys(themed.getItemStyle(0)).length, 0);
+assert.equal(Object.keys(themed.getTitleStyle(0)).length, 0);
+themed.selectedIndex = 0;
+assert.equal(
+  themed.getItemStyle(0).borderLeft,
+  "3px solid rgb(var(--v-theme-primary))"
+);
+assert.equal(themed.getTitleStyle(0).color, "rgb(var(--v-theme-primary))");

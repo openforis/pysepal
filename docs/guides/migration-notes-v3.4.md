@@ -1,5 +1,9 @@
 # pysepal Solara Component Changes (v3.4)
 
+> This page records the 3.4 changes. § 8 is superseded: `MapAppComponent` never
+> shipped. pysepal 5 removed `pysepal.sepalwidgets` and the Vue `MapApp`; see
+> [migrating-to-pysepal-5.md](./migrating-to-pysepal-5.md).
+
 Use this document to audit and update any pysepal-based Solara app that was
 scaffolded or written before these changes landed.
 

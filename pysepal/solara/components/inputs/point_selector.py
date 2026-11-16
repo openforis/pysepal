@@ -141,8 +141,9 @@ def PointsSelectorComponent(
                 v_model=id_column,
                 on_v_model=lambda column: select_column("id_column", column),
                 loading=column_task.pending,
-                dense=True,
                 clearable=True,
+                density="compact",
+                variant="underlined",
             ):
                 pass
 
@@ -152,8 +153,9 @@ def PointsSelectorComponent(
                 v_model=lat_column,
                 on_v_model=lambda column: select_column("lat_column", column),
                 loading=column_task.pending,
-                dense=True,
                 clearable=True,
+                density="compact",
+                variant="underlined",
             ):
                 pass
 
@@ -163,7 +165,8 @@ def PointsSelectorComponent(
                 v_model=lng_column,
                 on_v_model=lambda column: select_column("lng_column", column),
                 loading=column_task.pending,
-                dense=True,
                 clearable=True,
+                density="compact",
+                variant="underlined",
             ):
                 pass

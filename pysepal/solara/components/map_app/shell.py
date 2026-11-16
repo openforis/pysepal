@@ -29,6 +29,22 @@ BELT_HEIGHT_PX = 48
 DRAWER_WIDTH_PX = 320
 DISPLAYS = ("step", "dialog")
 
+_FIELD = {"color": "primary", "variant": "underlined"}
+_CONTROL = {"color": "primary"}
+DEFAULTS = {
+    **dict.fromkeys(
+        ["VTextField", "VTextarea", "VSelect", "VAutocomplete", "VCombobox", "VFileInput"], _FIELD
+    ),
+    **dict.fromkeys(
+        ["VCheckbox", "VCheckboxBtn", "VRadioGroup", "VRadio", "VSwitch", "VSlider"], _CONTROL
+    ),
+}
+"""Vuetify defaults for everything the shell holds, its dialogs and menus included.
+
+They give the shell's content pysepal's look: underlined fields, and the primary
+accent on focused and selected controls. A prop set on a component still wins.
+"""
+
 
 def _map_widget(main_map):
     if isinstance(main_map, (list, tuple)):
@@ -384,84 +400,87 @@ def MapApp(
     # children after it, which would rebuild them.
     with rv.Html(tag="div", class_=" ".join(classes), style_=local_vars) as main:
         solara.Style(CSS)
-        ViewportBridge(
-            css_vars=css_vars,
-            body_class="sepal-modal-open" if modal else "",
-            event_window_size=set_window,
-        ).key("viewport-bridge")
+        with rv.DefaultsProvider(defaults=DEFAULTS):
+            ViewportBridge(
+                css_vars=css_vars,
+                body_class="sepal-modal-open" if modal else "",
+                event_window_size=set_window,
+            ).key("viewport-bridge")
 
-        if has_map:
-            MapContainer(map_widget, on_click=collapse_if_unpinned).key("map")
+            if has_map:
+                MapContainer(map_widget, on_click=collapse_if_unpinned).key("map")
 
-        if step_slots:
-            with rv.Sheet(
-                tile=True,
-                elevation=0,
-                class_="step-content-container sepal-mapapp__step",
-                style_="" if active_key in step_slots else "display: none",
-            ).key("steps"):
-                for key, step in step_slots.items():
-                    Slot(
-                        step.get("content"),
-                        style_="" if key == active_key else "display: none",
-                    ).key(f"step:{key}")
+            if step_slots:
+                with rv.Sheet(
+                    tile=True,
+                    elevation=0,
+                    class_="step-content-container sepal-mapapp__step",
+                    style_="" if active_key in step_slots else "display: none",
+                ).key("steps"):
+                    for key, step in step_slots.items():
+                        Slot(
+                            step.get("content"),
+                            style_="" if key == active_key else "display: none",
+                        ).key(f"step:{key}")
 
-        links = external_links(repo_url, docs_url)
-        if narrow:
-            Belt(
-                app_title=app_title,
-                app_icon=app_icon,
-                width=width,
-                has_map=has_map,
-                steps=steps,
-                active_index=active_index,
-                disabled=modal,
-                links=links,
-                theme_state=state,
-                locales=locales,
-                on_map=show_map,
-                on_step=activate,
-            ).key("belt")
-        else:
-            Drawer(
-                app_title=app_title,
-                app_icon=app_icon,
-                has_map=has_map,
-                steps=steps,
-                active_index=active_index,
-                rail=rail,
-                pinned=pinned,
-                disabled=modal,
-                links=links,
-                theme_state=state,
-                locales=locales,
-                on_map=show_map,
-                on_step=activate,
-                on_pin=lambda: set_pinned(not pinned),
-            ).key("drawer")
-            DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail)).key("drawer-toggle")
+            links = external_links(repo_url, docs_url)
+            if narrow:
+                Belt(
+                    app_title=app_title,
+                    app_icon=app_icon,
+                    width=width,
+                    has_map=has_map,
+                    steps=steps,
+                    active_index=active_index,
+                    disabled=modal,
+                    links=links,
+                    theme_state=state,
+                    locales=locales,
+                    on_map=show_map,
+                    on_step=activate,
+                ).key("belt")
+            else:
+                Drawer(
+                    app_title=app_title,
+                    app_icon=app_icon,
+                    has_map=has_map,
+                    steps=steps,
+                    active_index=active_index,
+                    rail=rail,
+                    pinned=pinned,
+                    disabled=modal,
+                    links=links,
+                    theme_state=state,
+                    locales=locales,
+                    on_map=show_map,
+                    on_step=activate,
+                    on_pin=lambda: set_pinned(not pinned),
+                ).key("drawer")
+                DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail)).key("drawer-toggle")
 
-        if has_panel:
-            RightPanel(
-                config=right_panel_config,
-                sections=right_panel_content,
-                footer=right_panel_footer,
-                open=panel_open,
-                on_open=set_panel_open,
-                narrow=narrow,
-            ).key("right-panel")
+            if has_panel:
+                RightPanel(
+                    config=right_panel_config,
+                    sections=right_panel_content,
+                    footer=right_panel_footer,
+                    open=panel_open,
+                    on_open=set_panel_open,
+                    narrow=narrow,
+                ).key("right-panel")
 
-        if dialog_slots:
-            size = dialog_step or {}
-            StepDialog(
-                open=modal,
-                active_key=active_key,
-                dialog_steps=dialog_slots,
-                width=clamp((size.get("width"), dialog_width, 800), width, width - drawer_px - 40),
-                height=clamp((size.get("height"),), height, height - 80),
-                fullscreen=dialog_fullscreen,
-                on_close=close_dialog,
-                on_action=on_action,
-            ).key("dialog")
+            if dialog_slots:
+                size = dialog_step or {}
+                StepDialog(
+                    open=modal,
+                    active_key=active_key,
+                    dialog_steps=dialog_slots,
+                    width=clamp(
+                        (size.get("width"), dialog_width, 800), width, width - drawer_px - 40
+                    ),
+                    height=clamp((size.get("height"),), height, height - 80),
+                    fullscreen=dialog_fullscreen,
+                    on_close=close_dialog,
+                    on_action=on_action,
+                ).key("dialog")
 
     return main

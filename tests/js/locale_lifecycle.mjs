@@ -2,11 +2,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
+// argv: LocaleSelect.vue, then optional JSON props.
 const source = readFileSync(process.argv[2], "utf8");
-const script = source.split("<script>")[1].split("</script>")[0];
-const selectedCondition = source.match(/<v-list-item-action v-if="([^"]+)"/)[1];
+const [markup, rest] = source.split("<script>");
+const script = rest.split("</script>")[0];
+// The `v-if` of the slot that wraps the check icon.
+const selectedCondition = markup.match(
+  /v-if="([^"]+)"[^>]*>\s*<v-icon[^>]*>mdi-check</
+)[1];
+// Only the exported object, so a module-scope binding fails here too.
 const literal = script
-  .slice(script.search(/^export default/m) + "export default".length)
+  .slice(script.search(/^module\.exports\s*=/m))
+  .replace(/^module\.exports\s*=/, "")
   .trim()
   .replace(/;\s*$/, "");
 

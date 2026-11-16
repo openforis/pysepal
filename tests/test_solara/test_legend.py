@@ -1,10 +1,18 @@
 """Tests for the reusable Solara map legend dataclasses and component."""
 
+import re
 from dataclasses import asdict
+from pathlib import Path
 
 import solara
 
 from pysepal.solara.components.legend import DiscreteEntry, LegendComponent, LegendData
+from tests.test_solara.test_notifications.test_notification_ui_template import (
+    needs_node,
+    run_vue_script,
+)
+
+_TEMPLATE = Path(__file__).resolve().parents[2] / "pysepal" / "solara" / "components" / "Legend.vue"
 
 
 def _render(**props):
@@ -73,3 +81,56 @@ def test_selecting_an_option_calls_back_into_python():
     widget._handle_custom_msg({"event": "set_selected", "data": "area"}, [])
 
     assert picked == ["area"]
+
+
+def test_template_has_no_vue2_only_syntax():
+    """A ``props`` block duplicates the traits ipyvue provides as data, which Vue reports."""
+    content = _TEMPLATE.read_text()
+    assert ">>>" not in content
+    assert not re.search(r"^\s*props:", content, re.MULTILINE)
+
+
+def test_bar_icons_have_pixel_sizes_and_no_theme_props():
+    """Named icon sizes scale with the font; the icons take the bar's themed text colour."""
+    markup = re.sub(r"<!--.*?-->", "", _TEMPLATE.read_text().split("<script>")[0], flags=re.DOTALL)
+    icons = re.findall(r"<v-icon\b([^>]*)>", markup)
+    assert icons == [' :size="16"', ' :size="12"']
+
+
+@needs_node
+def test_dark_styling_follows_the_vuetify_theme():
+    """``theme.global.current`` is a ref, or already unwrapped when ``$vuetify`` is reactive."""
+    dark = run_vue_script(
+        _TEMPLATE,
+        """
+        const shapes = {
+          ref: (dark) => ({ theme: { global: { current: { value: { dark } } } } }),
+          unwrapped: (dark) => ({ theme: { global: { current: { dark } } } }),
+        };
+        const out = {};
+        for (const [name, shape] of Object.entries(shapes)) {
+          out[name] = [true, false].map((d) => makeVm({ $vuetify: shape(d) }).isDark);
+        }
+        return out;
+        """,
+    )
+    assert dark == {"ref": [True, False], "unwrapped": [True, False]}
+
+
+@needs_node
+def test_the_legend_opens_in_the_collapsed_state_it_is_given():
+    """``collapsed=True`` must render collapsed.
+
+    ipyvue calls ``data()`` before the traits exist, so ``created()`` copies it.
+    """
+    collapsed = run_vue_script(
+        _TEMPLATE,
+        """
+        return [true, false].map((collapsed) => {
+          const vm = makeVm({ collapsed });
+          options.created.call(vm);
+          return vm.isCollapsed;
+        });
+        """,
+    )
+    assert collapsed == [True, False]

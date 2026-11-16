@@ -13,10 +13,14 @@ import ipyvuetify as v
 import pytest
 from shapely import geometry as sg
 
-from pysepal import sepalwidgets as sw
+from pysepal._sepal_widget import SepalWidget
 from pysepal.frontend.styles import TYPES
 from pysepal.scripts import utils as su
 from pysepal.scripts.warning import SepalWarning
+
+
+class _SepalBtn(v.Btn, SepalWidget):
+    pass
 
 
 def test_hide_component() -> None:
@@ -27,7 +31,7 @@ def test_hide_component() -> None:
     assert "d-none" in widget.class_
 
     # hide a sepalwidget
-    widget = sw.Btn()
+    widget = _SepalBtn()
     su.hide_component(widget)
     assert widget.viz is False
 
@@ -43,7 +47,7 @@ def test_show_component() -> None:
     assert "d-none" not in widget.class_
 
     # show a sepalwidget
-    widget = sw.Btn()
+    widget = _SepalBtn()
     su.hide_component(widget)
     su.show_component(widget)
     assert widget.viz is True

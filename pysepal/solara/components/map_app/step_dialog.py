@@ -68,12 +68,12 @@ def StepDialog(
     ) as main:
         card_style = f"height: {height}px" if height else ""
         with rv.Card(class_="dialog-card", style_=card_style):
-            with rv.CardTitle(class_="headline d-flex justify-space-between"):
+            with rv.CardTitle(class_="text-h5 d-flex justify-space-between"):
                 rv.Html(tag="span", children=[step.get("name", "") if step else ""])
                 solara.Button(
                     icon=True,
                     text=True,
-                    children=[rv.Icon(small=True, children=["mdi-close"])],
+                    children=[rv.Icon(children=["mdi-close"], size="small")],
                     on_click=on_close,
                 )
             rv.Divider()
@@ -93,7 +93,7 @@ def StepDialog(
                             action.get("label", ""),
                             color="primary",
                             outlined=bool(action.get("cancel")),
-                            small=True,
+                            size="small",
                             on_click=lambda action=action: on_action(action),
                         ).key(f"action-{i}")
     return main

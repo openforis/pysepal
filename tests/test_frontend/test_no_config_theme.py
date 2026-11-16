@@ -45,16 +45,6 @@ def test_set_colors_still_tracks_the_live_vuetify_theme():
     assert color.theme_name == "light"
 
 
-def test_theme_select_writes_nothing(tmp_path, monkeypatch):
-    """Same invariant as ``test_set_colors_writes_nothing``."""
-    from pysepal import sepalwidgets as sw
-
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    select = sw.ThemeSelect()
-    select.toggle_theme()
-    assert list(tmp_path.iterdir()) == []
-
-
 def test_module_theme_entry_point_is_gone():
     shipped = shipped_locations("pysepal.bin.module_theme")
     assert shipped == [], shipped

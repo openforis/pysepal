@@ -2,9 +2,9 @@
 
 from typing import Optional
 
+import ipyvuetify as v
 from ipyleaflet import Map, WidgetControl
 
-from pysepal import sepalwidgets as sw
 from pysepal.mapping._widget_tree import close_parts
 from pysepal.mapping.map_btn import MapBtn
 
@@ -41,7 +41,7 @@ class ZoomControl(WidgetControl):
         self.minus.class_list.add("v-zoom-minus")
 
         # aggregate them in a layout
-        content = sw.Layout(column=True, children=[self.plus, self.minus])
+        content = v.Html(tag="div", class_="d-flex flex-column", children=[self.plus, self.minus])
 
         # by default Zoomcontrols will be displayed in the topright corner
         kwargs.setdefault("position", "topright")

@@ -1,7 +1,7 @@
 """A headless widget through which the MapApp shell talks to the browser page.
 
 Python cannot read the window size nor write on ``document.documentElement``;
-this template does it for the shell.
+this template does it for the shell. It is plain Vue with no Vuetify tags.
 """
 
 from typing import Callable, Dict, Optional

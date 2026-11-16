@@ -1,6 +1,9 @@
 """Template contract tests for the Vue-backed notification UI."""
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -13,9 +16,52 @@ _TEMPLATE_PATH = (
     / "NotificationUI.vue"
 )
 
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+
+# Builds a minimal Vue instance around a template's options: data, computed
+# getters and methods, all bound to one object, as Vue does.
+_VM_JS = """
+const module = { exports: {} };
+__SCRIPT__
+const options = module.exports;
+function makeVm(overrides) {
+  const vm = Object.assign({}, options.data ? options.data() : {}, overrides);
+  for (const [name, fn] of Object.entries(options.methods || {})) {
+    if (!(name in overrides)) vm[name] = fn.bind(vm);
+  }
+  for (const [name, fn] of Object.entries(options.computed || {})) {
+    Object.defineProperty(vm, name, { get: () => fn.call(vm) });
+  }
+  return vm;
+}
+const result = (() => { __BODY__ })();
+process.stdout.write(JSON.stringify(result === undefined ? null : result));
+"""
+
+
+def _template() -> str:
+    return _TEMPLATE_PATH.read_text()
+
+
+def run_vue_script(template: Path, body: str):
+    """Run JS ``body`` in node against the ``<script>`` of a ``.vue`` file.
+
+    ``body`` sees ``options`` (the exported component) and ``makeVm(overrides)``,
+    and returns a JSON-serialisable value.
+    """
+    script = re.search(r"<script>(.*?)</script>", template.read_text(), re.DOTALL).group(1)
+    script = script.replace("export default", "module.exports =", 1)
+    program = _VM_JS.replace("__SCRIPT__", script).replace("__BODY__", body)
+    run = subprocess.run(["node", "-e", program], capture_output=True, text=True, check=True)
+    return json.loads(run.stdout)
+
+
+def _run_script(body: str):
+    return run_vue_script(_TEMPLATE_PATH, body)
+
 
 def _rule_body(selector: str) -> str:
-    content = _TEMPLATE_PATH.read_text()
+    content = _template()
     match = re.search(
         rf"{re.escape(selector)}\s*\{{(?P<body>.*?)\n\}}",
         content,
@@ -31,8 +77,8 @@ def _numeric_property(rule_body: str, name: str) -> int:
     return int(match.group(1))
 
 
-_DIALOG_Z_INDEX = 202  # Vuetify 2 v-dialog__content default
-_OVERLAY_Z_INDEX = 201  # Vuetify 2 v-overlay default
+# Vuetify puts an open dialog's content and its scrim in a v-overlay at this z-index.
+_OVERLAY_Z_INDEX = 2000
 
 
 def test_toasts_sit_above_dialogs():
@@ -43,7 +89,7 @@ def test_toasts_sit_above_dialogs():
     and assume the app is unresponsive.
     """
     toast_z = _numeric_property(_rule_body(".toast-stack"), "z-index")
-    assert toast_z > _DIALOG_Z_INDEX, f"toast z-index {toast_z} not above dialog"
+    assert toast_z > _OVERLAY_Z_INDEX, f"toast z-index {toast_z} not above dialog"
 
 
 def test_pill_sits_below_the_modal_baseline():
@@ -94,17 +140,18 @@ def test_pill_and_logger_font_sizes_are_px_for_cross_runtime_parity():
 
 
 def test_theme_is_driven_by_prop_not_dom_scan():
-    """Theme flows in as the reactive ``is_dark`` prop, not a DOM scan.
+    """Theme flows in as the reactive ``is_dark`` trait, not a DOM scan.
 
     The widget used to scrape ``.v-application`` theme classes and watch the DOM
     with a MutationObserver because it had no reliable theme signal. The
     scope-keyed ``ThemeState`` (via ``use_theme_dark``) is that signal, so the
-    prop replaces all of that machinery — none of it should remain.
+    trait replaces all of that machinery — none of it should remain.
     """
-    content = _TEMPLATE_PATH.read_text()
+    content = _template()
 
-    # Theme comes in as a prop, bound on the root wrapper.
-    assert re.search(r"is_dark:\s*\{", content), "is_dark prop not declared"
+    # Theme comes in as a trait, bound on the root wrapper.
+    source = (_TEMPLATE_PATH.parent / "notification_ui.py").read_text()
+    assert re.search(r"\bis_dark: bool\b", source), "is_dark trait not declared"
     assert "'theme-dark': is_dark" in content
     assert "'theme-light': !is_dark" in content
 
@@ -114,12 +161,68 @@ def test_theme_is_driven_by_prop_not_dom_scan():
     assert "themeVersion" not in content, "themeVersion reactivity hack still present"
 
 
+def test_template_has_no_vue2_only_syntax():
+    """Vue 3 rejects or deprecates these.
+
+    ``.native`` turns into a key filter that drops every click, ``>>>`` warns on
+    every compile, and a ``props`` block duplicates the traits ipyvue already
+    provides as data, which Vue 3 reports for each one.
+    """
+    content = _template()
+    assert not re.search(r"\.native\b\s*=", content)
+    assert ">>>" not in content
+    assert "/deep/" not in content
+    assert not re.search(r"^\s*props:", content, re.MULTILINE)
+
+
+def test_toast_clicks_are_caught_on_the_stack():
+    """The stack, a plain element, takes the click; each toast carries its id for its handler."""
+    content = _template()
+    assert re.search(r'class="toast-stack"\s+@click="_onToastClick"', content)
+    alert = re.search(r"<v-alert\b(?P<attrs>.*?)>", content, re.DOTALL).group("attrs")
+    assert ':data-toast-id="toast.id"' in alert
+    assert "@click" not in alert
+
+
+@needs_node
+def test_a_click_inside_a_toast_dismisses_that_toast():
+    dismissed = _run_script(
+        """
+        const dismissed = [];
+        const vm = makeVm({ _dismissToast: (id) => dismissed.push(id) });
+        const inside = { closest: () => ({ getAttribute: () => "toast-1" }) };
+        const outside = { closest: () => null };
+        vm._onToastClick({ target: inside });
+        vm._onToastClick({ target: outside });
+        return dismissed;
+    """
+    )
+    assert dismissed == ["toast-1"]
+
+
+def _alert_attrs() -> str:
+    alert = re.search(r"<v-alert\b(?P<attrs>.*?)>", _template(), re.DOTALL)
+    assert alert, "Missing the toast v-alert"
+    return alert.group("attrs")
+
+
 def test_a_toast_that_stays_open_shows_a_close_button():
     """A toast with no timeout only closes on a click, so it must show where to click."""
-    content = _TEMPLATE_PATH.read_text()
-    alert = re.search(r"<v-alert\b(?P<attrs>.*?)>", content, re.DOTALL)
-    assert alert, "Missing the toast v-alert"
-    assert ':dismissible="!toast.timeout"' in alert.group("attrs")
+    assert ':closable="!toast.timeout"' in _alert_attrs()
+
+
+def test_every_toast_is_a_filled_alert():
+    """A cancel toast differs from an info toast by its icon only, not by its style.
+
+    ``text`` is the alert's content, so a boolean ``text`` would print "true".
+    """
+    attrs = _alert_attrs()
+    assert re.search(r'\svariant="flat"', attrs)
+    assert ":variant=" not in attrs
+    assert "mdi-cancel" in attrs
+    assert 'density="compact"' in attrs
+    for prop in ("text", "dense", "dark", "dismissible", "value"):
+        assert not re.search(rf"\s:?{prop}(=|\s|$)", attrs), prop
 
 
 # The pre-4.2 toast palette. The theme colours do not fit toasts: the light
@@ -138,9 +241,8 @@ _TOAST_PALETTE = {
 
 
 def _toast_background(theme: str, kind: str) -> str:
-    content = _TEMPLATE_PATH.read_text()
     selector = rf"\.theme-{theme} > \.toast-stack \.toast-alert\.toast-{kind}\b"
-    match = re.search(rf"{selector}[^{{]*\{{(?P<body>[^}}]*)\}}", content)
+    match = re.search(rf"{selector}[^{{]*\{{(?P<body>[^}}]*)\}}", _template())
     assert match, f"Missing the {theme} {kind} toast rule"
     background = re.search(r"background-color:\s*([^;]+?)\s*!important;", match.group("body"))
     assert background, f"The {theme} {kind} toast rule sets no background"
@@ -157,10 +259,27 @@ def test_a_cancel_toast_is_painted_as_an_info_toast(theme):
     assert _toast_background(theme, "cancel") == _toast_background(theme, "info")
 
 
-def test_every_toast_is_a_filled_alert():
-    """A cancel toast differs from an info toast by its icon only, not by its style."""
-    content = _TEMPLATE_PATH.read_text()
-    attrs = re.search(r"<v-alert\b(?P<attrs>.*?)>", content, re.DOTALL).group("attrs")
-    assert ":text=" not in attrs
-    assert re.search(r"^\s*dark\s*$", attrs, re.MULTILINE)
-    assert "mdi-cancel" in attrs
+def test_logger_icons_and_close_button_keep_their_size():
+    """Named icon sizes scale with the font, and an icon button is elevated by default."""
+    header = re.search(r'<div class="pill-log-header">(.*?)</div>', _template(), re.DOTALL).group(1)
+    icons = re.findall(r"<v-icon\b([^>]*)>", header)
+    assert [re.search(r':size="(\d+)"', icon).group(1) for icon in icons] == ["16", "16"]
+    close = re.search(r"<v-btn\b(?P<attrs>[^>]*)>", header).group("attrs").split()
+    assert {'size="x-small"', 'density="comfortable"', 'variant="text"'} <= set(close)
+
+
+@needs_node
+def test_dismiss_timers_are_cleared_when_vue_unmounts_the_ui():
+    cleared = _run_script(
+        """
+        const ids = [];
+        const real = global.clearTimeout;
+        global.clearTimeout = (id) => ids.push(id);
+        const vm = makeVm({});
+        vm.dismissTimers = { a: 11, b: 12 };
+        options.beforeUnmount.call(vm);
+        global.clearTimeout = real;
+        return { ids, beforeDestroy: "beforeDestroy" in options };
+    """
+    )
+    assert cleared == {"ids": [11, 12], "beforeDestroy": False}

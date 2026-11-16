@@ -80,16 +80,20 @@ Default output set:
 
 Local apps still use:
 
-- pysepal Solara components
+- pysepal Solara components, never `pysepal.sepalwidgets`
 - `solara.reactive()` AppState
 - pyproject-managed Python dependencies
 - pre-commit tooling
 - `catalog()`/`msg()` i18n structure
 
+pysepal 5 needs ipyvuetify 3. A Voila app in SEPAL's app catalog brings its own
+widget frontend: SEPAL's Voila loads the extensions from the app's environment.
+
 ## Dependency Defaults
 
-`pyproject.toml` owns Python dependencies. The GEE/container template
-requires `pysepal>=4.2`, the first release with the native `MapApp`.
+`pyproject.toml` owns Python dependencies. Both templates require
+`pysepal>=5`, the first release with the native `MapApp`; it is Vuetify 3
+only.
 
 `sepal_environment.yml` owns conda-level or compiled dependencies and installs the local project with:
 

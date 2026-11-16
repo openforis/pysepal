@@ -227,11 +227,7 @@ def VectorPanel():
                         block=True,
                     ),
                     solara.Button(
-                        msg("buttons.clear_vectors"),
-                        on_click=clear,
-                        color="primary",
-                        block=True,
-                        small=True,
+                        msg("buttons.clear_vectors"), on_click=clear, block=True, size="small"
                     ),
                 ],
                 "description": msg(

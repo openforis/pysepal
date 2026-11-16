@@ -2,15 +2,20 @@
 
 from typing import Optional, Union
 
+import ipyvuetify as v
 import traitlets as t
 from ipyleaflet import WidgetControl
 from ipywidgets import HTML
 from traitlets import observe
 
-import pysepal.sepalwidgets as sw
+from pysepal._sepal_widget import SepalWidget
 from pysepal.mapping._widget_tree import close_parts, close_tree
 from pysepal.message import msg
 from pysepal.scripts import utils as su
+
+
+class _Card(v.Card, SepalWidget):
+    """The legend card, hidden while the legend is empty."""
 
 
 class LegendControl(WidgetControl):
@@ -24,10 +29,10 @@ class LegendControl(WidgetControl):
     vertical: t.Bool = t.Bool(None).tag(sync=True)
     "Whether to display the legend in a vertical or horizontal way"
 
-    _html_table: Optional[sw.Html] = None
+    _html_table: Optional[v.Html] = None
     "The table containing the legend display"
 
-    _html_title: Optional[sw.Html] = None
+    _html_title: Optional[v.Html] = None
     "The tilte of the legend"
 
     def __init__(
@@ -56,12 +61,12 @@ class LegendControl(WidgetControl):
         self.vertical = vertical
 
         # generate the content based on the init options
-        self._html_title = sw.Html(tag="h4", children=[f"{self.title}"])
-        self._html_table = sw.Html(tag="table", children=[])
+        self._html_title = v.Html(tag="h4", children=[f"{self.title}"])
+        self._html_table = v.Html(tag="table", children=[])
 
         # create a card inside the widget
         # Be sure that the scroll bar will be shown up when legend horizontal
-        self.legend_card = sw.Card(
+        self.legend_card = _Card(
             attributes={"id": "legend_card"},
             style_="overflow-x:auto; white-space: nowrap;",
             max_width=450,
@@ -108,10 +113,10 @@ class LegendControl(WidgetControl):
 
         if self.vertical:
             elements = [
-                sw.Html(
+                v.Html(
                     tag="tr" if self.vertical else "td",
                     children=[
-                        sw.Html(tag="td", children=self.color_box(color)),
+                        v.Html(tag="td", children=self.color_box(color)),
                         label.capitalize(),
                     ],
                 )
@@ -120,11 +125,11 @@ class LegendControl(WidgetControl):
         else:
             elements = [
                 (
-                    sw.Html(
+                    v.Html(
                         tag="td",
                         children=[label.capitalize()],
                     ),
-                    sw.Html(
+                    v.Html(
                         tag="td",
                         children=self.color_box(color),
                     ),

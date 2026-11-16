@@ -118,18 +118,10 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
             label=msg("buttons.add_radar"), **radar_btn_props, small=True, block=True
         ),
         solara.Button(
-            msg("buttons.add_pmtiles"),
-            on_click=add_pmtiles_layer,
-            color="primary",
-            block=True,
-            small=True,
+            msg("buttons.add_pmtiles"), on_click=add_pmtiles_layer, block=True, size="small"
         ),
         solara.Button(
-            msg("buttons.remove_all"),
-            on_click=remove_all_layers,
-            color="primary",
-            block=True,
-            small=True,
+            msg("buttons.remove_all"), on_click=remove_all_layers, block=True, size="small"
         ),
         AdminButton(app_model, logger_instance=logger),
     ]

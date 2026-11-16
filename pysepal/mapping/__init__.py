@@ -15,7 +15,6 @@ Example:
         sm.SepalMap(gee=False)
 """
 
-from .aoi_control import *
 from .draw_control import *
 from .fullscreen_control import *
 from .geojson_utils import *
@@ -31,3 +30,13 @@ from .sepal_map import *
 from .tiling import *
 from .visualization import *
 from .zoom_control import *
+
+
+def __getattr__(name: str):
+    if name in ("AoiControl", "aoi_control"):
+        raise AttributeError(
+            f"{__name__}.{name} was removed in pysepal 5.0 with the ipyvuetify 1 widget layer; "
+            'use pysepal.solara.components.aoi.AoiView or pin "pysepal<5". '
+            "See docs/guides/migrating-to-pysepal-5.md"
+        )
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

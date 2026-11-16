@@ -18,6 +18,8 @@ It has no dependencies beyond Node ≥ 22 and a Chrome/Chromium binary.
   human to reload — iterate without round-trips.
 - Any "what does this render to?" question: does this element exist, what color
   is it, how many of them are there, which theme class is applied.
+- Checking that a component or a `.vue` template renders without Vue warnings
+  (see "Check the console" below).
 
 It is **not** a replacement for `nox -s test`. Use it for rendered-DOM
 questions; use pytest for Python logic.
@@ -56,6 +58,26 @@ node scripts/browser_probe.mjs --url http://127.0.0.1:8910/ --wait '.pill-wrappe
 diff <(jq -S . /tmp/solara.json) <(jq -S . /tmp/voila.json)
 ```
 
+### Check the console
+
+Python tests cannot see a Vue template error: Vue 3 reports an unknown
+component or a bad template only in the browser console. Probe with
+`--console`:
+
+```bash
+node scripts/browser_probe.mjs --url http://127.0.0.1:8900/ --wait '.sepal-mapapp' \
+  --console --eval "({ items: document.querySelectorAll('.sepal-mapapp__item').length })" \
+  --screenshot /tmp/mapapp.png
+```
+
+With `--console` the output is `{ value, console }`. A
+`Failed to resolve component` or a template compile warning means the markup is
+wrong. The Vue feature-flag warning and `[Vuetify UPGRADE] theme.global.name`
+are expected and harmless. Look at the screenshot too.
+
+Vuetify 3 class names: an open dialog or menu is `.v-overlay--active`, and the
+theme classes are `v-theme--dark` / `v-theme--light`.
+
 ## Interacting before you measure
 
 Some questions are only answerable by _doing_ something first — does clicking
@@ -65,8 +87,8 @@ outside dismiss this dialog, does the scrim resize cleanly. `--click` and
 ```bash
 # does clicking outside dismiss the dialog?
 node scripts/browser_probe.mjs --url http://127.0.0.1:8900/ \
-  --wait '.v-dialog--active' --click 12,-12 --settle-after 1500 \
-  --eval "({ open: !!document.querySelector('.v-dialog--active') })"
+  --wait '.v-overlay--active' --click 12,-12 --settle-after 1500 \
+  --eval "({ open: !!document.querySelector('.v-overlay--active') })"
 
 # does the scrim track a viewport resize, or animate to it?
 node scripts/browser_probe.mjs --url http://127.0.0.1:8900/ \
@@ -123,6 +145,7 @@ Pass it inline with `--eval "(...)"` or from a file with `--eval @path/to/probe.
 | `--settle-after <ms>`       | wait after each `--click`/`--resize` (default 1200)                                                                                                                                      |
 | `--wait-js <expr>`          | after the clicks, poll until this expression is truthy (same `--timeout` budget), e.g. until every leaflet tile has loaded                                                               |
 | `--screenshot <png>`        | write a PNG of the viewport after `--eval`                                                                                                                                               |
+| `--console`                 | also collect console warnings/errors and uncaught exceptions; output becomes `{ value, console }`. Vue reports unknown components and bad templates only there.                          |
 | `--timeout <ms>`            | readiness budget (default 30000)                                                                                                                                                         |
 | `--force-theme dark\|light` | set the Solara and pysepal theme keys in localStorage and reload (Voila ignores them)                                                                                                    |
 | `--chrome <path>`           | Chrome binary (default: autodetect)                                                                                                                                                      |
@@ -171,6 +194,10 @@ Each conclusion came from a computed-style read, not a guess.
 - **Theme defaults differ.** Solara defaults dark via a `localStorage` flag that
   applies on the _next_ load; a first headless load may render light. Use
   `--force-theme dark` (Solara) or drive the app's own theme toggle.
+- **`--force-theme light` needs `MapApp`.** pysepal's `custom.js` writes
+  `"dark"` to Solara's theme key on every page load, so only the
+  `:sepalUi:theme.variant` key counts, and only `MapApp` reads it. A page
+  without `MapApp` always renders dark.
 - **Don't `pkill -f` your own launcher.** A pattern like
   `pkill -f remote-debugging-port=9222` also matches the shell running your
   script (the string is in its argv) and kills it. The script kills only the
@@ -178,7 +205,6 @@ Each conclusion came from a computed-style read, not a guess.
 - **Restricted sandboxes.** Inside some CI/agent sandboxes Chrome is
   signal-killed on launch; run from a normal shell (the `--no-sandbox` flag the
   script passes is for Chrome's own sandbox, a separate thing).
-- **Interactions.** The probe can click/type via more CDP calls, but the script
-  ships read-only by default. Extend it with `Input.dispatchMouseEvent` or by
-  evaluating `el.click()` if you need to drive a flow (e.g. toggle the theme and
-  re-read).
+- **Interactions.** `--click` and `--resize` cover clicks and viewport changes.
+  Typing is not built in: extend the script with `Input.dispatchKeyEvent` if a
+  flow needs it.

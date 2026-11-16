@@ -142,8 +142,8 @@ def AdminButton(
         label="Admin panel",
         on_click=open_dialog,
         color="primary",
-        small=True,
         icon_name="mdi-shield-account",
+        size="small",
     )
 
     with v.Dialog(
@@ -153,20 +153,22 @@ def AdminButton(
             solara.v.CardTitle(children=["Admin: Session & Models Information"])
 
             with solara.v.CardText():
-                with v.Tabs(v_model=active_tab, on_v_model=set_active_tab):
+                # Explicit values tie each tab to its window item and keep the
+                # integer tab model.
+                with v.Tabs(v_model=active_tab, on_v_model=set_active_tab, color="primary"):
                     # Dynamic tab label based on number of models
                     model_count = len(normalize_models())
                     if model_count == 1:
-                        v.Tab(children=["Model Data"])
+                        v.Tab(children=["Model Data"], value=0)
                     else:
-                        v.Tab(children=["Models Data"])
-                    v.Tab(children=["Session Info"])
+                        v.Tab(children=["Models Data"], value=0)
+                    v.Tab(children=["Session Info"], value=1)
 
-                with v.TabsItems(v_model=active_tab, on_v_model=set_active_tab):
-                    with v.TabItem():
+                with v.TabsWindow(v_model=active_tab, on_v_model=set_active_tab):
+                    with v.TabsWindowItem(value=0):
                         _render_model_content(normalize_models(), models_data, update_models_data)
 
-                    with v.TabItem():
+                    with v.TabsWindowItem(value=1):
                         _render_session_content(
                             username, is_admin_user(), session_info, sessions_overview
                         )
@@ -218,7 +220,10 @@ def _render_model_content(
             else:
                 solara.Markdown(f"#### {model_type}")
 
-            with solara.v.Card(outlined=True):
+            # An empty ``border`` draws a faint frame; ``variant="outlined"`` draws it
+            # in the text colour, and ipyvuetify casts ``border=True`` to ``1.0``,
+            # which Vuetify ignores.
+            with solara.v.Card(border=""):
                 with solara.v.CardText():
                     solara.Preformatted(
                         model_data,

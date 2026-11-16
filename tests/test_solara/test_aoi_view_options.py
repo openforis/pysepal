@@ -1,6 +1,8 @@
 """AoiView's select button, country list and success feedback."""
 
 import asyncio
+import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,14 +16,18 @@ from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
+from tests.test_solara.test_notifications.test_notification_ui_template import (
+    needs_node,
+    run_vue_script,
+)
 
 from ._harness import find_by_label, of_type, render_and_drain, wait_until, walk
 
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
 _ITEMS = {
-    (0, ""): [{"text": "Algeria", "value": "101"}, {"text": "Paraguay", "value": "206"}],
-    (1, "101"): [{"text": "Adrar", "value": "1001"}],
+    (0, ""): [{"title": "Algeria", "value": "101"}, {"title": "Paraguay", "value": "206"}],
+    (1, "101"): [{"title": "Adrar", "value": "1001"}],
 }
 
 _SQUARE = {
@@ -155,7 +161,7 @@ def test_a_spec_outside_the_countries_is_refused(notifier):
         AoiView(gee=False, countries=["206"], spec=spec, autoselect=False)
 
     async def scenario(root):
-        assert find_by_label(root, msg("aoi_sel.method")).v_model == ""
+        assert not find_by_label(root, msg("aoi_sel.method")).v_model
         notifier.warning.assert_called_once()
 
     _session(_Harness, scenario)
@@ -208,6 +214,57 @@ def test_notify_success_false_skips_the_inline_message(fake_process_admin):
 
     assert held.value is not None
     assert not of_type(root, "Alert")
+
+
+def test_the_method_list_reaches_the_widget_with_subheaders():
+    @solara.component
+    def _Harness():
+        AoiView(gee=False)
+
+    async def scenario(root):
+        method = find_by_label(root, msg("aoi_sel.method"))
+        headers = [item for item in method.items if not item.get("value")]
+        choices = [item for item in method.items if item.get("value")]
+
+        assert [item["value"] for item in choices][:3] == ["ADMIN0", "ADMIN1", "ADMIN2"]
+        assert {item["type"] for item in headers} == {"subheader"}
+        assert all(item["title"] for item in headers + choices)
+        assert method.density == "compact"
+        assert method.variant == "underlined"
+
+    _session(_Harness, scenario)
+
+
+def test_no_method_leaves_the_select_empty():
+    """A select counts "" as a pick and floats the label over an empty field."""
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False)
+
+    async def scenario(root):
+        method = find_by_label(root, msg("aoi_sel.method"))
+        assert method.v_model is None
+
+        _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        assert find_by_label(root, msg("aoi_sel.adm.0")) is not None
+
+    _session(_Harness, scenario)
+
+
+def test_the_draw_name_field_is_outlined_and_dense():
+    sepal_map = sm.SepalMap(gee=False)
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False, map_=sepal_map)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "DRAW")
+        name = find_by_label(root, msg("aoi_sel.aoi_name"))
+        assert (name.variant, name.density) == ("outlined", "compact")
+
+    _session(_Harness, scenario)
 
 
 def _enter_bridge(root):
@@ -268,3 +325,48 @@ def test_enter_waits_for_a_complete_form(fake_process_admin):
         assert held.value is None
 
     _session(_Harness, scenario)
+
+
+_ENTER_TEMPLATE = Path(aoi_view_mod.__file__).with_name("SubmitOnEnter.vue")
+
+
+@needs_node
+@pytest.mark.parametrize(
+    ("classes", "submits", "blocks"),
+    [
+        (["v-text-field"], True, False),
+        (["v-autocomplete"], True, True),
+        (["v-combobox"], True, False),
+        (["v-select", "v-select--active-menu"], False, False),
+        (["v-autocomplete", "v-autocomplete--active-menu"], False, False),
+        (["v-combobox", "v-combobox--active-menu"], False, False),
+    ],
+)
+def test_enter_in_a_field_follows_its_vuetify_3_menu(classes, submits, blocks):
+    """An open list keeps Enter to pick an item; a closed autocomplete must not reopen."""
+    outcome = run_vue_script(
+        _ENTER_TEMPLATE,
+        f"""
+        global.HTMLInputElement = class {{}};
+        global.setTimeout = (fn) => fn();
+        const classes = new Set({json.dumps(["v-input", *classes])});
+        const field = {{ classList: {{ contains: (name) => classes.has(name) }} }};
+        const form = {{ contains: () => true }};
+        const input = Object.assign(new HTMLInputElement(), {{
+          type: "text",
+          readOnly: false,
+          closest: (selector) => (selector === ".v-input" ? field : form),
+        }});
+        let submits = false;
+        let blocks = false;
+        const vm = makeVm({{ scope: "sepal-aoi-view", $el: {{}}, submit: () => (submits = true) }});
+        vm.handleKeydown({{
+          key: "Enter",
+          target: input,
+          preventDefault: () => (blocks = true),
+          stopPropagation: () => {{}},
+        }});
+        return {{ submits, blocks }};
+        """,
+    )
+    assert outcome == {"submits": submits, "blocks": blocks}

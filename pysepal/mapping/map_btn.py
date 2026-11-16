@@ -2,10 +2,21 @@
 
 import ipyvuetify as v
 
-from pysepal import sepalwidgets as sw
+from pysepal._sepal_widget import SepalWidget
 
 
-class MapBtn(v.Btn, sw.SepalWidget):
+def _icon_name(name: str) -> str:
+    """Return an icon name as ``v.Icon`` reads it.
+
+    Vuetify 3 gives an unprefixed icon the ``mdi`` class and font, so a Font Awesome
+    name needs the ``class:`` prefix to render as is.
+    """
+    if name.startswith("fa"):
+        return f"class:{name}"
+    return name
+
+
+class MapBtn(v.Btn, SepalWidget):
     def __init__(self, content: str, **kwargs) -> None:
         """Btn specifically design to be displayed on a map.
 
@@ -18,12 +29,12 @@ class MapBtn(v.Btn, sw.SepalWidget):
         """
         # create the icon
         if content.startswith("mdi-") or content.startswith("fa"):
-            content = sw.Icon(small=True, children=[content])
+            content = v.Icon(size="small", children=[_icon_name(content)])
         else:
             content = content[: min(3, len(content))].upper()
 
         # some parameters are overloaded to match the map requirements
-        kwargs["outlined"] = True
+        kwargs["variant"] = "outlined"
         kwargs["children"] = [content]
         kwargs["icon"] = False
         kwargs.setdefault("class_", "v-map-btn")

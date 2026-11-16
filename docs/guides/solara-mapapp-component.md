@@ -15,10 +15,9 @@ the right end. The entries that do not fit go into a menu at the end of the row.
 The panel docks at the bottom of the window, opened by its tab, and the task
 pill and its logger hide.
 
-It is new in pysepal 4.2. It is a plain `@solara.component` built from Solara
-and Vuetify elements. The legacy `pysepal.sepalwidgets.vue_app.MapApp`, a Vue
-template used as `MapApp.element(...)`, still works and has not changed. Use the
-native one in new apps; pysepal 5 keeps only the native one.
+It is a plain `@solara.component` built from Solara and Vuetify 3 elements. It
+replaces the Vue 2 `pysepal.sepalwidgets.vue_app.MapApp`, removed in pysepal 5
+with the rest of sepalwidgets (see `migrating-to-pysepal-5.md`).
 
 ## Quick start
 
@@ -120,8 +119,8 @@ has these attributes, the shell keeps them up to date:
 - `bind_theme_state(theme_state)`: the map's basemap and its controls follow the
   theme.
 
-`SepalMap` has all of these. Build it with `fullscreen=True` so it fills the
-shell. The Leaflet controls move out from under the drawer and the panel.
+`SepalMap` has all of these. The Leaflet controls move out from under the
+drawer and the panel.
 
 ## Theme and language
 
@@ -153,11 +152,10 @@ While a step dialog is open, the shell also puts the class `sepal-modal-open` on
 
 The legend and the notifications use these to stay clear of the panels, so mount
 `NotificationProvider()` and the legend next to the shell and they follow it.
-See `docs/guides/solara-notifications.md` for the notification API.
 
-## Moving from the legacy MapApp
+## Moving from the removed Vue MapApp
 
-| Legacy                                                 | Native                                                              |
+| pysepal 4 (Vue MapApp)                                 | pysepal 5                                                           |
 | ------------------------------------------------------ | ------------------------------------------------------------------- |
 | `from pysepal.sepalwidgets.vue_app import MapApp`      | `from pysepal.solara.components.map_app import MapApp`              |
 | `MapApp.element(...)`                                  | `MapApp(...)`, same keyword arguments                               |
@@ -165,4 +163,3 @@ See `docs/guides/solara-notifications.md` for the notification API.
 | `theme_toggle=`, `language_selector=`                  | built in; pass `theme_state=` and `locales=`                        |
 | content built as widgets to keep their click handlers  | elements work too, e.g. `solara.Button(..., on_click=...)`          |
 | observing the widget's `right_panel_open`, `step_open` | `on_right_panel_open`, `on_step_open`                               |
-| an `rv.Dialog` in the content needs `eager=True`       | it mounts when it opens; drop `eager=True`                          |

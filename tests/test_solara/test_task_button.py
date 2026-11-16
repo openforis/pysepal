@@ -1,8 +1,12 @@
-"""Tests for use_task_button hook."""
+"""Tests for the task button and its use_task_button hook."""
 
 from unittest.mock import MagicMock
 
-from pysepal.solara.components.task_button import use_task_button
+import solara
+
+from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
+
+from ._harness import of_type
 
 
 def test_use_task_button_returns_correct_keys():
@@ -82,3 +86,38 @@ def test_use_task_button_cancel_noop_when_not_pending():
     result["on_cancel"]()
 
     mock_task.cancel.assert_not_called()
+
+
+def _render_button(**kwargs):
+    box, rc = solara.render(
+        TaskButtonComponent(
+            label="Run", icon="mdi-play", on_start=MagicMock(), on_cancel=MagicMock(), **kwargs
+        ),
+        handle_error=False,
+    )
+    rc.close()
+    btn = of_type(box, "Btn")[0]
+    return btn, of_type(btn, "Icon")[0]
+
+
+def test_small_button_is_small():
+    btn, icon = _render_button(small=True)
+
+    assert btn.size == "small"
+    assert icon.start is True
+    # The button sizes its icon itself.
+    assert icon.size is None
+
+
+def test_default_button_has_no_size():
+    btn, icon = _render_button()
+
+    assert btn.size is None
+    assert icon.start is True
+
+
+def test_button_is_filled():
+    """Card actions turn a button without a variant into a text button."""
+    btn, _ = _render_button()
+
+    assert btn.variant == "elevated"

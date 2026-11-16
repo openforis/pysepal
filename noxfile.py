@@ -74,10 +74,8 @@ def bin(session):
     """Run all the bin methods to validate the conda recipe."""
     session.install(".")
     session.run("module_deploy", "--help")
-    session.run("module_factory", "--help")
     session.run("module_venv", "--help")
     session.run("activate_venv", "--help")
-    session.run("sepal_ipyvuetify", "--help")
 
 
 @nox.session(reuse_venv=True)
@@ -91,7 +89,9 @@ def docs(session):
     # build the api doc files
     templates = "docs/source/_templates/apidoc"
     modules = "docs/source/modules"
-    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal")
+    # the sepalwidgets stub only raises an ImportError
+    stub = "pysepal/sepalwidgets"
+    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal", stub)
 
     # build the documentation
     source = "docs/source"

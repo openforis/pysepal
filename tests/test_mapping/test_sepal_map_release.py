@@ -144,7 +144,6 @@ def test_a_closed_control_releases_its_map(kernel) -> None:
         sm.FullScreenControl(m),
         sm.GeomanDrawControl(m),
         sm.MenuControl("fa-solid fa-cog", sm.MapBtn("x"), m=m),
-        sm.AoiControl(m),
     ]
     for control in controls:
         control.close()
@@ -176,21 +175,21 @@ def test_a_closed_menu_keeps_the_content_of_its_caller(kernel) -> None:
 
 
 @pytest.mark.parametrize(
-    "control_class",
+    "control_name",
     [
-        sm.ZoomControl,
-        sm.LayersControl,
-        sm.LayerStateControl,
-        sm.InspectorControl,
-        sm.FullScreenControl,
-        sm.GeomanDrawControl,
-        sm.MenuControl,
-        sm.AoiControl,
-        sm.LegendControl,
+        "ZoomControl",
+        "LayersControl",
+        "LayerStateControl",
+        "InspectorControl",
+        "FullScreenControl",
+        "GeomanDrawControl",
+        "MenuControl",
+        "LegendControl",
     ],
 )
-def test_a_control_that_failed_to_build_can_be_closed(control_class) -> None:
+def test_a_control_that_failed_to_build_can_be_closed(control_name) -> None:
     """Widget.__del__ closes a control even when its __init__ raised."""
+    control_class = getattr(sm, control_name)
     control_class.__new__(control_class).close()
 
 
@@ -203,12 +202,9 @@ def _after_close(control_name: str):
         "fullscreen": next(c for c in m.controls if isinstance(c, sm.FullScreenControl)),
         "inspector": m.v_inspector,
         "layers": next(c for c in m.controls if isinstance(c, sm.LayersControl)),
-        "aoi": sm.AoiControl(m),
     }
     control = controls[control_name]
     m.close()
-    # the map closes the controls it built, the caller closes its own
-    controls["aoi"].close()
     return control
 
 
@@ -224,9 +220,6 @@ def _after_close(control_name: str):
         ("inspector", lambda c: c._from_eelayer.__wrapped__(c, MagicMock(spec=ee.Image), [0, 0])),
         ("inspector", lambda c: c._from_raster("missing.tif", [0, 0])),
         ("layers", lambda c: c.update_table({})),
-        ("aoi", lambda c: c.zoom(MagicMock(value=(0, 0, 1, 1)))),
-        ("aoi", lambda c: c.click_btn()),
-        ("aoi", lambda c: c.add_aoi.__wrapped__(c, "x", MagicMock(spec=ee.Geometry))),
     ],
 )
 def test_a_control_of_a_closed_map_does_nothing(kernel, control_name, call) -> None:

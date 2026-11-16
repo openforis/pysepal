@@ -1,12 +1,12 @@
 """Test the custom Layer Control."""
 
 import ee
+import ipyvuetify as v
 import pytest
 from ipyleaflet import Map, Marker, PMTilesLayer
 
 from pysepal import aoi
 from pysepal import mapping as sm
-from pysepal import sepalwidgets as sw
 from pysepal.mapping.basemaps import basemap_tiles
 
 
@@ -17,7 +17,8 @@ def test_init() -> None:
     # create a map with 1 layer (the basemap)
     m = sm.SepalMap()
     layer_control = next(c for c in m.controls if isinstance(c, sm.LayersControl))
-    assert isinstance(layer_control.tile.children[0], sw.RadioGroup)
+    # the radios stand alone, a radio group would also drive the checkboxes
+    assert isinstance(layer_control.tile.children[0], v.Table)
 
     layer_rows = layer_control.tile.get_children(klass=sm.LayerRow)
     base_rows = layer_control.tile.get_children(klass=sm.BaseRow)
