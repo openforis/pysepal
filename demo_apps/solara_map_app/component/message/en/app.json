@@ -6,6 +6,9 @@
     "title": "Tools",
     "description": "Select an area, process it, then inspect and export the results."
   },
+  "steps": {
+    "files": "Files"
+  },
   "section": {
     "aoi": {
       "title": "Select AOI"
@@ -47,7 +50,8 @@
     "add_layer": "add layer",
     "add_radar": "add radar layer",
     "add_pmtiles": "add pmtiles layer",
-    "remove_all": "remove all layers"
+    "remove_all": "remove all layers",
+    "close": "Close"
   },
   "tasks": {
     "process": "Processing data",
@@ -77,5 +81,38 @@
   },
   "legend": {
     "total": "Total"
+  },
+  "files": {
+    "intro": "Every way FileInputComponent selects paths. Under each field is the value the app receives.",
+    "single": {
+      "title": "One file",
+      "label": "Select a file",
+      "description": "The default. The value is one path, a str."
+    },
+    "multiple": {
+      "title": "Several files",
+      "label": "Select files",
+      "description": "multiple=True. A click on a file adds or removes it, and the selection stays when you open another folder. The value is a list[str]."
+    },
+    "extensions": {
+      "title": "Several files of one type",
+      "label": "Select vector files",
+      "description": "multiple=True with extensions: only .geojson, .gpkg, .kml and .shp files are listed."
+    },
+    "folders": {
+      "title": "Files and folders",
+      "label": "Select files or folders",
+      "description": "multiple=True with select_folders=True. The check on a folder selects it, and a click on the row still opens it."
+    },
+    "preset": {
+      "title": "A selection set by the app",
+      "label": "Select files",
+      "description": "multiple=True with a list as value: the field opens with those paths selected, here the two sample files. Through a SEPAL session they are not in your workspace, so it opens empty."
+    },
+    "no_clear": {
+      "title": "No clear button",
+      "label": "Select files",
+      "description": "multiple=True with clearable=False: remove paths one at a time from the field's menu."
+    }
   }
 }
