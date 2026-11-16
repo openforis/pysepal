@@ -7,15 +7,22 @@ import solara
 
 from pysepal.message import msg
 
-from ._ui import as_children
+from ._ui import Slot, to_px
+
+PANEL_WIDTH_PX = 300
 
 DEFAULT_CONFIG = {
     "title": "Extra Content",
     "icon": "mdi-widgets",
-    "width": 300,
+    "width": PANEL_WIDTH_PX,
     "description": "",
     "toggle_icon": "mdi-chevron-left",
 }
+
+
+def panel_width(config: Optional[Mapping]) -> int:
+    """Return the panel width in px from ``config["width"]``: a number, ``"300"`` or ``"300px"``."""
+    return int(to_px((config or {}).get("width")) or PANEL_WIDTH_PX)
 
 
 @solara.component
@@ -41,8 +48,8 @@ def Section(section: Mapping, last: bool):
                     class_="body-2 ma-0 text--secondary",
                     children=[section["description"]],
                 )
-        for child in as_children(section.get("content")):
-            rv.Html(tag="div", class_="mb-3", children=[child])
+        # Keyed so the optional header and description above do not remount it.
+        Slot(section.get("content"), item_class="mb-3").key("content")
         if section.get("divider") and not last:
             rv.Divider(class_="mt-4")
     return main
@@ -81,7 +88,7 @@ def RightPanel(
     classes.append("sepal-right-panel--open" if open else "sepal-right-panel--closed")
     if narrow:
         classes.append("sepal-right-panel--narrow")
-    style = "" if narrow else f"width: {int(config['width'] or 300)}px"
+    style = "" if narrow else f"width: {panel_width(config)}px"
 
     with rv.Html(tag="div", class_="sepal-right-panel-host") as main:
         with rv.Sheet(
@@ -104,8 +111,10 @@ def RightPanel(
                     on_click=lambda: set_open(False),
                 )
 
+            # Keyed: the optional description would move the body and the
+            # footer, and rebuild every widget in them.
             if config["description"]:
-                with rv.Html(tag="div", class_="panel-description pa-3"):
+                with rv.Html(tag="div", class_="panel-description pa-3").key("description"):
                     rv.Html(
                         tag="p",
                         class_="body-2 ma-0 text--secondary",
@@ -114,16 +123,15 @@ def RightPanel(
 
             rv.Divider(class_="ma-0 pa-0")
 
-            with rv.Html(tag="div", class_="drawer-top sepal-right-panel__body"):
+            with rv.Html(tag="div", class_="drawer-top sepal-right-panel__body").key("body"):
                 with rv.Html(tag="div", class_="pa-4"):
                     for i, section in enumerate(sections):
                         Section(section, last=i == len(sections) - 1).key(f"section-{i}")
 
             if footer:
-                with rv.Html(tag="div", class_="drawer-footer"):
+                with rv.Html(tag="div", class_="drawer-footer").key("footer"):
                     rv.Divider(class_="ma-0 pa-0")
-                    for child in as_children(footer):
-                        rv.Html(tag="div", children=[child])
+                    Slot(footer, item_class="")
 
         if not open and not disabled:
             PanelTab(icon=config["toggle_icon"] or "mdi-menu-left", on_click=lambda: set_open(True))

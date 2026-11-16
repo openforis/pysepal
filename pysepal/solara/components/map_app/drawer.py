@@ -59,7 +59,7 @@ def Drawer(
     app_icon: str,
     has_map: bool,
     steps: Sequence[Mapping],
-    active_step_id: Optional[int],
+    active_index: Optional[int],
     rail: bool,
     pinned: bool,
     disabled: bool,
@@ -67,10 +67,14 @@ def Drawer(
     theme_state: ThemeState,
     locales: Optional[Iterable[str]],
     on_map: Callable[[], None],
-    on_step: Callable[[Mapping], None],
+    on_step: Callable[[int], None],
     on_pin: Callable[[], None],
 ):
-    """Render the left drawer, a full panel or a 60px rail."""
+    """Render the left drawer, a full panel or a 60px rail.
+
+    ``active_index`` and the index ``on_step`` gets point into ``steps``: ids
+    may repeat or be missing.
+    """
     classes = ["sepal-mapapp__drawer"]
     if rail:
         classes.append("sepal-mapapp__drawer--rail")
@@ -108,18 +112,17 @@ def Drawer(
                         icon="mdi-map",
                         title=msg("map_app.map"),
                         rail=rail,
-                        active=active_step_id is None,
+                        active=active_index is None,
                         event_click=lambda _: on_map(),
                     )
-                for step in steps:
+                for i, step in enumerate(steps):
                     NavItem(
                         icon=step.get("icon") or DEFAULT_STEP_ICON,
                         title=step.get("name", ""),
                         rail=rail,
-                        active=active_step_id == step.get("id")
-                        and step.get("content_enabled") is not False,
+                        active=i == active_index and step.get("content_enabled") is not False,
                         item_attributes={"data-step-id": str(step.get("id"))},
-                        event_click=lambda _, step=step: on_step(step),
+                        event_click=lambda _, i=i: on_step(i),
                     )
 
         with rv.Html(tag="div", class_="sepal-mapapp__drawer-bottom"):
