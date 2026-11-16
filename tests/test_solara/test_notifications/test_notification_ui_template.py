@@ -211,13 +211,52 @@ def test_a_toast_that_stays_open_shows_a_close_button():
     assert ':closable="!toast.timeout"' in _alert_attrs()
 
 
-def test_cancel_toasts_are_tonal_and_the_others_filled():
-    """``text`` is the alert's content, so a boolean ``text`` would print "true"."""
+def test_every_toast_is_a_filled_alert():
+    """A cancel toast differs from an info toast by its icon only, not by its style.
+
+    ``text`` is the alert's content, so a boolean ``text`` would print "true".
+    """
     attrs = _alert_attrs()
-    assert ":variant=\"toast.kind === 'cancel' ? 'tonal' : 'flat'\"" in attrs
+    assert re.search(r'\svariant="flat"', attrs)
+    assert ":variant=" not in attrs
+    assert "mdi-cancel" in attrs
     assert 'density="compact"' in attrs
     for prop in ("text", "dense", "dark", "dismissible", "value"):
         assert not re.search(rf"\s:?{prop}(=|\s|$)", attrs), prop
+
+
+# The pre-4.2 toast palette. The theme colours do not fit toasts: the light
+# theme's success is Vuetify's #4CAF50, not the SEPAL green, and the dark theme's
+# info is a light grey that white text cannot be read on.
+_TOAST_PALETTE = {
+    ("light", "success"): "rgba(91, 182, 36, 0.9)",
+    ("light", "info"): "rgba(33, 150, 243, 0.9)",
+    ("light", "warning"): "rgba(251, 140, 0, 0.9)",
+    ("light", "error"): "rgba(255, 82, 82, 0.92)",
+    ("dark", "success"): "rgba(63, 128, 42, 0.9)",
+    ("dark", "info"): "rgba(21, 101, 192, 0.9)",
+    ("dark", "warning"): "rgba(230, 120, 0, 0.9)",
+    ("dark", "error"): "rgba(166, 50, 40, 0.92)",
+}
+
+
+def _toast_background(theme: str, kind: str) -> str:
+    selector = rf"\.theme-{theme} > \.toast-stack \.toast-alert\.toast-{kind}\b"
+    match = re.search(rf"{selector}[^{{]*\{{(?P<body>[^}}]*)\}}", _template())
+    assert match, f"Missing the {theme} {kind} toast rule"
+    background = re.search(r"background-color:\s*([^;]+?)\s*!important;", match.group("body"))
+    assert background, f"The {theme} {kind} toast rule sets no background"
+    return background.group(1)
+
+
+@pytest.mark.parametrize(("theme", "kind"), list(_TOAST_PALETTE))
+def test_toasts_keep_the_sepal_palette(theme, kind):
+    assert _toast_background(theme, kind) == _TOAST_PALETTE[(theme, kind)]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_cancel_toast_is_painted_as_an_info_toast(theme):
+    assert _toast_background(theme, "cancel") == _toast_background(theme, "info")
 
 
 def test_logger_icons_and_close_button_keep_their_size():

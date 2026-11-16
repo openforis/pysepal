@@ -9,7 +9,7 @@ module.exports = {
     // Capture, so the decision is made before Vuetify reacts to the key.
     document.addEventListener("keydown", this.onKeydown, true);
   },
-  beforeDestroy() {
+  beforeUnmount() {
     document.removeEventListener("keydown", this.onKeydown, true);
   },
   methods: {
@@ -27,13 +27,15 @@ module.exports = {
       // An open list owns Enter: Vuetify picks the highlighted item.
       const field = input.closest(".v-input");
       const classes = field ? field.classList : { contains: () => false };
-      if (classes.contains("v-select--is-menu-active")) return;
+      const open = [
+        "v-select--active-menu",
+        "v-autocomplete--active-menu",
+        "v-combobox--active-menu",
+      ];
+      if (open.some((name) => classes.contains(name))) return;
 
       // A closed autocomplete would open its list again.
-      if (
-        classes.contains("v-autocomplete") &&
-        !classes.contains("v-combobox")
-      ) {
+      if (classes.contains("v-autocomplete")) {
         event.preventDefault();
         event.stopPropagation();
       }

@@ -1,6 +1,8 @@
 """AoiView's select button, country list and success feedback."""
 
 import asyncio
+import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,8 +16,12 @@ from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
+from tests.test_solara.test_notifications.test_notification_ui_template import (
+    needs_node,
+    run_vue_script,
+)
 
-from ._harness import find_by_label, of_type, render_and_drain, wait_until
+from ._harness import find_by_label, of_type, render_and_drain, wait_until, walk
 
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
@@ -259,3 +265,108 @@ def test_the_draw_name_field_is_outlined_and_dense():
         assert (name.variant, name.density) == ("outlined", "compact")
 
     _session(_Harness, scenario)
+
+
+def _enter_bridge(root):
+    return next(widget for widget in walk(root) if hasattr(widget, "vue_submit"))
+
+
+def _press_enter(root):
+    """Call the handler the page calls when the user presses Enter in a field."""
+    _enter_bridge(root).vue_submit(None)
+
+
+def test_the_enter_bridge_sits_in_the_form_it_watches():
+    @solara.component
+    def _Harness():
+        AoiView(gee=False)
+
+    async def scenario(root):
+        bridge = _enter_bridge(root)
+        form = next(w for w in walk(root) if bridge in (getattr(w, "children", None) or ()))
+        assert bridge.scope in form.class_.split()
+
+    _session(_Harness, scenario)
+
+
+def test_enter_selects_a_complete_form(fake_process_admin):
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, gee=False)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        _pick(root, msg("aoi_sel.adm.0"), "101")
+
+        _press_enter(root)
+
+        await wait_until(lambda: held.value is not None)
+        assert held.value.admin == "101"
+
+    _session(_Harness, scenario)
+
+
+def test_enter_waits_for_a_complete_form(fake_process_admin):
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, gee=False)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "ADMIN1")
+        _pick(root, msg("aoi_sel.adm.0"), "101")
+
+        _press_enter(root)
+        await asyncio.sleep(0.2)
+
+        assert held.value is None
+
+    _session(_Harness, scenario)
+
+
+_ENTER_TEMPLATE = Path(aoi_view_mod.__file__).with_name("SubmitOnEnter.vue")
+
+
+@needs_node
+@pytest.mark.parametrize(
+    ("classes", "submits", "blocks"),
+    [
+        (["v-text-field"], True, False),
+        (["v-autocomplete"], True, True),
+        (["v-combobox"], True, False),
+        (["v-select", "v-select--active-menu"], False, False),
+        (["v-autocomplete", "v-autocomplete--active-menu"], False, False),
+        (["v-combobox", "v-combobox--active-menu"], False, False),
+    ],
+)
+def test_enter_in_a_field_follows_its_vuetify_3_menu(classes, submits, blocks):
+    """An open list keeps Enter to pick an item; a closed autocomplete must not reopen."""
+    outcome = run_vue_script(
+        _ENTER_TEMPLATE,
+        f"""
+        global.HTMLInputElement = class {{}};
+        global.setTimeout = (fn) => fn();
+        const classes = new Set({json.dumps(["v-input", *classes])});
+        const field = {{ classList: {{ contains: (name) => classes.has(name) }} }};
+        const form = {{ contains: () => true }};
+        const input = Object.assign(new HTMLInputElement(), {{
+          type: "text",
+          readOnly: false,
+          closest: (selector) => (selector === ".v-input" ? field : form),
+        }});
+        let submits = false;
+        let blocks = false;
+        const vm = makeVm({{ scope: "sepal-aoi-view", $el: {{}}, submit: () => (submits = true) }});
+        vm.handleKeydown({{
+          key: "Enter",
+          target: input,
+          preventDefault: () => (blocks = true),
+          stopPropagation: () => {{}},
+        }});
+        return {{ submits, blocks }};
+        """,
+    )
+    assert outcome == {"submits": submits, "blocks": blocks}

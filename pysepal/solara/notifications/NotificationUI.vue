@@ -8,7 +8,7 @@
         :key="toast.id"
         :type="toast.color"
         :icon="toast.kind === 'cancel' ? 'mdi-cancel' : undefined"
-        :variant="toast.kind === 'cancel' ? 'tonal' : 'flat'"
+        variant="flat"
         :closable="!toast.timeout"
         density="compact"
         elevation="4"
@@ -347,28 +347,44 @@ module.exports = {
   padding-bottom: 20px !important;
 }
 
-/* Filled toasts take the theme colours, as any filled alert does, so they match
- * the app's alerts and buttons in both themes. The opacity lets the map show
- * through a little, as the toasts always did. */
-.toast-stack .toast-alert {
-  opacity: 0.9;
+/* Toasts keep their own palette rather than the theme colours: the light theme's
+ * success is Vuetify's #4CAF50, not the SEPAL green, and the dark theme's info is
+ * a light grey that white text cannot be read on. Only the background is
+ * translucent, so the map shows through and the text stays sharp. A cancel toast
+ * is an info toast with its own icon. */
+.theme-dark > .toast-stack .toast-alert.toast-success {
+  background-color: rgba(63, 128, 42, 0.9) !important;
 }
+.theme-dark > .toast-stack .toast-alert.toast-info,
+.theme-dark > .toast-stack .toast-alert.toast-cancel {
+  background-color: rgba(21, 101, 192, 0.9) !important;
+}
+.theme-dark > .toast-stack .toast-alert.toast-warning {
+  background-color: rgba(230, 120, 0, 0.9) !important;
+}
+.theme-dark > .toast-stack .toast-alert.toast-error {
+  background-color: rgba(166, 50, 40, 0.92) !important;
+}
+
+.theme-light > .toast-stack .toast-alert.toast-success {
+  background-color: rgba(91, 182, 36, 0.9) !important;
+}
+.theme-light > .toast-stack .toast-alert.toast-info,
+.theme-light > .toast-stack .toast-alert.toast-cancel {
+  background-color: rgba(33, 150, 243, 0.9) !important;
+}
+.theme-light > .toast-stack .toast-alert.toast-warning {
+  background-color: rgba(251, 140, 0, 0.9) !important;
+}
+.theme-light > .toast-stack .toast-alert.toast-error {
+  background-color: rgba(255, 82, 82, 0.92) !important;
+}
+
 .toast-stack .toast-alert.toast-error {
   border-left: 4px solid #ffcdd2 !important;
 }
 
-/* The tint is translucent, so the cancel toast sits on the card surface. */
-.theme-dark > .toast-stack .toast-alert.toast-cancel {
-  background-color: #1e1e1e !important;
-}
-.theme-light > .toast-stack .toast-alert.toast-cancel {
-  background-color: #ffffff !important;
-}
-.toast-alert.toast-cancel .toast-progress {
-  background-color: currentColor;
-}
-
-.toast-alert:not(.toast-cancel) {
+.toast-alert {
   color: #ffffff !important;
 }
 
@@ -382,8 +398,8 @@ module.exports = {
   overflow-y: auto;
 }
 
-.toast-alert:not(.toast-cancel) :deep(.v-alert__content),
-.toast-alert:not(.toast-cancel) :deep(.v-icon) {
+.toast-alert :deep(.v-alert__content),
+.toast-alert :deep(.v-icon) {
   color: #ffffff !important;
 }
 

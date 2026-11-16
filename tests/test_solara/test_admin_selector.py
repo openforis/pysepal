@@ -152,3 +152,17 @@ def test_items_reach_the_widget_unchanged(monkeypatch):
     assert countries.items == _ITEMS[(0, "")]
     assert countries.density == "compact"
     assert countries.variant == "underlined"
+
+
+def test_every_level_highlights_its_first_match(monkeypatch):
+    """Enter or Tab then picks the first match, so a few letters are enough."""
+    monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
+
+    @solara.component
+    def _Harness():
+        AdminLevelSelector(method="ADMIN2", gee=False, codes=("101", "1001"))
+
+    root = _render(_Harness)
+
+    for level in range(3):
+        assert find_by_label(root, msg(f"aoi_sel.adm.{level}")).auto_select_first is True
