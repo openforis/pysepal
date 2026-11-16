@@ -55,28 +55,28 @@ def Page():
 
 ## Arguments
 
-| Argument                | Purpose                                                                                                         |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `app_title`, `app_icon` | Title and MDI icon at the top of the drawer.                                                                    |
-| `main_map`              | The map widget, or a one-item list holding it (see "The map" below).                                            |
-| `steps_data`            | The drawer steps (see "Steps").                                                                                 |
-| `right_panel_config`    | `title`, `icon`, `width` (px), `description` and `toggle_icon` of the right panel.                              |
-| `right_panel_content`   | The panel sections: `title`, `icon`, `description`, `content`, `divider`. No section, no panel.                 |
-| `right_panel_footer`    | Elements or widgets pinned below the sections, e.g. an action bar.                                              |
-| `right_panel_open`      | Whether the panel starts open. A later change opens or closes it.                                               |
-| `on_right_panel_open`   | Called with the new state when the user opens or closes the panel.                                              |
-| `initial_step`          | The step to open on mount, if it can show (it has content and its `display` is `"step"` or `"dialog"`).         |
-| `current_step`          | The active step. A later change activates that step; `None` shows the map.                                      |
-| `on_current_step`       | Called with the step the user activates (`None` when they go back to the map).                                  |
-| `step_open`             | A later change to `False` closes the step dialog, to `True` reopens it.                                         |
-| `on_step_open`          | Called when a step opens or closes.                                                                             |
-| `is_pinned`             | Whether the drawer starts pinned open. An unpinned drawer starts as a rail and collapses on a click on the map. |
-| `theme_state`           | The `ThemeState` the toggle and the map follow; defaults to the current scope's.                                |
-| `locales`               | The locale codes the language selector offers, normally `messages.available_locales()`.                         |
-| `repo_url`              | Target of the Source Code and Report Bug links; empty hides both.                                               |
-| `docs_url`              | Target of the Documentation link; empty hides it.                                                               |
-| `dialog_width`          | Default width of dialog steps, in px or `"NN%"` of the window.                                                  |
-| `dialog_fullscreen`     | Show dialog steps full screen.                                                                                  |
+| Argument                | Purpose                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `app_title`, `app_icon` | Title and MDI icon at the top of the drawer.                                                                         |
+| `main_map`              | The map widget, or a one-item list holding it (see "The map" below).                                                 |
+| `steps_data`            | The drawer steps (see "Steps").                                                                                      |
+| `right_panel_config`    | `title`, `icon`, `width` (px as a number, `"300"` or `"300px"`), `description` and `toggle_icon` of the right panel. |
+| `right_panel_content`   | The panel sections: `title`, `icon`, `description`, `content`, `divider`. No section, no panel.                      |
+| `right_panel_footer`    | Elements or widgets pinned below the sections, e.g. an action bar.                                                   |
+| `right_panel_open`      | Whether the panel starts open. A later change opens or closes it.                                                    |
+| `on_right_panel_open`   | Called with the new state when the user opens or closes the panel.                                                   |
+| `initial_step`          | The step to open on mount, if it can show (it has content and its `display` is `"step"` or `"dialog"`).              |
+| `current_step`          | The active step. A later change activates that step, unless it has no content; `None` shows the map.                 |
+| `on_current_step`       | Called with the step the user activates (`None` when they go back to the map).                                       |
+| `step_open`             | A later change to `False` closes the step dialog, to `True` reopens it.                                              |
+| `on_step_open`          | Called when a step opens or closes.                                                                                  |
+| `is_pinned`             | Whether the drawer starts pinned open. An unpinned drawer starts as a rail and collapses on a click on the map.      |
+| `theme_state`           | The `ThemeState` the toggle and the map follow; defaults to the current scope's.                                     |
+| `locales`               | The locale codes the language selector offers, normally `messages.available_locales()`.                              |
+| `repo_url`              | Target of the Source Code and Report Bug links; empty hides both.                                                    |
+| `docs_url`              | Target of the Documentation link; empty hides it.                                                                    |
+| `dialog_width`          | Default width of dialog steps, in the forms of a step's `width`. 800 when it does not read as a size.                |
+| `dialog_fullscreen`     | Show dialog steps full screen.                                                                                       |
 
 A `content` is an element (`AoiView(...)`), a widget, or a list of them.
 
@@ -89,22 +89,22 @@ matching `on_*` callback and keep the value in a reactive.
 
 Each entry of `steps_data` is a dict:
 
-| Key                  | Meaning                                                                                                                                                        |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                 | Unique id, reported through `on_current_step`.                                                                                                                 |
-| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                              |
-| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`. |
-| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                                |
-| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                              |
-| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                    |
-| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id).                                        |
-| `width`, `height`    | Size of a dialog step, in px or `"NN%"` of the window.                                                                                                         |
+| Key                  | Meaning                                                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | Unique id, reported through `on_current_step`. Steps that share an id or have none still work, but report an id the parent cannot tell apart.                             |
+| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                                         |
+| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`.            |
+| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                                           |
+| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                                         |
+| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                               |
+| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id; a step without content closes the dialog instead). |
+| `width`, `height`    | Size of a dialog step: px as a number, `"600"` or `"600px"`, or `"NN%"` of the window. A size that does not read falls back to `dialog_width`.                            |
 
 All step and section contents stay mounted. The shell only hides the ones that
 are not shown, so a form keeps what the user typed when they leave the step and
-come back. On mount, the shell opens the step named by `current_step` or
-`initial_step`. If there is no map and no such step, it opens the first step
-that can show.
+come back. On mount, the shell opens the step named by `current_step` if it
+has content, else `initial_step`. If there is no map and no such step, it opens
+the first step that can show.
 
 ## The map
 
