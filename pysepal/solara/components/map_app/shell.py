@@ -12,19 +12,20 @@ from pysepal.solara.theme import ThemeState, resolve_theme_state
 
 from ._ui import Slot, as_children, step_keys
 from .bridges import ViewportBridge
-from .drawer import Drawer, external_links
+from .drawer import Belt, Drawer, external_links
 from .right_panel import RightPanel, panel_width
 from .step_dialog import StepDialog, clamp
 
 CSS = Path(__file__).with_name("map_app.css")
 
 NARROW_BREAKPOINT_PX = 960
-"Below this window width the drawer is a rail and the panel docks at the bottom."
+"Below this window width the drawer is a bar across the top and the panel docks at the bottom."
 
 NARROW_PANEL_HEIGHT_VH = 45
 "Height of the docked panel, in percent of the window height."
 
 RAIL_WIDTH_PX = 60
+BELT_HEIGHT_PX = 48
 DRAWER_WIDTH_PX = 320
 DISPLAYS = ("step", "dialog")
 
@@ -128,9 +129,9 @@ def DrawerToggle(rail: bool, on_click: Callable[[], None]):
         solara.Button(
             tile=True,
             color="primary",
-            classes=["control-btn", "mb-2"],
+            classes=["control-btn"],
             attributes={"title": msg("map_app.expand" if rail else "map_app.collapse")},
-            children=[rv.Icon(children=["mdi-menu-right" if rail else "mdi-menu-left"])],
+            children=[rv.Icon(children=["mdi-chevron-right" if rail else "mdi-chevron-left"])],
             on_click=on_click,
         )
     return main
@@ -164,7 +165,8 @@ def MapApp(
 
     The map fills the window. A drawer on the left lists the steps, the links
     and the theme and language controls; a panel on the right holds sections of
-    tools. Below 960px the drawer is a rail and the panel docks at the bottom.
+    tools. Below 960px the drawer is a bar across the top, the panel docks at
+    the bottom and the task pill hides.
 
     It takes the keyword arguments of the legacy
     ``pysepal.sepalwidgets.vue_app.MapApp.element``, so moving an app means
@@ -324,7 +326,11 @@ def MapApp(
 
     solara.use_effect(follow_window, [narrow])
 
-    drawer_px = RAIL_WIDTH_PX if rail else DRAWER_WIDTH_PX
+    if narrow:
+        drawer_px = 0
+    else:
+        drawer_px = RAIL_WIDTH_PX if rail else DRAWER_WIDTH_PX
+    top_px = BELT_HEIGHT_PX if narrow else 0
     panel_px = panel_width(right_panel_config)
     right_px = panel_px if has_panel and panel_open and not narrow else 0
     narrow_bottom = narrow and has_panel and panel_open
@@ -339,7 +345,9 @@ def MapApp(
         "--sepal-right-panel-width": f"{right_px}px",
         "--sepal-right-panel-open": "1" if right_px else "0",
         "--sepal-notification-right-offset": f"{right_px}px",
+        "--sepal-notification-pill-display": "none" if narrow else "flex",
         "--sepal-drawer-width": f"{drawer_px}px",
+        "--sepal-top-reserved": f"{top_px}px",
         "--sepal-bottom-reserved": bottom_reserved,
     }
 
@@ -356,7 +364,7 @@ def MapApp(
         if width > 0 and hasattr(map_widget, "canvas_width_px"):
             map_widget.canvas_width_px = width
         if height > 0 and hasattr(map_widget, "canvas_height_px"):
-            map_widget.canvas_height_px = height
+            map_widget.canvas_height_px = height - top_px
 
     solara.use_effect(
         push_insets, [id(map_widget), drawer_px, right_px, narrow, has_panel, width, height]
@@ -381,7 +389,7 @@ def MapApp(
         classes.append("sepal-mapapp--narrow-bottom")
     local_vars = (
         f"--sepal-mapapp-drawer: {drawer_px}px; --sepal-mapapp-right: {right_px}px; "
-        f"--sepal-mapapp-bottom: {bottom_reserved}"
+        f"--sepal-mapapp-top: {top_px}px; --sepal-mapapp-bottom: {bottom_reserved}"
     )
 
     step_slots = {k: s for k, s in by_key.items() if s.get("display") == "step" and _has_content(s)}
@@ -415,23 +423,40 @@ def MapApp(
                             style_="" if key == active_key else "display: none",
                         ).key(f"step:{key}")
 
-            Drawer(
-                app_title=app_title,
-                app_icon=app_icon,
-                has_map=has_map,
-                steps=steps,
-                active_index=active_index,
-                rail=rail,
-                pinned=pinned,
-                disabled=modal,
-                links=external_links(repo_url, docs_url),
-                theme_state=state,
-                locales=locales,
-                on_map=show_map,
-                on_step=activate,
-                on_pin=lambda: set_pinned(not pinned),
-            ).key("drawer")
-            DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail)).key("drawer-toggle")
+            links = external_links(repo_url, docs_url)
+            if narrow:
+                Belt(
+                    app_title=app_title,
+                    app_icon=app_icon,
+                    width=width,
+                    has_map=has_map,
+                    steps=steps,
+                    active_index=active_index,
+                    disabled=modal,
+                    links=links,
+                    theme_state=state,
+                    locales=locales,
+                    on_map=show_map,
+                    on_step=activate,
+                ).key("belt")
+            else:
+                Drawer(
+                    app_title=app_title,
+                    app_icon=app_icon,
+                    has_map=has_map,
+                    steps=steps,
+                    active_index=active_index,
+                    rail=rail,
+                    pinned=pinned,
+                    disabled=modal,
+                    links=links,
+                    theme_state=state,
+                    locales=locales,
+                    on_map=show_map,
+                    on_step=activate,
+                    on_pin=lambda: set_pinned(not pinned),
+                ).key("drawer")
+                DrawerToggle(rail=rail, on_click=lambda: set_rail(not rail)).key("drawer-toggle")
 
             if has_panel:
                 RightPanel(

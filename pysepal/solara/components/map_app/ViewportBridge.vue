@@ -29,9 +29,11 @@ module.exports = {
     applyVars(vars) {
       const root = document.documentElement;
       const next = vars || {};
-      const bottomBefore = root.style.getPropertyValue(
-        "--sepal-bottom-reserved"
-      );
+      const reserved = () =>
+        ["--sepal-top-reserved", "--sepal-bottom-reserved"]
+          .map((name) => root.style.getPropertyValue(name))
+          .join();
+      const reservedBefore = reserved();
       this.appliedVars
         .filter((name) => !(name in next))
         .forEach((name) => root.style.removeProperty(name));
@@ -40,10 +42,9 @@ module.exports = {
       );
       this.appliedVars = Object.keys(next);
       // Leaflet only re-measures on a window resize, and the map's height
-      // changes when the bottom sheet opens or closes.
-      if (
-        root.style.getPropertyValue("--sepal-bottom-reserved") !== bottomBefore
-      ) {
+      // changes when the top bar comes or goes and the bottom sheet opens or
+      // closes.
+      if (reserved() !== reservedBefore) {
         this.$nextTick(() => window.dispatchEvent(new Event("resize")));
       }
     },

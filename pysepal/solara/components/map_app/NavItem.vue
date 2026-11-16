@@ -1,5 +1,9 @@
 <template>
-  <v-tooltip location="end" :disabled="!rail" :text="title">
+  <v-tooltip
+    :location="tooltip === 'bottom' ? 'bottom' : 'end'"
+    :disabled="!rail"
+    :text="title"
+  >
     <template v-slot:activator="{ props }">
       <v-list-item
         v-bind="Object.assign({}, props, item_attributes || {})"

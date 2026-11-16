@@ -10,6 +10,7 @@ import traitlets
 
 from pysepal.solara.components.map_app import MapApp, ThemeToggle
 from pysepal.solara.components.map_app._ui import step_keys
+from pysepal.solara.components.map_app.drawer import belt_slots, split_belt
 from pysepal.solara.components.map_app.shell import initial_step_index
 from pysepal.solara.components.map_app.step_dialog import clamp
 from pysepal.solara.theme import ThemeState
@@ -616,11 +617,95 @@ def test_narrow_window_docks_panel_at_bottom():
     root = _with_class(box, "sepal-mapapp")[0]
     assert "sepal-mapapp--narrow-bottom" in _classes(root)
     assert "sepal-right-panel--narrow" in _classes(_with_class(box, "sepal-right-panel")[0])
-    assert "sepal-mapapp__drawer--rail" in _classes(_with_class(box, "sepal-mapapp__drawer")[0])
     assert _bridge(box).css_vars["--sepal-bottom-reserved"] == "45vh"
     assert _bridge(box).css_vars["--sepal-right-panel-width"] == "0px"
-    assert (fake.viewport_inset_left, fake.viewport_inset_right) == (60, 0)
+    assert (fake.viewport_inset_left, fake.viewport_inset_right) == (0, 0)
     assert fake.viewport_inset_bottom == 270
+
+
+def _toggles(root) -> List[Any]:
+    return [w for w in walk(root) if "control-btn" in _classes(w).split()]
+
+
+def _icon(widget) -> str:
+    return next(w for w in walk(widget) if type(w).__name__ == "Icon").children[0]
+
+
+def test_the_drawer_toggle_keeps_its_colour_and_takes_the_panel_chevron():
+    box, _, _ = _render(main_map=FakeMap(), right_panel_content=SECTIONS)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+
+    drawer, panel = _toggles(box)
+    assert (drawer.color, panel.color) == ("primary", "secondary")
+    assert (_icon(drawer), _icon(panel)) == ("mdi-chevron-left", "mdi-chevron-left")
+
+
+def test_narrow_window_turns_the_drawer_into_a_top_belt():
+    fake = FakeMap()
+    box, _, calls = _render(
+        app_title="Probe", main_map=fake, steps_data=_steps(), right_panel_content=SECTIONS
+    )
+
+    _bridge(box).vue_window_size({"w": 800, "h": 600})
+
+    (belt,) = _with_class(box, "sepal-mapapp__belt")
+    assert not _with_class(box, "sepal-mapapp__drawer")
+    assert not _with_class(box, "sepal-mapapp__drawer-toggle")
+    assert _with_class(box, "sepal-right-panel__tab")
+    assert _text(_with_class(belt, "sepal-mapapp__belt-title")[0]) == "Probe"
+    assert "sepal-mapapp__config" in _classes(belt.children[-1])
+    css_vars = _bridge(box).css_vars
+    assert css_vars["--sepal-top-reserved"] == "48px"
+    assert css_vars["--sepal-drawer-width"] == "0px"
+    assert css_vars["--sepal-bottom-reserved"] == "48px"
+    assert css_vars["--sepal-notification-pill-display"] == "none"
+    assert fake.canvas_height_px == 552
+
+    _item(box, 1).vue_click(None)
+    assert calls["current"] == [1]
+
+
+@pytest.mark.parametrize(
+    "width,title,slots",
+    [(390, "Probe app", 2), (600, "Probe app", 7), (390, "x" * 40, 2), (300, "x" * 40, 1)],
+)
+def test_belt_slots_follow_the_window_and_the_title(width, title, slots):
+    assert belt_slots(width, title) == slots
+
+
+def test_split_belt_keeps_the_last_slot_for_the_menu():
+    assert split_belt("abc", 3) == (["a", "b", "c"], [])
+    assert split_belt("abcd", 3) == (["a", "b"], ["c", "d"])
+    assert split_belt("abcd", 1) == ([], ["a", "b", "c", "d"])
+
+
+def test_the_entries_that_do_not_fit_go_to_a_menu_that_still_clicks():
+    steps = [
+        {"id": i, "name": f"Step {i}", "display": "step", "content": [solara.Text(str(i))]}
+        for i in range(1, 9)
+    ]
+    box, _, calls = _render(
+        app_title="Probe app", main_map=FakeMap(), steps_data=steps, repo_url="https://x/y"
+    )
+    _bridge(box).vue_window_size({"w": 390, "h": 800})
+
+    (belt,) = _with_class(box, "sepal-mapapp__belt")
+    (menu,) = [w for w in walk(belt) if type(w).__name__ == "Menu"]
+    in_menu = [w.title for w in _nav_items(menu)]
+    assert in_menu == [f"Step {i}" for i in range(1, 9)] + ["Source Code", "Report Bug"]
+    assert [w.title for w in _nav_items(belt) if w not in _nav_items(menu)] == ["Map"]
+
+    _item(box, 8).vue_click(None)
+    assert calls["current"] == [8]
+
+
+def test_a_wide_window_shows_the_pill_and_reserves_no_top():
+    box, _, _ = _render(main_map=FakeMap())
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+
+    css_vars = _bridge(box).css_vars
+    assert css_vars["--sepal-notification-pill-display"] == "flex"
+    assert css_vars["--sepal-top-reserved"] == "0px"
 
 
 def test_open_dialog_marks_the_body():
@@ -674,8 +759,8 @@ def test_toggle_follows_the_state_and_skips_auto_when_disabled():
     assert button.mode == "dark"
 
 
-def test_drawer_items_still_click_after_the_rail_toggles():
-    """A narrow window turns the drawer into a rail and back; the items must still answer."""
+def test_drawer_items_still_click_after_the_belt_comes_and_goes():
+    """A narrow window turns the drawer into a belt and back; the items must still answer."""
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
     _bridge(box).vue_window_size({"w": 800, "h": 600})
     _bridge(box).vue_window_size({"w": 1400, "h": 900})
