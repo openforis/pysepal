@@ -156,3 +156,42 @@ def test_select_folders_reaches_the_widget(batch: Path) -> None:
         await wait_until(lambda: held.value == [sub])
 
     _run(Harness(), interact)
+
+
+def test_the_bounds_are_resolved_once_per_folder(batch: Path, monkeypatch) -> None:
+    """A folder outside the root warns once, not on every click that re-renders."""
+    from pysepal.solara.components.inputs import file_input
+
+    calls = []
+
+    def counting(*args):
+        calls.append(args[1:])
+        return resolve(*args)
+
+    resolve = file_input._resolve_bounds
+    monkeypatch.setattr(file_input, "_resolve_bounds", counting)
+
+    held = solara.reactive([])
+    folder = solara.reactive("/not/in/the/root")
+    a, b = str(batch / "a.csv"), str(batch / "sub" / "b.csv")
+
+    @solara.component
+    def Harness():
+        FileInputComponent(
+            filesystem=LocalFileSystem(batch),
+            initial_folder=folder.value,
+            multiple=True,
+            value=held,
+        )
+
+    async def interact(widget):
+        held.set([a])
+        held.set([a, b])
+        await wait_until(lambda: widget.v_model == [a, b])
+        assert len(calls) == 1
+
+        folder.set(str(batch / "sub"))
+        await wait_until(lambda: len(calls) == 2)
+        assert widget.initial_folder == str(batch / "sub")
+
+    _run(Harness(), interact)
