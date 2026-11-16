@@ -29,6 +29,8 @@ class AoiResult:
         gdf: GeoDataFrame with the geometry (None for admin methods - use get_gdf_async())
         feature_collection: ee.ComputedObject for GEE workflows (FeatureCollection, Image, etc.; None otherwise)
         admin: Admin code for admin methods (None for other methods)
+        admin_source: Boundary dataset of an admin AOI, e.g. "FAO GAUL 2024"
+            (None for other methods). Use it to cite the source in exports or reports.
         gee: Whether this result was created with GEE binding
         spec: The serializable record of the inputs that produced this result.
             Persist ``spec.to_dict()`` and pass the rebuilt spec back to
@@ -51,6 +53,7 @@ class AoiResult:
     gdf: Optional[gpd.GeoDataFrame] = field(default=None, repr=False)
     feature_collection: Optional[Any] = field(default=None, repr=False)  # ee.ComputedObject
     admin: Optional[str] = None
+    admin_source: Optional[str] = None
     gee: bool = False
     spec: Optional[AoiSpec] = None
 

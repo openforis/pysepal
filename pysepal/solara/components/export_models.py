@@ -127,6 +127,26 @@ class ExportResult:
     sepal_paths: tuple[str, ...] = ()
 
 
+RemoteCancelStatus = Literal["cancelled", "finished", "failed"]
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteCancelOutcome:
+    """What a local cancel did to the Earth Engine task of an export.
+
+    ``status`` is ``"cancelled"`` when Earth Engine accepted the cancel,
+    ``"finished"`` when the task had already ended (``state`` tells how), and
+    ``"failed"`` when the task could not be cancelled (``error`` tells why).
+    """
+
+    task_id: Optional[str]
+    status: RemoteCancelStatus
+    state: Optional[str] = None
+    error: Optional[str] = None
+    deleted_drive_items: tuple[str, ...] = ()
+    drive_cleanup_error: Optional[str] = None
+
+
 def sanitize_export_name(value: str) -> str:
     """Normalize user input into a filename-safe export name."""
     cleaned = re.sub(r"\s+", "_", (value or "").strip())
@@ -304,6 +324,51 @@ def _build_result_message(result: ExportResult) -> str:
     return result.message
 
 
+def _build_cancel_message(
+    request: ExportRequest, outcome: Optional[RemoteCancelOutcome]
+) -> tuple[str, str]:
+    """Return the notification ``(level, message)`` for a cancelled export."""
+    if outcome is None:
+        return "cancel", "Export cancelled."
+
+    if outcome.status == "cancelled":
+        level, message = "cancel", "Export cancelled. The Earth Engine task was cancelled too."
+    elif outcome.status == "failed":
+        level = "error"
+        if outcome.task_id:
+            message = (
+                f"Export cancelled here, but the Earth Engine task `{outcome.task_id}` "
+                f"could not be cancelled: {outcome.error}. "
+                "Cancel it in the Earth Engine task manager."
+            )
+        else:
+            message = (
+                "Export cancelled here, but its Earth Engine task id is unknown. "
+                "Look for the task in the Earth Engine task manager and cancel it there."
+            )
+    elif outcome.state not in SUCCESS_TASK_STATES:
+        level, message = "cancel", "Export cancelled."
+    elif outcome.deleted_drive_items:
+        level, message = (
+            "cancel",
+            "Export cancelled. The Earth Engine task had already finished, "
+            "so its Google Drive staging files were deleted.",
+        )
+    else:
+        level = "warning"
+        message = "Export cancelled, but the Earth Engine task had already finished."
+        if request.target == "gee" and request.gee_asset_id:
+            message += f" The asset is at `{request.gee_asset_id}`."
+        else:
+            message += " Its files are in Google Drive."
+
+    if outcome.drive_cleanup_error:
+        if level == "cancel":
+            level = "warning"
+        message += f" Google Drive cleanup failed: {outcome.drive_cleanup_error}"
+    return level, message
+
+
 __all__ = [
     "DEFAULT_IMAGE_FILE_FORMAT",
     "DEFAULT_TABLE_FILE_FORMAT",
@@ -316,7 +381,10 @@ __all__ = [
     "ExportResult",
     "ExportSource",
     "ExportTarget",
+    "RemoteCancelOutcome",
+    "RemoteCancelStatus",
     "ResolvedExport",
+    "_build_cancel_message",
     "_build_result_message",
     "extract_task_id",
     "get_task_state_name",

@@ -31,16 +31,15 @@ from typing import Optional
 import solara
 from vectortileserver import TileWorkspace, categorized_style, single_symbol_style
 
-import pysepal.sepalwidgets as sw
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
 )
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
@@ -195,24 +194,13 @@ def VectorPanel():
     single_props = use_task_button(single_task, on_start=single_task)
     categorized_props = use_task_button(categorized_task, on_start=categorized_task)
 
-    def build_clear_button():
-        """A plain ipyvuetify button, handed to MapApp intact with its handler."""
-        button = sw.Btn(msg("buttons.clear_vectors"), small=True, block=True)
-
-        def clear():
-            for key in ("single", "categorized"):
-                sepal_map.remove_layer(key, none_ok=True)
-
-        button.on_event("click", lambda *args: clear())
-        return button
-
-    clear_button = solara.use_memo(
-        build_clear_button, [id(sepal_map), msg("buttons.clear_vectors")]
-    )
+    def clear():
+        for key in ("single", "categorized"):
+            sepal_map.remove_layer(key, none_ok=True)
 
     source = msg("source.synthetic") if vector["synthetic"] else msg("source.real")
 
-    MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         locales=messages.available_locales(),
         app_icon="mdi-vector-square",
@@ -236,9 +224,15 @@ def VectorPanel():
                         label=msg("buttons.categorized"),
                         **categorized_props,
                         small=True,
-                        block=True
+                        block=True,
                     ),
-                    clear_button,
+                    solara.Button(
+                        msg("buttons.clear_vectors"),
+                        on_click=clear,
+                        color="primary",
+                        block=True,
+                        small=True,
+                    ),
                 ],
                 "description": msg(
                     "section.description", source=source, env_var=VECTOR_DIR_ENV_VAR

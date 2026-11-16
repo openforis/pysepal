@@ -35,6 +35,7 @@ from pysepal.solara.components.aoi.admin import (
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import ADMIN_METHODS, AoiSpec
 from pysepal.solara.components.aoi.asset import process_asset
+from pysepal.solara.components.aoi.constants import admin_source_attribution
 from pysepal.solara.components.aoi.draw import process_draw
 from pysepal.solara.components.aoi.points import process_points
 from pysepal.solara.components.aoi.shape import process_shape
@@ -178,8 +179,19 @@ def MethodSelect(
         pass
 
 
+@solara.component_vue("SubmitOnEnter.vue")
+def SubmitOnEnter(scope: str, event_submit: Optional[Callable[[Any], None]] = None):
+    """Call ``event_submit`` when the user presses Enter in a field of the form.
+
+    Args:
+        scope: A class on the form that holds the fields and this component.
+        event_submit: Called when Enter is pressed in a text field of the form,
+            unless an open list takes the key to pick an item.
+    """
+
+
 @solara.component
-@versionchanged(version="4.2", reason="Add countries and notify_success")
+@versionchanged(version="4.2", reason="Add countries and notify_success; Enter selects the AOI")
 @versionadded(version="3.1", reason="Pure Solara AOI selection component")
 def AoiView(
     value: Union[AoiResult, solara.Reactive[Optional[AoiResult]]] = None,
@@ -527,6 +539,11 @@ def AoiView(
                         map_style or {},
                         "aoi",
                         autocenter=True,
+                        attribution=(
+                            f"Google Earth Engine, {admin_source_attribution(gee=True)}"
+                            if result.admin is not None
+                            else "Google Earth Engine"
+                        ),
                     )
                 elif result.admin is not None:
                     level = int(method[-1])
@@ -534,6 +551,7 @@ def AoiView(
                         level=level,
                         admin_code=result.admin,
                         name="aoi",
+                        attribution=admin_source_attribution(gee=False),
                     )
                     map_.add_layer(wms_layer)
 
@@ -734,8 +752,14 @@ def AoiView(
     # Prepare task button props (called unconditionally to satisfy hooks validator)
     btn_props = use_task_button(task, on_start=start_process)
 
+    def _submit_on_enter(_data=None):
+        if form_complete and not task.pending and not asset_loading.value:
+            start_process()
+
     # Render
-    with solara.Column(classes="mx-0 px-0").key(str(form_revision.value)):
+    with solara.Column(classes=["mx-0", "px-0", "sepal-aoi-view"]).key(str(form_revision.value)):
+        SubmitOnEnter(scope="sepal-aoi-view", event_submit=_submit_on_enter)
+
         # Method selector
         MethodSelect(
             methods=methods,

@@ -1,9 +1,12 @@
 """Test the FileInput widget in pysepal.sepalwidgets.file_input."""
 
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from traitlets import TraitError
 
 from pysepal.scripts.filesystem import (
     FileDetails,
@@ -240,3 +243,209 @@ def test_an_explicit_filesystem_is_browsed(jail: Path) -> None:
 
     assert file_input.root == str(jail)
     assert [f["name"] for f in file_input.file_list] == ["inside.geojson"]
+
+
+@pytest.fixture
+def batch(jail: Path) -> Path:
+    """A root with files in two folders, so a selection can span both."""
+    (jail / "a.csv").write_text("")
+    (jail / "sub").mkdir()
+    (jail / "sub" / "b.csv").write_text("")
+    (jail / "sub" / "c.tif").write_text("")
+    return jail
+
+
+def test_multiple_mode_holds_a_list(batch: Path) -> None:
+    """With multiple=True every selection trait is a list, empty by default."""
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    assert file_input.value == []
+    assert file_input.v_model == []
+
+    file_input.value = [str(batch / "a.csv"), str(batch / "sub" / "b.csv")]
+
+    assert file_input.v_model == [str(batch / "a.csv"), str(batch / "sub" / "b.csv")]
+    assert file_input.file == file_input.v_model
+
+
+def test_multiple_mode_takes_an_initial_list(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True, v_model=[str(batch / "a.csv")])
+
+    assert file_input.v_model == [str(batch / "a.csv")]
+
+
+def test_select_file_adds_to_the_selection(batch: Path) -> None:
+    """select_file adds a path once, in the order the files were picked."""
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    file_input.select_file(batch / "sub" / "b.csv")
+    file_input.select_file(batch / "a.csv")
+    file_input.select_file(batch / "a.csv")
+
+    assert file_input.value == [str(batch / "sub" / "b.csv"), str(batch / "a.csv")]
+
+
+def test_the_selection_survives_a_folder_change(batch: Path) -> None:
+    """A batch can span folders: entering another one keeps what was picked."""
+    file_input = FileInput(root=str(batch), multiple=True)
+    file_input.set_state({"value": [str(batch / "a.csv")]})
+
+    file_input.set_state({"current_folder": str(batch / "sub")})
+    file_input.set_state({"value": [str(batch / "a.csv"), str(batch / "sub" / "b.csv")]})
+
+    assert file_input.current_folder == str(batch / "sub")
+    assert file_input.v_model == [str(batch / "a.csv"), str(batch / "sub" / "b.csv")]
+
+
+def test_multiple_mode_lists_only_the_extensions_asked(batch: Path) -> None:
+    file_input = FileInput(
+        initial_folder=str(batch / "sub"), root=str(batch), multiple=True, extensions=[".csv"]
+    )
+
+    assert [f["name"] for f in file_input.file_list] == ["..", "b.csv"]
+
+
+def test_reset_clears_the_whole_selection(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True)
+    file_input.value = [str(batch / "a.csv"), str(batch / "sub" / "b.csv")]
+
+    file_input.reset()
+
+    assert file_input.value == []
+    assert file_input.v_model == []
+
+
+@pytest.mark.parametrize("trait", ["value", "v_model", "file"])
+def test_each_path_of_a_list_is_checked_against_the_root(batch: Path, trait: str) -> None:
+    """A list from the browser is never trusted: paths outside the root are dropped."""
+    (batch / "link").symlink_to(batch.parent, target_is_directory=True)
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    file_input.set_state(
+        {
+            trait: [
+                str(batch / "a.csv"),
+                str(batch.parent / "outside.geojson"),
+                str(batch / ".." / "outside.geojson"),
+                str(batch / "link" / "outside.geojson"),
+                str(batch / "sub" / "b.csv"),
+            ]
+        }
+    )
+
+    assert getattr(file_input, trait) == [str(batch / "a.csv"), str(batch / "sub" / "b.csv")]
+
+
+def test_a_list_drops_duplicates(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    file_input.value = [str(batch / "a.csv"), str(batch / "a.csv")]
+
+    assert file_input.value == [str(batch / "a.csv")]
+
+
+def test_multiple_mode_wraps_a_single_path(batch: Path) -> None:
+    """A str given to a multiple input, e.g. by a bound model, becomes a one-item list."""
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    file_input.v_model = str(batch / "a.csv")
+    assert file_input.v_model == [str(batch / "a.csv")]
+
+    file_input.v_model = ""
+    assert file_input.v_model == []
+
+
+def test_single_mode_refuses_a_list(batch: Path) -> None:
+    """Single mode keeps its str value; a list there is a caller error, not a selection."""
+    file_input = FileInput(root=str(batch))
+
+    with pytest.raises(TraitError):
+        file_input.v_model = [str(batch / "a.csv")]
+    assert file_input.v_model == ""
+
+
+def test_changing_the_mode_clears_the_selection(batch: Path) -> None:
+    file_input = FileInput(root=str(batch))
+    file_input.value = str(batch / "a.csv")
+
+    file_input.multiple = True
+    assert file_input.value == []
+    assert file_input.v_model == []
+
+    file_input.value = [str(batch / "a.csv")]
+    file_input.multiple = False
+    assert file_input.value == ""
+    assert file_input.v_model == ""
+
+
+def test_the_mode_is_not_writable_from_the_browser(batch: Path) -> None:
+    """The app decides whether it receives a str or a list, not the browser."""
+    file_input = FileInput(root=str(batch))
+
+    file_input.set_state({"multiple": True})
+
+    assert file_input.multiple is False
+    assert file_input.v_model == ""
+
+
+def test_folders_can_be_selected_with_select_folders(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True, select_folders=True)
+
+    file_input.set_state({"value": [str(batch / "sub"), str(batch / "a.csv")]})
+
+    assert file_input.select_folders is True
+    assert file_input.v_model == [str(batch / "sub"), str(batch / "a.csv")]
+
+
+def test_select_folders_is_not_writable_from_the_browser(batch: Path) -> None:
+    file_input = FileInput(root=str(batch), multiple=True)
+
+    file_input.set_state({"select_folders": True})
+
+    assert file_input.select_folders is False
+
+
+def test_remote_list_stays_within_a_narrow_root() -> None:
+    """On the SEPAL workspace too, each path of the list must be in the input's root."""
+    root = "/home/sepal-user/allowed"
+    files = SimpleNamespace(
+        list=lambda folder, extensions=None: SimpleNamespace(path=folder, files=[])
+    )
+    file_input = FileInput(
+        initial_folder=root,
+        root=root,
+        sepal_client=SimpleNamespace(files=files),
+        multiple=True,
+    )
+
+    file_input.set_state(
+        {
+            "value": [
+                f"{root}/a.csv",
+                "/home/sepal-user/private/secret.csv",
+                "../private/secret.csv",
+                "allowed/b.csv",
+                "/etc/passwd",
+            ]
+        }
+    )
+
+    assert file_input.value == [f"{root}/a.csv", "allowed/b.csv"]
+
+
+def test_no_files_refuses_every_path_of_a_list(jail: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a filesystem, a multiple input selects nothing."""
+    monkeypatch.setattr(session_manager, "_current_plan", lambda: PER_CONNECTION)
+    file_input = FileInput(initial_folder=str(jail), root=str(jail), multiple=True)
+
+    file_input.value = [str(jail / "inside.geojson")]
+
+    assert file_input.value == []
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_selection_logic() -> None:
+    """The Vue side toggles files, keeps them across folders and clears them all."""
+    harness = Path(__file__).parents[1] / "js" / "file_input_selection.mjs"
+    vue = Path(__file__).parents[2] / "pysepal" / "sepalwidgets" / "vue" / "FileInput.vue"
+    subprocess.run(["node", str(harness), str(vue)], check=True, capture_output=True, text=True)

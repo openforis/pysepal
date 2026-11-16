@@ -22,6 +22,7 @@ For existing repos:
 - inspect the current file tree
 - inspect git status if available
 - identify files that already implement app entrypoints, state, and environment setup
+- find `MapApp.element` calls; they move to the native `MapApp`
 
 ## 3. Generate the Base Scaffold
 

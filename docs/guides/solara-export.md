@@ -478,8 +478,9 @@ returned by `use_notifications()`:
 
 - success → `Notifier.success(message, timeout=EXPORT_SUCCESS_TOAST_TIMEOUT)`
 - error → `Notifier.error(exception_message)`
-- cancel → `Notifier.cancel("Export cancelled.")` (or a local-wait message
-  if the remote task is still running)
+- cancel → `Notifier.cancel("Export cancelled.")`, or a message that tells
+  what happened to the Earth Engine task (see
+  [Cancelling an Export](#cancelling-an-export))
 
 The success toast uses a longer timeout (8s by default, vs the 3s global
 default) because it carries a copyable asset path or task id. Tune the
@@ -500,6 +501,34 @@ standalone. With no `NotificationProvider` mounted it falls back to an inline
 `solara.Success` / `solara.Error` / etc. inside the card. Your own components
 should leave `required` alone: without a provider the hook raises
 `NotificationProviderError`, which is what you want in an app.
+
+## Cancelling an Export
+
+While an export runs, the **Export** button becomes **Cancel**. A cancel
+stops the local work and also cancels the Earth Engine task:
+
+- **Before the submission**, nothing was sent to Earth Engine. The toast is
+  `Export cancelled.`
+- **During the submission**, the engine lets the request finish, so it gets
+  the task id, and then cancels that task.
+- **While Earth Engine runs** (SEPAL target), the engine cancels the task
+  through `GEEInterface.cancel_task_async`.
+- **After the task finished**, there is nothing to cancel. For a SEPAL target
+  with `cleanup_drive_after_sepal=True`, the engine deletes the Google Drive
+  staging files that it can find. The toast says that the task had already
+  finished.
+- **If the cancel fails**, an error toast gives the task id and the reason.
+  The user must cancel the task in the Earth Engine task manager.
+
+Earth Engine only accepts a cancel request: the task can show
+`CANCEL_REQUESTED` for some time before it stops.
+
+Code that calls `submit_export_request` directly gets the same behaviour when
+it cancels the coroutine. Pass `on_remote_cancel` to receive a
+`RemoteCancelOutcome` (`status` is `"cancelled"`, `"finished"` or
+`"failed"`) before the `CancelledError` propagates. To cancel a task that you
+submitted yourself, use `cancel_export_task(gee_interface, task_id)`. It does
+not raise, and it does not cancel a task that has already finished.
 
 ## The Modal Stays Open After Success
 

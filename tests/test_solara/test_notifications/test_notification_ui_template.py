@@ -3,6 +3,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 _TEMPLATE_PATH = (
     Path(__file__).resolve().parents[3]
     / "pysepal"
@@ -64,6 +66,12 @@ def test_notification_pill_keeps_mapapp_right_offset_hook():
     assert "var(--sepal-notification-right-offset, 0px)" in pill_rule
 
 
+def test_mapapp_can_hide_the_pill_and_keep_toasts_under_its_top_bar():
+    """A narrow MapApp hides the pill and the logger, and has a bar across the top."""
+    assert "display: var(--sepal-notification-pill-display, flex);" in _rule_body(".pill-wrapper")
+    assert "var(--sepal-top-reserved, 0px)" in _rule_body(".toast-stack")
+
+
 def test_pill_and_logger_font_sizes_are_px_for_cross_runtime_parity():
     """Pill/logger font sizes are absolute px, not em.
 
@@ -112,3 +120,47 @@ def test_a_toast_that_stays_open_shows_a_close_button():
     alert = re.search(r"<v-alert\b(?P<attrs>.*?)>", content, re.DOTALL)
     assert alert, "Missing the toast v-alert"
     assert ':dismissible="!toast.timeout"' in alert.group("attrs")
+
+
+# The pre-4.2 toast palette. The theme colours do not fit toasts: the light
+# theme's success is Vuetify's #4CAF50, not the SEPAL green, and the dark theme's
+# info is a light grey that white text cannot be read on.
+_TOAST_PALETTE = {
+    ("light", "success"): "rgba(91, 182, 36, 0.9)",
+    ("light", "info"): "rgba(33, 150, 243, 0.9)",
+    ("light", "warning"): "rgba(251, 140, 0, 0.9)",
+    ("light", "error"): "rgba(255, 82, 82, 0.92)",
+    ("dark", "success"): "rgba(63, 128, 42, 0.9)",
+    ("dark", "info"): "rgba(21, 101, 192, 0.9)",
+    ("dark", "warning"): "rgba(230, 120, 0, 0.9)",
+    ("dark", "error"): "rgba(166, 50, 40, 0.92)",
+}
+
+
+def _toast_background(theme: str, kind: str) -> str:
+    content = _TEMPLATE_PATH.read_text()
+    selector = rf"\.theme-{theme} > \.toast-stack \.toast-alert\.toast-{kind}\b"
+    match = re.search(rf"{selector}[^{{]*\{{(?P<body>[^}}]*)\}}", content)
+    assert match, f"Missing the {theme} {kind} toast rule"
+    background = re.search(r"background-color:\s*([^;]+?)\s*!important;", match.group("body"))
+    assert background, f"The {theme} {kind} toast rule sets no background"
+    return background.group(1)
+
+
+@pytest.mark.parametrize(("theme", "kind"), list(_TOAST_PALETTE))
+def test_toasts_keep_the_sepal_palette(theme, kind):
+    assert _toast_background(theme, kind) == _TOAST_PALETTE[(theme, kind)]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_cancel_toast_is_painted_as_an_info_toast(theme):
+    assert _toast_background(theme, "cancel") == _toast_background(theme, "info")
+
+
+def test_every_toast_is_a_filled_alert():
+    """A cancel toast differs from an info toast by its icon only, not by its style."""
+    content = _TEMPLATE_PATH.read_text()
+    attrs = re.search(r"<v-alert\b(?P<attrs>.*?)>", content, re.DOTALL).group("attrs")
+    assert ":text=" not in attrs
+    assert re.search(r"^\s*dark\s*$", attrs, re.MULTILINE)
+    assert "mdi-cancel" in attrs

@@ -25,16 +25,15 @@ from pathlib import Path
 
 import solara
 
-import pysepal.sepalwidgets as sw
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
 )
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
@@ -215,33 +214,20 @@ def RasterPanel():
     large_props = use_task_button(large_task, on_start=large_task)
     missing_props = use_task_button(missing_task, on_start=missing_task)
 
-    def build_clear_button():
-        """A plain ipyvuetify button, handed to MapApp intact with its handler."""
-        button = sw.Btn(msg("buttons.clear_rasters"), small=True, block=True)
-
-        def clear():
-            # msg() reads the scope locale here too, in a plain widget callback
-            # with no render in progress and no locale threaded in to reach it.
-            removed = 0
-            for key in ("continuous", "classes", "large"):
-                if sepal_map.find_layer(key, none_ok=True) is not None:
-                    sepal_map.remove_layer(key, none_ok=True)
-                    removed += 1
-            if removed:
-                notifications.success(msg("toasts.cleared", count=removed))
-
-        button.on_event("click", lambda *args: clear())
-        return button
-
-    # Rebuilt on a language change too: it is a widget, not an element, so its
-    # label is set at construction and nothing re-renders it.
-    clear_button = solara.use_memo(
-        build_clear_button, [id(sepal_map), msg("buttons.clear_rasters")]
-    )
+    def clear():
+        # msg() reads the scope locale here too, in a click callback
+        # with no render in progress and no locale threaded in to reach it.
+        removed = 0
+        for key in ("continuous", "classes", "large"):
+            if sepal_map.find_layer(key, none_ok=True) is not None:
+                sepal_map.remove_layer(key, none_ok=True)
+                removed += 1
+        if removed:
+            notifications.success(msg("toasts.cleared", count=removed))
 
     source = msg("source.synthetic") if rasters["synthetic"] else msg("source.real")
 
-    MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-layers",
         main_map=[sepal_map],
@@ -266,7 +252,13 @@ def RasterPanel():
                     TaskButtonComponent(
                         label=msg("buttons.large"), **large_props, small=True, block=True
                     ),
-                    clear_button,
+                    solara.Button(
+                        msg("buttons.clear_rasters"),
+                        on_click=clear,
+                        color="primary",
+                        block=True,
+                        small=True,
+                    ),
                 ],
                 "description": msg(
                     "section.description", source=source, env_var=RASTER_DIR_ENV_VAR

@@ -1,3 +1,75 @@
+## v4.2.0 (2026-11-16)
+
+### Feat
+
+- **MapApp**: turn the drawer into a top bar on narrow windows (#1123)
+- **MapApp**: turn the drawer into a top bar on narrow windows
+- **AoiView**: select the AOI with Enter
+- **AdminLevelSelector**: highlight the first match as the user types
+- **MapApp**: add a native Solara MapApp (#1115)
+- **MapApp**: add a native Solara MapApp
+- **AoiView**: credit the admin boundary dataset in the map attribution (#1113)
+- **AoiView**: credit the admin boundary dataset in the map attribution
+- **FileInput**: select several files with multiple=True (#1108)
+- **FileInput**: show a check per row and select folders with select_folders=True
+- **FileInput**: select several files with multiple=True
+- AoiView, AssetSelect and toast changes from the MGCI Solara port (#1091)
+- **AssetSelect**: reload every folder of the session, add reload_gee_assets
+- **demo**: show a failed task in the raster demo
+- **notifications**: add a close button to error toasts and close them when a task starts
+- **AssetSelect**: share one asset list per session through use_gee_assets
+- **AoiView**: add countries and notify_success, always show the select button
+- **AdminLevelSelector**: filter levels as the user types and limit the countries
+- **notifications**: keep error toasts open until clicked
+- **filesystem**: one interface for local and SEPAL workspace files (#1079)
+- **MapApp**: deprecate model= in favour of controlled step props (#1077)
+
+### Fix
+
+- toast colours and AOI keyboard handling (#1122)
+- **notifications**: restore the previous toast colours and show cancel as info
+- **FileInput**: resolve the initial folder once, not on every render
+- **MapApp**: unlock the drawer, keep content mounted, accept more sizes (#1119)
+- **MapApp**: track steps by key, scope app content keys, harden sizes
+- **MapApp**: unlock the drawer, keep content mounted, accept more sizes
+- **MapApp**: keep the drawer toggle off the drawer
+- **geojson_to_ee**: skip geodesic on MultiPoint geometries (#1117)
+- **geojson_to_ee**: skip geodesic on MultiPoint geometries
+- **export**: cancel the Earth Engine task when the user cancels (#1110)
+- **export**: cancel the Earth Engine task when the user cancels
+- right-panel colours, MapApp repository links and toast colours (#1107)
+- **notifications**: give toasts the theme colours
+- **MapApp**: hide the Source Code and Report Bug links when repo_url is empty
+- **css**: keep coloured alerts and cards in the right panel
+- **RightPanel**: follow the dark theme for the section divider and description
+- **SepalMap**: free a closed map and its controls (#1109)
+- **InspectorControl**: do not remove the marker from a map with closed layers
+- **mapping**: make a control of a closed map a no-op
+- **SepalMap**: free a closed map and its controls
+- **Tile**: stop adding btn and alert to the shared default inputs
+- **export**: resolve a source once per selection (#1103)
+- **export**: resolve a source once per selection, not on every render
+- **Markdown**: rebuild the HTML when mkd_str changes (#1102)
+- **Markdown**: keep the template and sync only the HTML
+- **Markdown**: rebuild the HTML when mkd_str changes
+- **MapApp**: hide the Documentation link when docs_url is empty (#1101)
+- **MapApp**: hide the Documentation link when docs_url is empty
+- **css**: load the Markdown colour rule under Solara too (#1100)
+- **css**: load the Markdown colour rule under Solara too
+- **AssetSelect**: key the shared asset list by folder only (#1099)
+- **AssetSelect**: key the shared asset list by folder only
+- **solara**: give dropped pages 5 minutes to reconnect (#1098)
+- **solara**: give dropped pages 5 minutes to reconnect
+- **AssetSelect**: load a default asset given to the constructor (#1086)
+- **AssetSelect**: report listing errors on the widget (#1084)
+- **FileInput**: check browser paths against the root on the server (#1078)
+
+### Refactor
+
+- **MapApp**: move the theme toggle into one Vue template
+- **MapApp**: draw the drawer items from a Vue template and use solara.Button
+- keep the solara pin only in pyproject
+
 ## v4.1.0 (2026-09-24)
 
 ### Feat

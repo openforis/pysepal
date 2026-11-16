@@ -43,13 +43,13 @@ import solara
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
 from pysepal.scripts.scratch import scratch_root
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
 )
 from pysepal.solara.components.aoi import AoiSpec, AoiView
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider, use_notifications
 
 setup_solara_server(extra_asset_locations=[])
@@ -153,7 +153,7 @@ def _AoiShell():
         spec.set(loaded)
         notifications.info(msg("toasts.restored", method=loaded.method))
 
-    return MapApp.element(
+    return MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-content-save-move-outline",
         locales=messages.available_locales(),

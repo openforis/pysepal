@@ -308,11 +308,20 @@ Caveats:
 
 ## MapApp Integration
 
-The notification UI is designed to coexist with `MapApp`.
+The notification UI is designed to coexist with `MapApp`
+(`pysepal.solara.components.map_app`).
 
-`MapApp.vue` publishes CSS custom properties such as
-`--sepal-notification-right-offset`, and the Vue notification UI uses them to
-position the task pill relative to the right panel.
+The shell publishes its geometry as CSS custom properties on the page root:
+`--sepal-notification-right-offset`, `--sepal-notification-pill-display`,
+`--sepal-top-reserved`, `--sepal-right-panel-width`, `--sepal-drawer-width` and
+`--sepal-bottom-reserved`. The notification UI reads
+`--sepal-notification-right-offset` to keep the task pill clear of the right
+panel, `--sepal-notification-pill-display` to hide the pill and the logger on a
+narrow window, and `--sepal-top-reserved` to keep the toasts under its top bar.
+The legend reads the right panel, drawer and bottom variables. The legacy
+`pysepal.sepalwidgets.vue_app.MapApp` publishes only
+`--sepal-notification-right-offset`, `--sepal-right-panel-width`,
+`--sepal-drawer-width` and `--sepal-bottom-reserved`.
 
 Practical rule:
 

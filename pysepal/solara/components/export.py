@@ -15,7 +15,7 @@ from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 
 from .export_dialog import ExportDialog
-from .export_engine import submit_export_request
+from .export_engine import cancel_export_task, submit_export_request
 from .export_hook import ExportDialogController, use_export_dialog
 from .export_launcher import ExportLauncher
 from .export_models import (
@@ -28,6 +28,7 @@ from .export_models import (
     ExportResult,
     ExportSource,
     ExportTarget,
+    RemoteCancelOutcome,
     ResolvedExport,
     _build_result_message,
     extract_task_id,
@@ -138,6 +139,8 @@ def ExportDataComponent(
 __all__ = [
     "DEFAULT_IMAGE_FILE_FORMAT",
     "DEFAULT_TABLE_FILE_FORMAT",
+    "TABLE_FILE_FORMATS",
+    "TARGET_LABELS",
     "ExportDataComponent",
     "ExportDialog",
     "ExportDialogController",
@@ -147,10 +150,10 @@ __all__ = [
     "ExportResult",
     "ExportSource",
     "ExportTarget",
+    "RemoteCancelOutcome",
     "ResolvedExport",
-    "TABLE_FILE_FORMATS",
-    "TARGET_LABELS",
     "_build_result_message",
+    "cancel_export_task",
     "extract_task_id",
     "get_task_state_name",
     "infer_export_kind",

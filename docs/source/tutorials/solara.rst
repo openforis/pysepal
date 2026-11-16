@@ -304,13 +304,13 @@ async processing with progress notifications, layer management, a floating map
 legend and the export dialog into one ``MapApp`` shell — read it alongside this
 section rather than copying the skeleton below.
 
-``MapApp.element()`` takes the map, the drawer steps and the right panel:
+``MapApp`` takes the map, the drawer steps and the right panel:
 
 .. code-block:: python
 
     from pysepal.mapping import SepalMap
-    from pysepal.sepalwidgets.vue_app import MapApp
     from pysepal.solara import get_current_gee_interface, get_current_theme_state
+    from pysepal.solara.components.map_app import MapApp
 
     @solara.component
     @with_sepal_sessions(module_name="your_map_module")
@@ -349,7 +349,7 @@ section rather than copying the skeleton below.
             },
         ]
 
-        MapApp.element(
+        MapApp(
             app_title="Your Map Application",
             app_icon="mdi-map",
             main_map=[map_],
@@ -361,8 +361,15 @@ section rather than copying the skeleton below.
             dialog_width=750,
         )
 
-Both ``content`` lists accept ipyvuetify widgets and Solara elements, so modern
-``@solara.component`` tiles can be passed straight through.
+A ``content`` is a Solara element, a widget, or a list of them, so
+``@solara.component`` tiles and ``solara.Button(..., on_click=...)`` go
+straight in. The theme toggle and the language selector are built into the
+drawer. Every argument is in ``docs/guides/solara-mapapp-component.md``.
+
+.. note::
+   This ``MapApp`` is new in pysepal 4.2. The legacy
+   ``pysepal.sepalwidgets.vue_app.MapApp``, used as ``MapApp.element(...)``,
+   still works; new apps use the native one.
 
 .. note::
    Keep user feedback in the notification system rather than in

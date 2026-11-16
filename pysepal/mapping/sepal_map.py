@@ -878,6 +878,7 @@ class SepalMap(ipl.Map):
         key: str = "",
         use_map_vis: bool = True,
         autocenter: bool = False,
+        attribution: str = "Google Earth Engine",
     ) -> None:
         """Customized add_layer method designed for EE objects.
 
@@ -896,6 +897,7 @@ class SepalMap(ipl.Map):
             key: the unequivocal key of the layer. by default use a normalized str of the layer name
             use_map_vis: whether or not to use the map visualization parameters. default to True
             autocenter: whether or not to center the map on the layer. default to False
+            attribution: the attribution shown in the map corner while the layer is visible
         """
         # get the own visualization parameters
         map_own_visualization = await get_viz_params_async(
@@ -931,7 +933,7 @@ class SepalMap(ipl.Map):
             ee_object=obj,
             url=urls[self._is_dark() if themes else None],
             theme_urls=urls if themes else None,
-            attribution="Google Earth Engine",
+            attribution=attribution,
             name=name,
             opacity=opacity,
             visible=shown,

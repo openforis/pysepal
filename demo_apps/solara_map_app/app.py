@@ -2,8 +2,8 @@
 
 One app exercising what a real SEPAL module needs: AOI selection, async
 processing with progress notifications, layer management, a floating map legend
-driven by the layers currently on the map, and Earth Engine / Drive / SEPAL
-exports.
+driven by the layers currently on the map, Earth Engine / Drive / SEPAL exports,
+and every way the file input selects paths (a dialog step).
 
 This module is only the shell: it opens the session, holds the reactives the
 sections share and lays them out. The pieces live under ``component/``:
@@ -12,7 +12,7 @@ sections share and lays them out. The pieces live under ``component/``:
 - ``component/message`` -- the message catalogue, read through ``msg``
 - ``component/model`` -- the app model and the dataclasses carried in reactives
 - ``component/scripts`` -- Earth Engine work, legend numbers, export sources (no UI)
-- ``component/tile`` -- the right-panel sections
+- ``component/tile`` -- the right-panel sections and the file selection step
 - ``component/widget`` -- the map, its layer lifecycle and the floating legend
 
 The UI lives in :func:`MapAppDemo` so the same code serves both runtimes --
@@ -28,13 +28,13 @@ pysepal$ ./run_solara.sh demo_apps/solara_map_app/app.py --port 8901
 
 import solara
 from component.message import messages, msg
-from component.parameter import DUMMY_DATA_DIR
-from component.tile import ExportPanel, ProcessPanel, use_layer_tools
+from component.scripts import sample_folder
+from component.tile import ExportPanel, FilesPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
 
-from pysepal.sepalwidgets.vue_app import MapApp
 from pysepal.solara import (
     get_current_drive_interface,
+    get_current_filesystem,
     get_current_gee_interface,
     get_current_theme_state,
     setup_sessions,
@@ -43,6 +43,7 @@ from pysepal.solara import (
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiView
+from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider
 
 setup_solara_server(extra_asset_locations=[])
@@ -62,6 +63,7 @@ def MapAppDemo():
     gee_interface = get_current_gee_interface()
     drive_interface = get_current_drive_interface()
     theme_state = get_current_theme_state()
+    samples = sample_folder(get_current_filesystem())
 
     # State shared between the sections; each section owns whatever is private to it.
     aoi_data = solara.use_reactive(None)
@@ -79,7 +81,7 @@ def MapAppDemo():
         methods="ALL",
         map_=sepal_map,
         gee=True,
-        file_initial_folder=str(DUMMY_DATA_DIR),
+        file_initial_folder=samples,
     )
 
     right_panel_config = {
@@ -131,16 +133,27 @@ def MapAppDemo():
         },
     ]
 
+    steps_data = [
+        {
+            "id": 1,
+            "name": msg("steps.files"),
+            "icon": "mdi-file-multiple-outline",
+            "display": "dialog",
+            "content": [FilesPanel(samples=samples)],
+            "actions": [{"label": msg("buttons.close"), "close": True}],
+        },
+    ]
+
     # Toasts top-right, task progress pill bottom-right.
     NotificationProvider()
 
     MapLegend(layer_legends)
 
-    MapApp.element(
+    MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-earth",
         main_map=[sepal_map],
-        steps_data=[],
+        steps_data=steps_data,
         right_panel_config=right_panel_config,
         right_panel_content=right_panel_content,
         right_panel_open=True,

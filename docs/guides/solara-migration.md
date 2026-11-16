@@ -569,6 +569,8 @@ Shows: AppState singleton, MapApp layout, `use_thread` for long operations, `use
 - `AdminButton` → `pysepal/solara/components/admin.py`
 - `AoiView` → `pysepal/solara/components/aoi/aoi_view.py`
 - `AoiResult` → `pysepal/solara/components/aoi/aoi_result.py`
+- `MapApp`, `ThemeToggle`, `RightPanel` → `pysepal/solara/components/map_app/`
+  (new in 4.2; the `vue_app.py` originals still work)
 
 ### Bridge wrappers (ipyvuetify widget exposed via Solara, not truly converted)
 
@@ -583,5 +585,4 @@ Shows: AppState singleton, MapApp layout, `use_thread` for long operations, `use
 - `Radio`, `RadioGroup` (radio.py)
 - `Markdown`, `CopyToClip`, `StateIcon` (widget.py)
 - `Dialog`, `Tooltip` (sepalwidget.py)
-- `MapApp`, `ThemeToggle`, `RightPanel` (vue_app.py) — already work with Solara via Vue templates
-- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer` (app.py) — legacy layout, MapApp is the replacement
+- `App`, `AppBar`, `NavDrawer`, `DrawerItem`, `Footer` (app.py) — legacy layout, the native `MapApp` is the replacement

@@ -9,7 +9,8 @@ from typing import Optional, Tuple, Union
 
 import ipyvuetify as v
 from pysepal_api import SepalClient
-from traitlets import Bool, Int, List, Unicode, validate
+from traitlets import Bool, Int, List, TraitError, Unicode, observe, validate
+from traitlets import Union as UnionTrait
 
 from pysepal.logger import log
 from pysepal.message import msg
@@ -76,6 +77,11 @@ def _resolve_bounds(filesystem: FileSystem, root: str, initial_folder: str) -> T
     return str(resolved_root), str(initial)
 
 
+def _selection_trait():
+    """A path in single mode, a list of paths in multiple mode."""
+    return UnionTrait([Unicode(), List(Unicode())], default_value="").tag(sync=True)
+
+
 class FileInput(v.VuetifyTemplate, SepalWidget):
 
     template_file = Unicode(str(Path(__file__).parent / "vue/FileInput.vue")).tag(sync=True)
@@ -85,9 +91,11 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
     loading = Bool(False).tag(sync=True)
     extensions = List(Unicode()).tag(sync=True)
     label = Unicode("Select a file").tag(sync=True)
-    value = Unicode().tag(sync=True)
-    v_model = Unicode().tag(sync=True)
-    file = Unicode().tag(sync=True)
+    value = _selection_trait()
+    v_model = _selection_trait()
+    file = _selection_trait()
+    multiple = Bool(False).tag(sync=True)
+    select_folders = Bool(False).tag(sync=True)
     clearable = Bool(True).tag(sync=True)
     error_messages = List([]).tag(sync=True)
 
@@ -105,12 +113,15 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
         root: str = "",
         sepal_client: SepalClient = None,
         filesystem: Optional[FileSystem] = None,
+        multiple: bool = False,
+        select_folders: bool = False,
         **kwargs,
     ):
         """Custom widget to select a file of the user, on the local disk or in SEPAL.
 
-        Paths are absolute and ``value`` is one of them. Read the selected file
-        through :attr:`filesystem`, e.g. ``filesystem.local_copy(value)``.
+        Paths are absolute and ``value`` is one of them, or a list of them with
+        ``multiple=True``. Read a selected file through :attr:`filesystem`, e.g.
+        ``filesystem.local_copy(value)``.
 
         Args:
             initial_folder: The folder shown first, relative to the filesystem root
@@ -120,13 +131,18 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
             filesystem: Browse this filesystem. Takes precedence over ``sepal_client``.
                 By default: the user's files for this runtime, see
                 :func:`pysepal.solara.get_current_filesystem`.
+            multiple: Select several files. ``value`` is then a ``list[str]``: a
+                click adds or removes a file, and the selection is kept when the
+                user enters another folder.
+            select_folders: With ``multiple=True``, also select folders. A folder
+                row still opens the folder: its check selects it.
         """
         self.client = sepal_client
         if filesystem is None and sepal_client is not None:
             filesystem = SandboxFileSystem(sepal_client)
         self.filesystem = filesystem if filesystem is not None else _default_filesystem(root)
 
-        super().__init__(**kwargs)
+        super().__init__(multiple=multiple, select_folders=select_folders, **kwargs)
 
         if self.filesystem is not None:
             try:
@@ -168,13 +184,29 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
 
     @validate("value", "v_model", "file")
     def _keep_selection_in_root(self, proposal):
-        if not proposal["value"] or self._allows(proposal["value"]):
-            return proposal["value"]
-        return ""
+        selection = proposal["value"]
+        if not self.multiple:
+            if not isinstance(selection, str):
+                raise TraitError("A list of paths needs multiple=True")
+            return selection if not selection or self._allows(selection) else ""
+
+        paths = [selection] if isinstance(selection, str) else selection
+        # the browser can send any list: each path is checked like a single one
+        return list(dict.fromkeys(p for p in paths if p and self._allows(p)))
+
+    @observe("multiple")
+    def _clear_on_mode_change(self, change):
+        # Also runs in __init__, where it turns the default "" into [] and keeps
+        # a list passed with multiple=True.
+        kind, empty = (list, []) if change["new"] else (str, "")
+        for name in ("value", "v_model", "file"):
+            if not isinstance(getattr(self, name), kind):
+                setattr(self, name, empty)
 
     def set_state(self, sync_data):
-        """Apply browser state, except ``root``: the bound is set in Python only."""
-        sync_data = {k: v for k, v in sync_data.items() if k != "root"}
+        """Apply browser state, except the settings that Python sets."""
+        python_only = ("root", "multiple", "select_folders")
+        sync_data = {k: v for k, v in sync_data.items() if k not in python_only}
         super().set_state(sync_data)
 
     def load_files(self, *_):
@@ -202,13 +234,13 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
             self.loading = False
 
     def reset(self):
-        """Reset the file input widget."""
-        self.value = ""
+        """Clear the selection and go back to the first folder."""
+        self.value = [] if self.multiple else ""
         if self.filesystem is not None:
             self.current_folder = self.initial_folder
 
     def select_file(self, path: Union[str, Path]):
-        """Select a file from the list."""
+        """Select a file, or add it to the selection with ``multiple=True``."""
         if self.filesystem is None or not self._allows(str(path)):
             raise ValueError(f"{path} is not a file this input can select")
         path = self.filesystem.resolve(path)
@@ -217,7 +249,7 @@ class FileInput(v.VuetifyTemplate, SepalWidget):
             raise Exception(f"{path} is not a file")
 
         self.current_folder = str(path.parent)
-        self.value = str(path)
+        self.value = [*self.value, str(path)] if self.multiple else str(path)
 
 
 def __getattr__(name: str):

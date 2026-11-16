@@ -6,6 +6,9 @@
     "title": "Outils",
     "description": "Sélectionnez une zone, traitez-la, puis inspectez et exportez les résultats."
   },
+  "steps": {
+    "files": "Fichiers"
+  },
   "section": {
     "aoi": {
       "title": "Sélectionner l'AOI"
@@ -47,7 +50,8 @@
     "add_layer": "ajouter une couche",
     "add_radar": "ajouter une couche radar",
     "add_pmtiles": "ajouter une couche pmtiles",
-    "remove_all": "supprimer toutes les couches"
+    "remove_all": "supprimer toutes les couches",
+    "close": "Fermer"
   },
   "tasks": {
     "process": "Traitement des données",
@@ -77,5 +81,38 @@
   },
   "legend": {
     "total": "Total"
+  },
+  "files": {
+    "intro": "Toutes les façons dont FileInputComponent sélectionne des chemins. Sous chaque champ se trouve la valeur que reçoit l'application.",
+    "single": {
+      "title": "Un fichier",
+      "label": "Sélectionner un fichier",
+      "description": "Le mode par défaut. La valeur est un chemin, un str."
+    },
+    "multiple": {
+      "title": "Plusieurs fichiers",
+      "label": "Sélectionner des fichiers",
+      "description": "multiple=True. Un clic sur un fichier l'ajoute ou le retire, et la sélection reste quand vous ouvrez un autre dossier. La valeur est une list[str]."
+    },
+    "extensions": {
+      "title": "Plusieurs fichiers d'un même type",
+      "label": "Sélectionner des fichiers vecteur",
+      "description": "multiple=True avec extensions : seuls les fichiers .geojson, .gpkg, .kml et .shp sont listés."
+    },
+    "folders": {
+      "title": "Fichiers et dossiers",
+      "label": "Sélectionner des fichiers ou des dossiers",
+      "description": "multiple=True avec select_folders=True. La case d'un dossier le sélectionne, et un clic sur la ligne l'ouvre toujours."
+    },
+    "preset": {
+      "title": "Une sélection fixée par l'application",
+      "label": "Sélectionner des fichiers",
+      "description": "multiple=True avec une liste comme value : le champ s'ouvre avec ces chemins sélectionnés, ici les deux fichiers d'exemple. Avec une session SEPAL, ils ne sont pas dans votre espace de travail, donc il s'ouvre vide."
+    },
+    "no_clear": {
+      "title": "Sans bouton d'effacement",
+      "label": "Sélectionner des fichiers",
+      "description": "multiple=True avec clearable=False : retirez les chemins un par un depuis le menu du champ."
+    }
   }
 }

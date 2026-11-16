@@ -30,7 +30,9 @@ from .export_models import (
     ExportResult,
     ExportSource,
     ExportTarget,
+    RemoteCancelOutcome,
     ResolvedExport,
+    _build_cancel_message,
     infer_export_kind,
     sanitize_export_name,
     validate_asset_id_under_root,
@@ -73,7 +75,7 @@ class _ExportDialogState:
     timeout_seconds: float
     cleanup_drive_after_sepal: bool
     cancel_reason_ref: Any = field(repr=False, compare=False)
-    remote_submitted_ref: Any = field(repr=False, compare=False)
+    run_started_ref: Any = field(repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,7 +443,7 @@ def use_export_dialog(
         timeout_seconds=timeout_seconds,
         cleanup_drive_after_sepal=cleanup_drive_after_sepal,
         cancel_reason_ref=solara.use_ref(None),
-        remote_submitted_ref=solara.use_ref(False),
+        run_started_ref=solara.use_ref(False),
     )
 
     active_source = get_active_source(sources_tuple, selected_source_id.value)
@@ -746,21 +748,29 @@ def use_export_dialog(
         tracker_title = f"Exporting {request.name} to {TARGET_LABELS[request.target]}"
         total_steps = _tracker_step_count(request)
 
+        # From here on this coroutine reports its own cancel, with what it did
+        # to the Earth Engine task; _sync_task_state only reports a cancel
+        # that came before it started.
+        state.run_started_ref.current = True
+        cancel_outcomes: list[RemoteCancelOutcome] = []
+
         with notifications.track(tracker_title, total_steps=total_steps) as tracker:
-            state.remote_submitted_ref.current = False
-            return await submit_export_request(
-                request,
-                gee_interface=state.gee_interface,
-                drive_interface=state.drive_interface,
-                sepal_client=state.sepal_client,
-                on_step=tracker.step,
-                on_update=tracker.update,
-                on_remote_submitted=lambda _task_id: setattr(
-                    state.remote_submitted_ref,
-                    "current",
-                    True,
-                ),
-            )
+            try:
+                return await submit_export_request(
+                    request,
+                    gee_interface=state.gee_interface,
+                    drive_interface=state.drive_interface,
+                    sepal_client=state.sepal_client,
+                    on_step=tracker.step,
+                    on_update=tracker.update,
+                    on_remote_cancel=cancel_outcomes.append,
+                )
+            except asyncio.CancelledError:
+                level, message = _build_cancel_message(
+                    request, cancel_outcomes[-1] if cancel_outcomes else None
+                )
+                _publish(level, message)
+                raise
 
     task = solara.lab.use_task(
         run_export,
@@ -779,7 +789,7 @@ def use_export_dialog(
 
         if task.finished:
             result.set(task.value)
-            state.remote_submitted_ref.current = False
+            state.run_started_ref.current = False
             if task.value:
                 _publish(
                     "success",
@@ -790,20 +800,16 @@ def use_export_dialog(
 
         if task.error:
             result.set(None)
-            state.remote_submitted_ref.current = False
+            state.run_started_ref.current = False
             if task.exception is not None:
                 _publish("error", str(task.exception))
             return
 
         if task.cancelled:
             result.set(None)
-            message = (
-                "Local waiting was cancelled. The remote Earth Engine export may still continue."
-                if state.remote_submitted_ref.current
-                else "Export cancelled."
-            )
-            state.remote_submitted_ref.current = False
-            _publish("cancel", message)
+            if not state.run_started_ref.current:
+                _publish("cancel", "Export cancelled.")
+            state.run_started_ref.current = False
 
     solara.use_effect(
         _sync_task_state,
