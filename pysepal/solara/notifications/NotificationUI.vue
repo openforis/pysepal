@@ -6,12 +6,11 @@
         v-for="toast in visibleToasts"
         :key="toast.id"
         :type="toast.color"
-        :text="toast.kind === 'cancel'"
         :icon="toast.kind === 'cancel' ? 'mdi-cancel' : undefined"
         :value="true"
         :dismissible="!toast.timeout"
         dense
-        :dark="toast.kind !== 'cancel'"
+        dark
         elevation="4"
         class="toast-alert"
         :class="'toast-' + toast.kind"
@@ -341,25 +340,41 @@ export default {
   background-color: transparent !important;
 }
 
-/* Filled toasts take the theme colours, as any filled alert does, so they match
- * the app's alerts and buttons in both themes. The opacity lets the map show
- * through a little, as the toasts always did. */
-.toast-stack .toast-alert {
-  opacity: 0.9;
+/* Toasts keep their own palette rather than the theme colours: the light theme's
+ * success is Vuetify's #4CAF50, not the SEPAL green, and the dark theme's info is
+ * a light grey that white text cannot be read on. Only the background is
+ * translucent, so the map shows through and the text stays sharp. A cancel toast
+ * is an info toast with its own icon. */
+.theme-dark > .toast-stack .toast-alert.toast-success {
+  background-color: rgba(63, 128, 42, 0.9) !important;
 }
-.toast-stack .toast-alert.toast-error {
-  border-left: 4px solid #ffcdd2 !important;
+.theme-dark > .toast-stack .toast-alert.toast-info,
+.theme-dark > .toast-stack .toast-alert.toast-cancel {
+  background-color: rgba(21, 101, 192, 0.9) !important;
+}
+.theme-dark > .toast-stack .toast-alert.toast-warning {
+  background-color: rgba(230, 120, 0, 0.9) !important;
+}
+.theme-dark > .toast-stack .toast-alert.toast-error {
+  background-color: rgba(166, 50, 40, 0.92) !important;
 }
 
-/* The tint is translucent, so the cancel toast sits on the card surface. */
-.theme-dark > .toast-stack .toast-alert.toast-cancel {
-  background-color: #1e1e1e !important;
+.theme-light > .toast-stack .toast-alert.toast-success {
+  background-color: rgba(91, 182, 36, 0.9) !important;
 }
+.theme-light > .toast-stack .toast-alert.toast-info,
 .theme-light > .toast-stack .toast-alert.toast-cancel {
-  background-color: #ffffff !important;
+  background-color: rgba(33, 150, 243, 0.9) !important;
 }
-.toast-alert.toast-cancel .toast-progress {
-  background-color: currentColor;
+.theme-light > .toast-stack .toast-alert.toast-warning {
+  background-color: rgba(251, 140, 0, 0.9) !important;
+}
+.theme-light > .toast-stack .toast-alert.toast-error {
+  background-color: rgba(255, 82, 82, 0.92) !important;
+}
+
+.toast-stack .toast-alert.toast-error {
+  border-left: 4px solid #ffcdd2 !important;
 }
 
 /* Align icon and content properly */
@@ -367,7 +382,7 @@ export default {
   align-items: center;
 }
 
-.toast-alert:not(.toast-cancel) {
+.toast-alert {
   color: #ffffff !important;
 }
 
@@ -380,8 +395,8 @@ export default {
   overflow-y: auto;
 }
 
-.toast-alert:not(.toast-cancel) >>> .v-alert__content,
-.toast-alert:not(.toast-cancel) >>> .v-icon {
+.toast-alert >>> .v-alert__content,
+.toast-alert >>> .v-icon {
   color: #ffffff !important;
 }
 

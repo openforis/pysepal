@@ -139,6 +139,7 @@ def AdminLevelSelector(
                 label=msg(f"aoi_sel.adm.{level}"),
                 items=items,
                 v_model=_code_at(level),
+                auto_select_first=True,
                 clearable=True,
                 dense=True,
                 loading=loading.value,
