@@ -69,10 +69,22 @@
             :width="2"
             class="mr-2 pill-ring"
           />
-          <span v-if="pillPct" class="pill-pct">{{ pillPct }}</span>
-          <span :key="pillFrameB" class="pill-text pill-swap">{{
-            pillText
-          }}</span>
+          <!-- Both frames share one grid cell, so the pill keeps the width of
+               the wider one instead of jumping each time the text alternates -->
+          <span class="pill-frames">
+            <span
+              class="pill-text pill-frame"
+              :class="{ 'pill-frame--hidden': showDetailFrame }"
+              >{{ pillText }}</span
+            >
+            <span
+              v-if="pillAlternates"
+              class="pill-text pill-frame"
+              :class="{ 'pill-frame--hidden': !showDetailFrame }"
+              ><span v-if="pillPct" class="pill-pct">{{ pillPct }}</span
+              >{{ displayTask.progressDetail }}</span
+            >
+          </span>
         </div>
 
         <v-btn
@@ -104,6 +116,7 @@ export default {
       logFollowing: true, // Auto-scroll to bottom when new entries arrive
       transitionsEnabled: false, // Gated so the pill doesn't slide in on mount
       pillFrameB: false, // Alternation frame: false = title, true = progress detail
+      reducedMotion: false, // prefers-reduced-motion: one static line, no alternation
     };
   },
   computed: {
@@ -132,26 +145,29 @@ export default {
       const t = this.displayTask;
       return !!(t && t.progressDetail);
     },
+    pillAlternates() {
+      return this.pillHasDetail && !this.reducedMotion;
+    },
+    showDetailFrame() {
+      return this.pillAlternates && this.pillFrameB;
+    },
     pillPct() {
-      // Leading percentage, shown only on the progress-detail frame, and
-      // only once progress is known — an indeterminate task's detail
-      // stands alone, with no bogus percentage in front of it.
-      if (
-        !this.pillFrameB ||
-        !this.pillHasDetail ||
-        this.pillProgress == null
-      ) {
-        return null;
-      }
-      return Math.round(this.pillProgress * 100) + "%";
+      // Leading percentage of the detail, only once progress is known — an
+      // indeterminate task's detail stands alone, with no bogus percentage.
+      // floor, not round: 0.995 must not read "100%" while still running.
+      if (!this.pillHasDetail || this.pillProgress == null) return null;
+      return Math.floor(this.pillProgress * 100) + "%";
     },
     pillText() {
       if (!this.displayTask) return "Task log";
       const t = this.displayTask;
-      // Progress-publishing tasks alternate between the run position
-      // (title) and the current item's own progress (progressDetail).
+      // A task with a detail alternates its title (this frame) with the
+      // detail frame; under reduced motion both share one static line.
       if (this.pillHasDetail) {
-        return this.pillFrameB ? t.progressDetail : t.title;
+        if (!this.reducedMotion) return t.title;
+        const detail =
+          (this.pillPct ? this.pillPct + " " : "") + t.progressDetail;
+        return t.title + " · " + detail;
       }
       let label = t.title;
       if (t.lastStep) {
@@ -256,11 +272,15 @@ export default {
     setTimeout(() => {
       this.transitionsEnabled = true;
     }, 400);
+    this.reducedMotion = !!(
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
     // Alternate the pill between its title and progress-detail frames.
     // The timer always ticks (cheap); the flag only flips while a task
     // actually carries a detail, so detail-less tasks never alternate.
     this._pillFrameTimer = setInterval(() => {
-      this.pillFrameB = this.pillHasDetail ? !this.pillFrameB : false;
+      this.pillFrameB = this.pillAlternates ? !this.pillFrameB : false;
     }, 2500);
   },
   beforeDestroy() {
@@ -579,24 +599,29 @@ export default {
   flex-shrink: 0;
 }
 
-/* Quick fade when the pill alternates frames, so the swap reads as
- * intentional rather than flickering */
-.pill-swap {
-  animation: pill-frame-fade 0.35s ease;
+.pill-frames {
+  display: grid;
+  min-width: 0;
 }
 
-@keyframes pill-frame-fade {
-  from {
-    opacity: 0.15;
-  }
-  to {
-    opacity: 1;
-  }
+/* Quick fade-in when the pill alternates frames, so the swap reads as
+ * intentional rather than flickering */
+.pill-frame {
+  grid-area: 1 / 1;
+  transition: opacity 0.35s ease;
+}
+
+/* The outgoing frame hides at once (no transition), so the two texts never
+ * overlap; only the incoming frame fades in */
+.pill-frame--hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pill-swap {
-    animation: none;
+  .pill-frame {
+    transition: none;
   }
 }
 
