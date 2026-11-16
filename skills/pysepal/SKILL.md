@@ -736,15 +736,13 @@ plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
 
 ## File Selection
 
-Pick by how many paths you need, not by where the files live — one component
-already covers both filesystems:
+One component covers both filesystems and both counts:
 
-| Need          | Use                                                    |
-| ------------- | ------------------------------------------------------ |
-| One path      | `FileInputComponent`, on either filesystem             |
-| Several paths | not shipped yet — see "The gap" below ([#1067][i1067]) |
-
-[i1067]: https://github.com/openforis/pysepal/issues/1067
+| Need              | Use                                                      |
+| ----------------- | -------------------------------------------------------- |
+| One path          | `FileInputComponent`                                     |
+| Several paths     | `FileInputComponent(multiple=True)` (new in 4.2)         |
+| Files and folders | `FileInputComponent(multiple=True, select_folders=True)` |
 
 Read and write user files through `get_current_filesystem()` (from
 `pysepal.solara`), never `pathlib` or `SepalClient.files` directly. It returns a
@@ -764,18 +762,32 @@ async with fs.local_copy_async(path) as local:
 ```
 
 `FileInputComponent` browses that same filesystem by default (pass
-`filesystem=` to pick another). Its value is a single absolute path as a `str`;
-read it through the filesystem, not `open()`.
+`filesystem=` to pick another). Its value is an absolute path as a `str`; read
+it through the filesystem, not `open()`.
+
+With `multiple=True` the value is a `list[str]`, and a `""` value reads as `[]`.
+A click on a file adds or removes it, and the selection stays when the user
+opens another folder. `extensions=` filters the listing in both modes.
+`select_folders=True` (only with `multiple=True`) puts a check on each folder:
+the check selects it, a click on the row still opens it. A list passed as
+`value` seeds the selection; the widget drops any path outside `root`.
+`clearable=False` hides the clear button; paths are then removed one at a time
+from the field's menu.
+
+```python
+tables = solara.use_reactive([])
+FileInputComponent(value=tables, multiple=True, extensions=[".csv"])
+for path in tables.value:  # list[str]
+    ...
+```
+
+`demo_apps/solara_map_app` has a Files dialog step with every variation, each
+above the value it hands the app.
 
 Do not reach for `solara.FileBrowser` or `solara.FileBrowserMultiple` in a
 pysepal app. They read the process filesystem through `pathlib` and take no
 client, so they cannot serve a sandbox, and an app built on them stops working
 the moment it is deployed to SEPAL. pysepal apps use `FileInputComponent`.
-
-**The gap.** Nothing selects more than one path yet: multi-select on our own
-component is [#1067][i1067] (Solara's version is prior art there, not a
-dependency). Until it lands, an app needing several paths composes them from
-`FileInputComponent`.
 
 ## Charts and Graphs
 

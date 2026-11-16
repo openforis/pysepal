@@ -13,6 +13,7 @@ from .legends import (
     upsert_legends,
 )
 from .processing import build_outputs, ndvi_composite, radar_composite
+from .samples import sample_folder
 
 __all__ = [
     "band_legend",
@@ -22,5 +23,6 @@ __all__ = [
     "gradient_legend",
     "ndvi_composite",
     "radar_composite",
+    "sample_folder",
     "upsert_legends",
 ]

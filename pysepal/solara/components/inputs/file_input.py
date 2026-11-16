@@ -82,12 +82,16 @@ def FileInputComponent(
     # Resolved here, not in the widget: a re-render writes every prop back onto
     # the widget, and an unresolved "" would reset its bound. A root the
     # filesystem refuses goes through as is, and the widget shows no files.
-    resolved_root, resolved_initial = root, initial_folder
-    if fs is not None:
+    # Memoized so a folder outside the root warns once, not on every selection.
+    def resolve_bounds():
+        if fs is None:
+            return root, initial_folder
         try:
-            resolved_root, resolved_initial = _resolve_bounds(fs, root, initial_folder)
+            return _resolve_bounds(fs, root, initial_folder)
         except PathOutsideRootError:
-            pass
+            return root, initial_folder
+
+    resolved_root, resolved_initial = solara.use_memo(resolve_bounds, [fs, root, initial_folder])
 
     file_input = FileInput.element(
         initial_folder=resolved_initial,

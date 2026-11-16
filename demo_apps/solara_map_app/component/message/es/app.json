@@ -6,6 +6,9 @@
     "title": "Herramientas",
     "description": "Seleccione un área, procésela y luego inspeccione y exporte los resultados."
   },
+  "steps": {
+    "files": "Archivos"
+  },
   "section": {
     "aoi": {
       "title": "Seleccionar AOI"
@@ -47,7 +50,8 @@
     "add_layer": "añadir una capa",
     "add_radar": "añadir una capa radar",
     "add_pmtiles": "añadir una capa pmtiles",
-    "remove_all": "eliminar todas las capas"
+    "remove_all": "eliminar todas las capas",
+    "close": "Cerrar"
   },
   "tasks": {
     "process": "Procesando los datos",
@@ -77,5 +81,38 @@
   },
   "legend": {
     "total": "Total"
+  },
+  "files": {
+    "intro": "Todas las formas en que FileInputComponent selecciona rutas. Debajo de cada campo está el valor que recibe la aplicación.",
+    "single": {
+      "title": "Un archivo",
+      "label": "Seleccionar un archivo",
+      "description": "El modo por defecto. El valor es una ruta, un str."
+    },
+    "multiple": {
+      "title": "Varios archivos",
+      "label": "Seleccionar archivos",
+      "description": "multiple=True. Un clic en un archivo lo añade o lo quita, y la selección se mantiene al abrir otra carpeta. El valor es un list[str]."
+    },
+    "extensions": {
+      "title": "Varios archivos de un tipo",
+      "label": "Seleccionar archivos vectoriales",
+      "description": "multiple=True con extensions: solo se listan archivos .geojson, .gpkg, .kml y .shp."
+    },
+    "folders": {
+      "title": "Archivos y carpetas",
+      "label": "Seleccionar archivos o carpetas",
+      "description": "multiple=True con select_folders=True. La casilla de una carpeta la selecciona, y un clic en la fila la sigue abriendo."
+    },
+    "preset": {
+      "title": "Una selección fijada por la aplicación",
+      "label": "Seleccionar archivos",
+      "description": "multiple=True con una lista como value: el campo se abre con esas rutas seleccionadas, aquí los dos archivos de ejemplo. Con una sesión de SEPAL no están en su espacio de trabajo, así que se abre vacío."
+    },
+    "no_clear": {
+      "title": "Sin botón de borrar",
+      "label": "Seleccionar archivos",
+      "description": "multiple=True con clearable=False: quite las rutas una a una desde el menú del campo."
+    }
   }
 }
