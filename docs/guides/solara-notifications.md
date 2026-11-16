@@ -173,27 +173,98 @@ report continuous progress instead of milestone steps with
 
 ```python
 with notifications.track("Downloading") as task:
-    for i, tile in enumerate(tiles):
+    last_pct = None
+    for i, tile in enumerate(tiles, start=1):
         fetch(tile)
-        task.set_progress((i + 1) / len(tiles), detail=f"tile {i + 1}/{len(tiles)}")
+        pct = i * 100 // len(tiles)
+        if pct != last_pct:  # publish on whole-percent changes only
+            last_pct = pct
+            task.set_progress(i / len(tiles), detail=f"tile {i}/{len(tiles)}")
 ```
 
 `value` is a 0.0-1.0 fraction, or `None` to reset the task to indeterminate
 — useful between items in a per-item run so a finished item's 100% ring
-doesn't linger. When `value` is a number, the pill's ring becomes
-determinate. When a call also passes `detail`, the pill's text alternates
-every 2.5s between the task title and `{pct}% {detail}` (there's no
-`{pct}%` while `value` is still `None` — the detail can stand alone on an
-indeterminate ring, e.g. a reason the task is waiting); a task with a
-detail drops the usual " — lastStep" suffix from its title frame. Tasks
-that never pass `detail` keep showing their existing title (plus last
-step) text, with no timer-driven alternation.
+doesn't linger. Values outside 0-1 are clamped, and NaN counts as `None`.
+When `value` is a number, the pill's ring becomes determinate. When a call
+also passes `detail`, the pill's text alternates every 2.5s between the task
+title and `{pct}% {detail}` (there's no `{pct}%` while `value` is still
+`None` — the detail can stand alone on an indeterminate ring, e.g. a reason
+the task is waiting). The percentage rounds down, so a running task never
+reads 100%. A task with a detail drops the usual " — lastStep" suffix from
+its title frame, and the next `step()` clears the detail. Tasks that never
+pass `detail` keep showing their existing title (plus last step) text, with
+no timer-driven alternation. With "reduce motion" set in the browser, the
+pill shows one static line, `title · {pct}% {detail}`, instead.
 
 Unlike `step()`, `set_progress()` never writes to the milestone log, so
 it won't flood it with per-item updates. It still replaces the whole task
 list and pushes it to the browser on every call, so throttle a
 high-frequency source (for example, only on a whole-percent change)
 rather than calling it for every item.
+
+### Progress from worker threads
+
+A tracker can be called from any thread: the bus publishes through the
+kernel it was created in. What must happen on the kernel's side is opening
+the tracker, because `track_task()` and `use_notifications()` find the bus
+through the current kernel, and a pool thread has none. Open it first, then
+hand it to the worker:
+
+```python
+import asyncio
+
+
+def convert_rasters(paths, task):
+    """Blocking file work, run on a pool thread."""
+    for path in paths:
+        task.step(f"Converting {path.name}")
+        _convert(path)
+
+
+with notifications.track("Converting rasters", total_steps=len(paths)) as task:
+    await asyncio.to_thread(convert_rasters, paths, task)
+```
+
+This holds for `asyncio.to_thread`, `loop.run_in_executor`, a
+`ThreadPoolExecutor` and a `threading.Thread`. Each update reaches only the
+pill of the connection that opened the tracker, even when two connections'
+jobs share one pool thread.
+
+Translate the texts before the handoff too: `msg()` reads the locale from the
+current kernel, so in a worker thread it answers in the process default.
+`demo_apps/solara_progress_app` passes its workers ready-made strings.
+
+Run parallel jobs with **one tracker each**. Workers sharing one tracker can
+all call `step()` safely, but each `set_progress()` overwrites the last, so
+the ring jumps between their fractions.
+
+A tracker cannot be pickled, so it does not reach a `ProcessPoolExecutor`
+child. Send progress back through a queue and report it from the parent:
+
+```python
+import asyncio
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
+
+
+def render_tiles(tiles, queue):
+    try:
+        for i, tile in enumerate(tiles, start=1):
+            _render(tile)
+            queue.put(i / len(tiles))
+    finally:
+        queue.put(None)  # done or failed: either way, stop the parent's loop
+
+
+with notifications.track("Rendering") as task, multiprocessing.Manager() as manager:
+    queue = manager.Queue()
+    loop = asyncio.get_running_loop()
+    with ProcessPoolExecutor() as pool:
+        job = loop.run_in_executor(pool, render_tiles, tiles, queue)
+        while (fraction := await asyncio.to_thread(queue.get)) is not None:
+            task.set_progress(fraction)
+        await job
+```
 
 Use task tracking when:
 
@@ -296,25 +367,11 @@ def report_failures(func):
     return wrapper
 ```
 
-**A worker thread.** `asyncio.to_thread` copies the kernel context, so the
-scope still resolves and the toast lands on the right connection's bus:
-
-```python
-import asyncio
-
-from pysepal.solara.notifications import track_task
-
-
-def convert_rasters(paths):
-    """Blocking file work; no component on this stack."""
-    with track_task("Converting rasters", total_steps=len(paths)) as task:
-        for path in paths:
-            task.step(f"Converting {path.name}")
-            _convert(path)
-
-
-await asyncio.to_thread(convert_rasters, paths)
-```
+**Not a worker thread.** Under `solara run`, `asyncio.to_thread`,
+`run_in_executor` and `ThreadPoolExecutor` run on pool threads that carry no
+kernel, so the scope does not resolve and the toast is dropped with a warning.
+Open the tracker before the handoff and pass it in instead (see
+[Progress from worker threads](#progress-from-worker-threads)).
 
 **A script or a notebook cell** that drives app code directly and has no render
 context at all.
