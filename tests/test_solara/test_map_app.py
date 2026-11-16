@@ -9,7 +9,8 @@ import solara
 import traitlets
 
 from pysepal.solara.components.map_app import MapApp, ThemeToggle
-from pysepal.solara.components.map_app.shell import initial_step_id
+from pysepal.solara.components.map_app._ui import step_keys
+from pysepal.solara.components.map_app.shell import initial_step_index
 from pysepal.solara.components.map_app.step_dialog import clamp
 from pysepal.solara.theme import ThemeState
 
@@ -52,10 +53,14 @@ def _nav_items(root) -> List[Any]:
     return [w for w in walk(root) if hasattr(w, "vue_click")]
 
 
-def _item(root, step_id) -> Any:
-    items = [
+def _items(root, step_id) -> List[Any]:
+    return [
         w for w in _nav_items(root) if (w.item_attributes or {}).get("data-step-id") == str(step_id)
     ]
+
+
+def _item(root, step_id) -> Any:
+    items = _items(root, step_id)
     assert len(items) == 1, f"no drawer item for step {step_id}"
     return items[0]
 
@@ -82,6 +87,22 @@ def _step_container(root):
 
 def _visible(widget) -> bool:
     return "display: none" not in (getattr(widget, "style_", None) or "")
+
+
+def _shown_text(widget) -> str:
+    """Return the text under ``widget``, leaving out the subtrees hidden with display: none."""
+    if not _visible(widget) or type(widget).__name__ == "Icon":
+        return ""
+    parts = [
+        child if isinstance(child, str) else _shown_text(child)
+        for child in getattr(widget, "children", ()) or ()
+        if child is not None
+    ]
+    return " ".join(p for p in parts if p).strip()
+
+
+def _button(root, label: str):
+    return next(w for w in walk(root) if label in (getattr(w, "children", None) or []))
 
 
 def _text(widget) -> str:
@@ -127,13 +148,28 @@ def _render(**props):
     return box, rc, calls
 
 
-def test_initial_step_id_rules():
+def test_initial_step_rules():
     steps = _steps()
-    assert initial_step_id(steps, None, None, has_map=True) is None
-    assert initial_step_id(steps, 2, None, has_map=True) == 2
-    assert initial_step_id(steps, 3, None, has_map=True) is None  # not a step or dialog
-    assert initial_step_id(steps, None, None, has_map=False) == 1
-    assert initial_step_id(steps, 2, 1, has_map=True) == 1  # a named current_step wins
+
+    def initial(initial_step, current_step, has_map=True):
+        index = initial_step_index(steps, initial_step, current_step, has_map)
+        return None if index is None else steps[index]["id"]
+
+    assert initial(None, None) is None
+    assert initial(2, None) == 2
+    assert initial(3, None) is None  # not a step or dialog
+    assert initial(None, None, has_map=False) == 1
+    assert initial(2, 1) == 1  # a named current_step wins
+    assert initial(2, 4) == 2  # unless it has no content
+    no_ids = [{"name": "A", "display": "step", "content": [solara.Text("a")]}]
+    assert initial_step_index(no_ids, None, None, has_map=False) == 0
+
+
+def test_step_keys_are_unique_and_follow_the_ids():
+    keys = step_keys([{"id": i} for i in (1, "1", 1, True, "1#1", None, None)])
+    assert len(set(keys)) == len(keys)
+    # A unique id keeps its key wherever the step sits.
+    assert step_keys([{"id": 2}, {"id": 1}])[1] == step_keys([{"id": 1}])[0]
 
 
 @pytest.mark.parametrize(
@@ -147,12 +183,19 @@ def test_initial_step_id_rules():
         ("600", 1000, 2000, 800, 600),
         ("600px", 1000, 2000, 800, 600),
         ("600px", 0, 0, 800, 600),
+        (" 600PX ", 1000, 2000, 800, 600),
         ("33.5%", 1000, 2000, 800, 335),
         ("auto", 1000, 2000, 800, 800),
+        ("auto", 1000, 2000, 500, 500),
+        ("inf", 0, 0, 800, 800),
+        ("nan", 0, 0, 800, 800),
+        (float("inf"), 0, 0, 800, 800),
+        ("-100", 1000, 640, 800, 640),
+        (0, 1000, 2000, 800, 800),
     ],
 )
 def test_clamp(target, viewport, cap, default, expected):
-    assert clamp(target, viewport, cap, default) == expected
+    assert clamp((target, default), viewport, cap) == expected
 
 
 def test_step_display_step_replaces_map():
@@ -316,24 +359,58 @@ def test_moving_off_an_open_dialog_unlocks_the_drawer():
     assert step.value is None
 
 
-def test_a_dialog_step_without_content_does_not_lock_the_drawer():
-    steps = [
-        {
-            "id": 1,
-            "name": "Form",
-            "display": "dialog",
-            "content": [solara.Text("form")],
-            "actions": [{"label": "Next", "next": 2}],
-        },
-        {"id": 2, "name": "Empty", "display": "dialog", "content": []},
-    ]
-    box, _, _ = _render(main_map=FakeMap(), steps_data=steps)
+def test_next_to_a_step_without_content_closes_the_dialog():
+    filled = solara.reactive(False)
+    opened = []
+
+    @solara.component
+    def Page():
+        steps = [
+            {
+                "id": 1,
+                "name": "Form",
+                "display": "dialog",
+                "content": [solara.Text("form")],
+                "actions": [{"label": "Next", "next": 2}],
+            },
+            {
+                "id": 2,
+                "name": "Results",
+                "display": "dialog",
+                "content": [solara.Text("results")] if filled.value else [],
+            },
+        ]
+        MapApp(main_map=FakeMap(), steps_data=steps, on_step_open=opened.append)
+
+    box, _ = solara.render(Page(), handle_error=False)
     _item(box, 1).vue_click(None)
 
-    next_btn = next(w for w in walk(_dialog(box)) if "Next" in (getattr(w, "children", None) or []))
-    next_btn.fire_event("click", None)
+    _button(_dialog(box), "Next").fire_event("click", None)
 
     _assert_unlocked(box)
+    assert opened == [True, False]
+    filled.set(True)  # the results arrive later
+    _assert_unlocked(box)
+
+
+def test_current_step_does_not_open_a_step_without_content():
+    step = solara.reactive(None)
+
+    @solara.component
+    def Page():
+        MapApp(
+            main_map=FakeMap(),
+            steps_data=_steps(),
+            current_step=step.value,
+            on_current_step=step.set,
+        )
+
+    box, _ = solara.render(Page(), handle_error=False)
+
+    step.value = 4
+
+    assert not _visible(_step_container(box))
+    assert _map_item(box).active
 
 
 @solara.component
@@ -344,9 +421,11 @@ def Counter(tag: str):
 
 def _assert_counter_survives(rc, flip):
     rc.find(v.Btn, children=["panel 0"]).widget.click()
-    rc.find(v.Btn, children=["panel 1"]).assert_single()
+    button = rc.find(v.Btn, children=["panel 1"]).widget
     flip()
-    rc.find(v.Btn, children=["panel 1"]).assert_single()
+    # Hook state survives a rebuilt subtree too; only the same widget shows the
+    # browser side (typed text, a map, scroll) survived.
+    assert rc.find(v.Btn, children=["panel 1"]).widget is button
 
 
 def test_panel_content_survives_a_step_getting_content():
@@ -366,9 +445,10 @@ def test_panel_content_survives_a_step_getting_content():
     _assert_counter_survives(rc, lambda: ready.set(True))
 
 
+@pytest.mark.parametrize("start,end", [("", "A description"), ("A description", "")])
 @pytest.mark.parametrize("in_footer", [False, True])
-def test_panel_content_survives_the_panel_description_appearing(in_footer):
-    desc = solara.reactive("")
+def test_panel_content_survives_the_panel_description_changing(in_footer, start, end):
+    desc = solara.reactive(start)
 
     @solara.component
     def Page():
@@ -381,7 +461,7 @@ def test_panel_content_survives_the_panel_description_appearing(in_footer):
         )
 
     _, rc = solara.render(Page(), handle_error=False)
-    _assert_counter_survives(rc, lambda: desc.set("Now with a description"))
+    _assert_counter_survives(rc, lambda: desc.set(end))
 
 
 @pytest.mark.parametrize("field", ["title", "icon", "description"])
@@ -399,17 +479,112 @@ def test_section_content_survives_its_header_appearing(field):
     _assert_counter_survives(rc, lambda: value.set("mdi-cog" if field == "icon" else "Text"))
 
 
-def test_steps_with_repeated_or_missing_ids_render():
+def test_user_element_keys_do_not_clash_with_the_shell():
     steps = [
-        {"name": "A", "display": "step", "content": [solara.Text("a")]},
-        {"name": "B", "display": "step", "content": [solara.Text("b")]},
-        {"id": 7, "name": "C", "display": "dialog", "content": [solara.Text("c")]},
-        {"id": 7, "name": "D", "display": "dialog", "content": [solara.Text("d")]},
+        {"id": 1, "name": "A", "display": "step", "content": [solara.Text("a").key("map")]},
+        {"id": 2, "name": "B", "display": "step", "content": [solara.Text("b").key("map")]},
+        {
+            "id": 3,
+            "name": "C",
+            "display": "dialog",
+            "content": [solara.Text("c").key("action-0")],
+            "actions": [{"label": "Close", "close": True}],
+        },
     ]
+    box, _, _ = _render(
+        main_map=FakeMap(),
+        steps_data=steps,
+        initial_step=1,
+        right_panel_content=[
+            {"title": "T", "content": [solara.Text("x"), solara.Text("y").key("content-0")]}
+        ],
+        right_panel_footer=[solara.Text("f").key("section-0")],
+    )
 
+    assert _shown_text(_step_container(box)) == "a"
+
+
+@pytest.mark.parametrize("display", ["step", "dialog"])
+def test_steps_sharing_an_id_open_one_at_a_time(display):
+    steps = [
+        {"id": 7, "name": name, "display": display, "content": [solara.Text(name * 3)]}
+        for name in "CD"
+    ]
+    box, _, calls = _render(main_map=FakeMap(), steps_data=steps)
+
+    _items(box, 7)[1].vue_click(None)
+
+    shown = _shown_text(_step_container(box) if display == "step" else _dialog(box))
+    assert "DDD" in shown and "CCC" not in shown
+    assert [item.active for item in _items(box, 7)] == [False, True]
+    assert calls["current"] == [7]
+
+
+def test_a_shared_id_keeps_its_state_when_an_earlier_step_loses_content():
+    first_has_content = solara.reactive(True)
+
+    @solara.component
+    def Page():
+        MapApp(
+            main_map=FakeMap(),
+            steps_data=[
+                {
+                    "id": 5,
+                    "name": "A",
+                    "display": "step",
+                    "content": [Counter("A")] if first_has_content.value else [],
+                },
+                {"id": 5, "name": "B", "display": "step", "content": [Counter("B")]},
+            ],
+        )
+
+    _, rc = solara.render(Page(), handle_error=False)
+    rc.find(v.Btn, children=["A 0"]).widget.click()
+
+    first_has_content.set(False)
+
+    rc.find(v.Btn, children=["B 0"]).assert_single()
+
+
+def test_steps_without_an_id_open_and_are_not_the_map():
+    steps = [{"name": n, "display": "step", "content": [solara.Text(n * 3)]} for n in "AB"]
     box, _, _ = _render(main_map=FakeMap(), steps_data=steps)
+    assert _map_item(box).active
+    assert [item.active for item in _items(box, None)] == [False, False]
 
-    assert "a" in _text(_step_container(box)) and "b" in _text(_step_container(box))
+    _items(box, None)[0].vue_click(None)
+
+    assert _shown_text(_step_container(box)) == "AAA"
+    assert not _map_item(box).active
+    assert [item.active for item in _items(box, None)] == [True, False]
+
+
+@pytest.mark.parametrize(
+    "step_width,dialog_width,expected",
+    [("auto", 500, 500), ("80vw", 500, 500), ("50%", 500, 500), (None, "inf", 800)],
+)
+def test_a_dialog_size_that_does_not_read_falls_back(step_width, dialog_width, expected):
+    steps = [
+        {"id": 1, "name": "D", "display": "dialog", "width": step_width, "content": ["text"]},
+    ]
+    box, _, _ = _render(
+        main_map=FakeMap(), steps_data=steps, initial_step=1, dialog_width=dialog_width
+    )
+
+    assert _dialog(box).width == expected
+
+
+def test_panel_width_reads_like_a_dialog_size():
+    box, _, _ = _render(
+        main_map=FakeMap(),
+        right_panel_content=SECTIONS,
+        right_panel_config={"width": "350px"},
+        right_panel_open=True,
+    )
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+
+    assert _bridge(box).css_vars["--sepal-right-panel-width"] == "350px"
+    assert "width: 350px" in _with_class(box, "sepal-right-panel")[0].style_
 
 
 def test_wide_window_publishes_layout_vars_and_insets():
