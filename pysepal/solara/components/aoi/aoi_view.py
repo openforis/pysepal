@@ -179,8 +179,19 @@ def MethodSelect(
         pass
 
 
+@solara.component_vue("SubmitOnEnter.vue")
+def SubmitOnEnter(scope: str, event_submit: Optional[Callable[[Any], None]] = None):
+    """Call ``event_submit`` when the user presses Enter in a field of the form.
+
+    Args:
+        scope: A class on the form that holds the fields and this component.
+        event_submit: Called when Enter is pressed in a text field of the form,
+            unless an open list takes the key to pick an item.
+    """
+
+
 @solara.component
-@versionchanged(version="4.2", reason="Add countries and notify_success")
+@versionchanged(version="4.2", reason="Add countries and notify_success; Enter selects the AOI")
 @versionadded(version="3.1", reason="Pure Solara AOI selection component")
 def AoiView(
     value: Union[AoiResult, solara.Reactive[Optional[AoiResult]]] = None,
@@ -741,8 +752,14 @@ def AoiView(
     # Prepare task button props (called unconditionally to satisfy hooks validator)
     btn_props = use_task_button(task, on_start=start_process)
 
+    def _submit_on_enter(_data=None):
+        if form_complete and not task.pending and not asset_loading.value:
+            start_process()
+
     # Render
-    with solara.Column(classes="mx-0 px-0").key(str(form_revision.value)):
+    with solara.Column(classes=["mx-0", "px-0", "sepal-aoi-view"]).key(str(form_revision.value)):
+        SubmitOnEnter(scope="sepal-aoi-view", event_submit=_submit_on_enter)
+
         # Method selector
         MethodSelect(
             methods=methods,

@@ -15,7 +15,7 @@ from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 
-from ._harness import find_by_label, of_type, render_and_drain, wait_until
+from ._harness import find_by_label, of_type, render_and_drain, wait_until, walk
 
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
 
@@ -208,3 +208,63 @@ def test_notify_success_false_skips_the_inline_message(fake_process_admin):
 
     assert held.value is not None
     assert not of_type(root, "Alert")
+
+
+def _enter_bridge(root):
+    return next(widget for widget in walk(root) if hasattr(widget, "vue_submit"))
+
+
+def _press_enter(root):
+    """Call the handler the page calls when the user presses Enter in a field."""
+    _enter_bridge(root).vue_submit(None)
+
+
+def test_the_enter_bridge_sits_in_the_form_it_watches():
+    @solara.component
+    def _Harness():
+        AoiView(gee=False)
+
+    async def scenario(root):
+        bridge = _enter_bridge(root)
+        form = next(w for w in walk(root) if bridge in (getattr(w, "children", None) or ()))
+        assert bridge.scope in form.class_.split()
+
+    _session(_Harness, scenario)
+
+
+def test_enter_selects_a_complete_form(fake_process_admin):
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, gee=False)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        _pick(root, msg("aoi_sel.adm.0"), "101")
+
+        _press_enter(root)
+
+        await wait_until(lambda: held.value is not None)
+        assert held.value.admin == "101"
+
+    _session(_Harness, scenario)
+
+
+def test_enter_waits_for_a_complete_form(fake_process_admin):
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, gee=False)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "ADMIN1")
+        _pick(root, msg("aoi_sel.adm.0"), "101")
+
+        _press_enter(root)
+        await asyncio.sleep(0.2)
+
+        assert held.value is None
+
+    _session(_Harness, scenario)
