@@ -36,6 +36,7 @@ APP_LAYERS = {
     ".sepal-legend": LEGEND_VUE,
     ".pill-wrapper": NOTIFICATION_VUE,
     ".sepal-mapapp__drawer": MAP_APP_CSS,
+    ".sepal-mapapp__belt": MAP_APP_CSS,
     ".sepal-right-panel": MAP_APP_CSS,
 }
 

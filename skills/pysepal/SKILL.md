@@ -443,6 +443,7 @@ with track_task("Exporting", total_steps=2) as task:
   MapApp layout).
 - The task pill and the legend track the shell through CSS variables that
   `MapApp` publishes on the page root (`--sepal-notification-right-offset`,
+  `--sepal-notification-pill-display`, `--sepal-top-reserved`,
   `--sepal-right-panel-width`, `--sepal-drawer-width`,
   `--sepal-bottom-reserved`). No DOM polling. Mount `NotificationProvider()`
   and the legend next to the shell and they follow it.

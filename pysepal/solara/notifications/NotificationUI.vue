@@ -304,7 +304,7 @@ export default {
 /* ─── Toast Stack ────────────────────────────────────────── */
 .toast-stack {
   position: fixed;
-  top: 4px;
+  top: calc(var(--sepal-top-reserved, 0px) + 4px);
   right: 4px;
   /* Stay above Vuetify dialogs and their overlays so toasts remain visible
    * even when a modal is open — notifications are often about the dialog
@@ -452,7 +452,8 @@ export default {
    * dim the pill and the logger rather than let them float over a dialog.
    * See the layering contract in frontend/css/base.css. */
   z-index: 170;
-  display: flex;
+  /* MapApp hides the pill and the logger on a narrow window. */
+  display: var(--sepal-notification-pill-display, flex);
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;

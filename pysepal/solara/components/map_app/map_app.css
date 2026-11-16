@@ -9,7 +9,7 @@
 
 .sepal-mapapp__map {
   position: fixed;
-  top: 0;
+  top: var(--sepal-mapapp-top);
   left: 0;
   right: 0;
   bottom: 0;
@@ -40,15 +40,15 @@
 .sepal-mapapp .full-screen-map > .leaflet-container {
   position: fixed !important;
   width: 100vw !important;
-  height: 100vh !important;
+  height: calc(100vh - var(--sepal-mapapp-top)) !important;
   z-index: 100;
-  bottom: 0;
+  top: var(--sepal-mapapp-top);
   left: 0;
 }
 
 .sepal-mapapp__step {
   position: fixed;
-  top: 0;
+  top: var(--sepal-mapapp-top);
   left: var(--sepal-mapapp-drawer);
   right: var(--sepal-mapapp-right);
   bottom: 0;
@@ -87,12 +87,10 @@
 }
 
 .sepal-mapapp__drawer--disabled,
-.sepal-mapapp__drawer--disabled .v-list-item {
+.sepal-mapapp__drawer--disabled .v-list-item,
+.sepal-mapapp__belt--disabled,
+.sepal-mapapp__belt--disabled .v-list-item {
   pointer-events: none !important;
-}
-
-.sepal-mapapp--narrow-bottom .sepal-mapapp__drawer {
-  bottom: var(--sepal-mapapp-bottom);
 }
 
 .sepal-mapapp__drawer-header {
@@ -140,6 +138,73 @@
   margin-right: 0 !important;
 }
 
+/* belt: the drawer of a narrow window, a bar across the top */
+
+.sepal-mapapp__belt {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  z-index: 160;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.sepal-mapapp__belt.theme--dark {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+.sepal-mapapp__belt-icon {
+  flex: 0 0 auto;
+  margin: 0 8px 0 16px;
+}
+
+/* The title gives way first: the shell already counted it when it chose how
+ * many entries to show. */
+.sepal-mapapp__belt-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sepal-mapapp__belt-items {
+  display: flex;
+  flex: 0 0 auto;
+  height: 100%;
+  background: transparent !important;
+}
+
+.sepal-mapapp__belt .v-list-item {
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 0 12px !important;
+}
+
+/* Vuetify gives an icon that is not its item's only child a 16px left margin,
+ * and the click ripple is a second child: without this the icon jumps right on
+ * every click. */
+.sepal-mapapp__belt .v-list-item__icon {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.sepal-mapapp__belt > .v-divider--vertical {
+  align-self: center;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+}
+
+.sepal-mapapp__belt-menu .active-step {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
 .sepal-mapapp .active-step {
   background-color: rgba(0, 0, 0, 0.1);
 }
@@ -166,9 +231,15 @@
   flex-direction: column;
 }
 
-/* In the rail the language button shrinks to a round icon button like the
- * theme toggle: the code text goes, the icon is centred. */
-.sepal-mapapp__config--rail .v-btn {
+/* The language button is a text button, darker than the theme toggle, an icon
+ * button, in the light theme: it takes the icon button colour. */
+.sepal-mapapp__config .v-btn.theme--light {
+  color: rgba(0, 0, 0, 0.54) !important;
+}
+
+/* In the rail and the belt the language button shrinks to a round icon button
+ * like the theme toggle: the code text goes, the icon is centred. */
+.sepal-mapapp__config--compact .v-btn {
   min-width: 36px !important;
   width: 36px !important;
   height: 36px !important;
@@ -176,31 +247,36 @@
   border-radius: 50% !important;
 }
 
-.sepal-mapapp__config--rail .v-btn .v-btn__content {
+/* The hidden code text keeps the button's letter-spacing and text-indent,
+ * which push the icon off centre. */
+.sepal-mapapp__config--compact .v-btn .v-btn__content {
   font-size: 0 !important;
+  letter-spacing: 0 !important;
+  text-indent: 0 !important;
   gap: 0 !important;
 }
 
-.sepal-mapapp__config--rail .v-btn .v-btn__content .v-icon {
+/* A 20px box around the 20px glyph: the default boxes, 24px for the theme
+ * toggle and 18px for the language button, centre the two glyphs differently. */
+.sepal-mapapp__config--compact .v-btn .v-btn__content .v-icon {
   font-size: 20px !important;
+  width: 20px !important;
+  height: 20px !important;
   margin: 0 !important;
 }
 
+/* Tucked 5px under the drawer, which sits above it. */
 .sepal-mapapp__drawer-toggle {
   position: fixed;
   top: 50%;
-  left: var(--sepal-mapapp-drawer);
+  left: calc(var(--sepal-mapapp-drawer) - 5px);
   transform: translateY(-50%);
-  z-index: 161;
+  z-index: 159;
   transition: left 0.2s ease;
 }
 
 .sepal-mapapp .sepal-mapapp__drawer-toggle .control-btn {
   border-radius: 0 3px 3px 0 !important;
-}
-
-.sepal-mapapp--narrow-bottom .sepal-mapapp__drawer-toggle {
-  top: calc((100vh - var(--sepal-mapapp-bottom)) / 2);
 }
 
 .sepal-mapapp .control-btn {
