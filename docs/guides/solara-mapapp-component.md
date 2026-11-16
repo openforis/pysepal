@@ -9,8 +9,11 @@ application:
 - a panel on the right with sections of tools;
 - a dialog for dialog steps.
 
-Below 960px of window width the drawer becomes a 60px rail and the panel docks
-at the bottom of the window.
+Below 960px of window width the drawer becomes a bar across the top: the app
+title, the map, steps and links as icons, and the theme and language buttons at
+the right end. The entries that do not fit go into a menu at the end of the row.
+The panel docks at the bottom of the window, opened by its tab, and the task
+pill and its logger hide.
 
 It is new in pysepal 4.2. It is a plain `@solara.component` built from Solara
 and Vuetify elements. The legacy `pysepal.sepalwidgets.vue_app.MapApp`, a Vue
@@ -141,6 +144,8 @@ The shell publishes its geometry as CSS variables on the page root:
 - `--sepal-right-panel-width`
 - `--sepal-right-panel-open`
 - `--sepal-notification-right-offset`
+- `--sepal-notification-pill-display` (`none` on a narrow window)
+- `--sepal-top-reserved` (the height of the top bar on a narrow window)
 - `--sepal-bottom-reserved`
 
 While a step dialog is open, the shell also puts the class `sepal-modal-open` on

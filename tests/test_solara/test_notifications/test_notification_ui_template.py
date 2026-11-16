@@ -66,6 +66,12 @@ def test_notification_pill_keeps_mapapp_right_offset_hook():
     assert "var(--sepal-notification-right-offset, 0px)" in pill_rule
 
 
+def test_mapapp_can_hide_the_pill_and_keep_toasts_under_its_top_bar():
+    """A narrow MapApp hides the pill and the logger, and has a bar across the top."""
+    assert "display: var(--sepal-notification-pill-display, flex);" in _rule_body(".pill-wrapper")
+    assert "var(--sepal-top-reserved, 0px)" in _rule_body(".toast-stack")
+
+
 def test_pill_and_logger_font_sizes_are_px_for_cross_runtime_parity():
     """Pill/logger font sizes are absolute px, not em.
 
