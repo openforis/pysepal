@@ -81,12 +81,9 @@ class TaskTracker:
             "progress": 1.0,
             "completed_at": time.time(),
         }
-        if not message:
-            self._bus.update_task(self._task_id, **changes)
-            return
-        milestone = TaskMilestone(message=message)
+        extra = (TaskMilestone(message=message),) if message else ()
         self._bus.modify_task(
-            self._task_id, lambda t: {**changes, "milestones": (*t.milestones, milestone)}
+            self._task_id, lambda t: {**changes, "milestones": (*t.milestones, *extra)}
         )
 
     def fail(self, message: str) -> None:

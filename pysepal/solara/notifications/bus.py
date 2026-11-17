@@ -46,20 +46,6 @@ class NotificationBus:
             kernel_context.get_current_context() if kernel_context.has_current_context() else None
         )
 
-    def _owner_context(self):
-        """Return what to enter for a reactive write: this bus's kernel, or nothing.
-
-        Entering a ``VirtualKernelContext`` pushes it on a per-thread stack and
-        pops it on exit, so a pooled worker thread is left with no kernel and
-        the next kernel's job on that thread publishes to its own bus.
-        """
-        context = self._context
-        if context is None or (
-            kernel_context.has_current_context() and kernel_context.get_current_context() is context
-        ):
-            return contextlib.nullcontext()
-        return context
-
     def _publish(self) -> None:
         """Push pending state onto the reactives, one dispatch at a time.
 
@@ -89,7 +75,9 @@ class NotificationBus:
                         self._published_toasts, self._published_tasks = toasts, tasks
                     continue
                 # Outside the lock: these fire subscribers, which may mutate.
-                with self._owner_context():
+                # Entering pushes the kernel on a per-thread stack and exit pops
+                # it, so a pooled worker thread keeps no kernel afterwards.
+                with self._context or contextlib.nullcontext():
                     if toasts_changed:
                         self.toasts.value = toasts
                         with self._lock:

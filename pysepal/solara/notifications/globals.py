@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 #: A pool thread has no kernel, so the scope lookup cannot find the provider.
 _WORKER_HINT = (
-    "In a worker thread, create the notifier or tracker on the kernel's side " "and pass it in."
+    "In a worker thread, create the notifier or tracker on the kernel's side and pass it in."
 )
 
 _TYPE_MAP = {
