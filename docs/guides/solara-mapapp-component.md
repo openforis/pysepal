@@ -98,7 +98,7 @@ Each entry of `steps_data` is a dict:
 | `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                                           |
 | `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                                         |
 | `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                               |
-| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id; a step without content closes the dialog instead). |
+| `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id; a step without content closes the dialog and runs its `right_panel_action`, a `"toggle"` as `"open"`). |
 | `width`, `height`    | Size of a dialog step: px as a number, `"600"` or `"600px"`, or `"NN%"` of the window. A size that does not read falls back to `dialog_width`.                            |
 
 All step and section contents stay mounted. The shell only hides the ones that
