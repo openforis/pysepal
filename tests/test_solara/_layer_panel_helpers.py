@@ -43,6 +43,11 @@ def click(widget: Any) -> None:
     widget.fire_event("click", {})
 
 
+def shown_rows(box: Any) -> List[str]:
+    """Layer ids of the rows actually rendered, in display order."""
+    return [_attr(w, "data-layer-id") for w in role_widgets(box, "visibility")]
+
+
 def find_visibility_toggle(box: Any, layer_id: str) -> Any:
     """The visibility button of a row."""
     return find_by_role(box, "visibility", layer_id)
@@ -99,6 +104,11 @@ def pick_basemap(box: Any, name: str) -> None:
 def spinner_count(box: Any) -> int:
     """Rows showing the pending spinner."""
     return sum(type(w).__name__ == "ProgressCircular" for w in _tree(box))
+
+
+def inline_legends(box: Any) -> List[Any]:
+    """The legends rendered inline, in a row's body."""
+    return [w for w in _tree(box) if getattr(w, "inline", None) is True]
 
 
 def button_icon(button: Any) -> str:

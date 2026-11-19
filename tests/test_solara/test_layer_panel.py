@@ -2,6 +2,7 @@
 
 import io
 import shutil
+import threading
 import zipfile
 from pathlib import Path
 
@@ -11,15 +12,21 @@ from pysepal.layers import LayerSpec, LayerStore
 from pysepal.mapping import SepalMap
 from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.layer_panel.download import download_payload
+from tests.test_solara._harness import walk
 from tests.test_solara._layer_panel_helpers import (
     all_text,
     button_icon,
     click,
+    expand,
     export_button,
     export_buttons,
+    find_by_role,
     find_visibility_toggle,
+    inline_legends,
     pick_basemap,
+    role_widgets,
     row_ids,
+    shown_rows,
     spinner_count,
 )
 
@@ -114,3 +121,110 @@ def test_basemap_picker_is_exclusive():
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
     pick_basemap(box, "OpenStreetMap")
     assert [lyr.visible for lyr in m.layers if lyr.base] == [False, True]
+
+
+def test_row_remove_button_drops_the_row(raster_spec, raster_spec_b):
+    store = LayerStore()
+    store.add(raster_spec)
+    store.add(raster_spec_b)
+    box, rc = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, raster_spec.id)
+    click(find_by_role(box, "remove", raster_spec.id))
+    assert store.ids == [raster_spec_b.id]
+    assert shown_rows(box) == [raster_spec_b.id]
+    rc.close()
+
+
+def test_remove_all_from_a_sibling_button_keeps_the_app(raster_spec, raster_spec_b):
+    m = SepalMap(gee=False)
+    m.layer_store.add(raster_spec)
+    m.layer_store.add(raster_spec_b)
+
+    @solara.component
+    def App():
+        return solara.Column(
+            children=[
+                solara.Button("all", on_click=m.remove_all, attributes={"data-role": "all"}),
+                LayerPanel(store=m.layer_store, map_=m),
+            ]
+        )
+
+    box, rc = solara.render(App(), handle_error=False)
+    click(role_widgets(box, "all")[0])
+    assert m.layer_store.ids == []
+    assert shown_rows(box) == [] and "No layers" in all_text(box)
+    assert role_widgets(box, "all")  # the rest of the app is still rendered
+    rc.close()
+
+
+def test_removal_from_another_thread(raster_spec, raster_spec_b):
+    store = LayerStore()
+    store.add(raster_spec)
+    store.add(raster_spec_b)
+    box, rc = solara.render(LayerPanel(store=store), handle_error=False)
+    thread = threading.Thread(target=lambda: store.remove(raster_spec.id))
+    thread.start()
+    thread.join()
+    assert shown_rows(box) == [raster_spec_b.id]
+    rc.close()
+
+
+def test_expand_then_collapse(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, raster_spec.id)
+    assert role_widgets(box, "remove")
+    expand(box, raster_spec.id)
+    assert not role_widgets(box, "remove")
+
+
+def test_visibility_toggle_after_expanding(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, raster_spec.id)
+    click(find_visibility_toggle(box, raster_spec.id))
+    assert store.view(raster_spec.id).visible is False
+    assert button_icon(find_visibility_toggle(box, raster_spec.id)) == "mdi-eye-off"
+
+
+def test_opacity_slider_sets_view_opacity(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, raster_spec.id)
+    find_by_role(box, "opacity", raster_spec.id).v_model = 0.4
+    assert store.view(raster_spec.id).opacity == 0.4
+
+
+def test_no_opacity_slider_for_pmtiles(pmtiles_spec):
+    store = LayerStore()
+    store.add(pmtiles_spec)
+    store.set_status(pmtiles_spec.id, "ready", kind="pmtiles")
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, pmtiles_spec.id)
+    assert role_widgets(box, "remove") and not role_widgets(box, "opacity")
+
+
+def test_expanded_row_shows_inline_legend(byte):
+    store = LayerStore()
+    spec = LayerSpec.from_raster(byte, vmin=0, vmax=255)
+    store.add(spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, spec.id)
+    legends = inline_legends(box)
+    assert len(legends) == 1 and legends[0].legend_data["gradients"]
+
+
+def test_download_only_for_file_sources(raster_spec, gee_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    store.add(gee_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, raster_spec.id)
+    downloads = [w for w in walk(box) if type(w).__name__ == "FileDownloadWidget"]
+    assert len(downloads) == 1
+    expand(box, raster_spec.id)
+    expand(box, gee_spec.id)
+    assert not [w for w in walk(box) if type(w).__name__ == "FileDownloadWidget"]

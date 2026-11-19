@@ -30,7 +30,7 @@ def LayerPanel(
         map_: The ``SepalMap`` whose basemaps the picker switches; no picker when None.
         on_export: Called with a Earth Engine layer's spec when its Export button is clicked.
     """
-    use_layer_store(store)
+    version = use_layer_store(store)
     is_dark = use_theme_dark()
 
     ids = store.ids
@@ -38,7 +38,8 @@ def LayerPanel(
         content = SortableList(
             ids=ids,
             children=[
-                LayerRow(store, layer_id, on_export, is_dark).key(layer_id) for layer_id in ids
+                LayerRow(store, layer_id, on_export, is_dark, version).key(layer_id)
+                for layer_id in ids
             ],
             on_move=store.move,
         )

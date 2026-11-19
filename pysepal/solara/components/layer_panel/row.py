@@ -11,7 +11,6 @@ from pysepal.message import msg
 from pysepal.solara.components.legend import LegendComponent
 
 from .download import download_filename, download_payload, is_downloadable
-from .hooks import use_layer_store
 from .restyle import RestyleForm
 
 
@@ -40,6 +39,7 @@ def LayerRow(
     layer_id: str,
     on_export: Optional[Callable[[LayerSpec], None]] = None,
     is_dark: bool = False,
+    version: int = 0,
 ):
     """A layer's visibility, name, status and, when expanded, its controls.
 
@@ -48,11 +48,13 @@ def LayerRow(
         layer_id: Id of the layer shown.
         on_export: Called with the spec when Export is clicked; no button without it.
         is_dark: Whether the theme is dark, for the derived legend's default color.
+        version: The panel's store version. A row whose arguments did not change is not
+            re-rendered with the panel, so this makes it follow every store event.
     """
-    # The panel re-renders on store events, but a row whose arguments did not change
-    # is not re-rendered with it, so the row follows the store itself.
-    use_layer_store(store)
     expanded, set_expanded = solara.use_state(False)
+    # The panel drops a removed layer's row, but a render can still reach it first.
+    if layer_id not in store:
+        return solara.Column(classes=["pysepal-layer-row"], gap="0px", children=[])
     spec, view = store.get(layer_id), store.view(layer_id)
 
     status = view.status
