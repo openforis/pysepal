@@ -1,0 +1,52 @@
+{
+  "project": {
+    "title_manage": "Gestionar proyectos",
+    "search": "Buscar proyectos",
+    "list_empty": "Todavía no hay proyectos guardados.",
+    "no_match": "Ningún nombre de proyecto contiene \"{query}\".",
+    "chip_open": "abierto",
+    "modified": "modificado {time_ago}",
+    "size_on_disk": "Tamaño en disco",
+    "size_counting": "Esto elimina la carpeta del proyecto y todo su contenido (calculando su tamaño…).",
+    "rename": "Renombrar",
+    "duplicate": "Duplicar",
+    "open_selected": "Abrir",
+    "open_instead": "Abrir {name} en su lugar",
+    "continue_title": "Continuar donde lo dejaste",
+    "continue": "Continuar",
+    "new": "Nuevo proyecto",
+    "manage": "Gestionar proyectos ({count})",
+    "title_new": "Nuevo proyecto",
+    "title_rename": "Renombrar {name}",
+    "title_duplicate": "Duplicar {name}",
+    "name_label": "Nombre del proyecto",
+    "name_hint": "Letras, dígitos, espacios, '-' y '_'.",
+    "name_empty": "Introduce un nombre.",
+    "name_chars": "Usa solo letras, dígitos, espacios, '-' y '_'.",
+    "name_exists": "Ya existe un proyecto con este nombre.",
+    "delete_title": "¿Eliminar {name}?",
+    "delete_size": "Esto elimina la carpeta del proyecto y todo su contenido ({size}).",
+    "delete_type_label": "Escribe {name} para confirmar",
+    "delete_open_warning": "Este proyecto está abierto: se cerrará primero.",
+    "ago_now": "justo ahora",
+    "ago_minutes": {
+      "one": "hace {count} minuto",
+      "many": "hace {count} de minutos",
+      "other": "hace {count} minutos"
+    },
+    "ago_hours": {
+      "one": "hace {count} hora",
+      "many": "hace {count} de horas",
+      "other": "hace {count} horas"
+    },
+    "ago_days": {
+      "one": "hace {count} día",
+      "many": "hace {count} de días",
+      "other": "hace {count} días"
+    },
+    "unreadable": "no se puede leer",
+    "delete": "Eliminar",
+    "cancel": "Cancelar",
+    "create": "Crear"
+  }
+}

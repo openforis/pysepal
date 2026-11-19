@@ -1,0 +1,49 @@
+{
+  "project": {
+    "title_manage": "Manage projects",
+    "search": "Search projects",
+    "list_empty": "No saved projects yet.",
+    "no_match": "No project name contains \"{query}\".",
+    "chip_open": "open",
+    "modified": "modified {time_ago}",
+    "size_on_disk": "Size on disk",
+    "size_counting": "This deletes the project folder and everything in it (measuring its size…).",
+    "rename": "Rename",
+    "duplicate": "Duplicate",
+    "open_selected": "Open",
+    "open_instead": "Open {name} instead",
+    "continue_title": "Continue where you left off",
+    "continue": "Continue",
+    "new": "New project",
+    "manage": "Manage projects ({count})",
+    "title_new": "New project",
+    "title_rename": "Rename {name}",
+    "title_duplicate": "Duplicate {name}",
+    "name_label": "Project name",
+    "name_hint": "Letters, digits, spaces, '-' and '_'.",
+    "name_empty": "Enter a name.",
+    "name_chars": "Use letters, digits, spaces, '-' and '_' only.",
+    "name_exists": "A project with this name already exists.",
+    "delete_title": "Delete {name}?",
+    "delete_size": "This deletes the project folder and everything in it ({size}).",
+    "delete_type_label": "Type {name} to confirm",
+    "delete_open_warning": "This project is open: it will be closed first.",
+    "ago_now": "just now",
+    "ago_minutes": {
+      "one": "{count} minute ago",
+      "other": "{count} minutes ago"
+    },
+    "ago_hours": {
+      "one": "{count} hour ago",
+      "other": "{count} hours ago"
+    },
+    "ago_days": {
+      "one": "{count} day ago",
+      "other": "{count} days ago"
+    },
+    "unreadable": "cannot be read",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "create": "Create"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "project": {
+    "title_manage": "Gérer les projets",
+    "search": "Rechercher des projets",
+    "list_empty": "Aucun projet enregistré pour l'instant.",
+    "no_match": "Aucun nom de projet ne contient « {query} ».",
+    "chip_open": "ouvert",
+    "modified": "modifié {time_ago}",
+    "size_on_disk": "Taille sur le disque",
+    "size_counting": "Cela supprime le dossier du projet et tout son contenu (calcul de sa taille…).",
+    "rename": "Renommer",
+    "duplicate": "Dupliquer",
+    "open_selected": "Ouvrir",
+    "open_instead": "Ouvrir {name} à la place",
+    "continue_title": "Reprendre là où vous vous étiez arrêté",
+    "continue": "Reprendre",
+    "new": "Nouveau projet",
+    "manage": "Gérer les projets ({count})",
+    "title_new": "Nouveau projet",
+    "title_rename": "Renommer {name}",
+    "title_duplicate": "Dupliquer {name}",
+    "name_label": "Nom du projet",
+    "name_hint": "Lettres, chiffres, espaces, « - » et « _ ».",
+    "name_empty": "Saisissez un nom.",
+    "name_chars": "Utilisez uniquement des lettres, chiffres, espaces, « - » et « _ ».",
+    "name_exists": "Un projet avec ce nom existe déjà.",
+    "delete_title": "Supprimer {name} ?",
+    "delete_size": "Cela supprime le dossier du projet et tout son contenu ({size}).",
+    "delete_type_label": "Saisissez {name} pour confirmer",
+    "delete_open_warning": "Ce projet est ouvert : il sera d'abord fermé.",
+    "ago_now": "à l'instant",
+    "ago_minutes": {
+      "one": "il y a {count} minute",
+      "many": "il y a {count} de minutes",
+      "other": "il y a {count} minutes"
+    },
+    "ago_hours": {
+      "one": "il y a {count} heure",
+      "many": "il y a {count} d'heures",
+      "other": "il y a {count} heures"
+    },
+    "ago_days": {
+      "one": "il y a {count} jour",
+      "many": "il y a {count} de jours",
+      "other": "il y a {count} jours"
+    },
+    "unreadable": "illisible",
+    "delete": "Supprimer",
+    "cancel": "Annuler",
+    "create": "Créer"
+  }
+}
