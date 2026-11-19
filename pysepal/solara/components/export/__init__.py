@@ -1,9 +1,15 @@
 """Solara export system: launcher, dialog, controller hook and export engine.
 
-Import from this package. Its submodules are internal: ``models`` (requests,
-results, sources), ``engine`` (direct Earth Engine, Drive and workspace
-exports), ``taskmanager`` (SEPAL TaskManager exports), ``hook``
-(``use_export_dialog``), ``dialog`` and ``launcher``.
+Import from this package. Its submodules are internal:
+
+- ``models``: requests, results, sources and callbacks
+- ``prepare``: the image an export submits (styling, selected bands)
+- ``engine``: direct Earth Engine, Drive and workspace exports
+- ``drive``: the Google Drive staging of direct workspace exports
+- ``taskmanager``: SEPAL TaskManager workspace exports
+- ``sources``: what the dialog offers (sources, destinations, bands, defaults)
+- ``hook``: ``use_export_dialog``, the dialog's controller
+- ``dialog`` and ``launcher``: the UI
 """
 
 from __future__ import annotations

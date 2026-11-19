@@ -693,12 +693,9 @@ def test_remote_cancellation_accepts_the_session_sync_client():
     ],
 )
 def test_dialog_offers_only_targets_the_backend_serves(backend, clients, expected):
-    from pysepal.solara.components.export.hook import (
-        _available_targets,
-        get_target_items,
-    )
+    from pysepal.solara.components.export.sources import get_target_items, targets_for
 
-    available = _available_targets(
+    available = targets_for(
         backend,
         object() if "sync" in clients else None,
         object() if "async" in clients else None,
@@ -709,11 +706,11 @@ def test_dialog_offers_only_targets_the_backend_serves(backend, clients, expecte
 
 
 def test_default_target_moves_to_an_available_one():
-    from pysepal.solara.components.export.hook import _coerce_default_target
+    from pysepal.solara.components.export.sources import coerce_default_target
 
-    assert _coerce_default_target("gee", frozenset({"sepal"})) == "sepal"
-    assert _coerce_default_target("sepal", frozenset({"gee", "drive"})) == "gee"
-    assert _coerce_default_target("drive", frozenset({"gee", "drive"})) == "drive"
+    assert coerce_default_target("gee", frozenset({"sepal"})) == "sepal"
+    assert coerce_default_target("sepal", frozenset({"gee", "drive"})) == "gee"
+    assert coerce_default_target("drive", frozenset({"gee", "drive"})) == "drive"
 
 
 def test_tracker_counts_taskmanager_steps():

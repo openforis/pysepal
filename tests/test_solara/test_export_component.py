@@ -28,22 +28,23 @@ from pysepal.solara.components.export import (
     validate_asset_id_under_root,
 )
 from pysepal.solara.components.export import hook as export_hook_module
+from pysepal.solara.components.export import sources as export_sources
 from pysepal.solara.components.export.dialog import (
     BandSelectorField,
     ExportDialog,
     ImageScaleField,
     _validation_message,
 )
-from pysepal.solara.components.export.hook import (
+from pysepal.solara.components.export.hook import use_export_dialog
+from pysepal.solara.components.export.prepare import select_bands
+from pysepal.solara.components.export.sources import (
     available_bands_for,
     default_bands_for,
     discover_image_bands,
     get_active_source,
     normalize_band_selection,
     resolved_default_bands,
-    use_export_dialog,
 )
-from pysepal.solara.components.export.prepare import select_bands
 
 
 class _FakeImage:
@@ -873,7 +874,7 @@ def test_resolve_gee_asset_conflict_short_circuits_when_target_not_gee():
     gee_interface = _ConflictProbeGeeInterface(existing_asset={"id": "ignored"})
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="drive",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/my_export",
@@ -892,7 +893,7 @@ def test_resolve_gee_asset_conflict_short_circuits_when_asset_id_empty():
     gee_interface = _ConflictProbeGeeInterface(existing_asset={"id": "ignored"})
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="   ",
@@ -910,7 +911,7 @@ def test_resolve_gee_asset_conflict_short_circuits_when_no_active_source():
     gee_interface = _ConflictProbeGeeInterface(existing_asset={"id": "ignored"})
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=False,
             asset_id="projects/demo/assets/reports/my_export",
@@ -928,7 +929,7 @@ def test_resolve_gee_asset_conflict_returns_no_conflict_when_asset_absent():
     gee_interface = _ConflictProbeGeeInterface(existing_asset=None)
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/my_export",
@@ -948,7 +949,7 @@ def test_resolve_gee_asset_conflict_flags_conflict_when_asset_exists():
     )
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/My_export",
@@ -966,7 +967,7 @@ def test_resolve_gee_asset_conflict_swallows_lookup_errors():
     gee_interface = _ConflictProbeGeeInterface(raises=RuntimeError("transient network blip"))
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/my_export",
@@ -985,7 +986,7 @@ def test_build_default_gee_asset_id_uses_asset_root_and_module_folder():
     resolved = ResolvedExport(ee_object=_FakeTable(), default_name="My export")
     sepal_client = SimpleNamespace(module_name="aoi_all_methods")
 
-    asset_id = export_hook_module._build_default_gee_asset_id(
+    asset_id = export_sources.build_default_gee_asset_id(
         "projects/demo/assets",
         resolved,
         sepal_client,
@@ -1001,7 +1002,7 @@ def test_build_default_gee_asset_id_respects_absolute_resolved_folder():
         gee_folder="projects/other/assets/exports/2026",
     )
 
-    asset_id = export_hook_module._build_default_gee_asset_id(
+    asset_id = export_sources.build_default_gee_asset_id(
         "projects/demo/assets",
         resolved,
         None,
@@ -1013,7 +1014,7 @@ def test_build_default_gee_asset_id_respects_absolute_resolved_folder():
 def test_build_default_gee_asset_id_returns_empty_until_asset_root_loads():
     resolved = ResolvedExport(ee_object=_FakeTable(), default_name="data")
 
-    asset_id = export_hook_module._build_default_gee_asset_id(
+    asset_id = export_sources.build_default_gee_asset_id(
         "projects/{project}/assets",
         resolved,
         None,
@@ -1328,16 +1329,16 @@ def test_source_defaults_signature_tracks_dynamic_resolved_defaults():
         table_file_format="GeoJSON",
     )
 
-    assert export_hook_module._source_defaults_signature(first, "table", None) != (
-        export_hook_module._source_defaults_signature(second, "table", None)
+    assert export_sources.defaults_signature(first, "table", None) != (
+        export_sources.defaults_signature(second, "table", None)
     )
 
 
 def test_default_gee_folder_prefers_module_name():
     sepal_client = SimpleNamespace(module_name="aoi_all_methods")
 
-    assert export_hook_module._default_gee_folder(sepal_client) == "aoi_all_methods"
-    assert export_hook_module._default_gee_folder(None) == "pysepal_exports"
+    assert export_sources.default_gee_folder(sepal_client) == "aoi_all_methods"
+    assert export_sources.default_gee_folder(None) == "pysepal_exports"
 
 
 # ---------------------------------------------------------------------------
