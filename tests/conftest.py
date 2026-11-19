@@ -533,3 +533,43 @@ def gee_interface_with_sepal() -> Optional[GEEInterface]:
         print(f"\n[ERROR] Failed to create GEEInterface with SEPAL: {e}")
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return None
+
+
+@pytest.fixture
+def raster_spec(byte: Path):
+    """A local raster LayerSpec named "a"."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_raster(byte, name="a")
+
+
+@pytest.fixture
+def raster_spec_b(byte: Path):
+    """A second local raster LayerSpec named "b"."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_raster(byte, name="b")
+
+
+@pytest.fixture
+def vector_spec(fake_vector: Path):
+    """A local vector LayerSpec."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_vector(fake_vector)
+
+
+@pytest.fixture
+def pmtiles_spec():
+    """A remote PMTiles LayerSpec (no network access)."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_vector("https://x.org/a.pmtiles", layer="roads", id="pm")
+
+
+@pytest.fixture
+def gee_spec():
+    """An Earth Engine LayerSpec with an empty expression (no EE calls)."""
+    from pysepal.layers import GeeSource, LayerSpec, RasterStyle
+
+    return LayerSpec(id="g", name="g", source=GeeSource(expr={}, kind="Image"), style=RasterStyle())
