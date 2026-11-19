@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+import threading
 from types import SimpleNamespace
 
 import httpx
@@ -22,9 +23,10 @@ def _call(fn):
 class _FakeDrive:
     """The Drive v3 ``files()`` calls the engine makes, over an in-memory tree."""
 
-    def __init__(self):
+    def __init__(self, user="demo-user"):
         self.items = {}
         self.service = self
+        self.user = user
 
     def files(self):
         return self
@@ -99,9 +101,9 @@ def written(monkeypatch):
     return []
 
 
-def _sepal_client(written):
+def _sepal_client(written, results_path="module_results/demo"):
     return SimpleNamespace(
-        results_path="module_results/demo",
+        results_path=results_path,
         BASE_REMOTE_PATH="/home/sepal-user",
         files=SimpleNamespace(
             mkdir=lambda path, parents: path,
@@ -110,7 +112,7 @@ def _sepal_client(written):
     )
 
 
-def _export(drive, gee, written, **kwargs):
+def _export(drive, gee, written, *, sepal_client=None, **kwargs):
     request = ExportRequest(
         ee_object=object(),
         export_kind="image",
@@ -124,7 +126,7 @@ def _export(drive, gee, written, **kwargs):
             request,
             gee_interface=gee,
             drive_interface=drive,
-            sepal_client=_sepal_client(written),
+            sepal_client=sepal_client or _sepal_client(written),
         )
     )
 
@@ -196,6 +198,9 @@ class _RejectingGee(_FakeGee):
         (ValueError("bad region"), False),
         (EERestException({"code": 400, "message": "Invalid argument"}), False),
         (EERestException({"code": 503, "message": "Unavailable"}), True),
+        # ee-client retries these, so an earlier attempt may have created the task.
+        (EERestException({"code": 429, "message": "Rate limited"}), True),
+        (EERestException({"code": 401, "message": "Unauthorized"}), True),
         (httpx.ReadTimeout("read timed out"), True),
     ],
 )
@@ -207,3 +212,103 @@ def test_failed_submission_keeps_staging_only_when_outcome_is_unknown(written, e
         _export(drive, gee, written)
 
     assert any(i["name"] == gee.folders[0] for i in drive.items.values()) is kept
+
+
+def test_rejected_submission_removes_its_staging_folder_without_cleanup(written):
+    drive = _FakeDrive()
+    gee = _RejectingGee(drive, EERestException({"code": 400, "message": "Invalid argument"}))
+
+    with pytest.raises(EERestException):
+        _export(drive, gee, written, cleanup_drive_after_sepal=False)
+
+    # No task exists, so nothing will ever be written to keep.
+    assert not any(i["name"] == gee.folders[0] for i in drive.items.values())
+
+
+class _CancellingGee(_FakeGee):
+    """A task that shows CANCEL_REQUESTED before it reaches CANCELLED."""
+
+    def __init__(self, drive):
+        super().__init__(drive, state="RUNNING")
+        self.states = iter(["CANCEL_REQUESTED", "CANCEL_REQUESTED", "CANCELLED"])
+        self.seen = []
+
+    async def get_task_async(self, task_id):
+        self.seen.append(next(self.states))
+        return {"state": self.seen[-1]}
+
+
+def test_staging_folder_stays_until_a_cancel_requested_task_is_final(written):
+    drive = _FakeDrive()
+    gee = _CancellingGee(drive)
+
+    with pytest.raises(RuntimeError, match="CANCELLED"):
+        _export(drive, gee, written)
+
+    assert gee.seen == ["CANCEL_REQUESTED", "CANCEL_REQUESTED", "CANCELLED"]
+    assert not any(i["name"] == gee.folders[0] for i in drive.items.values())
+
+
+@pytest.mark.parametrize(
+    ("folder", "results_path"),
+    [("../escape", "module_results/demo"), (None, None)],
+)
+def test_bad_workspace_destination_fails_before_any_remote_work(written, folder, results_path):
+    drive = _FakeDrive()
+    gee = _FakeGee(drive)
+
+    with pytest.raises(ValueError):
+        _export(
+            drive,
+            gee,
+            written,
+            sepal_folder=folder,
+            sepal_client=_sepal_client(written, results_path=results_path),
+        )
+
+    assert gee.folders == []
+    assert drive.items == {}
+
+
+class _RenamingGee(_FakeGee):
+    async def export_image_to_drive_async(self, *, folder, filename_prefix, **kwargs):
+        await super().export_image_to_drive_async(
+            folder=folder, filename_prefix=f"renamed-{filename_prefix}", **kwargs
+        )
+        return {"id": "ee-task"}
+
+
+def test_every_file_in_the_staging_folder_is_copied(written):
+    drive = _FakeDrive()
+
+    _export(drive, _RenamingGee(drive), written, timeout_seconds=1)
+
+    assert written == ["/home/sepal-user/module_results/demo/renamed-demo.tif"]
+
+
+def test_a_hung_drive_call_does_not_block_other_users(written):
+    entered, release = threading.Event(), threading.Event()
+    slow, fast = _FakeDrive(user="slow-user"), _FakeDrive(user="fast-user")
+    slow_list = slow.list
+
+    def hung_list(q, **kwargs):
+        entered.set()
+        release.wait(5)
+        return slow_list(q, **kwargs)
+
+    slow.list = hung_list
+    stuck = threading.Thread(target=_export, args=(slow, _FakeGee(slow), []))
+    other = threading.Thread(target=_export, args=(fast, _FakeGee(fast), written))
+    stuck.start()
+    try:
+        assert entered.wait(2)
+        other.start()
+        other.join(2)
+        assert not other.is_alive()
+    finally:
+        release.set()
+        stuck.join()
+        if other.is_alive() or other.ident is not None:
+            other.join()
+
+    assert written == ["/home/sepal-user/module_results/demo/demo.tif"]

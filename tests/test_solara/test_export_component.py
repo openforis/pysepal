@@ -1991,7 +1991,7 @@ def _counting_source(source_id, calls, *, value=None, error=None):
     return ExportSource(id=source_id, label=source_id.upper(), kind="image", resolve=_resolve)
 
 
-def _drive_dialog(build_sources, scenario, *, gee_interface=None):
+def _drive_dialog(build_sources, scenario, *, gee_interface=None, **hook_kwargs):
     """Mount the hook + dialog, then run ``scenario(captured)`` against the live render.
 
     ``build_sources(inputs)`` runs on every render with the harness's ``inputs``
@@ -2009,6 +2009,7 @@ def _drive_dialog(build_sources, scenario, *, gee_interface=None):
             sources=build_sources(inputs.value),
             gee_interface=gee_interface or MagicMock(),
             drive_interface=MagicMock(),
+            **hook_kwargs,
         )
         captured.update(controller=controller, inputs=inputs, rerender=rerender)
         solara.Text(str(rerender.value))
@@ -2155,3 +2156,21 @@ def test_band_discovery_runs_again_when_the_dialog_reopens_on_the_same_source():
 
     assert discovered == [("a", ("B1", "B2")), ("a", ("B1", "B2"))]
     assert len(gee.calls) == 2
+
+
+def test_taskmanager_backend_without_a_sepal_client_names_the_missing_client():
+    source = _counting_source("a", [])
+    seen = {}
+
+    def _scenario(captured):
+        controller = captured["controller"]
+        controller.open_dialog()
+        controller.selected_source_id.set("a")
+        captured["controller"].export_name.set("demo")
+        captured["controller"].submit_export()
+        seen["message"] = captured["controller"]._state.inline_message.value
+
+    _drive_dialog(lambda _inputs: [source], _scenario, backend="taskmanager")
+
+    assert "SepalClient" in seen["message"]
+    assert "@with_sepal_sessions" in seen["message"]

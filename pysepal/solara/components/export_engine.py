@@ -9,12 +9,13 @@ import threading
 from dataclasses import replace
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Awaitable, Callable, Optional, Sequence
+from typing import Awaitable, Callable, Optional, Sequence, TypeVar
 
 import httpx
 from eeclient.exceptions import EERestException
 from googleapiclient.http import MediaIoBaseDownload
 from pysepal_api import AsyncSepalClient, SepalClient
+from pysepal_api.paths import sanitize_write_path
 
 from pysepal.mapping.visualization import set_viz_params
 from pysepal.scripts.drive_interface import GDriveInterface
@@ -22,6 +23,7 @@ from pysepal.scripts.gee_interface import GEEInterface
 
 from .export_models import (
     FAILED_TASK_STATES,
+    REMOTE_CANCEL_TIMEOUT_SECONDS,
     SUCCESS_TASK_STATES,
     ExportBackend,
     ExportRequest,
@@ -30,7 +32,6 @@ from .export_models import (
     _build_result_message,
     extract_task_id,
     get_task_state_name,
-    matches_drive_export_prefix,
     resolve_sepal_folder,
     validate_asset_id_under_root,
 )
@@ -40,20 +41,22 @@ StatusCallback = Optional[Callable[[str], None]]
 RemoteSubmittedCallback = Optional[Callable[[Optional[str]], None]]
 RemoteCancelCallback = Optional[Callable[[RemoteCancelOutcome], None]]
 
-# Upper bound on the Earth Engine calls made after a cancel, so a slow or
-# unreachable API cannot keep a cancelled export alive.
-REMOTE_CANCEL_TIMEOUT_SECONDS = 60.0
-
 _DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 _DRIVE_STAGING_ROOT = ("SEPAL", "exports")
-# Parallel exports in one process would otherwise race to create duplicate
-# SEPAL/exports parents.
-_drive_staging_lock = threading.Lock()
+# One user's parallel exports would otherwise race to create duplicate
+# SEPAL/exports parents. Per user, so a hung Drive call blocks only its owner.
+_drive_staging_locks: dict[object, threading.Lock] = {}
+_drive_staging_locks_guard = threading.Lock()
+# ee-client retries these, so an earlier attempt may have created the task.
+_RETRIED_EE_CODES = frozenset({401, 429})
 
 
-def _notify(callback: StatusCallback, message: str) -> None:
+_T = TypeVar("_T")
+
+
+def _notify(callback: Optional[Callable[[_T], None]], value: _T) -> None:
     if callback is not None:
-        callback(message)
+        callback(value)
 
 
 class _RemoteExportFailed(RuntimeError):
@@ -112,7 +115,8 @@ async def _wait_for_remote_completion(
 
         if state in SUCCESS_TASK_STATES:
             return
-        if state in FAILED_TASK_STATES:
+        # Earth Engine may still write after CANCEL_REQUESTED; wait for CANCELLED.
+        if state in FAILED_TASK_STATES and state != "CANCEL_REQUESTED":
             raise _RemoteExportFailed(
                 f"Earth Engine export `{description}` finished with state `{state}`."
             )
@@ -178,11 +182,17 @@ def _create_drive_folder(service, name: str, parent_id: str) -> str:
     return service.files().create(body=body, fields="id").execute()["id"]
 
 
+def _drive_staging_lock(drive_interface: GDriveInterface) -> threading.Lock:
+    user = getattr(drive_interface, "user", None) or id(drive_interface)
+    with _drive_staging_locks_guard:
+        return _drive_staging_locks.setdefault(user, threading.Lock())
+
+
 def _create_drive_staging_folder(drive_interface: GDriveInterface, name: str) -> str:
     """Create ``SEPAL/exports/<name>`` in Drive, as SEPAL does, and return its id."""
     service = drive_interface.service
     parent_id = "root"
-    with _drive_staging_lock:
+    with _drive_staging_lock(drive_interface):
         for part in _DRIVE_STAGING_ROOT:
             parent_id = _find_drive_child_folder(service, part, parent_id) or _create_drive_folder(
                 service, part, parent_id
@@ -190,12 +200,8 @@ def _create_drive_staging_folder(drive_interface: GDriveInterface, name: str) ->
     return _create_drive_folder(service, name, parent_id)
 
 
-def _find_drive_items(
-    drive_interface: GDriveInterface,
-    prefix: str,
-    folder_id: str,
-) -> list[dict]:
-    """Find the export's files in its staging folder."""
+def _find_drive_items(drive_interface: GDriveInterface, folder_id: str) -> list[dict]:
+    """List the export's files: everything in its staging folder."""
     items: list[dict] = []
     page_token = None
     query = f"'{folder_id}' in parents and trashed = false"
@@ -217,8 +223,7 @@ def _find_drive_items(
         if not page_token:
             break
 
-    matched = [item for item in items if matches_drive_export_prefix(item.get("name", ""), prefix)]
-    return sorted(matched, key=lambda item: item["name"])
+    return sorted(items, key=lambda item: item["name"])
 
 
 def _download_drive_item_bytes(drive_interface: GDriveInterface, item_id: str) -> bytes:
@@ -234,7 +239,7 @@ def _download_drive_item_bytes(drive_interface: GDriveInterface, item_id: str) -
 async def _wait_for_drive_items(
     drive_interface: GDriveInterface,
     *,
-    prefix: str,
+    name: str,
     folder_id: str,
     poll_interval_seconds: float,
     timeout_seconds: float,
@@ -245,12 +250,12 @@ async def _wait_for_drive_items(
     deadline = loop.time() + timeout_seconds
 
     while True:
-        items = await asyncio.to_thread(_find_drive_items, drive_interface, prefix, folder_id)
+        items = await asyncio.to_thread(_find_drive_items, drive_interface, folder_id)
         if items:
             return items
 
         if loop.time() > deadline:
-            raise FileNotFoundError(f"No Google Drive files were found for export `{prefix}`.")
+            raise FileNotFoundError(f"No Google Drive files were found for export `{name}`.")
 
         _notify(on_update, "Waiting for Google Drive files")
         await asyncio.sleep(poll_interval_seconds)
@@ -293,7 +298,11 @@ def _created_no_task(exc: Exception) -> bool:
     other error is a 4xx rejection or failed locally before the request.
     """
     if isinstance(exc, EERestException):
-        return isinstance(exc.code, int) and 400 <= exc.code < 500
+        return (
+            isinstance(exc.code, int)
+            and 400 <= exc.code < 500
+            and exc.code not in _RETRIED_EE_CODES
+        )
     return not isinstance(exc, (httpx.HTTPError, OSError, asyncio.TimeoutError))
 
 
@@ -442,7 +451,7 @@ async def submit_export_request(
     ``request.cleanup_drive_after_sepal`` is set. ``on_remote_cancel`` then gets
     a :class:`RemoteCancelOutcome`, before the ``CancelledError`` propagates.
     """
-    staging_id: Optional[str] = None
+    cleanup_folder_id: Optional[str] = None
 
     async def _cancel_remote(task_id: Optional[str], *, remote_done: bool = False) -> None:
         if remote_done:
@@ -451,16 +460,17 @@ async def submit_export_request(
             outcome = await cancel_export_task(gee_interface, task_id)
 
         if (
-            staging_id is not None
+            cleanup_folder_id is not None
+            and drive_interface is not None
             and request.cleanup_drive_after_sepal
             and outcome.status == "finished"
             and outcome.state in SUCCESS_TASK_STATES
         ):
             try:
                 items = await asyncio.to_thread(
-                    _find_drive_items, drive_interface, request.name, staging_id
+                    _find_drive_items, drive_interface, cleanup_folder_id
                 )
-                await asyncio.to_thread(_delete_drive_folder, drive_interface, staging_id)
+                await asyncio.to_thread(_delete_drive_folder, drive_interface, cleanup_folder_id)
                 outcome = replace(
                     outcome, deleted_drive_items=tuple(item["name"] for item in items)
                 )
@@ -486,12 +496,8 @@ async def submit_export_request(
             on_step=on_step,
             on_update=on_update,
             on_remote_submitted=on_remote_submitted,
+            on_remote_cancel=on_remote_cancel,
         )
-    if request.target == "sepal" and sepal_client is None:
-        raise ValueError("SEPAL export requires a session-backed SepalClient.")
-    if request.target == "sepal" and drive_interface is None:
-        raise ValueError("Direct workspace exports require a Google Drive interface.")
-
     if request.target == "gee":
         _notify(on_step, "Preparing Earth Engine destination")
         asset_id = (request.gee_asset_id or "").strip()
@@ -531,8 +537,8 @@ async def submit_export_request(
         )
         return replace(result, message=_build_result_message(result))
 
-    _notify(on_step, "Submitting Google Drive export")
     if request.target == "drive":
+        _notify(on_step, "Submitting Google Drive export")
         task_id = await _submit_remote(
             gee_interface,
             request,
@@ -550,12 +556,24 @@ async def submit_export_request(
         )
         return replace(result, message=_build_result_message(result))
 
+    if sepal_client is None:
+        raise ValueError("SEPAL export requires a session-backed SepalClient.")
+    if drive_interface is None:
+        raise ValueError("Direct workspace exports require a Google Drive interface.")
+    if sepal_client.results_path is None:
+        raise ValueError("Workspace exports require a module results directory.")
+    destination_folder = resolve_sepal_folder(sepal_client, request.sepal_folder)
+    sanitize_write_path(destination_folder)
+
     # Earth Engine writes into an existing Drive folder with the given name, so
     # a unique, pre-created leaf keeps lookup and cleanup inside it.
     staging_name = f"{request.name}_{datetime.now():%Y-%m-%d_%H:%M:%S.%f}"
     staging_id = await asyncio.to_thread(
         _create_drive_staging_folder, drive_interface, staging_name
     )
+    # The cancel path reads it to delete the folder of a finished task.
+    cleanup_folder_id = staging_id
+    _notify(on_step, "Submitting Google Drive export")
     try:
         task_id = await _submit_remote(
             gee_interface,
@@ -565,7 +583,8 @@ async def submit_export_request(
             on_cancel=_cancel_remote,
         )
     except Exception as exc:
-        if request.cleanup_drive_after_sepal and _created_no_task(exc):
+        # With no task, nothing will ever land in the folder, whatever the cleanup setting.
+        if _created_no_task(exc):
             await _discard_drive_folder(drive_interface, staging_id)
         raise
 
@@ -590,14 +609,13 @@ async def submit_export_request(
         _notify(on_step, "Copying Drive files into SEPAL")
         drive_items = await _wait_for_drive_items(
             drive_interface,
-            prefix=request.name,
+            name=request.name,
             folder_id=staging_id,
             poll_interval_seconds=request.poll_interval_seconds,
             timeout_seconds=request.timeout_seconds,
             on_update=on_update,
         )
 
-        destination_folder = resolve_sepal_folder(sepal_client, request.sepal_folder)
         # A cancel does not stop this thread. It runs to its end, or fails
         # when the cancel deletes the staging files it downloads.
         sepal_paths = await asyncio.to_thread(

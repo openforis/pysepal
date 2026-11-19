@@ -100,7 +100,7 @@ def drive(monkeypatch):
     """
     state = {"items": [], "deleted": [], "polled": None}
 
-    def _find(_drive_interface, prefix, folder_id):
+    def _find(_drive_interface, folder_id):
         state["polled"].set()
         return list(state["items"])
 

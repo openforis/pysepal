@@ -355,10 +355,10 @@ Selection happens before submission. In auto mode a request using an option
 TaskManager rejects (see below) stays on the direct backend when a
 `SepalClient` is available. A failed or interrupted submission is never
 retried through another backend. A 4xx response means SEPAL rejected the
-export and no task was created; a 400 or 404 usually means the deployment does
-not support TaskManager exports. If the response is lost (network error,
-timeout, 5xx), check SEPAL's task list before retrying: the remote task may
-already exist.
+export and no task was created; the error carries the reason SEPAL gave. A 404
+usually means the deployment does not support TaskManager exports. If the
+response is lost (network error, timeout, 5xx), check SEPAL's task list before
+retrying: the remote task may already exist.
 
 TaskManager compatibility:
 
@@ -372,6 +372,9 @@ TaskManager compatibility:
 - `sepal_folder` remains relative to the module results directory. Absolute
   paths under `/home/sepal-user` are accepted and converted to home-relative
   paths for submission. Paths outside that home and `..` traversal are rejected.
+- Each export writes to a new `<sepal_folder>/<name>_<timestamp>` folder,
+  because SEPAL refuses a folder that already holds files or that another
+  export is writing to.
 - Image band selection and visualization properties are applied before
   serialization; table selectors are passed to the backend.
 - TaskManager owns staging cleanup. `cleanup_drive_after_sepal` applies only
@@ -386,9 +389,9 @@ Their `output_directory` is the absolute workspace directory requested;
 file manifest. It does not mean the export produced zero files. No shared
 directory listing is used to guess which files belong to an export.
 
-The dialog's cancel button stops local monitoring. It does not cancel the
-remote export or delete staging files. A timeout likewise leaves remote work
-running. For explicit remote cancellation use
+A cancel also cancels the SEPAL task, as it does the Earth Engine task of a
+direct export (see [Cancelling an Export](#cancelling-an-export)). A timeout
+leaves remote work running. To cancel a task yourself, use
 `await cancel_taskmanager_export(client, sepal_task_id)` from
 `pysepal.solara.components.export` (with a `SepalClient` or an
 `AsyncSepalClient`), or SEPAL's task UI. Cancellation acceptance
@@ -410,11 +413,13 @@ The dialog offers three destinations, each enabled based on runtime state:
   exports to a new Drive folder `SEPAL/exports/<name>_<timestamp>` (as the
   SEPAL UI does), downloads the files, and uploads them under
   `<module_results>/<sepal_folder>/`. Shown as **Export name** + **SEPAL
-  folder**; the Drive staging folder is not user-editable. With
-  `cleanup_drive_after_sepal` the staging folder is deleted after the copy,
-  when Earth Engine rejects the submission, or when its task fails. It is
-  kept after a timeout, a cancel or a submission with an unknown outcome,
-  since a task may still write to it. Disabled when neither a synchronous
+  folder**; the Drive staging folder is not user-editable. The SEPAL folder
+  is checked before anything is submitted. When Earth Engine rejects the
+  submission, the staging folder is always deleted. With
+  `cleanup_drive_after_sepal` it is also deleted after the copy, or when the
+  task fails or reaches `CANCELLED`. It is kept after a timeout, a cancel, or
+  a submission with an unknown outcome (including a 401 or 429 that ee-client
+  had retried), since a task may still write to it. Disabled when neither a synchronous
   nor asynchronous SEPAL client is available.
 
 Do not stage, copy, or rewrite user export files in the app container.
@@ -574,7 +579,8 @@ should leave `required` alone: without a provider the hook raises
 ## Cancelling an Export
 
 While an export runs, the **Export** button becomes **Cancel**. A cancel
-stops the local work and also cancels the Earth Engine task:
+stops the local work and also cancels the remote task: the Earth Engine task,
+or the SEPAL task of a TaskManager export. For Earth Engine:
 
 - **Before the submission**, nothing was sent to Earth Engine. The toast is
   `Export cancelled.`
@@ -584,18 +590,22 @@ stops the local work and also cancels the Earth Engine task:
   through `GEEInterface.cancel_task_async`.
 - **After the task finished**, there is nothing to cancel. For a SEPAL target
   with `cleanup_drive_after_sepal=True`, the engine deletes the Google Drive
-  staging files that it can find. The toast says that the task had already
-  finished.
+  staging folder. The toast says that the task had already finished.
 - **If the cancel fails**, an error toast gives the task id and the reason.
   The user must cancel the task in the Earth Engine task manager.
 
 Earth Engine only accepts a cancel request: the task can show
 `CANCEL_REQUESTED` for some time before it stops.
 
+TaskManager exports follow the same steps through SEPAL's task API. The
+toasts name the SEPAL task, and a task that had already finished points at
+its workspace folder.
+
 Code that calls `submit_export_request` directly gets the same behaviour when
 it cancels the coroutine. Pass `on_remote_cancel` to receive a
 `RemoteCancelOutcome` (`status` is `"cancelled"`, `"finished"` or
-`"failed"`) before the `CancelledError` propagates. To cancel a task that you
+`"failed"`; `service` is `"Earth Engine"` or `"SEPAL"`) before the
+`CancelledError` propagates. To cancel a task that you
 submitted yourself, use `cancel_export_task(gee_interface, task_id)`. It does
 not raise, and it does not cancel a task that has already finished.
 

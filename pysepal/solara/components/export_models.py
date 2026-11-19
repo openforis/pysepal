@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 from typing import Callable, Literal, Optional
 
 import ee
-from pysepal_api import SepalClient
+from pysepal_api import AsyncSepalClient, SepalClient
 
 ExportTarget = Literal["gee", "drive", "sepal"]
 ExportKind = Literal["image", "table"]
@@ -37,6 +37,9 @@ FAILED_TASK_STATES = {
     "CANCEL_REQUESTED",
 }
 DEFAULT_IMAGE_FILE_FORMAT = "GEO_TIFF"
+# Upper bound on the remote calls made after a cancel, so a slow or
+# unreachable API cannot keep a cancelled export alive.
+REMOTE_CANCEL_TIMEOUT_SECONDS = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,11 +145,14 @@ RemoteCancelStatus = Literal["cancelled", "finished", "failed"]
 
 @dataclass(frozen=True, slots=True)
 class RemoteCancelOutcome:
-    """What a local cancel did to the Earth Engine task of an export.
+    """What a local cancel did to the remote task of an export.
 
-    ``status`` is ``"cancelled"`` when Earth Engine accepted the cancel,
-    ``"finished"`` when the task had already ended (``state`` tells how), and
-    ``"failed"`` when the task could not be cancelled (``error`` tells why).
+    ``service`` names who runs the task: ``"Earth Engine"``, or ``"SEPAL"`` for
+    a TaskManager export. ``status`` is ``"cancelled"`` when the service
+    accepted the cancel, ``"finished"`` when the task had already ended
+    (``state`` tells how), and ``"failed"`` when the task could not be
+    cancelled (``error`` tells why). ``output_directory`` is where a finished
+    SEPAL task wrote its files.
     """
 
     task_id: Optional[str]
@@ -155,6 +161,8 @@ class RemoteCancelOutcome:
     error: Optional[str] = None
     deleted_drive_items: tuple[str, ...] = ()
     drive_cleanup_error: Optional[str] = None
+    service: str = "Earth Engine"
+    output_directory: Optional[str] = None
 
 
 def sanitize_export_name(value: str) -> str:
@@ -209,7 +217,7 @@ def resolve_asset_folder(root_folder: str, requested_folder: Optional[str]) -> s
 
 
 def resolve_sepal_folder(
-    sepal_client: SepalClient,
+    sepal_client: SepalClient | AsyncSepalClient,
     requested_folder: Optional[str],
 ) -> PurePosixPath:
     """Resolve a destination folder inside the user's SEPAL workspace."""
@@ -343,34 +351,37 @@ def _build_cancel_message(
     if outcome is None:
         return "cancel", "Export cancelled."
 
+    service = outcome.service
+    task_list = "SEPAL task list" if service == "SEPAL" else "Earth Engine task manager"
     if outcome.status == "cancelled":
-        level, message = "cancel", "Export cancelled. The Earth Engine task was cancelled too."
+        level, message = "cancel", f"Export cancelled. The {service} task was cancelled too."
     elif outcome.status == "failed":
         level = "error"
         if outcome.task_id:
             message = (
-                f"Export cancelled here, but the Earth Engine task `{outcome.task_id}` "
-                f"could not be cancelled: {outcome.error}. "
-                "Cancel it in the Earth Engine task manager."
+                f"Export cancelled here, but the {service} task `{outcome.task_id}` "
+                f"could not be cancelled: {outcome.error}. Cancel it in the {task_list}."
             )
         else:
             message = (
-                "Export cancelled here, but its Earth Engine task id is unknown. "
-                "Look for the task in the Earth Engine task manager and cancel it there."
+                f"Export cancelled here, but its {service} task id is unknown. "
+                f"Look for the task in the {task_list} and cancel it there."
             )
     elif outcome.state not in SUCCESS_TASK_STATES:
         level, message = "cancel", "Export cancelled."
     elif outcome.deleted_drive_items:
         level, message = (
             "cancel",
-            "Export cancelled. The Earth Engine task had already finished, "
+            f"Export cancelled. The {service} task had already finished, "
             "so its Google Drive staging files were deleted.",
         )
     else:
         level = "warning"
-        message = "Export cancelled, but the Earth Engine task had already finished."
+        message = f"Export cancelled, but the {service} task had already finished."
         if request.target == "gee" and request.gee_asset_id:
             message += f" The asset is at `{request.gee_asset_id}`."
+        elif outcome.output_directory:
+            message += f" Its files are in `{outcome.output_directory}`."
         else:
             message += " Its files are in Google Drive."
 

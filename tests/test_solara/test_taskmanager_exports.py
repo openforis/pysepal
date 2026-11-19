@@ -1,6 +1,7 @@
 """TaskManager export contract, without Earth Engine or SEPAL network calls."""
 
 import asyncio
+import re
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -8,7 +9,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pysepal.solara.components.export_engine import submit_export_request
-from pysepal.solara.components.export_models import ExportRequest
+from pysepal.solara.components.export_models import (
+    ExportRequest,
+    RemoteCancelOutcome,
+    _build_cancel_message,
+)
 
 
 def client():
@@ -57,13 +62,23 @@ def test_workspace_completion_has_sepal_id_and_output_directory():
     )
     payload = api.ee_exports.submit_image.call_args.kwargs
     assert payload["destination"].value == "SEPAL"
-    assert payload["workspace_path"] == "module_results/demo/exports"
+    assert re.fullmatch(r"module_results/demo/exports/demo_[\d_-]+", payload["workspace_path"])
     assert result.status == "completed"
     assert result.sepal_task_id == "sepal-123"
     assert result.task_id is None
-    assert result.output_directory == "/home/sepal-user/module_results/demo/exports"
+    assert result.output_directory == f"/home/sepal-user/{payload['workspace_path']}"
     assert result.sepal_paths == ()
     assert accepted == ["sepal-123"]
+
+
+def test_exports_never_share_a_workspace_folder():
+    # SEPAL refuses a folder that holds files, or that another export writes to.
+    api = client()
+    asyncio.run(submit(request(), api))
+    asyncio.run(submit(request(), api))
+    first, second = (c.kwargs["workspace_path"] for c in api.ee_exports.submit_image.call_args_list)
+    assert first != second
+    assert all(path.startswith("module_results/demo/demo_") for path in (first, second))
 
 
 @pytest.mark.parametrize(
@@ -127,24 +142,139 @@ def test_remote_failure_is_not_success(state):
         asyncio.run(submit(request(), api))
 
 
-def test_local_monitor_cancel_does_not_cancel_remote_task():
-    async def run():
-        api = client()
-        polling = asyncio.Event()
+def _hang_first_poll(api, *, then="ACTIVE"):
+    """Block the first status poll; later polls report ``then``."""
+    polling = asyncio.Event()
+    calls = []
 
-        async def wait(*args, **kwargs):
+    async def get(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 1:
             polling.set()
             await asyncio.Event().wait()
+        return SimpleNamespace(id="sepal-123", state=then)
 
-        api.tasks.get.side_effect = wait
-        task = asyncio.create_task(submit(request(), api))
+    api.tasks.get.side_effect = get
+    return polling
+
+
+async def _cancel(task):
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+def test_cancel_while_monitoring_cancels_the_sepal_task():
+    outcomes = []
+
+    async def run():
+        api = client()
+        polling = _hang_first_poll(api)
+        task = asyncio.create_task(submit(request(), api, on_remote_cancel=outcomes.append))
         await asyncio.wait_for(polling.wait(), timeout=1)
+        await _cancel(task)
+        return api
+
+    api = asyncio.run(run())
+    api.tasks.cancel.assert_awaited_once_with("sepal-123")
+    assert outcomes == [
+        RemoteCancelOutcome(task_id="sepal-123", status="cancelled", service="SEPAL")
+    ]
+
+
+def test_cancel_during_submission_cancels_the_task_it_creates():
+    outcomes = []
+
+    async def run():
+        api = client()
+        gate, started = asyncio.Event(), asyncio.Event()
+
+        async def slow_submit(**kwargs):
+            started.set()
+            await gate.wait()
+            return SimpleNamespace(id="sepal-123", state="PENDING")
+
+        api.ee_exports.submit_image.side_effect = slow_submit
+        api.tasks.get.return_value = SimpleNamespace(id="sepal-123", state="PENDING")
+        task = asyncio.create_task(submit(request(), api, on_remote_cancel=outcomes.append))
+        await asyncio.wait_for(started.wait(), timeout=1)
         task.cancel()
+        await asyncio.sleep(0)
+        gate.set()
         with pytest.raises(asyncio.CancelledError):
             await task
-        api.tasks.cancel.assert_not_called()
+        return api
+
+    api = asyncio.run(run())
+    api.tasks.cancel.assert_awaited_once_with("sepal-123")
+    assert [o.status for o in outcomes] == ["cancelled"]
+
+
+def test_cancel_after_the_sepal_task_ended_reports_it():
+    outcomes = []
+
+    async def run():
+        api = client()
+        polling = _hang_first_poll(api, then="COMPLETED")
+        task = asyncio.create_task(submit(request(), api, on_remote_cancel=outcomes.append))
+        await asyncio.wait_for(polling.wait(), timeout=1)
+        await _cancel(task)
+        return api
+
+    api = asyncio.run(run())
+    api.tasks.cancel.assert_not_called()
+    (outcome,) = outcomes
+    assert (outcome.status, outcome.state, outcome.service) == ("finished", "COMPLETED", "SEPAL")
+    assert outcome.output_directory.startswith("/home/sepal-user/module_results/demo/demo_")
+
+
+def test_a_failed_sepal_cancel_is_reported():
+    outcomes = []
+
+    async def run():
+        api = client()
+        api.tasks.cancel.side_effect = RuntimeError("task-manager down")
+        polling = _hang_first_poll(api)
+        task = asyncio.create_task(submit(request(), api, on_remote_cancel=outcomes.append))
+        await asyncio.wait_for(polling.wait(), timeout=1)
+        await _cancel(task)
 
     asyncio.run(run())
+    (outcome,) = outcomes
+    assert (outcome.status, outcome.error) == ("failed", "task-manager down")
+
+
+@pytest.mark.parametrize(
+    ("outcome", "level", "text"),
+    [
+        (
+            RemoteCancelOutcome(task_id="t1", status="cancelled", service="SEPAL"),
+            "cancel",
+            "The SEPAL task was cancelled too.",
+        ),
+        (
+            RemoteCancelOutcome(task_id="t1", status="failed", error="boom", service="SEPAL"),
+            "error",
+            "SEPAL task `t1` could not be cancelled: boom",
+        ),
+        (
+            RemoteCancelOutcome(
+                task_id="t1",
+                status="finished",
+                state="COMPLETED",
+                service="SEPAL",
+                output_directory="/home/sepal-user/module_results/demo/demo_1",
+            ),
+            "warning",
+            "Its files are in `/home/sepal-user/module_results/demo/demo_1`.",
+        ),
+    ],
+)
+def test_cancel_messages_name_the_sepal_task(outcome, level, text):
+    got_level, message = _build_cancel_message(request(), outcome)
+    assert got_level == level
+    assert text in message
+    assert "Earth Engine" not in message
 
 
 def test_timeout_preserves_remote_task_and_identifies_it():
@@ -295,7 +425,7 @@ def test_flag_does_not_reroute_standalone_engine_calls(monkeypatch):
 @pytest.mark.parametrize(
     ("error", "match"),
     [
-        ("BadRequest", "may not support TaskManager"),
+        ("BadRequest", "no task was created"),
         ("NotFound", "may not support TaskManager"),
         ("Unauthorized", "no task was created"),
     ],
@@ -311,6 +441,22 @@ def test_definite_rejection_is_not_reported_as_unknown(error, match):
     with pytest.raises(RuntimeError, match=match) as info:
         asyncio.run(submit(request(), api))
     assert "unknown" not in str(info.value)
+    if error == "BadRequest":
+        assert "may not support TaskManager" not in str(info.value)
+
+
+def test_rejection_shows_the_reason_sepal_gave():
+    from pysepal_api import errors
+
+    api = client()
+    api.ee_exports.submit_image.side_effect = errors.BadRequest(
+        400,
+        url="https://sepal.test/api/tasks",
+        body={"message": "A task is already exporting into ~/module_results/demo"},
+    )
+    with pytest.raises(RuntimeError, match="A task is already exporting into") as info:
+        asyncio.run(submit(request(), api))
+    assert "may not support" not in str(info.value)
 
 
 @pytest.mark.parametrize("error", ["server", "transport", "timeout"])
@@ -338,6 +484,19 @@ def test_local_encoding_error_surfaces_before_submission(monkeypatch):
     with pytest.raises(TypeError, match="cannot encode"):
         asyncio.run(submit(request(), api))
     api.ee_exports.submit_image.assert_not_called()
+
+
+def test_a_task_that_completes_in_the_last_interval_is_read():
+    api = client()
+
+    async def completed(*args, **kwargs):
+        await asyncio.sleep(0)
+        return SimpleNamespace(id="sepal-123", state="COMPLETED")
+
+    api.tasks.get.side_effect = completed
+    req = replace(request(), poll_interval_seconds=0.05, timeout_seconds=0.05)
+    result = asyncio.run(submit(req, api))
+    assert result.status == "completed"
 
 
 def test_slow_status_request_is_a_timeout():
@@ -390,6 +549,7 @@ def test_derived_client_has_the_sync_identity_and_is_closed(monkeypatch):
         "module_name": "demo",
         "base_url": sync.base_url,
         "verify": sync.verify,
+        "timeout": sync._http.timeout,
     }
     api.aclose.assert_awaited_once()
 

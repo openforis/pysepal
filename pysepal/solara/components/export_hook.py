@@ -729,7 +729,7 @@ def use_export_dialog(
         if resolved_export is None or export_kind is None:
             raise ValueError(resolve_error or "Unable to resolve the selected export source.")
         if selected_target.value not in available_targets:
-            if selected_target.value == "sepal":
+            if selected_target.value == "sepal" or not available_targets:
                 raise ValueError(
                     "SEPAL export requires a session-backed SepalClient. "
                     "Use @with_sepal_sessions in the host page."
