@@ -134,3 +134,8 @@ def test_the_legend_opens_in_the_collapsed_state_it_is_given():
         """,
     )
     assert collapsed == [True, False]
+
+
+def test_inline_prop():
+    legend_data = {"gradients": [], "items": [{"label": "a", "color": "#fff", "detail": ""}]}
+    assert _render(legend_data=legend_data, inline=True).inline is True

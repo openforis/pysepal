@@ -79,6 +79,7 @@ def LegendComponent(
     selector_options: Optional[list[dict[str, str]]] = None,
     selected: Optional[str] = None,
     event_set_selected: Optional[Callable[[str], None]] = None,
+    inline: bool = False,
 ):
     """Floating map legend overlay.
 
@@ -96,5 +97,7 @@ def LegendComponent(
             legend body; one or none renders no dropdown.
         selected: The currently selected option value.
         event_set_selected: Callback when the user picks a different option.
+        inline: Render in the normal flow at the width of its container (for
+            a panel) instead of floating over the map.
     """
     pass

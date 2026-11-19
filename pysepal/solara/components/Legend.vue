@@ -6,6 +6,7 @@
       'sepal-legend--collapsed': isCollapsed,
       'sepal-legend--dark': isDark,
       'sepal-legend--light': !isDark,
+      'sepal-legend--inline': inline,
     }"
   >
     <!-- Expanded body -->
@@ -110,7 +111,7 @@
 
 <script>
 module.exports = {
-  // legend_data, visible, collapsed, selector_options and selected are traits:
+  // legend_data, visible, collapsed, selector_options, selected and inline are traits:
   // ipyvue adds them as data, and declaring them as props too makes Vue warn
   // about the duplicate.
   data() {
@@ -223,6 +224,16 @@ module.exports = {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+}
+
+/* A modifier on the root, not a descendant selector: ipyvue's scoped styles are
+   global. Doubled class so it outranks .sepal-legend whatever the order. */
+.sepal-legend.sepal-legend--inline {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  width: 100%;
 }
 
 .sepal-legend__body,
