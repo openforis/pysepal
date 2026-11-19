@@ -27,6 +27,7 @@ from pysepal.mapping.layer_engine import (
     PANE_PREFIX,
     LeafletEngine,
     PanedGeoJSON,
+    pane_name,
 )
 from pysepal.mapping.sepal_map import SepalMap
 from tests.test_solara._harness import wait_until
@@ -59,13 +60,24 @@ def test_panes_created():
     assert len([p for p in m.panes if p.startswith(PANE_PREFIX)]) == 198
 
 
-def test_add_attaches_in_top_pane(raster_spec):
+def test_panes_are_numbered_from_the_bottom():
+    assert [pane_name(slot, 3) for slot in range(3)] == [
+        "pysepal-layer-203",
+        "pysepal-layer-202",
+        "pysepal-layer-201",
+    ]
+    # past the last pane, the lowest layers share it and the top ones keep theirs
+    assert pane_name(0, 200) == "pysepal-layer-398"
+    assert pane_name(197, 200) == pane_name(199, 200) == "pysepal-layer-201"
+
+
+def test_add_attaches_in_bottom_pane(raster_spec):
     m, store = ipl.Map(), LayerStore()
     engine = LeafletEngine(m, store)
     store.add(raster_spec)
     layer = engine.leaflet_layer(raster_spec.id)
     assert layer in m.layers
-    assert layer.pane == "pysepal-layer-398"
+    assert layer.pane == "pysepal-layer-201"
     assert store.view(raster_spec.id).status == "ready"
 
 
@@ -75,8 +87,8 @@ def test_move_repanes_only_changed(raster_spec, vector_spec):
     store.add(raster_spec)
     store.add(vector_spec)  # vector on top
     store.move(raster_spec.id, 0)
-    assert engine.leaflet_layer(raster_spec.id).pane == "pysepal-layer-398"
-    assert engine.leaflet_layer(vector_spec.id).pane == "pysepal-layer-397"
+    assert engine.leaflet_layer(raster_spec.id).pane == "pysepal-layer-202"
+    assert engine.leaflet_layer(vector_spec.id).pane == "pysepal-layer-201"
 
 
 def test_vector_can_sit_below_raster(raster_spec, vector_spec):
@@ -98,7 +110,7 @@ def test_hide_pmtiles_detaches_and_keeps_pane(pmtiles_spec, raster_spec):
     assert layer not in m.layers
     store.set_visible(pmtiles_spec.id, True)
     assert engine.leaflet_layer(pmtiles_spec.id) in m.layers
-    assert engine.leaflet_layer(pmtiles_spec.id).pane == "pysepal-layer-398"
+    assert engine.leaflet_layer(pmtiles_spec.id).pane == "pysepal-layer-202"
 
 
 def test_geojson_pane_is_a_creation_option(vector_spec):
@@ -151,24 +163,54 @@ def test_cache_hit_binds_current_metadata(raster_spec):
     assert attributions == ("A", "B")
 
 
-def test_add_on_top_shifts_existing_panes(raster_spec, vector_spec):
+def test_add_on_top_keeps_existing_panes(raster_spec, vector_spec):
     m, store = ipl.Map(), LayerStore()
     engine = LeafletEngine(m, store)
     store.add(vector_spec)
     store.add(raster_spec)  # raster lands at index 0
     v = engine.leaflet_layer(vector_spec.id)
-    assert v.pane == "pysepal-layer-397"
+    assert v.pane == "pysepal-layer-201"
+    assert engine.leaflet_layer(raster_spec.id).pane == "pysepal-layer-202"
     assert v.point_style["pane"] == v.pane
 
 
-def test_remove_middle_shifts_up(raster_spec, raster_spec_b, vector_spec):
+def test_add_on_top_changes_the_map_once(raster_spec, vector_spec, pmtiles_spec, byte):
+    m, store = ipl.Map(), LayerStore()
+    engine = LeafletEngine(m, store)
+    for spec in (raster_spec, vector_spec, pmtiles_spec):
+        store.add(spec)
+    changes = []
+    m.observe(lambda c: changes.append((c["old"], c["new"])), "layers")
+    fourth = LayerSpec.from_raster(byte, name="d")
+    store.add(fourth)
+    assert len(changes) == 1
+    old, new = changes[0]
+    assert list(new) == [*old, engine.leaflet_layer(fourth.id)]
+
+
+def test_remove_all_changes_the_map_once_per_layer(raster_spec, vector_spec, pmtiles_spec):
+    m = SepalMap(gee=False)
+    specs = (raster_spec, vector_spec, pmtiles_spec)
+    for spec in specs:
+        m.layer_store.add(spec)
+    managed = {m.layer_engine.leaflet_layer(spec.id) for spec in specs}
+    changes = []
+    m.observe(lambda c: changes.append(set(c["old"]) ^ set(c["new"])), "layers")
+    m.remove_all()
+    # the map's own non-base layers (the inspector marker) go too, one change each
+    touching = [diff for diff in changes if diff & managed]
+    assert len(touching) == 3 and set().union(*touching) == managed
+
+
+def test_remove_middle_moves_the_layers_above_down(raster_spec, raster_spec_b, vector_spec):
     m, store = ipl.Map(), LayerStore()
     engine = LeafletEngine(m, store)
     store.add(vector_spec)
     store.add(raster_spec_b)
     store.add(raster_spec)
     store.remove(raster_spec_b.id)
-    assert engine.leaflet_layer(vector_spec.id).pane == "pysepal-layer-397"
+    assert engine.leaflet_layer(vector_spec.id).pane == "pysepal-layer-201"
+    assert engine.leaflet_layer(raster_spec.id).pane == "pysepal-layer-202"
 
 
 def test_hidden_vector_is_detached_and_repaned(raster_spec, vector_spec):
@@ -181,7 +223,7 @@ def test_hidden_vector_is_detached_and_repaned(raster_spec, vector_spec):
     store.set_visible(vector_spec.id, True)
     v = engine.leaflet_layer(vector_spec.id)
     assert v in m.layers
-    assert v.pane == "pysepal-layer-397"
+    assert v.pane == "pysepal-layer-201"
     assert v.point_style["pane"] == v.pane
 
 
@@ -408,9 +450,10 @@ def test_state_bar_settles_after_reattaching_a_loading_layer(raster_spec, raster
     store.add(raster_spec)
     a = engine.leaflet_layer(raster_spec.id)
     a.set_trait("loading", True)
-    store.add(raster_spec_b)  # on top: a is detached and re-attached while still loading
+    store.add(raster_spec_b)
     b = engine.leaflet_layer(raster_spec_b.id)
     b.set_trait("loading", True)
+    store.move(raster_spec.id, 0)  # both are detached and re-attached while still loading
     a.set_trait("loading", False)
     b.set_trait("loading", False)
     assert m.state.nb_loading_layer == 0

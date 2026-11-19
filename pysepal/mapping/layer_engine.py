@@ -1,7 +1,8 @@
 """Mirror a :class:`~pysepal.layers.LayerStore` onto an ipyleaflet map.
 
 Every store slot owns a Leaflet pane, so the store order decides the stacking whatever
-the layer type: a GeoJSON can sit below a tile layer.
+the layer type: a GeoJSON can sit below a tile layer. Panes are numbered from the bottom
+layer, so adding or removing the top layer leaves the others where they are.
 """
 
 import asyncio
@@ -54,24 +55,28 @@ _POINT_RADIUS = 5
 _overflow_warned = False
 
 
-def pane_name(slot: int) -> str:
+def pane_name(slot: int, count: int) -> str:
     """Return the pane of a store slot, 0 being the top one.
+
+    The bottom layer gets the lowest pane and each layer above it the next one.
 
     Args:
         slot: the index of the layer in the store.
+        count: the number of layers in the store.
 
     Returns:
-        The pane name. Slots past the last pane share the lowest one.
+        The pane name. With more layers than panes, the top layers keep their own pane
+        and the lowest ones share the lowest pane.
     """
     global _overflow_warned
-    z = PANE_Z_MAX - slot
-    if z < PANE_Z_MIN:
+    capacity = PANE_Z_MAX - PANE_Z_MIN + 1
+    if count > capacity:
         if not _overflow_warned:
             _overflow_warned = True
-            log.warning(
-                "More than %d layers: the lowest ones share a pane.", PANE_Z_MAX - PANE_Z_MIN + 1
-            )
-        z = PANE_Z_MIN
+            log.warning("More than %d layers: the lowest ones share a pane.", capacity)
+        z = max(PANE_Z_MAX - slot, PANE_Z_MIN)
+    else:
+        z = PANE_Z_MIN + count - 1 - slot
     return f"{PANE_PREFIX}{z}"
 
 
@@ -351,7 +356,8 @@ class LeafletEngine:
         if layer is not None and self._updatable(drawn, spec, render):
             self._update(layer, spec, render, view.opacity)
         else:
-            pane = pane_name(self.store.ids.index(layer_id))
+            ids = self.store.ids
+            pane = pane_name(ids.index(layer_id), len(ids))
             new = self._build(spec, render, pane, view.opacity)
             self._layers[layer_id] = new
             if layer is not None:
@@ -450,8 +456,9 @@ class LeafletEngine:
     def _reconcile_order(self) -> None:
         """Move every built layer whose slot changed to the pane of its new slot."""
         moving = []
-        for slot, layer_id in enumerate(self.store.ids):
-            layer, pane = self._layers.get(layer_id), pane_name(slot)
+        ids = self.store.ids
+        for slot, layer_id in enumerate(ids):
+            layer, pane = self._layers.get(layer_id), pane_name(slot, len(ids))
             if layer is not None and layer.pane != pane:
                 moving.append((layer_id, layer, pane))
         if not moving:
