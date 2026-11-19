@@ -284,13 +284,20 @@ async def _run(
         submit = client.ee_exports.submit_table
 
     async def cancel_remote(task_id: Optional[str]) -> None:
+        # A cancel after the session closed comes from a server shutdown, not
+        # the user: leave the task running, as a closed tab does.
+        if session_closed():
+            return
+        _notify(on_remote_cancel, await _cancel_task(client, task_id, output_directory))
+
+    async def cancel_submitted(task_id: Optional[str]) -> None:
         if task_id:
             _notify(on_remote_submitted, task_id)
-        _notify(on_remote_cancel, await _cancel_task(client, task_id, output_directory))
+        await cancel_remote(task_id)
 
     _notify(on_step, "Submitting SEPAL export")
     try:
-        task = await _submit(submit, payload, cancel_remote)
+        task = await _submit(submit, payload, cancel_submitted)
     except ApiError as exc:
         if isinstance(exc, ServerError):
             raise RuntimeError(_UNKNOWN_OUTCOME) from exc
@@ -331,7 +338,7 @@ async def _run(
                     f"Could not monitor SEPAL task `{task_id}`; it may still be running."
                 ) from exc
     except asyncio.CancelledError:
-        _notify(on_remote_cancel, await _cancel_task(client, task_id, output_directory))
+        await cancel_remote(task_id)
         raise
 
     result = ExportResult(

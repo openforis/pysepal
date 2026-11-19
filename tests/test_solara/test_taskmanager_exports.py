@@ -605,6 +605,70 @@ def test_session_close_stops_monitoring(monkeypatch):
     made[0].tasks.cancel.assert_not_called()
 
 
+def _start_derived_export(made, sync, outcomes):
+    return asyncio.create_task(
+        submit_export_request(
+            request(timeout_seconds=60),
+            gee_interface=MagicMock(),
+            drive_interface=None,
+            sepal_client=sync,
+            backend="taskmanager",
+            on_remote_cancel=outcomes.append,
+        )
+    )
+
+
+def test_shutdown_cancel_while_monitoring_leaves_the_sepal_task_running(monkeypatch):
+    # On shutdown solara closes the kernels, then asyncio cancels pending tasks.
+    made = derived_clients(monkeypatch)
+    sync = sync_client()
+    outcomes = []
+
+    async def run():
+        task = _start_derived_export(made, sync, outcomes)
+        while not made:
+            await asyncio.sleep(0)
+        polling = _hang_first_poll(made[0])
+        await asyncio.wait_for(polling.wait(), timeout=1)
+        sync.close()
+        await _cancel(task)
+
+    asyncio.run(run())
+    made[0].tasks.cancel.assert_not_called()
+    made[0].aclose.assert_awaited_once()
+    assert outcomes == []
+
+
+def test_shutdown_cancel_during_submission_leaves_the_sepal_task_running(monkeypatch):
+    made = derived_clients(monkeypatch)
+    sync = sync_client()
+    outcomes = []
+
+    async def run():
+        gate, started = asyncio.Event(), asyncio.Event()
+
+        async def slow_submit(**kwargs):
+            started.set()
+            await gate.wait()
+            return SimpleNamespace(id="sepal-123", state="PENDING")
+
+        task = _start_derived_export(made, sync, outcomes)
+        while not made:
+            await asyncio.sleep(0)
+        made[0].ee_exports.submit_image.side_effect = slow_submit
+        await asyncio.wait_for(started.wait(), timeout=1)
+        sync.close()
+        task.cancel()
+        await asyncio.sleep(0)
+        gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run())
+    made[0].tasks.cancel.assert_not_called()
+    assert outcomes == []
+
+
 def test_remote_cancellation_accepts_the_session_sync_client():
     from pysepal.solara.components.export import cancel_taskmanager_export
 

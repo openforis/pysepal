@@ -391,7 +391,8 @@ directory listing is used to guess which files belong to an export.
 
 A cancel also cancels the SEPAL task, as it does the Earth Engine task of a
 direct export (see [Cancelling an Export](#cancelling-an-export)). A timeout
-leaves remote work running. To cancel a task yourself, use
+leaves remote work running, and so does a closed session: closing the tab or
+stopping the server never cancels a SEPAL task. To cancel a task yourself, use
 `await cancel_taskmanager_export(client, sepal_task_id)` from
 `pysepal.solara.components.export` (with a `SepalClient` or an
 `AsyncSepalClient`), or SEPAL's task UI. Cancellation acceptance
