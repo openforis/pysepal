@@ -82,6 +82,38 @@ other components, build the store yourself and pass it with
   layer added without a `pane` is drawn in the overlay pane, above every layer of
   the store. `add_ee_layer(..., overlay=True)` does the same for an Earth Engine
   layer: the AOI is drawn that way.
+- **The store drives visibility and opacity.** Setting `.visible` or
+  `.opacity` on a layer that `find_layer` returns no longer drives a layer of
+  the store. A layer added with `shown=False` is off the map, so
+  `layer.visible = True` shows nothing. Call
+  `m.layer_store.set_visible(key, True)` and
+  `m.layer_store.set_opacity(key, 0.5)` instead.
+- **`layer.ee_object` is rebuilt.** An Earth Engine layer keeps its object as a
+  serialized expression, and `ee_object` is rebuilt from it: it is equivalent
+  to the object you passed, but not the same Python object.
+- **Earth Engine colours are normalised** to `#rrggbb`. The alpha of an
+  8-digit `fillColor` becomes the fill opacity, but an `RRGGBBAA` `color` (the
+  stroke) or palette entry loses its alpha. Use a 6-digit colour, and
+  `fill_opacity` for a see-through fill.
+- **No layer or basemap switcher on the map.** Without the old in-map control,
+  users switch layers and basemaps only where the app shows a `LayerPanel`. In
+  a `MapApp`, add it as a right panel section:
+
+  ```python
+  from pysepal.solara.components.layer_panel import LayerPanel
+
+  right_panel_content = [
+      {"title": "Layers", "icon": "mdi-layers", "content": LayerPanel(store=m.layer_store, map_=m)},
+  ]
+  ```
+
+  In a notebook or a Voila app, display it next to the map:
+
+  ```python
+  from pysepal.solara.components.layer_panel import LayerPanel
+
+  solara.display(m, LayerPanel(store=m.layer_store, map_=m))
+  ```
 
 ## Why
 
