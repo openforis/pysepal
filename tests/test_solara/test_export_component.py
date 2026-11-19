@@ -9,7 +9,6 @@ import solara
 
 from pysepal.scripts import gee_interface as gee_interface_module
 from pysepal.scripts.gee_interface import _resolve_create_folder_paths
-from pysepal.solara.components import export_hook as export_hook_module
 from pysepal.solara.components.export import (
     DEFAULT_TABLE_FILE_FORMAT,
     ExportLauncher,
@@ -28,21 +27,23 @@ from pysepal.solara.components.export import (
     submit_export_request,
     validate_asset_id_under_root,
 )
-from pysepal.solara.components.export_dialog import (
+from pysepal.solara.components.export import hook as export_hook_module
+from pysepal.solara.components.export import sources as export_sources
+from pysepal.solara.components.export.dialog import (
     BandSelectorField,
     ExportDialog,
     ImageScaleField,
     _validation_message,
 )
-from pysepal.solara.components.export_engine import _apply_band_selection
-from pysepal.solara.components.export_hook import (
+from pysepal.solara.components.export.hook import use_export_dialog
+from pysepal.solara.components.export.prepare import select_bands
+from pysepal.solara.components.export.sources import (
     available_bands_for,
     default_bands_for,
     discover_image_bands,
     get_active_source,
     normalize_band_selection,
     resolved_default_bands,
-    use_export_dialog,
 )
 
 
@@ -619,7 +620,7 @@ def test_submit_export_request_embeds_vis_params_on_image_for_gee_asset(monkeypa
         return styled_image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export_engine.set_viz_params",
+        "pysepal.solara.components.export.prepare.set_viz_params",
         fake_set_viz_params,
     )
 
@@ -667,7 +668,7 @@ def test_submit_export_request_skips_viz_embed_when_vis_params_missing(monkeypat
         return image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export_engine.set_viz_params",
+        "pysepal.solara.components.export.prepare.set_viz_params",
         fake_set_viz_params,
     )
 
@@ -873,7 +874,7 @@ def test_resolve_gee_asset_conflict_short_circuits_when_target_not_gee():
     gee_interface = _ConflictProbeGeeInterface(existing_asset={"id": "ignored"})
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="drive",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/my_export",
@@ -892,7 +893,7 @@ def test_resolve_gee_asset_conflict_short_circuits_when_asset_id_empty():
     gee_interface = _ConflictProbeGeeInterface(existing_asset={"id": "ignored"})
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="   ",
@@ -910,7 +911,7 @@ def test_resolve_gee_asset_conflict_short_circuits_when_no_active_source():
     gee_interface = _ConflictProbeGeeInterface(existing_asset={"id": "ignored"})
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=False,
             asset_id="projects/demo/assets/reports/my_export",
@@ -928,7 +929,7 @@ def test_resolve_gee_asset_conflict_returns_no_conflict_when_asset_absent():
     gee_interface = _ConflictProbeGeeInterface(existing_asset=None)
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/my_export",
@@ -948,7 +949,7 @@ def test_resolve_gee_asset_conflict_flags_conflict_when_asset_exists():
     )
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/My_export",
@@ -966,7 +967,7 @@ def test_resolve_gee_asset_conflict_swallows_lookup_errors():
     gee_interface = _ConflictProbeGeeInterface(raises=RuntimeError("transient network blip"))
 
     conflict, path = asyncio.run(
-        export_hook_module._resolve_gee_asset_conflict(
+        export_sources.resolve_gee_asset_conflict(
             target="gee",
             has_active_source=True,
             asset_id="projects/demo/assets/reports/my_export",
@@ -985,7 +986,7 @@ def test_build_default_gee_asset_id_uses_asset_root_and_module_folder():
     resolved = ResolvedExport(ee_object=_FakeTable(), default_name="My export")
     sepal_client = SimpleNamespace(module_name="aoi_all_methods")
 
-    asset_id = export_hook_module._build_default_gee_asset_id(
+    asset_id = export_sources.build_default_gee_asset_id(
         "projects/demo/assets",
         resolved,
         sepal_client,
@@ -1001,7 +1002,7 @@ def test_build_default_gee_asset_id_respects_absolute_resolved_folder():
         gee_folder="projects/other/assets/exports/2026",
     )
 
-    asset_id = export_hook_module._build_default_gee_asset_id(
+    asset_id = export_sources.build_default_gee_asset_id(
         "projects/demo/assets",
         resolved,
         None,
@@ -1013,7 +1014,7 @@ def test_build_default_gee_asset_id_respects_absolute_resolved_folder():
 def test_build_default_gee_asset_id_returns_empty_until_asset_root_loads():
     resolved = ResolvedExport(ee_object=_FakeTable(), default_name="data")
 
-    asset_id = export_hook_module._build_default_gee_asset_id(
+    asset_id = export_sources.build_default_gee_asset_id(
         "projects/{project}/assets",
         resolved,
         None,
@@ -1328,16 +1329,16 @@ def test_source_defaults_signature_tracks_dynamic_resolved_defaults():
         table_file_format="GeoJSON",
     )
 
-    assert export_hook_module._source_defaults_signature(first, "table", None) != (
-        export_hook_module._source_defaults_signature(second, "table", None)
+    assert export_sources.defaults_signature(first, "table", None) != (
+        export_sources.defaults_signature(second, "table", None)
     )
 
 
 def test_default_gee_folder_prefers_module_name():
     sepal_client = SimpleNamespace(module_name="aoi_all_methods")
 
-    assert export_hook_module._default_gee_folder(sepal_client) == "aoi_all_methods"
-    assert export_hook_module._default_gee_folder(None) == "pysepal_exports"
+    assert export_sources.default_gee_folder(sepal_client) == "aoi_all_methods"
+    assert export_sources.default_gee_folder(None) == "pysepal_exports"
 
 
 # ---------------------------------------------------------------------------
@@ -1510,7 +1511,7 @@ def test_switching_source_does_not_leak_band_selection():
     assert state.bands_dirty.value is False
 
 
-def test_apply_band_selection_subsets_image_when_selectors_set():
+def test_select_bands_subsets_image_when_selectors_set():
     original = _FakeImage()
     request = ExportRequest(
         ee_object=original,
@@ -1519,13 +1520,13 @@ def test_apply_band_selection_subsets_image_when_selectors_set():
         name="demo",
         selectors=("B4", "B3"),
     )
-    result = _apply_band_selection(original, request)
+    result = select_bands(original, request)
     assert isinstance(result, _FakeImage)
     assert result.selected_bands == ("B4", "B3")
     assert result is not original
 
 
-def test_apply_band_selection_passthrough_for_tables():
+def test_select_bands_passthrough_for_tables():
     """Tables thread selectors directly to the EE export call — no image.select()."""
     table = _FakeTable()
     request = ExportRequest(
@@ -1535,10 +1536,10 @@ def test_apply_band_selection_passthrough_for_tables():
         name="demo",
         selectors=("ADM0_NAME",),
     )
-    assert _apply_band_selection(table, request) is table
+    assert select_bands(table, request) is table
 
 
-def test_apply_band_selection_passthrough_when_no_selectors():
+def test_select_bands_passthrough_when_no_selectors():
     image = _FakeImage()
     request = ExportRequest(
         ee_object=image,
@@ -1547,7 +1548,7 @@ def test_apply_band_selection_passthrough_when_no_selectors():
         name="demo",
         selectors=None,
     )
-    assert _apply_band_selection(image, request) is image
+    assert select_bands(image, request) is image
 
 
 def test_submit_export_request_applies_band_selection_to_image_for_gee_asset():
@@ -1590,7 +1591,7 @@ def test_submit_export_request_applies_band_selection_after_viz_embed(monkeypatc
         return styled_image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export_engine.set_viz_params",
+        "pysepal.solara.components.export.prepare.set_viz_params",
         fake_set_viz_params,
     )
 

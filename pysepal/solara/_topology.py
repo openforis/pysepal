@@ -117,7 +117,7 @@ def is_sepal_sandbox(env: Mapping[str, str]) -> bool:
     the caller. Rule 2 of :func:`resolve_session_plan` steers a real sandbox
     onto PER_CONNECTION, which raises on missing headers. The other reader,
     :meth:`SessionManager._process_sepal_client`, instead returns no client and
-    degrades to ``export_hook``'s local-filesystem fallback: a sandbox whose app
+    degrades to ``export.hook``'s local-filesystem fallback: a sandbox whose app
     process did not export ``SEPAL`` would write exports to container-local disk
     rather than the user's SEPAL workspace, with nothing raised. Worth knowing
     because ``/etc/environment`` is applied at login and is not inherited by a

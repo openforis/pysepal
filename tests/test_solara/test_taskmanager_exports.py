@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pysepal.solara.components.export_engine import submit_export_request
-from pysepal.solara.components.export_models import (
+from pysepal.solara.components.export.engine import submit_export_request
+from pysepal.solara.components.export.models import (
     ExportRequest,
     RemoteCancelOutcome,
     _build_cancel_message,
@@ -295,11 +295,11 @@ def test_remote_cancellation_is_explicit():
 def test_image_selection_and_visualization_reach_taskmanager(monkeypatch):
     from pysepal_api.endpoints import ee_exports
 
-    from pysepal.solara.components import export_engine
+    from pysepal.solara.components.export import prepare as export_prepare
 
     image = MagicMock()
     styled = MagicMock()
-    monkeypatch.setattr(export_engine, "set_viz_params", lambda obj, **kwargs: styled)
+    monkeypatch.setattr(export_prepare, "set_viz_params", lambda obj, **kwargs: styled)
     monkeypatch.setattr(ee_exports, "serialize_ee_object", lambda value: value)
     api = client()
     req = replace(
@@ -381,7 +381,7 @@ def sync_client(**kwargs):
     ],
 )
 def test_select_backend(backend, kwargs, clients, opted_in, expected):
-    from pysepal.solara.components.export_taskmanager import select_backend
+    from pysepal.solara.components.export.taskmanager import select_backend
 
     req = replace(request(), **kwargs)
     selected = select_backend(
@@ -395,7 +395,7 @@ def test_select_backend(backend, kwargs, clients, opted_in, expected):
 
 
 def test_select_backend_rejects_unknown_backend():
-    from pysepal.solara.components.export_taskmanager import select_backend
+    from pysepal.solara.components.export.taskmanager import select_backend
 
     with pytest.raises(ValueError, match="Unknown export backend"):
         select_backend(
@@ -513,7 +513,7 @@ def test_slow_status_request_is_a_timeout():
 
 
 def derived_clients(monkeypatch):
-    from pysepal.solara.components import export_taskmanager
+    from pysepal.solara.components.export import taskmanager as export_taskmanager
 
     made = []
 
@@ -693,12 +693,9 @@ def test_remote_cancellation_accepts_the_session_sync_client():
     ],
 )
 def test_dialog_offers_only_targets_the_backend_serves(backend, clients, expected):
-    from pysepal.solara.components.export_hook import (
-        _available_targets,
-        get_target_items,
-    )
+    from pysepal.solara.components.export.sources import get_target_items, targets_for
 
-    available = _available_targets(
+    available = targets_for(
         backend,
         object() if "sync" in clients else None,
         object() if "async" in clients else None,
@@ -709,15 +706,15 @@ def test_dialog_offers_only_targets_the_backend_serves(backend, clients, expecte
 
 
 def test_default_target_moves_to_an_available_one():
-    from pysepal.solara.components.export_hook import _coerce_default_target
+    from pysepal.solara.components.export.sources import coerce_default_target
 
-    assert _coerce_default_target("gee", frozenset({"sepal"})) == "sepal"
-    assert _coerce_default_target("sepal", frozenset({"gee", "drive"})) == "gee"
-    assert _coerce_default_target("drive", frozenset({"gee", "drive"})) == "drive"
+    assert coerce_default_target("gee", frozenset({"sepal"})) == "sepal"
+    assert coerce_default_target("sepal", frozenset({"gee", "drive"})) == "gee"
+    assert coerce_default_target("drive", frozenset({"gee", "drive"})) == "drive"
 
 
 def test_tracker_counts_taskmanager_steps():
-    from pysepal.solara.components.export_hook import _tracker_step_count
+    from pysepal.solara.components.export.hook import _tracker_step_count
 
     assert _tracker_step_count(request(), "taskmanager") == 3
     assert _tracker_step_count(request(), "direct") == 5

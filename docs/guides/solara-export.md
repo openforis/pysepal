@@ -46,6 +46,13 @@ The public surface lives in `pysepal.solara.components.export`:
 - `TABLE_FILE_FORMATS`, `DEFAULT_TABLE_FILE_FORMAT`,
   `DEFAULT_IMAGE_FILE_FORMAT` — canonical file-format constants
 
+Import from the package. Names it does not re-export, such as
+`BandSelectorField` or `get_target_items`, live in its submodules
+(`export.dialog`, `export.hook`, …). The old module paths
+(`pysepal.solara.components.export_dialog`, `export_hook`, `export_models`,
+`export_engine`, `export_launcher`, `export_taskmanager`) still work but warn,
+and pysepal 5 removes them: `export_<name>` becomes `export.<name>`.
+
 Conceptually:
 
 1. The parent declares a tuple of `ExportSource` objects.
@@ -559,7 +566,7 @@ returned by `use_notifications()`:
 
 The success toast uses a longer timeout (8s by default, vs the 3s global
 default) because it carries a copyable asset path or task id. Tune the
-constant in `pysepal/solara/components/export_hook.py:EXPORT_SUCCESS_TOAST_TIMEOUT`
+constant in `pysepal/solara/components/export/hook.py:EXPORT_SUCCESS_TOAST_TIMEOUT`
 if your app wants a different duration.
 
 All `Notifier` methods accept an optional `timeout` kwarg for per-call
