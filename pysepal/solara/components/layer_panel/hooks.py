@@ -17,7 +17,10 @@ def use_layer_store(store: LayerStore) -> int:
     version, set_version = solara.use_state(0)
 
     def subscribe():
-        return store.subscribe(lambda _event: set_version(lambda v: v + 1))
+        unsubscribe = store.subscribe(lambda _event: set_version(lambda v: v + 1))
+        # A write between the render and this subscription sent no event here.
+        set_version(lambda v: v + 1)
+        return unsubscribe
 
     solara.use_effect(subscribe, [store])
     return version

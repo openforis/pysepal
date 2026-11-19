@@ -13,12 +13,14 @@ from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.layer_panel.download import download_payload
 from tests.test_solara._layer_panel_helpers import (
     all_text,
+    button_icon,
     click,
     export_button,
     export_buttons,
     find_visibility_toggle,
     pick_basemap,
     row_ids,
+    spinner_count,
 )
 
 
@@ -36,6 +38,42 @@ def test_toggle_hides_layer(raster_spec):
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
     find_visibility_toggle(box, raster_spec.id).fire_event("click", {})
     assert store.view(raster_spec.id).visible is False
+
+
+def test_row_follows_changes_made_outside_it(raster_spec):
+    """The engine sets the status, other components the visibility: the row shows both."""
+    store = LayerStore()
+    store.add(raster_spec)
+    store.set_status(raster_spec.id, "pending")
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert spinner_count(box) == 1
+
+    store.set_status(raster_spec.id, "ready")
+    store.set_visible(raster_spec.id, False)
+
+    assert spinner_count(box) == 0
+    assert button_icon(find_visibility_toggle(box, raster_spec.id)) == "mdi-eye-off"
+
+
+def test_row_shows_a_change_made_before_it_subscribed(raster_spec):
+    """A layer can finish preparing between the panel's render and its subscription."""
+    store = LayerStore()
+    store.add(raster_spec)
+    store.set_status(raster_spec.id, "pending")
+
+    @solara.component
+    def Ready():
+        solara.use_effect(lambda: store.set_status(raster_spec.id, "ready"), [])
+        return solara.Text("")
+
+    @solara.component
+    def Page():
+        # Effects run in tree order, so Ready's write lands before the panel subscribes.
+        return solara.Column(children=[Ready(), LayerPanel(store=store)])
+
+    box, _ = solara.render(Page(), handle_error=False)
+
+    assert spinner_count(box) == 0
 
 
 def test_error_row_shows_message(raster_spec):

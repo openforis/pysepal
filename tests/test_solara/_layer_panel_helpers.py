@@ -94,3 +94,13 @@ def click_apply(box: Any) -> None:
 def pick_basemap(box: Any, name: str) -> None:
     """Choose a basemap in the picker."""
     role_widgets(box, "basemap")[0].v_model = name
+
+
+def spinner_count(box: Any) -> int:
+    """Rows showing the pending spinner."""
+    return sum(type(w).__name__ == "ProgressCircular" for w in _tree(box))
+
+
+def button_icon(button: Any) -> str:
+    """The icon name of an icon button."""
+    return next(w.children[0] for w in _tree(button) if type(w).__name__ == "Icon")

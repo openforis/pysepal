@@ -11,6 +11,7 @@ from pysepal.message import msg
 from pysepal.solara.components.legend import LegendComponent
 
 from .download import download_filename, download_payload, is_downloadable
+from .hooks import use_layer_store
 from .restyle import RestyleForm
 
 
@@ -48,6 +49,9 @@ def LayerRow(
         on_export: Called with the spec when Export is clicked; no button without it.
         is_dark: Whether the theme is dark, for the derived legend's default color.
     """
+    # The panel re-renders on store events, but a row whose arguments did not change
+    # is not re-rendered with it, so the row follows the store itself.
+    use_layer_store(store)
     expanded, set_expanded = solara.use_state(False)
     spec, view = store.get(layer_id), store.view(layer_id)
 
