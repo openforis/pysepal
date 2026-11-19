@@ -11,7 +11,6 @@ from .preparation import (
     prepare_sync,
 )
 from .render import RenderKind, RenderLayer
-from .store import EventKind, LayerStore, LayerView, StoreEvent
 from .spec import (
     GeeSource,
     Gradient,
@@ -27,6 +26,7 @@ from .spec import (
     colormap_stops,
     uri_to_path,
 )
+from .store import EventKind, LayerStore, LayerView, StoreEvent
 
 __all__ = [
     "GEOJSON_WARN_BYTES",
