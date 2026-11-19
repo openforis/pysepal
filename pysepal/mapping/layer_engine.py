@@ -5,6 +5,7 @@ the layer type: a GeoJSON can sit below a tile layer.
 """
 
 import asyncio
+import dataclasses
 import logging
 from collections import OrderedDict
 from typing import Optional
@@ -246,8 +247,9 @@ class LeafletEngine:
     def _request(self, layer_id: str) -> None:
         token = self._tokens[layer_id]
         spec = self.store.get(layer_id)
-        render = self._cached(spec)
+        render = self._cached(spec) or self._restyled(layer_id, spec)
         if render is not None:
+            self.put(render)
             self._draw(layer_id, render)
             return
 
@@ -317,6 +319,29 @@ class LeafletEngine:
             return None
         self._cache.move_to_end(spec.render_hash)
         return render
+
+    def _restyled(self, layer_id: str, spec: LayerSpec) -> Optional[RenderLayer]:
+        """Return the drawn vector render under the new style, when only the style changed.
+
+        It shares the drawn render's data, so neither the file nor the cache holds a copy.
+        """
+        drawn = self._drawn.get(layer_id)
+        if drawn is None:
+            return None
+        old_spec, old_render = drawn
+        if old_render.kind not in ("geojson", "pmtiles"):
+            return None
+        if old_spec.source.type != spec.source.type or old_spec.data_hash != spec.data_hash:
+            return None
+        try:
+            fresh = old_render.fingerprint == local_fingerprint(spec)
+        except OSError:
+            fresh = False
+        if not fresh:
+            return None
+        return dataclasses.replace(
+            old_render, render_hash=spec.render_hash, vector_style=spec.style
+        )
 
     def _draw(self, layer_id: str, render: RenderLayer) -> None:
         spec = self.store.get(layer_id)

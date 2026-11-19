@@ -11,6 +11,7 @@ import ipyleaflet as ipl
 import pytest
 import rasterio
 
+import pysepal.layers.preparation as preparation
 import pysepal.mapping.layer_engine as layer_engine
 from pysepal.layers import (
     LayerPrepareError,
@@ -194,6 +195,34 @@ def test_vector_restyle_updates_geojson_in_place(vector_spec):
     assert (layer.style["color"], layer.style["weight"]) == ("#ff0000", 4)
     assert layer.point_style["color"] == "#ff0000"
     assert layer.point_style["pane"] == layer.pane
+
+
+def test_vector_restyle_reads_the_file_once(vector_spec, monkeypatch):
+    reads, real = [], preparation._read_vector
+    monkeypatch.setattr(preparation, "_read_vector", lambda src: reads.append(src) or real(src))
+    m, store = ipl.Map(), LayerStore()
+    engine = LeafletEngine(m, store)
+    store.add(vector_spec)
+    layer = engine.leaflet_layer(vector_spec.id)
+    for color in ("#ff0000", "#00ff00", "#0000ff"):
+        store.restyle(vector_spec.id, stroke=color)
+        assert layer.style["color"] == color
+    assert len(reads) == 1
+    assert engine.leaflet_layer(vector_spec.id) is layer
+    geojson = [r for r in engine._cache.values() if r.kind == "geojson"]
+    assert len({id(r.data) for r in geojson}) == 1
+
+
+def test_vector_restyle_after_a_rewrite_reads_the_new_file(tmp_path):
+    path = tmp_path / "v.geojson"
+    write_point(path, 0)
+    m, store = ipl.Map(), LayerStore()
+    engine = LeafletEngine(m, store)
+    store.add(LayerSpec.from_vector(path, id="v"))
+    write_point(path, 10)
+    store.restyle("v", stroke="#ff0000")
+    assert first_coords(engine.leaflet_layer("v")) == [10, 0]
+    assert engine.leaflet_layer("v").style["color"] == "#ff0000"
 
 
 def test_inherited_fill_follows_theme(vector_spec):
