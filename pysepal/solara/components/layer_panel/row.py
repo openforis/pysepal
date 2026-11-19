@@ -55,7 +55,7 @@ def _icon_button(icon: str, role: str, layer_id: str, on_click):
         text=True,
         on_click=on_click,
         attributes={"data-role": role, "data-layer-id": layer_id},
-        children=[rv.Icon(small=True, children=[icon])],
+        children=[rv.Icon(size="small", children=[icon])],
     )
 
 
@@ -88,11 +88,11 @@ def LayerRow(
         status_icon = rv.ProgressCircular(indeterminate=True, size=16, width=2)
         tip = msg("layer_panel.preparing")
     elif status == "error":
-        status_icon = rv.Icon(color="error", small=True, children=["mdi-alert"])
+        status_icon = rv.Icon(color="error", size="small", children=["mdi-alert"])
         tip = view.error or msg("layer_panel.error")
     else:
         status_icon = rv.Icon(
-            small=True, style_="visibility: hidden", children=["mdi-circle-small"]
+            size="small", style_="visibility: hidden", children=["mdi-circle-small"]
         )
         tip = ""
 

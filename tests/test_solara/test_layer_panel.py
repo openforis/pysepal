@@ -23,6 +23,7 @@ from tests.test_solara._layer_panel_helpers import (
     find_by_role,
     find_visibility_toggle,
     inline_legends,
+    of_kind,
     pick_basemap,
     role_widgets,
     row_ids,
@@ -114,6 +115,16 @@ def test_shapefile_download_zips_only_sidecars(fake_vector, tmp_path):
     names = zipfile.ZipFile(io.BytesIO(data)).namelist()
     assert name.endswith(".zip") and {".shp", ".shx", ".dbf"} <= {Path(n).suffix for n in names}
     assert not any(n.endswith(".csv") for n in names)
+
+
+def test_vuetify_3_sizes(raster_spec):
+    m = SepalMap(gee=False)
+    m.layer_store.add(raster_spec)
+    m.layer_store.set_status(raster_spec.id, "error", error="boom")
+    box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    assert role_widgets(box, "basemap")[0].density == "compact"
+    icons = of_kind(box, "Icon")
+    assert len(icons) == 3 and {icon.size for icon in icons} == {"small"}
 
 
 def test_basemap_picker_is_exclusive():

@@ -111,6 +111,11 @@ def file_downloads(box: Any) -> List[Any]:
     return [w for w in _tree(box) if type(w).__name__ == "FileDownloadWidget"]
 
 
+def of_kind(box: Any, type_name: str) -> List[Any]:
+    """Widgets of one class name in the tree, tooltip activators included."""
+    return [w for w in _tree(box) if type(w).__name__ == type_name]
+
+
 def inline_legends(box: Any) -> List[Any]:
     """The legends rendered inline, in a row's body."""
     return [w for w in _tree(box) if getattr(w, "inline", None) is True]

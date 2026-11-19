@@ -39,7 +39,7 @@ def BasemapPicker(map_):
         items=names,
         v_model=current,
         on_v_model=pick,
-        dense=True,
+        density="compact",
         hide_details=True,
         attributes={"data-role": "basemap"},
     )
