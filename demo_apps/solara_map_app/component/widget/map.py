@@ -1,16 +1,43 @@
 """The demo map and the lifecycle of the layers drawn on it."""
 
 import solara
-from component.parameter import AOI_LAYER_IDS
+from component.message import msg
+from component.parameter import (
+    AOI_LAYER_IDS,
+    SAMPLE_RASTER,
+    SAMPLE_RASTER_LAYER_ID,
+    SAMPLE_VECTOR,
+    SAMPLE_VECTOR_LAYER_ID,
+)
 
 from pysepal import mapping as sm
+from pysepal.layers import LayerSpec
+
+
+def add_sample_layers(sepal_map: sm.SepalMap) -> None:
+    """Open the map on a local raster under a local vector, neither needing Earth Engine."""
+    sepal_map.add_raster(
+        SAMPLE_RASTER,
+        layer_name=msg("layers.sample_raster"),
+        key=SAMPLE_RASTER_LAYER_ID,
+        colormap="viridis",
+        # pinned rather than stretched to the file, so that the layer has a legend
+        vmin=0,
+        vmax=255,
+    )
+    # A new layer goes on top of the store, so the vector draws over the raster.
+    sepal_map.layer_store.add(
+        LayerSpec.from_vector(
+            SAMPLE_VECTOR, name=msg("layers.sample_vector"), id=SAMPLE_VECTOR_LAYER_ID
+        )
+    )
 
 
 def use_sepal_map(gee_interface, theme_state) -> sm.SepalMap:
     """Return the map, rebuilt only when the session's GEE interface changes."""
 
     def build_map():
-        return sm.SepalMap(
+        sepal_map = sm.SepalMap(
             zoom=3,
             center=[0, 0],
             gee=True,
@@ -18,6 +45,8 @@ def use_sepal_map(gee_interface, theme_state) -> sm.SepalMap:
             fullscreen=True,
             theme_state=theme_state,
         )
+        add_sample_layers(sepal_map)
+        return sepal_map
 
     return solara.use_memo(build_map, [id(gee_interface)])
 

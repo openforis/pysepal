@@ -1,9 +1,10 @@
 """SEPAL Solara map application demo.
 
 One app exercising what a real SEPAL module needs: AOI selection, async
-processing with progress notifications, layer management, a floating map legend
-driven by the layers currently on the map, Earth Engine / Drive / SEPAL exports,
-and every way the file input selects paths (a dialog step).
+processing with progress notifications, a layer panel over the map's layer store
+(opening on a local raster and vector), a floating map legend driven by the
+layers currently on the map, Earth Engine / Drive / SEPAL exports, and every way
+the file input selects paths (a dialog step).
 
 This module is only the shell: it opens the session, holds the reactives the
 sections share and lays them out. The pieces live under ``component/``:
@@ -32,6 +33,7 @@ from component.scripts import sample_folder
 from component.tile import ExportPanel, FilesPanel, ProcessPanel, use_layer_tools
 from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
 
+from pysepal.message import msg as pysepal_msg
 from pysepal.solara import (
     get_current_drive_interface,
     get_current_filesystem,
@@ -43,6 +45,7 @@ from pysepal.solara import (
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiView
+from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider
 
@@ -112,10 +115,16 @@ def MapAppDemo():
             "description": msg("section.process.description"),
         },
         {
-            "title": msg("section.layers.title"),
+            "title": pysepal_msg("layer_panel.title"),
             "icon": "mdi-layers",
+            "content": LayerPanel(store=sepal_map.layer_store, map_=sepal_map),
+            "description": msg("section.layer_panel.description"),
+        },
+        {
+            "title": msg("section.add_layers.title"),
+            "icon": "mdi-layers-plus",
             "content": layer_tools,
-            "description": msg("section.layers.description"),
+            "description": msg("section.add_layers.description"),
             "divider": True,
         },
         {

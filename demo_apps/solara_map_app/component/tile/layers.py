@@ -1,4 +1,4 @@
-"""Right-panel section holding the standalone layer controls.
+"""Right-panel section with the buttons that add and clear the demo layers.
 
 A hook returning the section's content, a list of elements that MapApp renders
 one under the other.
@@ -15,6 +15,7 @@ from component.parameter import (
     NDVI_VIS,
     PMTILES_CENTER,
     PMTILES_LAYER_ID,
+    PMTILES_SOURCE_LAYER,
     PMTILES_STYLE,
     PMTILES_URL,
     RADAR_BANDS,
@@ -29,8 +30,8 @@ from component.scripts import (
     radar_composite,
     upsert_legends,
 )
-from ipyleaflet import PMTilesLayer
 
+from pysepal.layers import LayerSpec, VectorSource
 from pysepal.solara.components.admin import AdminButton
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
@@ -93,10 +94,15 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
     radar_btn_props = use_task_button(radar_task, on_start=radar_task)
 
     def add_pmtiles_layer():
-        """Add vector tiles, which the layer control drives without Earth Engine."""
-        sepal_map.add_layer(
-            PMTilesLayer(name=msg("layers.pmtiles"), url=PMTILES_URL, style=PMTILES_STYLE),
-            key=PMTILES_LAYER_ID,
+        """Add vector tiles, which the layer panel drives without Earth Engine."""
+        sepal_map.layer_store.add(
+            LayerSpec(
+                id=PMTILES_LAYER_ID,
+                name=msg("layers.pmtiles"),
+                source=VectorSource(uri=PMTILES_URL, format="PMTiles", layer=PMTILES_SOURCE_LAYER),
+                style=PMTILES_STYLE,
+            ),
+            replace=True,
         )
         sepal_map.center = PMTILES_CENTER
         sepal_map.zoom = 14

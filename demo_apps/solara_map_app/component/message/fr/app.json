@@ -17,9 +17,12 @@
       "title": "Traiter",
       "description": "Dérive deux couches de l'AOI et publie une légende pour chacune."
     },
-    "layers": {
-      "title": "Couches",
-      "description": "Ajoutez une couche de démonstration autonome, une composition radar Sentinel-1 ou une couche vectorielle PMTiles, ou effacez la carte et ses légendes. Toutes apparaissent dans le contrôle des couches, en haut à droite."
+    "layer_panel": {
+      "description": "Les couches de la carte, de haut en bas. Faites glisser une ligne par sa poignée pour les réordonner ; dépliez-la pour son opacité, sa légende et son style."
+    },
+    "add_layers": {
+      "title": "Ajouter des couches",
+      "description": "Ajoutez une couche de démonstration autonome, une composition radar Sentinel-1 ou une couche vectorielle PMTiles, ou effacez la carte et ses légendes. Chacune apparaît dans le panneau des couches, plus haut."
     },
     "export": {
       "title": "Exporter",
@@ -32,7 +35,9 @@
     "radar": "Radar Sentinel-1",
     "pixel_area": "Surface du pixel (m²)",
     "elevation": "Classes d'altitude",
-    "pmtiles": "Bâtiments de Nouvelle-Zélande"
+    "pmtiles": "Bâtiments de Nouvelle-Zélande",
+    "sample_raster": "Dégradé d'exemple",
+    "sample_vector": "Parcelles d'exemple"
   },
   "elevation": {
     "lowland": "Plaine (< 500 m)",
