@@ -17,7 +17,6 @@ def test_sepal_map_builds() -> None:
     controls = {type(c) for c in m.controls}
     expected = {
         sm.ZoomControl,
-        sm.LayersControl,
         sm.InspectorControl,
         sm.LayerStateControl,
         sm.FullScreenControl,
@@ -80,76 +79,5 @@ def test_inspector_tree_opens() -> None:
     assert len(values) == len(set(values))
 
     m.close()
-
-    return
-
-
-def test_layers_control_toggles_visibility() -> None:
-    """The checkbox hides a layer, the slider sets its opacity and a radio picks the basemap."""
-    m = ipl.Map()
-    second_base = ipl.TileLayer(url="https://example.com/{z}/{x}/{y}.png", name="other", base=True)
-    second_base.visible = False
-    m.add(second_base)
-    layer = ipl.TileLayer(url="https://example.com/{z}/{x}/{y}.png", name="tiles")
-    m.add(layer)
-    control = sm.LayersControl(m)
-
-    # a radio group would drive the checkboxes too: the radios stand alone
-    group = control.group
-    table = control.tile.children[0]
-    assert isinstance(table, v.Table)
-    assert not isinstance(group, v.RadioGroup)
-    assert "v-no-border" in table.class_
-
-    row = control.tile.get_children(klass=sm.LayerRow)[0]
-    assert isinstance(row.w_checkbox, v.Checkbox)
-    assert "v-no-messages" in row.w_slider.class_
-    assert row.w_checkbox.hide_details is True
-    assert row.w_checkbox.density == "compact"
-    assert table.density == "compact"
-
-    # the checkbox drives the layer visibility both ways
-    row.w_checkbox.v_model = False
-    assert layer.visible is False
-    assert row.w_slider.disabled is True
-    layer.visible = True
-    assert row.w_checkbox.v_model is True
-
-    # the slider drives the opacity
-    row.w_slider.v_model = 0.5
-    assert layer.opacity == 0.5
-
-    # one radio per basemap, the group keeps a single one active
-    bases = {r.children[0].children[0]: r for r in control.tile.get_children(klass=sm.BaseRow)}
-    default_name = next(lyr.name for lyr in m.layers if lyr.base and lyr is not second_base)
-    default_layer = next(lyr for lyr in m.layers if lyr.name == default_name)
-    assert group.v_model == default_name
-    assert bases[default_name].w_radio.active is True
-    assert bases["other"].w_radio.active is False
-
-    # each radio sits alone in a group whose v_model mirrors the radio
-    solo = {name: row.children[2].children[0] for name, row in bases.items()}
-    assert isinstance(solo["other"], v.RadioGroup)
-    assert solo[default_name].v_model == default_name
-    assert solo["other"].v_model is None
-
-    # a click selects a radio through its group
-    solo["other"].v_model = "other"
-    assert group.v_model == "other"
-    assert second_base.visible is True
-    assert solo[default_name].v_model is None
-    group.v_model = default_name
-
-    # selecting from the frontend (the group v_model) switches the basemap
-    group.v_model = "other"
-    assert second_base.visible is True
-    assert default_layer.visible is False
-
-    # and showing a basemap from python moves the selection
-    default_layer.visible = True
-    assert group.v_model == default_name
-    assert second_base.visible is False
-
-    control.close()
 
     return

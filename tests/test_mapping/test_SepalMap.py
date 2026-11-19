@@ -185,7 +185,7 @@ def test_add_colorbar() -> None:
     m = sm.SepalMap()
     m.add_colorbar(colors=["#fc8d59", "#ffffbf", "#91bfdb"], vmin=0, vmax=5)
 
-    assert len(m.controls) == 5  # only thing I can check
+    assert len(m.controls) == 4  # only thing I can check
 
     return
 
@@ -840,7 +840,8 @@ async def test_an_ee_vector_with_its_own_colour_is_rendered_once(sync: bool) -> 
     await _add_ee_layer(m, sync, fc, {"color": "#ff0000"}, "aoi")
 
     theme_state.set_mode("dark")
-    assert m.find_layer("aoi").url == _tile_url("#ff0000")
+    # the layer spec hands Earth Engine its colours as bare hex
+    assert m.find_layer("aoi").url == _tile_url("ff0000")
     assert _map_id_calls(m, sync) == 1
 
 

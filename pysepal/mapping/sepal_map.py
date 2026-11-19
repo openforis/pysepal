@@ -10,27 +10,18 @@ from pysepal.mapping.bounds import (
 )
 from pysepal.mapping.fullscreen_control import FullScreenControl
 from pysepal.mapping.gdal_env import GDAL_ENV_VARS, prune_foreign_gdal_env
-from pysepal.mapping.raster_style import (
-    _class_color_kwargs,
-    _continuous_color_kwargs,
-)
-from pysepal.mapping.tiling import prepare_raster_file
-from pysepal.mapping.visualization import (
-    get_viz_params,
-    get_viz_params_async,
-    process_vis_params,
-)
+from pysepal.mapping.visualization import validate_ee_object
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.theme import ThemeState
 
 if any(var in os.environ for var in GDAL_ENV_VARS):
     prune_foreign_gdal_env()
 
-import asyncio
 import json
 import math
 import random
 import string
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Sequence, Union
 
@@ -46,13 +37,14 @@ from typing_extensions import Self
 
 from pysepal import color as scolors
 from pysepal.frontend import styles as ss
+from pysepal.layers import LayerSpec, LayerStore, RenderLayer, prepare, prepare_sync
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.basemaps import basemap_tiles
 from pysepal.mapping.draw_control import GeomanDrawControl
 from pysepal.mapping.inspector_control import InspectorControl
 from pysepal.mapping.layer import EELayer
+from pysepal.mapping.layer_engine import OVERLAY_PANE, LeafletEngine
 from pysepal.mapping.layer_state_control import LayerStateControl
-from pysepal.mapping.layers_control import LayersControl
 from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.zoom_control import ZoomControl
 from pysepal.message import msg
@@ -71,6 +63,45 @@ log = logging.getLogger("sepalui.mapping")
 DEFAULT_MAP_WIDTH_PX = 1024
 
 CLIENT_PREFIX_ENV_VAR = "LOCALTILESERVER_CLIENT_PREFIX"
+
+# the arguments ee.FeatureCollection.style takes
+_EE_STYLE_ARGS = frozenset(
+    (
+        "color",
+        "pointSize",
+        "pointShape",
+        "width",
+        "fillColor",
+        "styleProperty",
+        "neighborhood",
+        "lineType",
+    )
+)
+
+
+def _check_ee_inputs(ee_object: ee.ComputedObject, vis_params: dict) -> None:
+    """Raise, before a spec is built, the errors ``add_ee_layer`` always raised for bad inputs.
+
+    Raises:
+        AttributeError: when ``ee_object`` is not an Earth Engine image, collection or vector.
+        TypeError: when a vector is given a style argument ``ee.FeatureCollection.style`` lacks.
+    """
+    validate_ee_object(ee_object)
+    if isinstance(ee_object, (ee.Geometry, ee.Feature, ee.FeatureCollection)):
+        unknown = sorted(set(vis_params) - _EE_STYLE_ARGS)
+        if unknown:
+            raise TypeError(
+                f"Unknown vector style arguments {unknown}, use {sorted(_EE_STYLE_ARGS)}."
+            )
+
+
+@contextmanager
+def _unless_unbounded():
+    """Skip an autocenter whose bounds Earth Engine cannot compute."""
+    try:
+        yield
+    except Exception:
+        log.debug("autocenter skipped: unable to compute bounds (unbounded image?)")
 
 
 class SepalMap(ipl.Map):
@@ -92,6 +123,12 @@ class SepalMap(ipl.Map):
 
     state: Optional[LayerStateControl] = None
     "The statebar to inform the user about tile loading"
+
+    layer_store: Optional[LayerStore] = None
+    "The layers the map draws, top first: what the layer panel lists and edits"
+
+    layer_engine: Optional[LeafletEngine] = None
+    "Draws ``layer_store`` on the map"
 
     viewport_inset_left = _TInt(0)
     "Left overlay width in px. Set by the parent shell (e.g. MapApp) so fit_bounds targets the visible region."
@@ -120,6 +157,7 @@ class SepalMap(ipl.Map):
         gee_interface: Optional[GEEInterface] = None,
         fullscreen: bool = False,
         map_id: str = "",
+        layer_store: Optional[LayerStore] = None,
         **kwargs,
     ) -> None:
         """Custom Map object design to build application.
@@ -140,6 +178,7 @@ class SepalMap(ipl.Map):
             gee_session (optional): a custom EESession object to do gee requests. default to None (deprecated in favor of gee_interface)
             gee_interface: a shared GEEInterface instance. If provided, takes precedence over gee_session
             fullscreen: whether or not to display the map in full screen. default to False
+            layer_store: the layers to draw, for a store shared with other components. The layers already in it are drawn with their stored visibility. Defaults to a new, empty store.
             kwargs (optional): any parameter from a ipyleaflet.Map. if set, 'ee_initialize' will be overwritten.
 
         Raises:
@@ -184,6 +223,7 @@ class SepalMap(ipl.Map):
         self._owned_parts = [
             getattr(self, n) for n in parts if not isinstance(kwargs.get(n), widgets.Widget)
         ]
+        self.layer_store = layer_store if layer_store is not None else LayerStore()
 
         # init ee
         self.gee = gee
@@ -215,7 +255,6 @@ class SepalMap(ipl.Map):
         # add the base controls
         base_controls = [
             ZoomControl(self),
-            LayersControl(self, group=-1),
             ipl.AttributionControl(position="bottomleft", prefix="SEPAL"),
             ipl.ScaleControl(position="bottomleft", imperial=False),
         ]
@@ -245,6 +284,12 @@ class SepalMap(ipl.Map):
         self._id = map_id or "".join(random.choice(string.ascii_lowercase) for i in range(6))
         self.add_class(self._id)
         self._bind_theme_source(theme_source)
+
+        # Last: the layers of a given store then go over the basemaps, in the theme just
+        # bound, and the state bar counts them.
+        self.layer_engine = LeafletEngine(
+            self, self.layer_store, gee_interface=getattr(self, "gee_interface", None)
+        )
 
     def _on_theme_change(self, change) -> None:
         """Change the basemap layer."""
@@ -326,11 +371,15 @@ class SepalMap(ipl.Map):
 
         Its controls hold the map, and the kernel holds every widget left open,
         so a control left open keeps the whole map alive. Layers and controls
-        added by the caller stay open.
+        added by the caller stay open. The layers drawn from ``layer_store`` are
+        closed, and the store keeps its layers.
         """
         self._unbind_theme_source()
         # closed first so that releasing the controls sends nothing to the frontend
         super().close()
+        # before the basemaps: taking a layer off reads the id of every layer on the map
+        if self.layer_engine is not None:
+            self.layer_engine.close()
         owned, self._owned = self._owned, []
         close_tree(*owned)
         close_tree(*self._owned_parts)
@@ -467,13 +516,15 @@ class SepalMap(ipl.Map):
 
         The raster is served by a ``localtileserver`` instance bound to ``127.0.0.1`` inside the kernel, so the browser cannot reach it without help. ``LOCALTILESERVER_CLIENT_PREFIX`` names the route that reaches it: SEPAL sets it for its sandboxes, and under solara-server you mount one yourself. Set, it wins and is used as given. **Unset**, localtileserver autodetects a ``jupyter-server-proxy`` prefix and assumes something serves it -- true in JupyterLab, false under a plain ``voila notebook.ipynb``, where every tile then 404s. **Define it empty** in that case to fall back to the loopback URL. See ``docs/guides/local-tile-servers.md``.
 
+        The layer goes into :attr:`layer_store`, with ``key`` as its id.
+
         Args:
             image: The image file path.
             bands: The image bands to use. It can be either a number (e.g., 1) or a list (e.g., [3, 2, 1]). Defaults to None.
-            layer_name: The layer name to use for the raster. Defaults to None. If a layer is already using this name 3 random letter will be added
+            layer_name: The layer name to use for the raster.
             colormap: The name of the colormap to use for the raster, such as 'gray' and 'terrain'. More can be found at https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html. Defaults to inferno.
             opacity: the opacity of the layer, default 1.0.
-            key: the unequivocal key of the layer. by default use a normalized str of the layer name
+            key: the unequivocal key of the layer, its id in :attr:`layer_store`. By default a normalized str of the layer name. A layer already using this key is replaced in place, keeping its position, visibility and opacity.
             fit_bounds: Whether or not we should fit the map to the image bounds. Default to True.
             class_colors: mapping of class code to ``'#rgb'`` or ``'#rrggbb'``, for a categorical raster. When set, each class is drawn in its exact color and anything absent is transparent, instead of stretching ``colormap`` across the value range. Code 0 is colored like any other; codes outside ``0-255`` are served from a renumbered copy, since a tile palette only holds 256 entries. Up to 255 classes.
             vmin: value mapped to the first color. Defaults to the file's own minimum, i.e. an auto-stretch. Pin both ends to reproduce a fixed palette (a QGIS ramp, a shared legend) rather than one that shifts per file. Ignored when ``class_colors`` is set.
@@ -485,26 +536,19 @@ class SepalMap(ipl.Map):
         Returns:
             the local tile layer embedding the raster member (to be used with other tools of sepal-ui)
 
+        Raises:
+            LayerPrepareError: when the raster cannot be prepared for display.
+
         Note:
             The first add of a large raster rewrites every one of its pixels and
             blocks until it finishes. In a Solara app use :meth:`add_raster_async`
             instead, which does that part in a worker thread.
         """
-        served, class_colors = self._prepare_raster(image, class_colors, optimize, warp_to_3857)
-        return self._attach_raster(
-            image,
-            served,
-            bands=bands,
-            layer_name=layer_name,
-            colormap=colormap,
-            opacity=opacity,
-            fit_bounds=fit_bounds,
-            key=key,
-            class_colors=class_colors,
-            vmin=vmin,
-            vmax=vmax,
-            nodata=nodata,
+        spec = self._raster_spec(
+            image, bands, layer_name, colormap, key, class_colors, vmin, vmax, nodata
         )
+        render = prepare_sync(spec, optimize=optimize, warp_to_3857=warp_to_3857)
+        return self._commit(spec, render, opacity=opacity, fit=fit_bounds)
 
     async def add_raster_async(
         self,
@@ -521,114 +565,147 @@ class SepalMap(ipl.Map):
         nodata: Optional[float] = None,
         optimize: bool = True,
         warp_to_3857: bool = False,
-    ) -> ipl.TileLayer:
+    ) -> Optional[ipl.TileLayer]:
         """Add a local raster without blocking the event loop.
 
-        Same arguments and return as :meth:`add_raster`. Preparing a raster
-        rewrites every one of its pixels into a tiled COG; that runs in a worker
-        thread here, leaving only the layer attach on the loop.
+        Same arguments as :meth:`add_raster`. Preparing a raster rewrites every
+        one of its pixels into a tiled COG; that runs in a worker thread here,
+        leaving only the layer attach on the loop.
+
+        Returns:
+            the local tile layer, or None when a newer action on the same key (a remove,
+            a restyle or another add) superseded this call while it was preparing.
+
+        Raises:
+            LayerPrepareError: when the raster cannot be prepared for display.
         """
-        served, class_colors = await asyncio.to_thread(
-            self._prepare_raster, image, class_colors, optimize, warp_to_3857
+        spec = self._raster_spec(
+            image, bands, layer_name, colormap, key, class_colors, vmin, vmax, nodata
         )
-        return self._attach_raster(
+        return await self._commit_async(
+            spec, opacity=opacity, fit=fit_bounds, optimize=optimize, warp_to_3857=warp_to_3857
+        )
+
+    @staticmethod
+    def _raster_spec(
+        image: Union[str, Path],
+        bands: Optional[Union[list, int]],
+        layer_name: str,
+        colormap: Union[str, "mpc.Colormap"],
+        key: str,
+        class_colors: Optional[dict],
+        vmin: Optional[float],
+        vmax: Optional[float],
+        nodata: Optional[float],
+    ) -> LayerSpec:
+        """Build the spec of an :meth:`add_raster` call."""
+        return LayerSpec.from_raster(
             image,
-            served,
+            name=layer_name,
+            id=key or su.normalize_str(layer_name),
             bands=bands,
-            layer_name=layer_name,
             colormap=colormap,
-            opacity=opacity,
-            fit_bounds=fit_bounds,
-            key=key,
             class_colors=class_colors,
             vmin=vmin,
             vmax=vmax,
             nodata=nodata,
         )
 
-    def _prepare_raster(
+    def _commit(
         self,
-        image: Union[str, Path],
-        class_colors: Optional[dict],
-        optimize: bool,
-        warp_to_3857: bool = False,
-    ) -> tuple:
-        """Produce the serve-ready raster path; see :func:`prepare_raster_file`."""
-        return prepare_raster_file(image, class_colors, optimize, warp_to_3857)
-
-    def _attach_raster(
-        self,
-        image: Union[str, Path],
-        served: str,
-        bands: Optional[Union[list, int]] = None,
-        layer_name: str = "",
-        colormap: Union[str, "mpc.Colormap"] = "inferno",
+        spec: LayerSpec,
+        render: RenderLayer,
+        *,
+        shown: bool = True,
         opacity: float = 1.0,
-        fit_bounds: bool = True,
-        key: str = "",
-        class_colors: Optional[dict] = None,
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
-        nodata: Optional[float] = None,
-    ) -> ipl.TileLayer:
-        """Serve a prepared raster and put it on the map.
+        overlay: bool = False,
+        fit: bool = False,
+        generation: Optional[int] = None,
+    ) -> Optional[ipl.Layer]:
+        """Draw a prepared spec and return its leaflet layer.
 
-        The half of ``add_raster`` that mutates the map, so it belongs on the
-        thread that owns the widgets.
+        A managed layer goes through :attr:`layer_store`, replacing a layer with the same
+        id in place; an overlay is added raw, above the managed layers.
+
+        Args:
+            spec: the layer spec.
+            render: the render prepared from ``spec``.
+            shown: whether a new layer is visible.
+            opacity: the opacity of a new layer.
+            overlay: add an unmanaged Earth Engine layer in the overlay pane instead.
+            fit: fit the map to the layer bounds, when the render knows them.
+            generation: the token of the reservation made before preparing; the add is
+                dropped, and None returned, when a newer write to the id happened since.
         """
-        from localtileserver import TileClient, get_leaflet_tile_layer
-
-        image = Path(image)
-        # Pass the variable through rather than letting localtileserver read it:
-        # unset gives None and it autodetects a jupyter-server-proxy prefix, which
-        # Voila does not serve. Defined-but-empty reaches TileClient as "", the one
-        # value that suppresses both the env read and the autodetect.
-        client = TileClient(served, client_prefix=os.environ.get(CLIENT_PREFIX_ENV_VAR))
-
-        # check inputs
-        if layer_name in [layer.name for layer in self.layers]:
-            layer_name = layer_name + su.random_string()
-
-        color_kwargs = _class_color_kwargs(class_colors) if class_colors else None
-        if class_colors and color_kwargs is None:
-            log.warning(
-                "localtileserver register_colormap unavailable; %s falls back to "
-                "the continuous colormap and its classes may render dark.",
-                image,
+        if overlay:
+            layer = EELayer(
+                ee_object=render.ee_object,
+                url=render.url,
+                theme_urls=render.theme_urls,
+                attribution=spec.attribution,
+                name=spec.name,
+                opacity=opacity,
+                visible=shown,
+                max_zoom=render.max_zoom,
+                pane=OVERLAY_PANE,
             )
-        if color_kwargs is None:
-            color_kwargs = _continuous_color_kwargs(image, bands, colormap)
-            color_kwargs |= {"vmin": vmin, "vmax": vmax}
-        elif vmin is not None or vmax is not None:
-            # the categorical path pins its own range; a caller's would rescale
-            # the class codes into ramp positions and blank the raster
-            log.warning("vmin/vmax are ignored when class_colors is set.")
+            self.add_layer(layer, key=spec.id)
+        else:
+            store = self.layer_store
+            if generation is not None and store.generation(spec.id) != generation:
+                return None
+            self.layer_engine.put(render)
+            added = store.add(
+                spec,
+                visible=shown,
+                opacity=opacity,
+                replace=True,
+                expect_generation=generation,
+            )
+            if added is None:
+                return None
+            layer = self.layer_engine.leaflet_layer(spec.id)
 
-        # create the layer
-        layer = get_leaflet_tile_layer(
-            client,
-            name=layer_name,
-            opacity=opacity,
-            max_zoom=20,
-            max_native_zoom=20,
-            nodata=nodata,
-            **color_kwargs,
-        )
-        self.add_layer(layer, key=key)
-
-        # add the da to the layer as an extra member for the v_inspector
-        layer.raster = str(image)
-
-        # zoom on the layer if requested. Not client.default_zoom: that frames the
-        # raster in a single 256px tile, leaving it about an eighth of the
-        # viewport wide. zoom_bounds is what add_ee_layer autocenters with -- it
-        # sizes to the canvas, allows for whatever panels MapApp has laid over it,
-        # and stops at the tightest zoom that still shows the whole raster.
-        if fit_bounds is True:
-            (south, west), (north, east) = layer.bounds
-            self.zoom_bounds((west, south, east, north))
+        if fit and render.bounds is not None:
+            self.zoom_bounds(render.bounds)
 
         return layer
+
+    async def _commit_async(
+        self,
+        spec: LayerSpec,
+        *,
+        shown: bool = True,
+        opacity: float = 1.0,
+        overlay: bool = False,
+        fit: bool = False,
+        **options,
+    ) -> Optional[ipl.Layer]:
+        """Prepare a spec without blocking the loop, then :meth:`_commit` it.
+
+        The id stays reserved while preparing, so that any newer write to it (from the
+        panel, a sync add, another async one, a removal) wins over this call.
+
+        Args:
+            spec: the layer spec.
+            shown: whether a new layer is visible.
+            opacity: the opacity of a new layer.
+            overlay: add an unmanaged Earth Engine layer in the overlay pane instead.
+            fit: fit the map to the layer bounds, when the render knows them.
+            options: the keyword arguments of :func:`~pysepal.layers.prepare`.
+        """
+        if overlay:
+            render = await prepare(spec, **options)
+            return self._commit(spec, render, shown=shown, opacity=opacity, overlay=True)
+
+        generation = self.layer_store.reserve(spec.id, spec.name)
+        try:
+            render = await prepare(spec, **options)
+            return self._commit(
+                spec, render, shown=shown, opacity=opacity, fit=fit, generation=generation
+            )
+        finally:
+            self.layer_store.release(spec.id, generation)
 
     def add_colorbar(
         self,
@@ -735,70 +812,36 @@ class SepalMap(ipl.Map):
         key: str = "",
         use_map_vis: bool = True,
         autocenter: bool = False,
+        overlay: bool = False,
     ) -> None:
         """Customized add_layer method designed for EE objects.
 
         Copy the addLayer method from geemap to read and guess the vizaulization
         parameters the same way as in SEPAL recipes.
         If the vizparams are empty and visualization metadata exist, SepalMap will use
-        them automatically.
+        them automatically. The layer goes into :attr:`layer_store`, with ``key`` as its id.
 
         Args:
             ee_object: the ee OBject to draw on the map
             vis_params: the visualization parameters set as in GEE. A vector given no ``color`` is drawn in the primary colour of the map theme, and follows it when the theme changes.
             name: the name of the layer
-            shown: either to show the layer or not, default to true (it is bugged in ipyleaflet)
+            shown: either to show the layer or not, default to true
             opacity: the opcity of the layer from 0 to 1, default to 1.
             viz_name: the name of the vizaulization you want to use. default to the first one if existing
-            key: the unequivocal key of the layer. by default use a normalized str of the layer name
+            key: the unequivocal key of the layer, its id in :attr:`layer_store`. By default a normalized str of the layer name. A layer already using this key is replaced in place, keeping its position, visibility and opacity.
             use_map_vis: whether or not to use the map visualization parameters. default to True
             autocenter: whether or not to center the map on the layer. default to False
+            overlay: draw the layer above every layer of :attr:`layer_store`, outside it, so that no layer panel lists it. For a reference layer such as the AOI. Default to False.
+
+        Raises:
+            LayerPrepareError: when Earth Engine cannot render the layer.
         """
-        # get the own visualization parameters
-        map_own_visualization = get_viz_params(ee_object, gee_interface=self.gee_interface)
-
-        themes = self._theme_vis_params(ee_object, vis_params)
-        variants = themes or {None: vis_params}
-        processed = [
-            process_vis_params(
-                ee_object,
-                vis_params=params,
-                viz=map_own_visualization,
-                use_map_vis=use_map_vis,
-                viz_name=viz_name,
-            )
-            for params in variants.values()
-        ]
-        map_ids = [self.gee_interface.get_map_id(image, params) for image, _, params in processed]
-        urls = {key: map_id["tile_fetcher"].url_format for key, map_id in zip(variants, map_ids)}
-        obj = processed[0][1]
-
-        # create the layer based on these new values
-        if not name:
-            layer_count = len(self.layers)
-            name = "Layer " + str(layer_count + 1)
-
-        # create the colored image
-        tile_layer = EELayer(
-            ee_object=obj,
-            url=urls[self._is_dark() if themes else None],
-            theme_urls=urls if themes else None,
-            attribution="Google Earth Engine",
-            name=name,
-            opacity=opacity,
-            visible=shown,
-            max_zoom=24,
-        )
-
-        if autocenter:
-            try:
+        spec = self._ee_spec(ee_object, vis_params, name, key, viz_name, use_map_vis)
+        render = prepare_sync(spec, gee_interface=self.gee_interface)
+        layer = self._commit(spec, render, shown=shown, opacity=opacity, overlay=overlay)
+        if autocenter and layer is not None:
+            with _unless_unbounded():
                 self.zoom_bounds(self.gee_interface.get_bounds(ee_object))
-            except Exception:
-                log.debug("autocenter skipped: unable to compute bounds (unbounded image?)")
-
-        self.add_layer(tile_layer, key=key)
-
-        return
 
     async def add_ee_layer_async(
         self,
@@ -812,85 +855,66 @@ class SepalMap(ipl.Map):
         use_map_vis: bool = True,
         autocenter: bool = False,
         attribution: str = "Google Earth Engine",
+        overlay: bool = False,
     ) -> None:
         """Customized add_layer method designed for EE objects.
 
         Copy the addLayer method from geemap to read and guess the vizaulization
         parameters the same way as in SEPAL recipes.
         If the vizparams are empty and visualization metadata exist, SepalMap will use
-        them automatically.
+        them automatically. The layer goes into :attr:`layer_store`, with ``key`` as its
+        id, unless a newer action on the same key happens while Earth Engine renders it.
 
         Args:
             ee_object: the ee OBject to draw on the map
             vis_params: the visualization parameters set as in GEE. A vector given no ``color`` is drawn in the primary colour of the map theme, and follows it when the theme changes.
             name: the name of the layer
-            shown: either to show the layer or not, default to true (it is bugged in ipyleaflet)
+            shown: either to show the layer or not, default to true
             opacity: the opcity of the layer from 0 to 1, default to 1.
             viz_name: the name of the vizaulization you want to use. default to the first one if existing
-            key: the unequivocal key of the layer. by default use a normalized str of the layer name
+            key: the unequivocal key of the layer, its id in :attr:`layer_store`. By default a normalized str of the layer name. A layer already using this key is replaced in place, keeping its position, visibility and opacity.
             use_map_vis: whether or not to use the map visualization parameters. default to True
             autocenter: whether or not to center the map on the layer. default to False
             attribution: the attribution shown in the map corner while the layer is visible
+            overlay: draw the layer above every layer of :attr:`layer_store`, outside it, so that no layer panel lists it. For a reference layer such as the AOI. Default to False.
+
+        Raises:
+            LayerPrepareError: when Earth Engine cannot render the layer.
         """
-        # get the own visualization parameters
-        map_own_visualization = await get_viz_params_async(
-            ee_object,
+        spec = self._ee_spec(ee_object, vis_params, name, key, viz_name, use_map_vis, attribution)
+        layer = await self._commit_async(
+            spec,
+            shown=shown,
+            opacity=opacity,
+            overlay=overlay,
             gee_interface=self.gee_interface,
         )
-
-        themes = self._theme_vis_params(ee_object, vis_params)
-        variants = themes or {None: vis_params}
-        processed = [
-            process_vis_params(
-                ee_object,
-                vis_params=params,
-                viz=map_own_visualization,
-                use_map_vis=use_map_vis,
-                viz_name=viz_name,
-            )
-            for params in variants.values()
-        ]
-        map_ids = await asyncio.gather(
-            *(self.gee_interface.get_map_id_async(image, params) for image, _, params in processed)
-        )
-        urls = {key: map_id["tile_fetcher"].url_format for key, map_id in zip(variants, map_ids)}
-        obj = processed[0][1]
-
-        # create the layer based on these new values
-        if not name:
-            layer_count = len(self.layers)
-            name = "Layer " + str(layer_count + 1)
-
-        # create the colored image
-        tile_layer = EELayer(
-            ee_object=obj,
-            url=urls[self._is_dark() if themes else None],
-            theme_urls=urls if themes else None,
-            attribution=attribution,
-            name=name,
-            opacity=opacity,
-            visible=shown,
-            max_zoom=24,
-        )
-
-        if autocenter:
-            try:
+        if autocenter and layer is not None:
+            with _unless_unbounded():
                 self.zoom_bounds(await self.gee_interface.get_bounds_async(ee_object))
-            except Exception:
-                log.debug("autocenter skipped: unable to compute bounds (unbounded image?)")
 
-        self.add_layer(tile_layer, key=key)
-
-        return
-
-    @staticmethod
-    def _theme_vis_params(
-        ee_object: ee.ComputedObject, vis_params: dict
-    ) -> Optional[dict[bool, dict]]:
-        """Return the vis params of each theme for a default-coloured vector, else ``None``."""
-        from pysepal.layers.preparation import theme_vis_params
-
-        return theme_vis_params(ee_object, vis_params)
+    def _ee_spec(
+        self,
+        ee_object: ee.ComputedObject,
+        vis_params: dict,
+        name: str,
+        key: str,
+        viz_name: str,
+        use_map_vis: bool,
+        attribution: str = "Google Earth Engine",
+    ) -> LayerSpec:
+        """Build the spec of an :meth:`add_ee_layer` call."""
+        _check_ee_inputs(ee_object, vis_params)
+        name = name or f"Layer {len(self.layers) + 1}"
+        return LayerSpec.from_ee(
+            ee_object,
+            vis_params,
+            name=name,
+            id=key or su.normalize_str(name),
+            viz_name=viz_name,
+            use_asset_viz=use_map_vis,
+            attribution=attribution,
+        )
 
     @staticmethod
     def get_basemap_list() -> List[str]:
@@ -909,58 +933,71 @@ class SepalMap(ipl.Map):
     ) -> None:
         """Remove a layer based on a key.
 
-        The key can be, a Layer object, the name of a layer or the index in the layer list.
+        The key can be, a Layer object, the key or the name of a layer or the index in the layer list. A layer of :attr:`layer_store` is removed from the store, even while hidden; a key an async add is still preparing cancels that add.
 
         Args:
             key: the key to find the layer to delete
             base: either the basemaps should be included in the search or not. default t false
             none_ok: if True the function will not raise error if no layer is found. Default to False
         """
-        layer = self.find_layer(key, base, none_ok)
+        if isinstance(key, str):
+            layer, layer_id = self._lookup(key, self._candidates(base))
+        else:
+            layer = self.find_layer(key, base, none_ok=True)
+            layer_id = None if layer is None else self._managed_id(layer)
 
-        # the error is caught in find_layer
-        if layer is not None:
+        if layer_id is not None:
+            self.layer_store.remove(layer_id, missing_ok=True)
+        elif layer is not None:
             super().remove(layer)
-
-        return
+        elif not none_ok:
+            raise ValueError(f"no layer corresponding to {key} on the map")
 
     def remove_all(self, base: bool = False, keep_names: Optional[list[str]] = None) -> None:
         """Remove all the layers from the maps.
 
-        If base is set to True, the basemaps are removed as well.
+        If base is set to True, the basemaps are removed as well. The layers of :attr:`layer_store` are removed from it, hidden ones and pending async adds included.
 
         Args:
             base: whether or not the basemaps should be removed, default to False
             keep_names: if set, will keep the layers with these names
         """
-        # filter out the basemaps if base == False
-        layers = self.layers if base else [lyr for lyr in self.layers if not lyr.base]
+        keep = set(keep_names or [])
+        store = self.layer_store
+        for spec in store.specs():
+            if spec.name not in keep:
+                store.remove(spec.id)
+        for layer_id, name in store.reserved().items():
+            # a kept layer's pending replacement is left to land
+            if name not in keep and layer_id not in store:
+                store.remove(layer_id, missing_ok=True)
 
-        # remove them using the layer objects as keys
-        [
-            self.remove_layer(layer, base)
-            for layer in layers
-            if not keep_names or layer.name not in keep_names
-        ]
-
-        return
+        for layer in self._candidates(base):
+            if layer.name not in keep:
+                self.remove_layer(layer, base)
 
     def add_layer(self, layer: ipl.Layer, hover: bool = False, key: str = "") -> None:
         """Add layer and use a default style for the GeoJSON inputs.
 
-        Remove existing layer if already on the map.
+        Remove existing layer if already on the map. The layer is not managed: it stays out of :attr:`layer_store`, so no layer panel lists it. A tile layer without a pane is drawn in the overlay pane, above the layers of the store.
 
         Args:
             layer: any layer type from ipyleaflet
             hover: whether to use the default hover style or not.
-            key: the unequivocal key of the layer. by default use a normalized str of the layer name
+            key: the unequivocal key of the layer. by default the key already set on the layer, else a normalized str of the layer name
         """
-        # set up a unique key
-        layer.key = key if key else su.normalize_str(layer.name)
+        layer.key = key or getattr(layer, "key", None) or su.normalize_str(layer.name)
 
-        # remove existing layer before addition
+        # remove the layer using the same key, or a raw one using it as name, as before the store
         existing_layer = self.find_layer(layer.key, none_ok=True)
-        not existing_layer or self.remove_layer(existing_layer)
+        if existing_layer is not None and (
+            getattr(existing_layer, "key", None) == layer.key
+            or self._managed_id(existing_layer) is None
+        ):
+            self.remove_layer(existing_layer)
+
+        if isinstance(layer, ipl.TileLayer) and not layer.base and not layer.pane:
+            layer.pane = OVERLAY_PANE
 
         # apply default coloring for geoJson
         if isinstance(layer, ipl.GeoJSON):
@@ -1010,8 +1047,10 @@ class SepalMap(ipl.Map):
 
     def find_layer(
         self, key: Union[ipl.Layer, str, int], base: bool = False, none_ok: bool = False
-    ) -> ipl.TileLayer:
+    ) -> Optional[ipl.Layer]:
         """Search a layer by name or index.
+
+        A string is looked up as a key first, then as a name. Hidden layers of :attr:`layer_store` are found too, by key, name or object; the index only counts the layers on the map.
 
         Args:
             key: the layer name, the layer key, the index or directly the layer
@@ -1021,17 +1060,15 @@ class SepalMap(ipl.Map):
         Returns:
             The first layer using the same name or index else None
         """
-        # filter the layers
-        layers = self.layers if base else [lyr for lyr in self.layers if not lyr.base]
+        layers = self._candidates(base)
 
         if isinstance(key, str):
-            layer = next((lyr for lyr in layers if lyr.key == key), None)
-            layer = layer or next((lyr for lyr in layers if lyr.name == key), None)
+            layer = self._lookup(key, layers)[0]
         elif isinstance(key, int):
             size = len(layers)
             layer = layers[key] if -size <= key < size else None
         elif isinstance(key, ipl.Layer):
-            layer = next((lyr for lyr in layers if lyr == key), None)
+            layer = key if key in layers or self._managed_id(key) is not None else None
         else:
             raise ValueError(f"key must be a int or a str, {type(key)} given")
 
@@ -1039,6 +1076,52 @@ class SepalMap(ipl.Map):
             raise ValueError(f"no layer corresponding to {key} on the map")
 
         return layer
+
+    def _candidates(self, base: bool) -> list[ipl.Layer]:
+        """The layers on the map, basemaps only when ``base``."""
+        return list(self.layers) if base else [lyr for lyr in self.layers if not lyr.base]
+
+    def _lookup(
+        self, key: str, layers: Sequence[ipl.Layer]
+    ) -> tuple[Optional[ipl.Layer], Optional[str]]:
+        """Resolve a key, else a name, to a layer and, for a managed one, its store id.
+
+        Each is looked up on the given ``layers`` of the map first, then in
+        :attr:`layer_store` (top first), then among the ids an async add reserved. A
+        managed match has no layer while it is still being prepared.
+
+        Returns:
+            The layer and the id, either one None when it does not apply.
+        """
+        store = self.layer_store
+        reserved = store.reserved()
+
+        layer = next((lyr for lyr in layers if getattr(lyr, "key", None) == key), None)
+        if layer is not None:
+            return layer, self._managed_id(layer)
+        if key in store or key in reserved:
+            return self._managed_layer(key), key
+
+        layer = next((lyr for lyr in layers if lyr.name == key), None)
+        if layer is not None:
+            return layer, self._managed_id(layer)
+        named = [spec.id for spec in store.specs() if spec.name == key]
+        named += [layer_id for layer_id, name in reserved.items() if name == key]
+        if named:
+            return self._managed_layer(named[0]), named[0]
+
+        return None, None
+
+    def _managed_layer(self, layer_id: str) -> Optional[ipl.Layer]:
+        """The leaflet layer built for a store id, attached or not."""
+        return None if self.layer_engine is None else self.layer_engine.leaflet_layer(layer_id)
+
+    def _managed_id(self, layer: ipl.Layer) -> Optional[str]:
+        """The store id of a layer this map's engine built, else None."""
+        layer_id = getattr(layer, "layer_id", None)
+        if layer_id is None or self._managed_layer(layer_id) is not layer:
+            return None
+        return layer_id
 
     def fit_bounds(self, bounds):
         """Abstract method to fit the map to the given bounds."""

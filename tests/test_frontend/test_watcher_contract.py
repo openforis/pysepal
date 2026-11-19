@@ -22,8 +22,8 @@ import pysepal
 
 PACKAGE = Path(pysepal.__file__).parent
 
-# Not walked: project scaffolding, and a stub that raises on import.
-SKIPPED = ("pysepal.templates", "pysepal.sepalwidgets")
+# Not walked: project scaffolding, and the stubs that raise on import.
+SKIPPED = ("pysepal.templates", "pysepal.sepalwidgets", "pysepal.mapping.layers_control")
 
 WATCH_START = re.compile(r"^  watch: \{$")
 BLOCK_END = re.compile(r"^  \},?$")

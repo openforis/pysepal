@@ -1,4 +1,8 @@
-"""Turn a :class:`LayerSpec` into a :class:`RenderLayer`."""
+"""Turn a :class:`LayerSpec` into a :class:`RenderLayer`.
+
+``pysepal.mapping`` imports this package (``SepalMap`` owns a ``LayerStore``), so the
+``pysepal.mapping`` modules used here are imported where they are needed.
+"""
 
 import asyncio
 import copy
@@ -12,11 +16,6 @@ from urllib.parse import urlparse
 import ee
 
 from pysepal.frontend import styles as ss
-from pysepal.mapping.visualization import (
-    get_viz_params,
-    get_viz_params_async,
-    process_vis_params,
-)
 from pysepal.scripts.gee_interface import GEEInterface
 
 from .legend import legend_from_asset_viz
@@ -265,6 +264,8 @@ def _asset_viz_legend(spec: LayerSpec, viz: dict) -> Legend | None:
 
 def _gee_process(spec: LayerSpec, ee_object, params: dict, viz: dict) -> tuple:
     """Return ``(keys, processed, legend, themed)`` for the variants to render."""
+    from pysepal.mapping.visualization import process_vis_params
+
     legend = _asset_viz_legend(spec, viz) if _wants_asset_viz(spec, params) else None
     themes = theme_vis_params(ee_object, params)
     variants = themes or {None: params}
@@ -295,6 +296,8 @@ def _gee_render(spec: LayerSpec, keys, processed, legend, themed, map_ids) -> Re
 
 
 def _prepare_gee_sync(spec: LayerSpec, gee_interface: GEEInterface | None) -> RenderLayer:
+    from pysepal.mapping.visualization import get_viz_params
+
     ee_object, params = _gee_inputs(spec, gee_interface)
     viz = {}
     if _wants_asset_viz(spec, params):
@@ -305,6 +308,8 @@ def _prepare_gee_sync(spec: LayerSpec, gee_interface: GEEInterface | None) -> Re
 
 
 async def _prepare_gee(spec: LayerSpec, gee_interface: GEEInterface | None) -> RenderLayer:
+    from pysepal.mapping.visualization import get_viz_params_async
+
     ee_object, params = _gee_inputs(spec, gee_interface)
     viz = {}
     if _wants_asset_viz(spec, params):

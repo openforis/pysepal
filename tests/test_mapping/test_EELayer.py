@@ -17,6 +17,7 @@ def test_init() -> None:
 
     layer = m.find_layer("point")
     assert isinstance(layer, sm.EELayer)
-    assert layer.ee_object == ee_point
+    # rebuilt from the layer spec: the same expression, not the same object
+    assert ee.serializer.toJSON(layer.ee_object) == ee.serializer.toJSON(ee_point)
 
     return

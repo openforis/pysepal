@@ -15,6 +15,7 @@ import ipywidgets.widgets.widget as widget_module
 import pytest
 
 from pysepal import mapping as sm
+from pysepal.layers import LayerStore
 from tests._kernel_contexts import kernel_contexts  # noqa: F401
 
 
@@ -138,7 +139,6 @@ def test_a_closed_control_releases_its_map(kernel) -> None:
     m = sm.SepalMap(gee=False)
     controls = [
         sm.ZoomControl(m),
-        sm.LayersControl(m),
         sm.LayerStateControl(m),
         sm.InspectorControl(m),
         sm.FullScreenControl(m),
@@ -178,7 +178,6 @@ def test_a_closed_menu_keeps_the_content_of_its_caller(kernel) -> None:
     "control_name",
     [
         "ZoomControl",
-        "LayersControl",
         "LayerStateControl",
         "InspectorControl",
         "FullScreenControl",
@@ -201,7 +200,6 @@ def _after_close(control_name: str):
         "zoom": next(c for c in m.controls if isinstance(c, sm.ZoomControl)),
         "fullscreen": next(c for c in m.controls if isinstance(c, sm.FullScreenControl)),
         "inspector": m.v_inspector,
-        "layers": next(c for c in m.controls if isinstance(c, sm.LayersControl)),
     }
     control = controls[control_name]
     m.close()
@@ -219,7 +217,6 @@ def _after_close(control_name: str):
         ("inspector", lambda c: c.read_data(type="click", coordinates=[0, 0])),
         ("inspector", lambda c: c._from_eelayer.__wrapped__(c, MagicMock(spec=ee.Image), [0, 0])),
         ("inspector", lambda c: c._from_raster("missing.tif", [0, 0])),
-        ("layers", lambda c: c.update_table({})),
     ],
 )
 def test_a_control_of_a_closed_map_does_nothing(kernel, control_name, call) -> None:
@@ -227,13 +224,45 @@ def test_a_control_of_a_closed_map_does_nothing(kernel, control_name, call) -> N
     call(_after_close(control_name))
 
 
-def test_a_toggle_row_of_a_closed_map_does_nothing(kernel) -> None:
-    m = sm.SepalMap(gee=False)
-    control = next(c for c in m.controls if isinstance(c, sm.LayersControl))
-    row = sm.layers_control.ToggleRow(ipl.Layer(name="x"), control, 0)
+def _store_with_layers(raster_spec, pmtiles_spec) -> LayerStore:
+    """A store holding a shown raster and a hidden PMTiles layer."""
+    store = LayerStore()
+    store.add(raster_spec)
+    store.add(pmtiles_spec, visible=False)
+    return store
+
+
+def test_a_closed_map_leaves_no_engine_behind(kernel, raster_spec, pmtiles_spec) -> None:
+    store = _store_with_layers(raster_spec, pmtiles_spec)
+    m = sm.SepalMap(gee=False, layer_store=store)
+    drawn = [m.layer_engine.leaflet_layer(layer_id) for layer_id in store.ids]
+    assert all(layer is not None for layer in drawn)
+    reference = weakref.ref(m)
+
     m.close()
 
-    row._toggle_layer()
+    assert store._subscribers == []
+    assert all(layer.comm is None for layer in drawn)
+    assert not any(getattr(layer, "layer_id", None) for layer in m.layers)
+    # the caller's store keeps its layers, and no longer holds the map
+    assert store.ids == [pmtiles_spec.id, raster_spec.id]
+    del m
+    _collect()
+    assert reference() is None
+
+
+def test_a_store_write_after_close_does_nothing(kernel, raster_spec, pmtiles_spec) -> None:
+    """A task can finish after its map unmounted and still write to the store."""
+    store = _store_with_layers(raster_spec, pmtiles_spec)
+    m = sm.SepalMap(gee=False, layer_store=store)
+    m.close()
+
+    store.set_visible(pmtiles_spec.id, True)
+    store.restyle(raster_spec.id, colormap="magma")
+    store.remove(pmtiles_spec.id)
+
+    assert m.layer_engine.leaflet_layer(raster_spec.id) is None
+    assert not any(getattr(layer, "layer_id", None) for layer in m.layers)
 
 
 def test_the_inspector_keeps_the_style_of_its_caller(kernel) -> None:

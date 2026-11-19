@@ -14,6 +14,8 @@ widget layer, `pysepal.sepalwidgets`, which worked only on ipyvuetify 1
   - `pysepal.planetapi.PlanetView`, `InfoView` and `InfoCard`;
   - `pysepal.mapping.AoiControl` (`from pysepal.mapping import *` no longer
     exports it);
+  - `pysepal.mapping.LayersControl` and the `pysepal.mapping.layers_control`
+    module (see [LayersControl → LayerPanel](#layerscontrol--layerpanel));
   - `pysepal.scripts.thread_controller`.
 - The `theme_toggle` argument of `SepalMap`: the `ThemeToggle` it took no
   longer exists. Pass `theme_state=` instead; the Solara `MapApp` binds it for
@@ -25,7 +27,8 @@ widget layer, `pysepal.sepalwidgets`, which worked only on ipyvuetify 1
 
 An old import now fails with a message that points here:
 
-- `import pysepal.sepalwidgets` raises an `ImportError`;
+- `import pysepal.sepalwidgets` and `import pysepal.mapping.layers_control`
+  raise an `ImportError`;
 - `pysepal.aoi.AoiView` and the other removed names raise an `AttributeError`
   that names the replacement.
 
@@ -50,6 +53,34 @@ that reads `item["text"]` must read `item["title"]`. This covers:
   `"props": {"disabled": True}`, a header is
   `{"type": "subheader", "title": ...}` and a divider is
   `{"type": "divider", "title": ""}`.
+
+### LayersControl → LayerPanel
+
+`SepalMap` no longer builds a `LayersControl`. Every map owns a
+`SepalMap.layer_store`, a `pysepal.layers.LayerStore` that holds its layers top
+first, and draws whatever is in it. The Solara `LayerPanel` lists that store and
+edits it: visibility, opacity, order, style and removal. To share the layers with
+other components, build the store yourself and pass it with
+`SepalMap(layer_store=...)`.
+
+- **The wrappers write to the store.** `add_raster`, `add_raster_async`,
+  `add_ee_layer` and `add_ee_layer_async` keep their arguments and return
+  values. The layer's id in the store is `key`, or the normalized layer name
+  when `key` is empty. A hidden layer of the store is off `m.layers`, but
+  `find_layer` and `remove_layer` still find it by key or name, and
+  `remove_all` removes it.
+- **The same key replaces the layer in place.** Adding a layer whose key is
+  already in the store replaces it and keeps its position, visibility and
+  opacity. `add_raster` no longer adds three random letters to a name already in
+  use, so give each layer its own `key`, or its own name. Two `add_raster`
+  calls with neither replace each other. When an `*_async` call is overtaken by
+  a newer action on the same key (another add, a removal, a restyle in the
+  panel), the newer one wins. `add_raster_async` then returns `None`.
+- **`add_layer` stays unmanaged.** A layer added with `add_layer` is drawn as
+  before, but it is not in the store, so the panel does not list it. A tile
+  layer added without a `pane` is drawn in the overlay pane, above every layer of
+  the store. `add_ee_layer(..., overlay=True)` does the same for an Earth Engine
+  layer: the AOI is drawn that way.
 
 ## Why
 

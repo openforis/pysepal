@@ -359,8 +359,9 @@ def test_value_range_and_nodata_reach_the_tile_server(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, colormap="viridis", vmin=1, vmax=14, nodata=0, key="p")
 
+    # numbers, not strings: the layer spec stores the range and nodata as floats
     params = _params(layer)
-    assert (params["vmin"], params["vmax"], params["nodata"]) == ("1", "14", "0")
+    assert tuple(float(params[k]) for k in ("vmin", "vmax", "nodata")) == (1, 14, 0)
 
 
 def test_unpinned_range_leaves_the_stretch_to_the_file(byte: Path) -> None:
@@ -385,6 +386,60 @@ def test_explicit_band_on_a_multi_band_source_uses_a_ramp(rgb: Path) -> None:
 
     assert params["indexes"] == "2"
     assert params["colormap"] == "viridis"
+
+
+def write_rgb(tmp_path: Path) -> Path:
+    """Write a small 3-band uint8 GeoTIFF, so the test needs no download."""
+    import numpy as np
+    import rasterio as rio
+    from rasterio.transform import from_origin
+
+    path = tmp_path / "rgb.tif"
+    data = np.stack([np.full((64, 64), value, dtype="uint8") for value in (10, 120, 240)])
+    data[:, :, 32:] //= 2
+    with rio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=64,
+        width=64,
+        count=3,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=from_origin(0, 0, 0.01, 0.01),
+    ) as ds:
+        ds.write(data)
+    return path
+
+
+def test_band_selection_through_the_wrapper(tmp_path: Path) -> None:
+    path = write_rgb(tmp_path)
+    m = sm.SepalMap()
+    one = _params(m.add_raster(path, bands=2, colormap="viridis", key="one"))
+    rgb = _params(m.add_raster(path, bands=[3, 2, 1], key="rgb"))  # inherits the "inferno" default
+    assert (one["indexes"], one["colormap"]) == ("2", "viridis")
+    assert rgb["indexes"] == "3,2,1" and "colormap" not in rgb
+
+
+def test_styling_survives_a_restyle_with_the_same_values(byte: Path) -> None:
+    # the store keeps a spec, not the wrapper's arguments: an int band, a Colormap
+    # object, the range, nodata and warping reach the tile server, and a restyle
+    # that round-trips the same style reuses that render instead of preparing anew
+    import rasterio as rio
+
+    cmap = LinearSegmentedColormap.from_list("x", ["#228b22", "#ff0000"], N=256)
+    m = sm.SepalMap()
+    kwargs = dict(bands=1, colormap=cmap, vmin=1, vmax=14, nodata=0, warp_to_3857=True)
+    layers = [m.add_raster(byte, key="r", **kwargs)]
+    m.layer_store.restyle("r", **m.layer_store.get("r").style.model_dump())
+    layers.append(m.find_layer("r"))
+
+    for layer in layers:
+        params = _params(layer)
+        assert params["indexes"] == "1" and params["colormap"].startswith("custom:")
+        assert tuple(float(params[k]) for k in ("vmin", "vmax", "nodata")) == (1, 14, 0)
+        with rio.open(_served_file(layer)) as ds:
+            assert ds.crs.to_epsg() == 3857
 
 
 def _on_screen_width_px(layer, zoom: int) -> float:

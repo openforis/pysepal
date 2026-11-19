@@ -432,7 +432,8 @@ class LeafletEngine:
         # a pane change on a displayed layer re-renders the whole map, so it happens detached
         for _, layer, _ in moving:
             self._detach(layer)
-        for layer_id, layer, pane in moving:
+        # bottom first, so that m.layers, which index lookups read, keeps the stacking order
+        for layer_id, layer, pane in reversed(moving):
             layer.pane = pane
             if isinstance(layer, ipl.GeoJSON):
                 layer.point_style = {**layer.point_style, "pane": pane}

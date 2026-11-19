@@ -541,6 +541,7 @@ def AoiView(
                         map_style or {},
                         "aoi",
                         autocenter=True,
+                        overlay=True,
                         attribution=(
                             f"Google Earth Engine, {admin_source_attribution(gee=True)}"
                             if result.admin is not None

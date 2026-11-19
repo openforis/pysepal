@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import ee
 import pytest
 
-import pysepal.layers.preparation as preparation
+import pysepal.mapping.visualization as visualization
 from pysepal.layers import (
     GeeSource,
     LayerPrepareError,
@@ -62,13 +62,13 @@ def test_gee_vector_without_color_renders_per_theme():
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_gee_vector_forwards_fill_and_width(monkeypatch):
     seen = []
-    real = preparation.process_vis_params
+    real = visualization.process_vis_params
 
     def spy(obj, vis_params, **kw):
         seen.append(vis_params)
         return real(obj, vis_params=vis_params, **kw)
 
-    monkeypatch.setattr(preparation, "process_vis_params", spy)
+    monkeypatch.setattr(visualization, "process_vis_params", spy)
     vis = {"color": "red", "fillColor": "00ff0080", "width": 3}
     spec = LayerSpec.from_ee(ee.FeatureCollection([]), vis, name="v")
     prepare_sync(spec, gee_interface=FakeGee())

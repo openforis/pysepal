@@ -41,12 +41,14 @@ def _run(code: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_sepalwidgets_import_says_what_to_do():
-    result = _run("import pysepal.sepalwidgets")
+@pytest.mark.parametrize("module", ["pysepal.sepalwidgets", "pysepal.mapping.layers_control"])
+def test_removed_module_import_says_what_to_do(module):
+    result = _run(f"import {module}")
 
     assert result.returncode != 0
-    assert "ImportError: pysepal.sepalwidgets was removed in pysepal 5.0" in result.stderr
+    assert f"ImportError: {module} was removed in pysepal 5.0" in result.stderr
     assert 'pin "pysepal<5"' in result.stderr
+    assert "migrating-to-pysepal-5" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -56,6 +58,7 @@ def test_sepalwidgets_import_says_what_to_do():
         ("pysepal.aoi", "AoiTile"),
         ("pysepal.planetapi", "PlanetView"),
         ("pysepal.mapping", "AoiControl"),
+        ("pysepal.mapping", "LayersControl"),
     ],
 )
 def test_removed_widget_names_say_what_to_do(module, name):

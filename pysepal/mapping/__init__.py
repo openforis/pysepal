@@ -21,7 +21,6 @@ from .geojson_utils import *
 from .inspector_control import *
 from .layer import *
 from .layer_state_control import *
-from .layers_control import *
 from .legend_control import *
 from .map_btn import *
 from .marker_cluster import *
@@ -31,12 +30,18 @@ from .tiling import *
 from .visualization import *
 from .zoom_control import *
 
+_REMOVED = {
+    "AoiControl": "pysepal.solara.components.aoi.AoiView",
+    "aoi_control": "pysepal.solara.components.aoi.AoiView",
+    "LayersControl": "SepalMap.layer_store with the Solara LayerPanel",
+}
+
 
 def __getattr__(name: str):
-    if name in ("AoiControl", "aoi_control"):
+    if name in _REMOVED:
         raise AttributeError(
             f"{__name__}.{name} was removed in pysepal 5.0 with the ipyvuetify 1 widget layer; "
-            'use pysepal.solara.components.aoi.AoiView or pin "pysepal<5". '
+            f'use {_REMOVED[name]} or pin "pysepal<5". '
             "See docs/guides/migrating-to-pysepal-5.md"
         )
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
