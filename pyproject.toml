@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pysepal"
-version = "4.2.0"
+version = "4.3.0"
 description = "UI toolkit for building ipyvuetify and Solara dashboards, with first-class SEPAL integration"
 keywords = ["UI", "Python", "widget", "sepal"]
 classifiers = [
@@ -55,7 +55,7 @@ dependencies = [
     "pydantic",  # SepalHeaders validation and the PYSEPAL_DEV_AUTH interlock
     "solara>=1.64.1,<2", # changing this? read docs/guides/solara-upstream.md first
     "ee-client>=3.4.0,<4", # tasks.cancel_task_async (ee-client#47)
-    "pysepal-api>=0.3.0,<0.4", # UI-free SEPAL HTTP client (SepalClient: files/tasks/recipes); 0.x: a minor is a breaking release, so cap it
+    "pysepal-api>=0.4.0,<0.5", # TaskManager Earth Engine exports; cap breaking 0.x minors
     "colorlog",
     "reactivex"
 ]
@@ -152,7 +152,7 @@ changelog_file = "CHANGELOG.md"
 changelog_incremental = true
 tag_format = "v$major.$minor.$patch$prerelease"
 update_changelog_on_bump = false
-version = "4.2.0"
+version = "4.3.0"
 version_files = [
     "pyproject.toml:version",
     "pysepal/__init__.py:__version__",

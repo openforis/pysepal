@@ -170,7 +170,8 @@ def MapApp(
             ``right_panel_action``), ``content_enabled``, ``right_panel_action``
             (``"open"``, ``"close"`` or ``"toggle"``), ``actions`` (dialog
             footer buttons: ``label``, ``cancel``, ``close``, ``next``; a
-            ``next`` step without content closes the dialog), ``width`` and
+            ``next`` step without content closes the dialog and runs its
+            ``right_panel_action``, a ``"toggle"`` as ``"open"``), ``width`` and
             ``height`` (dialog steps: px as a number, ``"600"`` or ``"600px"``,
             or ``"NN%"`` of the window; a size that does not read falls back to
             ``dialog_width``).
@@ -279,6 +280,12 @@ def MapApp(
             report(action["next"], True)
         elif action.get("close") or action.get("next") is not None:
             close_dialog()
+            panel_action = by_key[target].get("right_panel_action") if target is not None else None
+            # "Next" moves forward, so a "toggle" step must not close an open panel.
+            if panel_action in ("open", "toggle"):
+                set_panel_open(True)
+            elif panel_action == "close":
+                set_panel_open(False)
 
     def apply_current_step(value):
         if value is None:

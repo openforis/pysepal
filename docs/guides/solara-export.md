@@ -16,8 +16,8 @@ It provides:
 - one `ExportLauncher` button that opens a dialog
 - a dialog that offers Earth Engine asset / Google Drive / SEPAL workspace as
   destinations, with kind-appropriate options (image scale or table format)
-- an async engine that handles folder creation, task submission, Drive
-  staging for SEPAL targets, and cleanup
+- an async engine with direct EE submission and a TaskManager backend
+  that owns workspace export execution, staging, download, and cleanup
 - a controller hook (`use_export_dialog`) for when you need to drive the
   dialog from a custom layout instead of the default launcher button
 - per-source deferred resolution so heavy `ee` computations only fire when
@@ -52,8 +52,8 @@ Conceptually:
 2. The parent renders `ExportLauncher(sources=...)`.
 3. The user clicks the button, picks an asset and destination, presses
    Export.
-4. The engine submits the EE task and (for SEPAL targets) copies the
-   result file(s) from Drive into the workspace.
+4. The engine selects the backend before submission. On supported SEPAL
+   deployments, TaskManager completes workspace exports server-side.
 5. A success/error toast is published through `NotificationProvider`.
 
 ## Quickstart: One Source, One Button
@@ -155,7 +155,7 @@ ResolvedExport(
                                        # (e.g. projects/<project>/assets/my_module/<name>).
                                        # Pass an absolute "projects/.../assets/..." path
                                        # to override the root.
-    drive_folder="",                  # optional, Drive folder name
+    drive_folder="",                  # optional, Drive folder name (Drive target only)
     sepal_folder="exports",           # optional, relative to module_results
     table_file_format="SHP",         # canonical enum; see below
     image_file_format="GEO_TIFF",    # canonical enum; see below
@@ -331,6 +331,73 @@ multiple named visualizations on the same image, write them eagerly via
 
 ## Destinations
 
+### TaskManager workspace backend (pysepal-api 0.4)
+
+Enable `PYSEPAL_TASKMANAGER_EXPORTS=1` only on deployments supporting the
+`ee.export` TaskManager operation. The client library does not expose a
+capability probe. With `backend="auto"` (the default), this flag routes the
+dialog's workspace exports through TaskManager; other deployments retain the
+legacy Drive-to-workspace path. GEE and Drive destinations still submit
+directly through GEEInterface in this first phase. The flag does not affect
+`submit_export_request`, whose auto mode considers TaskManager only when given
+an `async_sepal_client`.
+
+`ExportLauncher`, `use_export_dialog`, and `submit_export_request` also accept
+`backend="direct"` or `backend="taskmanager"`. The latter supports workspace
+exports only, so the dialog then offers only the SEPAL workspace destination.
+A supplied `async_sepal_client` enables TaskManager for workspace exports in
+auto mode and remains owned by the caller. Otherwise each export creates its
+own `AsyncSepalClient` from the session's `SepalClient` (same user, module and
+host) and closes it when the export ends, so nothing outlives the export's
+event loop. If the session closes, submission is refused and monitoring stops.
+
+Selection happens before submission. In auto mode a request using an option
+TaskManager rejects (see below) stays on the direct backend when a
+`SepalClient` is available. A failed or interrupted submission is never
+retried through another backend. A 4xx response means SEPAL rejected the
+export and no task was created; the error carries the reason SEPAL gave. A 404
+usually means the deployment does not support TaskManager exports. If the
+response is lost (network error, timeout, 5xx), check SEPAL's task list before
+retrying: the remote task may already exist.
+
+TaskManager compatibility:
+
+- Lowercase UI destinations are mapped to `EEExportDestination`.
+- Table `GEO_JSON` is sent as `GeoJSON`.
+- `priority` is rejected explicitly. Table `max_vertices` is also rejected
+  for workspace exports: the backend supports that option only for Drive.
+  Table formats other than CSV, GeoJSON, KML, KMZ and SHP (such as
+  `TF_RECORD_TABLE`) are rejected too. Auto mode avoids these errors by
+  keeping such requests on the direct backend when it can.
+- `sepal_folder` remains relative to the module results directory. Absolute
+  paths under `/home/sepal-user` are accepted and converted to home-relative
+  paths for submission. Paths outside that home and `..` traversal are rejected.
+- Each export writes to a new `<sepal_folder>/<name>_<timestamp>` folder,
+  because SEPAL refuses a folder that already holds files or that another
+  export is writing to.
+- Image band selection and visualization properties are applied before
+  serialization; table selectors are passed to the backend.
+- TaskManager owns staging cleanup. `cleanup_drive_after_sepal` applies only
+  to the legacy direct backend.
+
+Direct GEE/Drive results have `status="submitted"`; this is not completion.
+Workspace results have `status="completed"` after the selected backend finishes.
+`task_id` (also exposed as `ee_task_id`) remains an Earth Engine identifier.
+TaskManager results instead set `sepal_task_id` and `backend="taskmanager"`.
+Their `output_directory` is the absolute workspace directory requested;
+`sepal_paths` stays empty because the API supplies no authoritative output
+file manifest. It does not mean the export produced zero files. No shared
+directory listing is used to guess which files belong to an export.
+
+A cancel also cancels the SEPAL task, as it does the Earth Engine task of a
+direct export (see [Cancelling an Export](#cancelling-an-export)). A timeout
+leaves remote work running, and so does a closed session: closing the tab or
+stopping the server never cancels a SEPAL task. To cancel a task yourself, use
+`await cancel_taskmanager_export(client, sepal_task_id)` from
+`pysepal.solara.components.export` (with a `SepalClient` or an
+`AsyncSepalClient`), or SEPAL's task UI. Cancellation acceptance
+does not mean the task has reached its final `CANCELED` state.
+
 The dialog offers three destinations, each enabled based on runtime state:
 
 - **Earth Engine asset** (`gee`) — default. Submits
@@ -342,16 +409,23 @@ The dialog offers three destinations, each enabled based on runtime state:
 - **Google Drive** (`drive`) — submits a Drive export task; no waiting for
   completion inside the dialog. Shown as separate **Export name** +
   **Google Drive folder** fields.
-- **SEPAL workspace** (`sepal`) — requires a session-backed `SepalClient`.
-  Exports to Drive first, waits for completion, downloads the files, and
-  uploads them under `<module_results>/<sepal_folder>/`. Disabled (greyed
-  out) when `sepal_client` is None — i.e. when the app is not running
-  inside a SEPAL session.
+- **SEPAL workspace** (`sepal`) — requires a SEPAL client. Waits for the
+  TaskManager task to finish on enabled deployments. The legacy backend
+  exports to a new Drive folder `SEPAL/exports/<name>_<timestamp>` (as the
+  SEPAL UI does), downloads the files, and uploads them under
+  `<module_results>/<sepal_folder>/`. Shown as **Export name** + **SEPAL
+  folder**; the Drive staging folder is not user-editable. The SEPAL folder
+  is checked before anything is submitted. When Earth Engine rejects the
+  submission, the staging folder is always deleted. With
+  `cleanup_drive_after_sepal` it is also deleted after the copy, or when the
+  task fails or reaches `CANCELLED`. It is kept after a timeout, a cancel, or
+  a submission with an unknown outcome (including a 401 or 429 that ee-client
+  had retried), since a task may still write to it. Disabled when neither a synchronous
+  nor asynchronous SEPAL client is available.
 
-SEPAL workspace exports must stay on the `SepalClient` path. Do not stage,
-copy, or rewrite user export files in the container filesystem from host app
-code; let the export engine download bytes from Drive and upload them through
-`sepal_client.files.write(...)`.
+Do not stage, copy, or rewrite user export files in the app container.
+TaskManager owns those operations for its exports; the legacy engine uses
+the SEPAL files API.
 
 The engine creates any missing intermediate folders under the user's asset
 root before submitting an EE asset export.
@@ -425,7 +499,8 @@ To keep a layer visible but non-selectable (e.g., not ready yet), set
 
 When no asset is selected, the Destination radio and the target-appropriate
 input fields render but are disabled — Asset ID for the GEE target, Export
-name + Google Drive folder for Drive/SEPAL. The rationale is that users
+name + Google Drive folder for Drive, Export name + SEPAL folder for SEPAL.
+The rationale is that users
 should see the structure of the form before committing to a selection — it
 telegraphs which options exist.
 
@@ -505,7 +580,8 @@ should leave `required` alone: without a provider the hook raises
 ## Cancelling an Export
 
 While an export runs, the **Export** button becomes **Cancel**. A cancel
-stops the local work and also cancels the Earth Engine task:
+stops the local work and also cancels the remote task: the Earth Engine task,
+or the SEPAL task of a TaskManager export. For Earth Engine:
 
 - **Before the submission**, nothing was sent to Earth Engine. The toast is
   `Export cancelled.`
@@ -515,18 +591,22 @@ stops the local work and also cancels the Earth Engine task:
   through `GEEInterface.cancel_task_async`.
 - **After the task finished**, there is nothing to cancel. For a SEPAL target
   with `cleanup_drive_after_sepal=True`, the engine deletes the Google Drive
-  staging files that it can find. The toast says that the task had already
-  finished.
+  staging folder. The toast says that the task had already finished.
 - **If the cancel fails**, an error toast gives the task id and the reason.
   The user must cancel the task in the Earth Engine task manager.
 
 Earth Engine only accepts a cancel request: the task can show
 `CANCEL_REQUESTED` for some time before it stops.
 
+TaskManager exports follow the same steps through SEPAL's task API. The
+toasts name the SEPAL task, and a task that had already finished points at
+its workspace folder.
+
 Code that calls `submit_export_request` directly gets the same behaviour when
 it cancels the coroutine. Pass `on_remote_cancel` to receive a
 `RemoteCancelOutcome` (`status` is `"cancelled"`, `"finished"` or
-`"failed"`) before the `CancelledError` propagates. To cancel a task that you
+`"failed"`; `service` is `"Earth Engine"` or `"SEPAL"`) before the
+`CancelledError` propagates. To cancel a task that you
 submitted yourself, use `cancel_export_task(gee_interface, task_id)`. It does
 not raise, and it does not cancel a task that has already finished.
 
