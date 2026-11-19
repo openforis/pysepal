@@ -413,6 +413,50 @@ def test_prepare_error_sets_status(tmp_path, raster_spec):
     assert store.view(raster_spec.id).status == "ready"
 
 
+def _failing_build(*args, **kwargs):
+    raise RuntimeError("cannot build")
+
+
+def test_build_failure_sets_error(raster_spec, monkeypatch):
+    monkeypatch.setattr(LeafletEngine, "_build", _failing_build)
+    m, store = ipl.Map(), LayerStore()
+    engine = LeafletEngine(m, store)
+    store.add(raster_spec)
+    assert store.view(raster_spec.id).status == "error"
+    assert "cannot build" in store.view(raster_spec.id).error
+    assert engine.leaflet_layer(raster_spec.id) is None
+    assert raster_spec.id not in engine._drawn
+
+
+def test_rebuild_failure_keeps_the_drawn_widget(pmtiles_spec, monkeypatch):
+    m, store = ipl.Map(), LayerStore()
+    engine = LeafletEngine(m, store)
+    store.add(pmtiles_spec)
+    before = engine.leaflet_layer(pmtiles_spec.id)
+    monkeypatch.setattr(LeafletEngine, "_build", _failing_build)
+    store.restyle(pmtiles_spec.id, stroke="#ff0000")  # a PMTiles restyle rebuilds
+    assert store.view(pmtiles_spec.id).status == "error"
+    assert engine.leaflet_layer(pmtiles_spec.id) is before and before in m.layers
+    drawn_spec, drawn_render = engine._drawn[pmtiles_spec.id]
+    assert drawn_spec.style.stroke is None and drawn_render.vector_style.stroke is None
+
+
+def test_async_build_failure_is_handled(vector_spec, monkeypatch):
+    monkeypatch.setattr(LeafletEngine, "_build", _failing_build)
+
+    async def run():
+        m, store = ipl.Map(), LayerStore()
+        engine = LeafletEngine(m, store)
+        store.add(vector_spec)
+        tasks = list(engine._tasks)
+        await engine.wait_idle()
+        assert tasks and all(task.exception() is None for task in tasks)
+        assert store.view(vector_spec.id).status == "error"
+        assert engine.leaflet_layer(vector_spec.id) is None
+
+    asyncio.run(run())
+
+
 def test_theme_follow_attrs(vector_spec):
     store = LayerStore()
     engine = LeafletEngine(SepalMap(gee=False), store)

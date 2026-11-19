@@ -349,24 +349,39 @@ class LeafletEngine:
         )
 
     def _draw(self, layer_id: str, render: RenderLayer) -> None:
+        """Draw a render and record the outcome in the layer status."""
+        try:
+            self._swap(layer_id, render)
+        except Exception as exc:
+            log.warning("Layer %s cannot be drawn: %s", layer_id, exc, exc_info=exc)
+            self.store.set_status(layer_id, "error", error=str(exc))
+            return
+        self.store.set_status(layer_id, "ready", legend=render.legend, kind=render.kind)
+
+    def _swap(self, layer_id: str, render: RenderLayer) -> None:
+        """Restyle the drawn widget in place, or replace it; on failure the drawn one stays."""
         spec = self.store.get(layer_id)
         view = self.store.view(layer_id)
         layer = self._layers.get(layer_id)
         drawn = self._drawn.get(layer_id)
         if layer is not None and self._updatable(drawn, spec, render):
             self._update(layer, spec, render, view.opacity)
-        else:
-            ids = self.store.ids
-            pane = pane_name(ids.index(layer_id), len(ids))
-            new = self._build(spec, render, pane, view.opacity)
-            self._layers[layer_id] = new
-            if layer is not None:
-                self._detach(layer)
-                layer.close()
+            self._drawn[layer_id] = (spec, render)
+            return
+        ids = self.store.ids
+        new = self._build(spec, render, pane_name(ids.index(layer_id), len(ids)), view.opacity)
+        try:
             if view.visible:
                 self._attach(new)
+        except Exception:
+            self._detach(new)
+            new.close()
+            raise
+        self._layers[layer_id] = new
         self._drawn[layer_id] = (spec, render)
-        self.store.set_status(layer_id, "ready", legend=render.legend, kind=render.kind)
+        if layer is not None:
+            self._detach(layer)
+            layer.close()
 
     @staticmethod
     def _updatable(
