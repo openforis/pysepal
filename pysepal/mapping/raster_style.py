@@ -164,6 +164,9 @@ def _continuous_color_kwargs(image: Path, bands, colormap) -> dict:
     with rio.open(image) as ds:
         count = ds.count
 
+    if isinstance(bands, (list, tuple)) and len(bands) == 1:
+        bands = bands[0]
+
     if count > 1 and not isinstance(bands, int):
         return {"indexes": list(bands) if bands else [3, 2, 1]}
 

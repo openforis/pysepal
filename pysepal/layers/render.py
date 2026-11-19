@@ -1,0 +1,49 @@
+"""The non-serialized, display-ready form of a layer."""
+
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from .spec import Legend, VectorStyle
+
+RenderKind = Literal["raster-xyz", "geojson", "pmtiles"]
+
+
+@dataclass(frozen=True)
+class RenderLayer:
+    """What an engine needs to draw a layer, shareable between layers with one ``render_hash``.
+
+    It carries no id, name or attribution: the engine binds those from the current spec.
+
+    Attributes:
+        render_hash: hash of the spec's data and style this was prepared from.
+        kind: how the engine draws it.
+        url: tile URL template, or the PMTiles URL.
+        theme_urls: tile URLs per theme (``True`` for dark), when they differ.
+        data: GeoJSON FeatureCollection for ``geojson``.
+        bounds: ``(west, south, east, north)`` in lon/lat.
+        vector_style: style of vector layers.
+        source_layer: vector layer name inside a PMTiles archive.
+        legend: legend computed while preparing, if any.
+        max_zoom: highest zoom the layer is drawn at.
+        ee_object: the Earth Engine object behind the tiles, if any.
+        raster: path of the source raster, for the inspector.
+        keepalive: object that must outlive the layer (the ``TileClient`` of a local raster).
+        tile_kwargs: keyword arguments for ``get_leaflet_tile_layer`` of a local raster.
+        fingerprint: ``(path, size, mtime_ns)`` of the local files this was built from.
+    """
+
+    render_hash: str
+    kind: RenderKind
+    url: str = ""
+    theme_urls: dict[bool, str] | None = None
+    data: dict | None = None
+    bounds: tuple[float, float, float, float] | None = None
+    vector_style: VectorStyle | None = None
+    source_layer: str | None = None
+    legend: Legend | None = None
+    max_zoom: int = 24
+    ee_object: Any = None
+    raster: str = ""
+    keepalive: Any = None
+    tile_kwargs: dict | None = None
+    fingerprint: tuple | None = None
