@@ -7,8 +7,9 @@
  * Do NOT add runtime-specific rules here; put them in the override files.
  */
 
-/* replace the map panel elements on top */
-.leaflet-pane,
+/* keep the map under the app's own elements. Only the map pane: the panes
+ * inside it stack by their z-index, which orders the layer engine's panes */
+.leaflet-map-pane,
 .leaflet-top,
 .leaflet-bottom {
   z-index: 2 !important;
