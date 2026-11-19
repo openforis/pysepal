@@ -274,7 +274,7 @@ async def test_add_raster_async_prepares_off_the_loop(byte: Path, monkeypatch) -
     # the whole point: rewriting the pixels must not run on the thread driving the UI
     import threading
 
-    import pysepal.mapping.sepal_map as sepal_map
+    import pysepal.mapping.tiling as sepal_map
 
     calling_thread = {}
     real = sepal_map._optimize_for_tiles

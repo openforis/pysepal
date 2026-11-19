@@ -13,10 +13,8 @@ from pysepal.mapping.gdal_env import GDAL_ENV_VARS, prune_foreign_gdal_env
 from pysepal.mapping.raster_style import (
     _class_color_kwargs,
     _continuous_color_kwargs,
-    _densify_class_codes,
-    _needs_dense_codes,
 )
-from pysepal.mapping.tiling import _optimize_for_tiles, default_cache_dir
+from pysepal.mapping.tiling import prepare_raster_file
 from pysepal.mapping.visualization import (
     get_viz_params,
     get_viz_params_async,
@@ -552,44 +550,8 @@ class SepalMap(ipl.Map):
         optimize: bool,
         warp_to_3857: bool = False,
     ) -> tuple:
-        """Produce the serve-ready raster path, doing all of the expensive work.
-
-        Touches only the filesystem, so it is safe to run off the UI thread --
-        which is what :meth:`add_raster_async` does. Returns the path to serve
-        and the ``class_colors`` restated in whatever codes that path uses.
-        """
-        image = Path(image)
-
-        if not image.is_file():
-            raise Exception(msg("mapping.no_image"))
-
-        source = image
-        if class_colors and _needs_dense_codes(class_colors):
-            cache_dir = default_cache_dir()
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            source, class_colors = _densify_class_codes(image, class_colors, cache_dir)
-
-        if warp_to_3857 and not optimize:
-            # reprojecting means writing a new raster, which is the very thing
-            # optimize=False asks us not to do
-            log.warning("warp_to_3857 needs optimize=True; %s is served in its own CRS.", image)
-
-        # rio-tiler reads full-resolution pixels for every tile when the source
-        # has no overviews, so serve a prepared COG. Fast no-op when the raster
-        # is already tiled with overviews. class_colors settles the overview
-        # resampling either way -- without it the raster is being drawn as a ramp,
-        # so averaged overviews are right even for the integer dtypes
-        # prepare_for_tiles would otherwise guess were classes (an int16 DEM).
-        served = (
-            _optimize_for_tiles(
-                source,
-                categorical=bool(class_colors),
-                warp_to_3857=warp_to_3857,
-            )
-            if optimize
-            else str(source)
-        )
-        return served, class_colors
+        """Produce the serve-ready raster path; see :func:`prepare_raster_file`."""
+        return prepare_raster_file(image, class_colors, optimize, warp_to_3857)
 
     def _attach_raster(
         self,
