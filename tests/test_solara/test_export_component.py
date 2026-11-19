@@ -4,6 +4,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 import solara
 
 from pysepal.scripts import gee_interface as gee_interface_module
@@ -86,6 +87,7 @@ def _render_preselected_dialog(
     force_asset_root=None,
     force_asset_id=None,
     gee_interface=None,
+    sepal_client=None,
 ):
     """Render ``ExportDialog`` with a source preselected and the dialog open.
 
@@ -112,6 +114,7 @@ def _render_preselected_dialog(
             sources=[source],
             gee_interface=gee_interface or MagicMock(),
             drive_interface=MagicMock(),
+            sepal_client=sepal_client,
         )
 
         def _preselect():
@@ -1156,7 +1159,7 @@ def test_export_dialog_shows_bottom_validation_when_asset_id_outside_root():
 
 
 def test_export_dialog_renders_export_name_and_drive_folder_for_drive_target():
-    """Drive/SEPAL targets keep the existing Export name + Drive folder UX."""
+    """The Drive target shows Export name + Drive folder."""
     source = ExportSource(
         id="demo",
         label="Demo layer",
@@ -1182,6 +1185,95 @@ def test_export_dialog_renders_export_name_and_drive_folder_for_drive_target():
     assert "Export name" in labels
     assert "Google Drive folder" in labels
     assert "Asset ID" not in labels
+
+
+def _text_field_labels(element):
+    def _walk(widget):
+        yield widget
+        for child in getattr(widget, "children", ()) or ():
+            yield from _walk(child)
+
+    return [
+        getattr(widget, "label", None)
+        for widget in _walk(element)
+        if widget.__class__.__name__ == "TextField"
+    ]
+
+
+def _demo_table_source():
+    return ExportSource(
+        id="demo",
+        label="Demo layer",
+        kind="table",
+        resolve=lambda: ResolvedExport(ee_object=_FakeTable(), default_name="demo_export"),
+    )
+
+
+def test_export_dialog_hides_drive_folder_for_sepal_target():
+    """SEPAL stages workspace exports in a temporary Drive folder the user never picks."""
+    element = _render_preselected_dialog(
+        source=_demo_table_source(),
+        target="sepal",
+        sepal_client=MagicMock(module_name="demo"),
+    )
+
+    labels = _text_field_labels(element)
+    assert "Export name" in labels
+    assert "SEPAL folder" in labels
+    assert "Google Drive folder" not in labels
+
+
+@pytest.mark.parametrize(("target", "expected"), [("drive", "my-drive"), ("sepal", None)])
+def test_built_request_sends_drive_folder_only_for_drive_target(monkeypatch, target, expected):
+    captured = []
+
+    async def fake_submit(request, **_kwargs):
+        captured.append(request)
+        return ExportResult(target=target, export_kind="table", name=request.name, message="ok")
+
+    monkeypatch.setattr(export_hook_module, "submit_export_request", fake_submit)
+    source = _demo_table_source()
+
+    @solara.component
+    def _Harness():
+        controller = use_export_dialog(
+            sources=[source],
+            gee_interface=MagicMock(),
+            drive_interface=MagicMock(),
+            sepal_client=MagicMock(module_name="demo"),
+        )
+
+        def _preselect():
+            controller.selected_source_id.set(source.id)
+            controller.selected_target.set(target)
+
+        solara.use_effect(_preselect, [])
+        ready = controller.selected_source_id.value == source.id and bool(
+            controller.export_name.value
+        )
+
+        def _submit():
+            if ready and not captured:
+                # Set after the source defaults sync, as if typed on the Drive
+                # target; it must not leak into a SEPAL export.
+                controller._state.drive_folder.set("my-drive")
+                controller.submit_export()
+
+        solara.use_effect(_submit, [ready])
+        return solara.Text("driven")
+
+    async def _runner():
+        widget = _Harness.widget()
+        for _ in range(20):
+            if captured:
+                break
+            await asyncio.sleep(0)
+        return widget
+
+    asyncio.run(_runner())
+
+    assert [request.target for request in captured] == [target]
+    assert captured[0].drive_folder == expected
 
 
 class _FakeRestSession:
