@@ -1,6 +1,7 @@
 """Serializable layer system."""
 
 from .legend import derive_legend, legend_from_asset_viz
+from .store import EventKind, LayerStore, LayerView, StoreEvent
 from .spec import (
     GeeSource,
     Gradient,
@@ -18,14 +19,18 @@ from .spec import (
 )
 
 __all__ = [
+    "EventKind",
     "GeeSource",
     "Gradient",
     "LayerSpec",
+    "LayerStore",
+    "LayerView",
     "Legend",
     "LegendItem",
     "RasterSource",
     "RasterStyle",
     "Source",
+    "StoreEvent",
     "Style",
     "VectorSource",
     "VectorStyle",
