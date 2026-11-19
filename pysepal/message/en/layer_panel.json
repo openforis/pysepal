@@ -9,6 +9,16 @@
     "remove": "Remove",
     "basemap": "Basemap",
     "preparing": "Preparing layer",
-    "error": "The layer could not be loaded"
+    "error": "The layer could not be loaded",
+    "restyle": "Style",
+    "apply": "Apply",
+    "min": "Min",
+    "max": "Max",
+    "palette": "Palette (comma-separated colors)",
+    "colormap": "Colormap",
+    "stroke": "Stroke",
+    "fill": "Fill",
+    "fill_opacity": "Fill opacity",
+    "width": "Width"
   }
 }

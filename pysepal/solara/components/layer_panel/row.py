@@ -11,6 +11,7 @@ from pysepal.message import msg
 from pysepal.solara.components.legend import LegendComponent
 
 from .download import download_filename, download_payload, is_downloadable
+from .restyle import RestyleForm
 
 
 def _legend_data(spec: LayerSpec, view, is_dark: bool) -> Optional[dict]:
@@ -104,6 +105,7 @@ def LayerRow(
     legend = _legend_data(spec, view, is_dark)
     if legend is not None:
         body.append(LegendComponent(legend_data=legend, inline=True))
+    body.append(RestyleForm(spec=spec, on_apply=lambda changes: store.restyle(layer_id, **changes)))
 
     actions = []
     if is_downloadable(spec):

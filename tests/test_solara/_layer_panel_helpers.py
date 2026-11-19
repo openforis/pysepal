@@ -76,6 +76,21 @@ def all_text(box: Any) -> str:
     return " ".join(out)
 
 
+def field_names(box: Any) -> List[str]:
+    """Names of the restyle form fields, in order."""
+    return [_attr(w, "data-field") for w in role_widgets(box, "field")]
+
+
+def set_field(box: Any, name: str, value: Any) -> None:
+    """Type ``value`` into a restyle form field."""
+    next(w for w in role_widgets(box, "field") if _attr(w, "data-field") == name).v_model = value
+
+
+def click_apply(box: Any) -> None:
+    """Click the Apply button of the open restyle form."""
+    click(role_widgets(box, "apply")[0])
+
+
 def pick_basemap(box: Any, name: str) -> None:
     """Choose a basemap in the picker."""
     role_widgets(box, "basemap")[0].v_model = name
