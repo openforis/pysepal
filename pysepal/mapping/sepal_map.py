@@ -64,6 +64,9 @@ DEFAULT_MAP_WIDTH_PX = 1024
 
 CLIENT_PREFIX_ENV_VAR = "LOCALTILESERVER_CLIENT_PREFIX"
 
+# the add_raster default, which stands for "no name given"
+_DEFAULT_RASTER_NAME = "Layer_" + su.random_string()
+
 # the arguments ee.FeatureCollection.style takes
 _EE_STYLE_ARGS = frozenset(
     (
@@ -500,7 +503,7 @@ class SepalMap(ipl.Map):
         self,
         image: Union[str, Path],
         bands: Optional[Union[list, int]] = None,
-        layer_name: str = "Layer_" + su.random_string(),
+        layer_name: str = _DEFAULT_RASTER_NAME,
         colormap: Union[str, "mpc.Colormap"] = "inferno",
         opacity: float = 1.0,
         fit_bounds: bool = True,
@@ -521,7 +524,7 @@ class SepalMap(ipl.Map):
         Args:
             image: The image file path.
             bands: The image bands to use. It can be either a number (e.g., 1) or a list (e.g., [3, 2, 1]). Defaults to None.
-            layer_name: The layer name to use for the raster.
+            layer_name: The layer name to use for the raster. Without one, the layer is named ``Layer N`` after the first number no other layer uses, so it never replaces another layer.
             colormap: The name of the colormap to use for the raster, such as 'gray' and 'terrain'. More can be found at https://matplotlib.org/3.1.0/tutorials/colors/colormaps.html. Defaults to inferno.
             opacity: the opacity of the layer, default 1.0.
             key: the unequivocal key of the layer, its id in :attr:`layer_store`. By default a normalized str of the layer name. A layer already using this key is replaced in place, keeping its position, visibility and opacity.
@@ -554,7 +557,7 @@ class SepalMap(ipl.Map):
         self,
         image: Union[str, Path],
         bands: Optional[Union[list, int]] = None,
-        layer_name: str = "Layer_" + su.random_string(),
+        layer_name: str = _DEFAULT_RASTER_NAME,
         colormap: Union[str, "mpc.Colormap"] = "inferno",
         opacity: float = 1.0,
         fit_bounds: bool = True,
@@ -586,8 +589,8 @@ class SepalMap(ipl.Map):
             spec, opacity=opacity, fit=fit_bounds, optimize=optimize, warp_to_3857=warp_to_3857
         )
 
-    @staticmethod
     def _raster_spec(
+        self,
         image: Union[str, Path],
         bands: Optional[Union[list, int]],
         layer_name: str,
@@ -599,6 +602,8 @@ class SepalMap(ipl.Map):
         nodata: Optional[float],
     ) -> LayerSpec:
         """Build the spec of an :meth:`add_raster` call."""
+        if layer_name is _DEFAULT_RASTER_NAME:
+            layer_name = self._default_name(key)
         return LayerSpec.from_raster(
             image,
             name=layer_name,
@@ -893,6 +898,25 @@ class SepalMap(ipl.Map):
             with _unless_unbounded():
                 self.zoom_bounds(await self.gee_interface.get_bounds_async(ee_object))
 
+    def _default_name(self, key: str) -> str:
+        """Name a layer added without a name.
+
+        A key already in the store keeps the name of its layer. Otherwise the name is
+        ``Layer N``, N counting the layers on the map, raised until neither the name nor
+        the id it gives is used by a layer on the map, in the store or reserved.
+        """
+        store = self.layer_store
+        if key and key in store:
+            return store.get(key).name
+        taken = {getattr(lyr, "key", None) for lyr in self.layers}
+        taken |= {lyr.name for lyr in self.layers}
+        taken |= {name for spec in store.specs() for name in (spec.id, spec.name)}
+        taken |= {name for item in store.reserved().items() for name in item}
+        n = len(self.layers) + 1
+        while f"Layer {n}" in taken or su.normalize_str(f"Layer {n}") in taken:
+            n += 1
+        return f"Layer {n}"
+
     def _ee_spec(
         self,
         ee_object: ee.ComputedObject,
@@ -905,7 +929,7 @@ class SepalMap(ipl.Map):
     ) -> LayerSpec:
         """Build the spec of an :meth:`add_ee_layer` call."""
         _check_ee_inputs(ee_object, vis_params)
-        name = name or f"Layer {len(self.layers) + 1}"
+        name = name or self._default_name(key)
         return LayerSpec.from_ee(
             ee_object,
             vis_params,

@@ -281,3 +281,36 @@ def test_hidden_layer_follows_theme_when_shown(fake_vector, gee_spec, kind):
         assert layer.style["color"] == layer.point_style["color"] == THEMES[True]["primary"]
     else:
         assert layer.url.startswith("https://dark")
+
+
+def test_unnamed_rasters_get_their_own_layers(byte, int16_classes):
+    m = SepalMap(gee=False)
+    first = m.add_raster(byte)
+    second = m.add_raster(int16_classes)
+    assert len(m.layer_store) == 2 and first in m.layers and second in m.layers
+    assert len({spec.name for spec in m.layer_store.specs()}) == 2
+
+
+def test_unnamed_rasters_get_their_own_layers_async(byte, int16_classes):
+    async def run():
+        m = SepalMap(gee=False)
+        layers = await asyncio.gather(m.add_raster_async(byte), m.add_raster_async(int16_classes))
+        assert len(m.layer_store) == 2 and all(layer in m.layers for layer in layers)
+
+    asyncio.run(run())
+
+
+def test_a_hidden_unnamed_raster_is_not_replaced(byte, int16_classes):
+    m = SepalMap(gee=False)
+    first = m.add_raster(byte)
+    m.layer_store.set_visible(first.layer_id, False)
+    m.add_raster(int16_classes)
+    assert len(m.layer_store) == 2
+
+
+def test_a_keyed_raster_without_a_name_keeps_its_name(byte):
+    m = SepalMap(gee=False)
+    m.add_raster(byte, key="k")
+    name = m.layer_store.get("k").name
+    m.add_raster(byte, key="k", colormap="magma")
+    assert m.layer_store.ids == ["k"] and m.layer_store.get("k").name == name

@@ -71,9 +71,10 @@ other components, build the store yourself and pass it with
   `remove_all` removes it.
 - **The same key replaces the layer in place.** Adding a layer whose key is
   already in the store replaces it and keeps its position, visibility and
-  opacity. `add_raster` no longer adds three random letters to a name already in
-  use, so give each layer its own `key`, or its own name. Two `add_raster`
-  calls with neither replace each other. When an `*_async` call is overtaken by
+  opacity. Without a `key`, the key is the normalized name, so two calls with
+  the same name replace each other: `add_raster` no longer adds three random
+  letters to a name already in use. A call with neither a name nor a key gets a
+  new `Layer N` name and its own layer. When an `*_async` call is overtaken by
   a newer action on the same key (another add, a removal, a restyle in the
   panel), the newer one wins. `add_raster_async` then returns `None`.
 - **`add_layer` stays unmanaged.** A layer added with `add_layer` is drawn as
