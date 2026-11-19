@@ -276,8 +276,9 @@ class SepalMap(ipl.Map):
         """Recolour a layer that follows the theme.
 
         An ``EELayer`` swaps to the tiles rendered for the theme (``theme_urls``); a
-        layer with a ``style`` merges in ``theme_style``, its theme-dependent entries.
-        Both are keyed by whether the theme is dark.
+        layer with a ``style`` merges in ``theme_style``, its theme-dependent entries,
+        and so does a non-empty ``point_style``, which a recreated GeoJSON view draws
+        its points with. Both are keyed by whether the theme is dark.
         """
         theme_urls = getattr(layer, "theme_urls", None)
         if theme_urls:
@@ -286,6 +287,8 @@ class SepalMap(ipl.Map):
         theme_style = getattr(layer, "theme_style", None)
         if theme_style:
             layer.style = {**layer.style, **theme_style[is_dark]}
+            if getattr(layer, "point_style", None):
+                layer.point_style = {**layer.point_style, **theme_style[is_dark]}
 
     def _is_dark(self) -> bool:
         """Whether the theme the map follows is dark."""
