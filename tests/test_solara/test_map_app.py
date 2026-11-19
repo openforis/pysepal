@@ -394,6 +394,33 @@ def test_next_to_a_step_without_content_closes_the_dialog():
     _assert_unlocked(box)
 
 
+@pytest.mark.parametrize("panel_open", [False, True])
+def test_next_to_a_panel_step_shows_the_panel(panel_open):
+    steps = [
+        {
+            "id": 1,
+            "name": "Form",
+            "display": "dialog",
+            "content": [solara.Text("form")],
+            "actions": [{"label": "Next", "next": 2}],
+        },
+        {"id": 2, "name": "Results", "content": [], "right_panel_action": "toggle"},
+    ]
+    box, _, _ = _render(
+        main_map=FakeMap(),
+        steps_data=steps,
+        right_panel_content=SECTIONS,
+        right_panel_open=panel_open,
+    )
+    _item(box, 1).vue_click(None)
+
+    _button(_dialog(box), "Next").fire_event("click", None)
+
+    _assert_unlocked(box)
+    panel = _with_class(box, "sepal-right-panel")[0]
+    assert "sepal-right-panel--open" in _classes(panel)
+
+
 def test_current_step_does_not_open_a_step_without_content():
     step = solara.reactive(None)
 
