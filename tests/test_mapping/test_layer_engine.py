@@ -371,3 +371,18 @@ def test_layer_changes_are_one_at_a_time(raster_spec, vector_spec, pmtiles_spec)
     store.set_visible(vector_spec.id, False)
     store.remove(raster_spec.id)
     assert sizes and set(sizes) == {1}
+
+
+def test_state_bar_settles_after_reattaching_a_loading_layer(raster_spec, raster_spec_b):
+    m, store = SepalMap(gee=False), LayerStore()
+    engine = LeafletEngine(m, store)
+    store.add(raster_spec)
+    a = engine.leaflet_layer(raster_spec.id)
+    a.set_trait("loading", True)
+    store.add(raster_spec_b)  # on top: a is detached and re-attached while still loading
+    b = engine.leaflet_layer(raster_spec_b.id)
+    b.set_trait("loading", True)
+    a.set_trait("loading", False)
+    b.set_trait("loading", False)
+    assert m.state.nb_loading_layer == 0
+    assert m.state.loading is False

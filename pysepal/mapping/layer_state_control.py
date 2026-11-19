@@ -144,6 +144,10 @@ class LayerStateControl(WidgetControl):
         if len(change["new"]) > len(change["old"]):
             modified_layer.observe(self.update_loading, "loading")
             self._watched.append(modified_layer)
+            # a layer removed while loading keeps loading=True, and its new view sends
+            # no change for it, only the False once it is done
+            if getattr(modified_layer, "loading", False) is True:
+                self.nb_loading_layer += 1
 
         # remove a layer
         elif len(change["new"]) < len(change["old"]):
