@@ -13,8 +13,8 @@ def alias(old_name: str, new_name: str) -> None:
     reach the new module.
     """
     warnings.warn(
-        f"{old_name} is deprecated since pysepal 4.3.0 and will be removed in pysepal 5. "
-        "Import from pysepal.solara.components.export instead.",
+        f"{old_name} is deprecated and will be removed in pysepal 5. "
+        f"Import from {new_name} instead.",
         DeprecationWarning,
         stacklevel=3,
     )

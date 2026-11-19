@@ -46,10 +46,12 @@ The public surface lives in `pysepal.solara.components.export`:
 - `TABLE_FILE_FORMATS`, `DEFAULT_TABLE_FILE_FORMAT`,
   `DEFAULT_IMAGE_FILE_FORMAT` — canonical file-format constants
 
-Import from the package, not from its submodules. The old module paths
+Import from the package. Names it does not re-export, such as
+`BandSelectorField` or `get_target_items`, live in its submodules
+(`export.dialog`, `export.hook`, …). The old module paths
 (`pysepal.solara.components.export_dialog`, `export_hook`, `export_models`,
-`export_engine`, `export_launcher`) still work but warn, and pysepal 5 removes
-them.
+`export_engine`, `export_launcher`, `export_taskmanager`) still work but warn,
+and pysepal 5 removes them: `export_<name>` becomes `export.<name>`.
 
 Conceptually:
 
