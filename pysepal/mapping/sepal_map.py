@@ -884,20 +884,10 @@ class SepalMap(ipl.Map):
     def _theme_vis_params(
         ee_object: ee.ComputedObject, vis_params: dict
     ) -> Optional[dict[bool, dict]]:
-        """Return the vis params of each theme for a vector left in the default colour.
+        """Return the vis params of each theme for a default-coloured vector, else ``None``."""
+        from pysepal.layers.preparation import theme_vis_params
 
-        That colour is the theme's primary, and Earth Engine bakes it into the
-        tiles: the layer is rendered once per theme so the map can swap renders
-        when the theme changes. ``None`` for anything else, rendered once as given.
-        """
-        vector = (ee.Geometry, ee.Feature, ee.FeatureCollection)
-        if not isinstance(ee_object, vector) or "color" in vis_params:
-            return None
-
-        return {
-            is_dark: {**vis_params, "color": colors["primary"]}
-            for is_dark, colors in ss.THEMES.items()
-        }
+        return theme_vis_params(ee_object, vis_params)
 
     @staticmethod
     def get_basemap_list() -> List[str]:

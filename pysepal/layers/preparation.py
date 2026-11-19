@@ -1,6 +1,7 @@
 """Turn a :class:`LayerSpec` into a :class:`RenderLayer`."""
 
 import asyncio
+import copy
 import dataclasses
 import json
 import logging
@@ -8,10 +9,27 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+import ee
+
+from pysepal.frontend import styles as ss
+from pysepal.mapping.visualization import (
+    get_viz_params,
+    get_viz_params_async,
+    process_vis_params,
+)
 from pysepal.scripts.gee_interface import GEEInterface
 
+from .legend import legend_from_asset_viz
 from .render import RenderLayer
-from .spec import LayerSpec, RasterSource, VectorSource, uri_to_path
+from .spec import (
+    GeeSource,
+    LayerSpec,
+    Legend,
+    RasterSource,
+    RasterStyle,
+    VectorSource,
+    uri_to_path,
+)
 
 log = logging.getLogger("sepalui.layers")
 
@@ -94,7 +112,7 @@ def _check_supported(spec: LayerSpec) -> None:
     """Fail early, with a readable cause, on sources that cannot be prepared here."""
     source = spec.source
     if source.type == "gee":
-        raise NotImplementedError("Earth Engine layers are prepared by a later step")
+        return
     if not _is_local(source.uri):
         if source.type == "raster":
             raise ValueError("remote rasters are not supported")
@@ -202,6 +220,100 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
     )
 
 
+def theme_vis_params(ee_object: ee.ComputedObject, vis_params: dict) -> dict[bool, dict] | None:
+    """Return the vis params of each theme for a vector left in the default colour.
+
+    That colour is the theme's primary, and Earth Engine bakes it into the
+    tiles: the layer is rendered once per theme so the map can swap renders
+    when the theme changes. ``None`` for anything else, rendered once as given.
+
+    Args:
+        ee_object: the object to draw.
+        vis_params: the visualization parameters.
+
+    Returns:
+        Vis params keyed by ``is_dark``, or ``None``.
+    """
+    vector = (ee.Geometry, ee.Feature, ee.FeatureCollection)
+    if not isinstance(ee_object, vector) or "color" in vis_params:
+        return None
+    return {
+        is_dark: {**vis_params, "color": colors["primary"]} for is_dark, colors in ss.THEMES.items()
+    }
+
+
+def _gee_inputs(spec: LayerSpec, gee_interface: GEEInterface | None) -> tuple:
+    if gee_interface is None:
+        raise ValueError("Earth Engine layers need a gee_interface")
+    style = spec.style
+    if isinstance(style, RasterStyle):
+        params = style.to_ee_vis_params()
+    else:
+        params = style.to_ee_style_params()
+    return spec.source.to_ee(), params
+
+
+def _wants_asset_viz(spec: LayerSpec, params: dict) -> bool:
+    return not params and getattr(spec.style, "use_asset_viz", False)
+
+
+def _asset_viz_legend(spec: LayerSpec, viz: dict) -> Legend | None:
+    # process_vis_params mutates the chosen entry, so the legend is read from a copy first
+    chosen = next((v for v in (viz or {}).values() if v.get("name") == spec.style.viz_name), None)
+    return None if chosen is None else legend_from_asset_viz(copy.deepcopy(chosen))
+
+
+def _gee_process(spec: LayerSpec, ee_object, params: dict, viz: dict) -> tuple:
+    """Return ``(keys, processed, legend, themed)`` for the variants to render."""
+    legend = _asset_viz_legend(spec, viz) if _wants_asset_viz(spec, params) else None
+    themes = theme_vis_params(ee_object, params)
+    variants = themes or {None: params}
+    processed = [
+        process_vis_params(
+            ee_object,
+            vis_params=variant,
+            viz=viz,
+            use_map_vis=getattr(spec.style, "use_asset_viz", False),
+            viz_name=getattr(spec.style, "viz_name", ""),
+        )
+        for variant in variants.values()
+    ]
+    return list(variants), processed, legend, themes is not None
+
+
+def _gee_render(spec: LayerSpec, keys, processed, legend, themed, map_ids) -> RenderLayer:
+    urls = {key: map_id["tile_fetcher"].url_format for key, map_id in zip(keys, map_ids)}
+    return RenderLayer(
+        render_hash=spec.render_hash,
+        kind="raster-xyz",
+        url=urls[False] if themed else urls[None],
+        theme_urls=urls if themed else None,
+        ee_object=processed[0][1],
+        max_zoom=24,
+        legend=legend,
+    )
+
+
+def _prepare_gee_sync(spec: LayerSpec, gee_interface: GEEInterface | None) -> RenderLayer:
+    ee_object, params = _gee_inputs(spec, gee_interface)
+    viz = {}
+    if _wants_asset_viz(spec, params):
+        viz = get_viz_params(ee_object, gee_interface=gee_interface)
+    keys, processed, legend, themed = _gee_process(spec, ee_object, params, viz)
+    map_ids = [gee_interface.get_map_id(image, p) for image, _, p in processed]
+    return _gee_render(spec, keys, processed, legend, themed, map_ids)
+
+
+async def _prepare_gee(spec: LayerSpec, gee_interface: GEEInterface | None) -> RenderLayer:
+    ee_object, params = _gee_inputs(spec, gee_interface)
+    viz = {}
+    if _wants_asset_viz(spec, params):
+        viz = await get_viz_params_async(ee_object, gee_interface=gee_interface)
+    keys, processed, legend, themed = _gee_process(spec, ee_object, params, viz)
+    map_ids = await asyncio.gather(*(gee_interface.get_map_id_async(i, p) for i, _, p in processed))
+    return _gee_render(spec, keys, processed, legend, themed, map_ids)
+
+
 async def prepare(
     spec: LayerSpec,
     *,
@@ -222,12 +334,13 @@ async def prepare(
 
     Raises:
         LayerPrepareError: when the layer cannot be prepared.
-        NotImplementedError: for Earth Engine sources.
     """
     from pysepal.mapping.tiling import prepare_raster_file
 
     try:
         _check_supported(spec)
+        if isinstance(spec.source, GeeSource):
+            return await _prepare_gee(spec, gee_interface)
         if (render := _remote_pmtiles(spec)) is not None:
             return render
         fingerprint = local_fingerprint(spec)
@@ -243,8 +356,6 @@ async def prepare(
         else:
             render = _vector_render(spec, await asyncio.to_thread(_read_vector, spec.source))
         return dataclasses.replace(render, fingerprint=fingerprint)
-    except NotImplementedError:
-        raise
     except Exception as exc:
         raise LayerPrepareError(f"{spec.name}: {exc}", layer_id=spec.id) from exc
 
@@ -269,12 +380,13 @@ def prepare_sync(
 
     Raises:
         LayerPrepareError: when the layer cannot be prepared.
-        NotImplementedError: for Earth Engine sources.
     """
     from pysepal.mapping.tiling import prepare_raster_file
 
     try:
         _check_supported(spec)
+        if isinstance(spec.source, GeeSource):
+            return _prepare_gee_sync(spec, gee_interface)
         if (render := _remote_pmtiles(spec)) is not None:
             return render
         fingerprint = local_fingerprint(spec)
@@ -289,7 +401,5 @@ def prepare_sync(
         else:
             render = _vector_render(spec, _read_vector(spec.source))
         return dataclasses.replace(render, fingerprint=fingerprint)
-    except NotImplementedError:
-        raise
     except Exception as exc:
         raise LayerPrepareError(f"{spec.name}: {exc}", layer_id=spec.id) from exc
