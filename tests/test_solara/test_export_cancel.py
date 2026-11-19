@@ -94,18 +94,22 @@ def _request(target, **overrides):
 
 @pytest.fixture
 def drive(monkeypatch):
-    """Drive staging files, faked at the engine's Drive helpers."""
+    """Drive staging folder, faked at the engine's Drive helpers.
+
+    ``deleted`` lists the files that went with the deleted staging folder.
+    """
     state = {"items": [], "deleted": [], "polled": None}
 
-    def _find(_drive_interface, prefix, modified_after=None):
+    def _find(_drive_interface, folder_id):
         state["polled"].set()
         return list(state["items"])
 
-    def _delete(_drive_interface, items):
-        state["deleted"].extend(item["name"] for item in items)
+    def _delete_folder(_drive_interface, folder_id):
+        state["deleted"].extend(item["name"] for item in state["items"])
 
-    monkeypatch.setattr(export_engine, "_find_drive_items_by_prefix", _find)
-    monkeypatch.setattr(export_engine, "_delete_drive_items", _delete)
+    monkeypatch.setattr(export_engine, "_create_drive_staging_folder", lambda *_: "staging-1")
+    monkeypatch.setattr(export_engine, "_find_drive_items", _find)
+    monkeypatch.setattr(export_engine, "_delete_drive_folder", _delete_folder)
     return state
 
 

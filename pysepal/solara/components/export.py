@@ -23,6 +23,7 @@ from .export_models import (
     DEFAULT_TABLE_FILE_FORMAT,
     TABLE_FILE_FORMATS,
     TARGET_LABELS,
+    ExportBackend,
     ExportKind,
     ExportRequest,
     ExportResult,
@@ -40,6 +41,7 @@ from .export_models import (
     sanitize_export_name,
     validate_asset_id_under_root,
 )
+from .export_taskmanager import cancel_taskmanager_export
 
 
 @solara.component
@@ -141,6 +143,7 @@ __all__ = [
     "DEFAULT_TABLE_FILE_FORMAT",
     "TABLE_FILE_FORMATS",
     "TARGET_LABELS",
+    "ExportBackend",
     "ExportDataComponent",
     "ExportDialog",
     "ExportDialogController",
@@ -154,6 +157,7 @@ __all__ = [
     "ResolvedExport",
     "_build_result_message",
     "cancel_export_task",
+    "cancel_taskmanager_export",
     "extract_task_id",
     "get_task_state_name",
     "infer_export_kind",
