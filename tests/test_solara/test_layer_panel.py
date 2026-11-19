@@ -10,9 +10,8 @@ import solara
 
 from pysepal.layers import LayerSpec, LayerStore
 from pysepal.mapping import SepalMap
-from pysepal.solara.components.layer_panel import LayerPanel
+from pysepal.solara.components.layer_panel import LayerPanel, download
 from pysepal.solara.components.layer_panel.download import download_payload
-from tests.test_solara._harness import walk
 from tests.test_solara._layer_panel_helpers import (
     all_text,
     button_icon,
@@ -20,6 +19,7 @@ from tests.test_solara._layer_panel_helpers import (
     expand,
     export_button,
     export_buttons,
+    file_downloads,
     find_by_role,
     find_visibility_toggle,
     inline_legends,
@@ -223,8 +223,41 @@ def test_download_only_for_file_sources(raster_spec, gee_spec):
     store.add(gee_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
     expand(box, raster_spec.id)
-    downloads = [w for w in walk(box) if type(w).__name__ == "FileDownloadWidget"]
-    assert len(downloads) == 1
+    assert len(file_downloads(box)) == 1
     expand(box, raster_spec.id)
     expand(box, gee_spec.id)
-    assert not [w for w in walk(box) if type(w).__name__ == "FileDownloadWidget"]
+    assert role_widgets(box, "remove") and not file_downloads(box)
+
+
+def _expanded(spec):
+    store = LayerStore()
+    store.add(spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    expand(box, spec.id)
+    return box
+
+
+def test_download_disabled_above_the_size_limit(raster_spec, monkeypatch):
+    monkeypatch.setattr(download, "DOWNLOAD_MAX_BYTES", 10)
+    box = _expanded(raster_spec)
+    assert find_by_role(box, "download", raster_spec.id).disabled is True
+    # a click anywhere in a FileDownload, disabled button included, would read the file
+    assert not file_downloads(box)
+    tip = find_by_role(box, "download-tip", raster_spec.id)
+    assert tip.disabled is False and "SEPAL file browser" in all_text(tip)
+
+
+def test_download_enabled_below_the_size_limit(raster_spec):
+    box = _expanded(raster_spec)
+    tip = find_by_role(box, "download-tip", raster_spec.id)
+    assert tip.disabled is True
+    assert len(file_downloads(tip)) == 1 and not role_widgets(box, "download")
+
+
+def test_missing_file_is_not_downloadable(tmp_path, byte):
+    path = tmp_path / "r.tif"
+    shutil.copy(byte, path)
+    spec = LayerSpec.from_raster(path)
+    path.unlink()
+    box = _expanded(spec)
+    assert role_widgets(box, "remove") and not role_widgets(box, "download-tip")

@@ -10,7 +10,7 @@ from pysepal.layers import GeeSource, LayerSpec, LayerStore, derive_legend
 from pysepal.message import msg
 from pysepal.solara.components.legend import LegendComponent
 
-from .download import download_filename, download_payload, is_downloadable
+from .download import download_filename, download_payload, download_size, is_too_large
 from .restyle import RestyleForm
 
 
@@ -21,6 +21,32 @@ def _legend_data(spec: LayerSpec, view, is_dark: bool) -> Optional[dict]:
             spec.style, title=spec.name, default_color=THEMES[is_dark]["primary"]
         )
     return legend.model_dump() if legend is not None else None
+
+
+def _download(spec: LayerSpec, layer_id: str, size: int):
+    too_large = is_too_large(size)
+    if too_large:
+        # A FileDownload starts the download on any click inside it, a disabled button too.
+        control = solara.Button(
+            msg("layer_panel.download"),
+            icon_name="mdi-cloud-download-outline",
+            disabled=True,
+            attributes={"data-role": "download", "data-layer-id": layer_id},
+        )
+    else:
+        control = solara.FileDownload(
+            data=lambda: download_payload(spec)[0],
+            filename=download_filename(spec),
+            label=msg("layer_panel.download"),
+        )
+    activator = rv.Html(tag="span", v_bind="tooltip.props", children=[control])
+    return rv.Tooltip(
+        location="bottom",
+        disabled=not too_large,
+        attributes={"data-role": "download-tip", "data-layer-id": layer_id},
+        v_slots=[{"name": "activator", "variable": "tooltip", "children": [activator]}],
+        children=[msg("layer_panel.too_large")],
+    )
 
 
 def _icon_button(icon: str, role: str, layer_id: str, on_click):
@@ -114,14 +140,9 @@ def LayerRow(
     body.append(RestyleForm(spec=spec, on_apply=lambda changes: store.restyle(layer_id, **changes)))
 
     actions = []
-    if is_downloadable(spec):
-        actions.append(
-            solara.FileDownload(
-                data=lambda: download_payload(spec)[0],
-                filename=download_filename(spec),
-                label=msg("layer_panel.download"),
-            )
-        )
+    size = download_size(spec)
+    if size is not None:
+        actions.append(_download(spec, layer_id, size))
     if isinstance(spec.source, GeeSource) and on_export is not None:
         actions.append(
             solara.Button(

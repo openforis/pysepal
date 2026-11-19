@@ -5,6 +5,7 @@
     "opacity": "Opacity",
     "legend": "Legend",
     "download": "Download",
+    "too_large": "This file is too large to download here. Use the SEPAL file browser instead.",
     "export": "Export",
     "remove": "Remove",
     "basemap": "Basemap",

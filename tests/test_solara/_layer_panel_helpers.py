@@ -106,6 +106,11 @@ def spinner_count(box: Any) -> int:
     return sum(type(w).__name__ == "ProgressCircular" for w in _tree(box))
 
 
+def file_downloads(box: Any) -> List[Any]:
+    """The ``solara.FileDownload`` widgets in the tree, tooltip activators included."""
+    return [w for w in _tree(box) if type(w).__name__ == "FileDownloadWidget"]
+
+
 def inline_legends(box: Any) -> List[Any]:
     """The legends rendered inline, in a row's body."""
     return [w for w in _tree(box) if getattr(w, "inline", None) is True]
