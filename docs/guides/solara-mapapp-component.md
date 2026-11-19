@@ -90,16 +90,16 @@ matching `on_*` callback and keep the value in a reactive.
 
 Each entry of `steps_data` is a dict:
 
-| Key                  | Meaning                                                                                                                                                                   |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                 | Unique id, reported through `on_current_step`. Steps that share an id or have none still work, but report an id the parent cannot tell apart.                             |
-| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                                         |
-| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`.            |
-| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                                           |
-| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                                         |
-| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                               |
+| Key                  | Meaning                                                                                                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | Unique id, reported through `on_current_step`. Steps that share an id or have none still work, but report an id the parent cannot tell apart.                                                                                 |
+| `name`, `icon`       | Label and MDI icon in the drawer.                                                                                                                                                                                             |
+| `display`            | `"step"` replaces the map with the content. `"dialog"` opens the content in a dialog. Any other value shows nothing, but a click still reports `current_step`.                                                                |
+| `content`            | What the step shows. A step without content only runs its `right_panel_action`.                                                                                                                                               |
+| `content_enabled`    | `False` keeps the step from being highlighted or opened on mount.                                                                                                                                                             |
+| `right_panel_action` | `"open"`, `"close"` or `"toggle"` the right panel when the step is clicked.                                                                                                                                                   |
 | `actions`            | Dialog footer buttons: `label`, `cancel` (outlined style), `close` (closes the dialog), `next` (moves to that step id; a step without content closes the dialog and runs its `right_panel_action`, a `"toggle"` as `"open"`). |
-| `width`, `height`    | Size of a dialog step: px as a number, `"600"` or `"600px"`, or `"NN%"` of the window. A size that does not read falls back to `dialog_width`.                            |
+| `width`, `height`    | Size of a dialog step: px as a number, `"600"` or `"600px"`, or `"NN%"` of the window. A size that does not read falls back to `dialog_width`.                                                                                |
 
 All step and section contents stay mounted. The shell only hides the ones that
 are not shown, so a form keeps what the user typed when they leave the step and

@@ -280,9 +280,7 @@ def MapApp(
             report(action["next"], True)
         elif action.get("close") or action.get("next") is not None:
             close_dialog()
-            panel_action = (
-                by_key[target].get("right_panel_action") if target is not None else None
-            )
+            panel_action = by_key[target].get("right_panel_action") if target is not None else None
             # "Next" moves forward, so a "toggle" step must not close an open panel.
             if panel_action in ("open", "toggle"):
                 set_panel_open(True)
