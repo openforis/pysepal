@@ -25,8 +25,10 @@ from .models import (
     RemoteCancelOutcome,
     _build_result_message,
     get_task_state_name,
+    notify,
     resolve_sepal_folder,
 )
+from .prepare import prepared_image
 
 TASKMANAGER_ENV_FLAG = "PYSEPAL_TASKMANAGER_EXPORTS"
 EXPORT_BACKENDS = ("auto", "direct", "taskmanager")
@@ -247,8 +249,6 @@ async def _run(
 ) -> ExportResult:
     from pysepal_api.endpoints import ee_exports
 
-    from .engine import _apply_band_selection, _apply_viz_to_image, _notify
-
     if client.results_path is None:
         raise ValueError("Workspace exports require a module results directory.")
     workspace_path = _workspace_folder(client, request)
@@ -265,7 +265,7 @@ async def _run(
     if request.export_kind == "image":
         payload = dict(
             common,
-            image=encode(_apply_band_selection(_apply_viz_to_image(request), request)),
+            image=encode(prepared_image(request)),
             region=encode(request.region) if request.region is not None else None,
             scale=request.scale,
             max_pixels=request.max_pixels,
@@ -277,9 +277,9 @@ async def _run(
             common,
             collection=encode(request.ee_object),
             selectors=list(request.selectors) if request.selectors else None,
-            file_format="GeoJSON"
-            if request.table_file_format == "GEO_JSON"
-            else request.table_file_format,
+            file_format=(
+                "GeoJSON" if request.table_file_format == "GEO_JSON" else request.table_file_format
+            ),
         )
         submit = client.ee_exports.submit_table
 
@@ -288,14 +288,14 @@ async def _run(
         # the user: leave the task running, as a closed tab does.
         if session_closed():
             return
-        _notify(on_remote_cancel, await _cancel_task(client, task_id, output_directory))
+        notify(on_remote_cancel, await _cancel_task(client, task_id, output_directory))
 
     async def cancel_submitted(task_id: Optional[str]) -> None:
         if task_id:
-            _notify(on_remote_submitted, task_id)
+            notify(on_remote_submitted, task_id)
         await cancel_remote(task_id)
 
-    _notify(on_step, "Submitting SEPAL export")
+    notify(on_step, "Submitting SEPAL export")
     try:
         task = await _submit(submit, payload, cancel_submitted)
     except ApiError as exc:
@@ -308,8 +308,8 @@ async def _run(
         raise RuntimeError(_UNKNOWN_OUTCOME) from exc
 
     task_id = task.id
-    _notify(on_remote_submitted, task_id)
-    _notify(on_step, f"Waiting for SEPAL task {task_id}")
+    notify(on_remote_submitted, task_id)
+    notify(on_step, f"Waiting for SEPAL task {task_id}")
     stopped = f"Stopped waiting for SEPAL task `{task_id}`; it may still be running."
     loop = asyncio.get_running_loop()
     deadline = loop.time() + request.timeout_seconds
@@ -323,7 +323,7 @@ async def _run(
             remaining = deadline - loop.time()
             if remaining <= 0:
                 raise TimeoutError(stopped)
-            _notify(on_update, f"SEPAL task {task_id}: {state or 'pending'}")
+            notify(on_update, f"SEPAL task {task_id}: {state or 'pending'}")
             await asyncio.sleep(min(request.poll_interval_seconds, remaining))
             # The read after the last sleep still gets one poll interval, so a
             # task that completed in that interval is seen.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal, Optional, TypeVar
 
 import ee
 from pysepal_api import AsyncSepalClient, SepalClient
@@ -163,6 +163,19 @@ class RemoteCancelOutcome:
     drive_cleanup_error: Optional[str] = None
     service: str = "Earth Engine"
     output_directory: Optional[str] = None
+
+
+StatusCallback = Optional[Callable[[str], None]]
+RemoteSubmittedCallback = Optional[Callable[[Optional[str]], None]]
+RemoteCancelCallback = Optional[Callable[[RemoteCancelOutcome], None]]
+
+_T = TypeVar("_T")
+
+
+def notify(callback: Optional[Callable[[_T], None]], value: _T) -> None:
+    """Call ``callback`` with ``value``, if there is a callback."""
+    if callback is not None:
+        callback(value)
 
 
 def sanitize_export_name(value: str) -> str:
@@ -405,15 +418,19 @@ __all__ = [
     "ExportResult",
     "ExportSource",
     "ExportTarget",
+    "RemoteCancelCallback",
     "RemoteCancelOutcome",
     "RemoteCancelStatus",
+    "RemoteSubmittedCallback",
     "ResolvedExport",
+    "StatusCallback",
     "_build_cancel_message",
     "_build_result_message",
     "extract_task_id",
     "get_task_state_name",
     "infer_export_kind",
     "matches_drive_export_prefix",
+    "notify",
     "resolve_asset_folder",
     "resolve_sepal_folder",
     "sanitize_export_name",

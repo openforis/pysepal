@@ -34,7 +34,6 @@ from pysepal.solara.components.export.dialog import (
     ImageScaleField,
     _validation_message,
 )
-from pysepal.solara.components.export.engine import _apply_band_selection
 from pysepal.solara.components.export.hook import (
     available_bands_for,
     default_bands_for,
@@ -44,6 +43,7 @@ from pysepal.solara.components.export.hook import (
     resolved_default_bands,
     use_export_dialog,
 )
+from pysepal.solara.components.export.prepare import select_bands
 
 
 class _FakeImage:
@@ -619,7 +619,7 @@ def test_submit_export_request_embeds_vis_params_on_image_for_gee_asset(monkeypa
         return styled_image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export.engine.set_viz_params",
+        "pysepal.solara.components.export.prepare.set_viz_params",
         fake_set_viz_params,
     )
 
@@ -667,7 +667,7 @@ def test_submit_export_request_skips_viz_embed_when_vis_params_missing(monkeypat
         return image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export.engine.set_viz_params",
+        "pysepal.solara.components.export.prepare.set_viz_params",
         fake_set_viz_params,
     )
 
@@ -1510,7 +1510,7 @@ def test_switching_source_does_not_leak_band_selection():
     assert state.bands_dirty.value is False
 
 
-def test_apply_band_selection_subsets_image_when_selectors_set():
+def test_select_bands_subsets_image_when_selectors_set():
     original = _FakeImage()
     request = ExportRequest(
         ee_object=original,
@@ -1519,13 +1519,13 @@ def test_apply_band_selection_subsets_image_when_selectors_set():
         name="demo",
         selectors=("B4", "B3"),
     )
-    result = _apply_band_selection(original, request)
+    result = select_bands(original, request)
     assert isinstance(result, _FakeImage)
     assert result.selected_bands == ("B4", "B3")
     assert result is not original
 
 
-def test_apply_band_selection_passthrough_for_tables():
+def test_select_bands_passthrough_for_tables():
     """Tables thread selectors directly to the EE export call — no image.select()."""
     table = _FakeTable()
     request = ExportRequest(
@@ -1535,10 +1535,10 @@ def test_apply_band_selection_passthrough_for_tables():
         name="demo",
         selectors=("ADM0_NAME",),
     )
-    assert _apply_band_selection(table, request) is table
+    assert select_bands(table, request) is table
 
 
-def test_apply_band_selection_passthrough_when_no_selectors():
+def test_select_bands_passthrough_when_no_selectors():
     image = _FakeImage()
     request = ExportRequest(
         ee_object=image,
@@ -1547,7 +1547,7 @@ def test_apply_band_selection_passthrough_when_no_selectors():
         name="demo",
         selectors=None,
     )
-    assert _apply_band_selection(image, request) is image
+    assert select_bands(image, request) is image
 
 
 def test_submit_export_request_applies_band_selection_to_image_for_gee_asset():
@@ -1590,7 +1590,7 @@ def test_submit_export_request_applies_band_selection_after_viz_embed(monkeypatc
         return styled_image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export.engine.set_viz_params",
+        "pysepal.solara.components.export.prepare.set_viz_params",
         fake_set_viz_params,
     )
 

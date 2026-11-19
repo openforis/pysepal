@@ -63,7 +63,7 @@ def interface():
 def test_get_task_returns_the_ee_client_task_unchanged(interface):
     """The task object must reach the caller intact, not re-wrapped or coerced.
 
-    ``export_engine`` reads its state through ``get_task_state_name``, which
+    ``export.engine`` reads its state through ``get_task_state_name``, which
     accepts a model, a dict or a legacy task -- so a silent change of type here
     would be absorbed there and surface much later as a stuck progress bar.
     """

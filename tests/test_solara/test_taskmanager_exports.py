@@ -295,11 +295,11 @@ def test_remote_cancellation_is_explicit():
 def test_image_selection_and_visualization_reach_taskmanager(monkeypatch):
     from pysepal_api.endpoints import ee_exports
 
-    from pysepal.solara.components.export import engine as export_engine
+    from pysepal.solara.components.export import prepare as export_prepare
 
     image = MagicMock()
     styled = MagicMock()
-    monkeypatch.setattr(export_engine, "set_viz_params", lambda obj, **kwargs: styled)
+    monkeypatch.setattr(export_prepare, "set_viz_params", lambda obj, **kwargs: styled)
     monkeypatch.setattr(ee_exports, "serialize_ee_object", lambda value: value)
     api = client()
     req = replace(

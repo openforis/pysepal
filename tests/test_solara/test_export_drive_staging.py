@@ -9,7 +9,7 @@ import httpx
 import pytest
 from eeclient.exceptions import EERestException
 
-from pysepal.solara.components.export import engine as export_engine
+from pysepal.solara.components.export import drive as export_drive
 from pysepal.solara.components.export.engine import submit_export_request
 from pysepal.solara.components.export.models import ExportRequest
 
@@ -97,7 +97,7 @@ class _FakeGee:
 
 @pytest.fixture
 def written(monkeypatch):
-    monkeypatch.setattr(export_engine, "_download_drive_item_bytes", lambda drive, item_id: b"x")
+    monkeypatch.setattr(export_drive, "_download_item_bytes", lambda drive, item_id: b"x")
     return []
 
 

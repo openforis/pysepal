@@ -20,6 +20,7 @@ from pysepal.solara.components.export import (
     submit_export_request,
     use_export_dialog,
 )
+from pysepal.solara.components.export import drive as export_drive
 from pysepal.solara.components.export import engine as export_engine
 from pysepal.solara.components.export.engine import cancel_export_task
 
@@ -107,9 +108,9 @@ def drive(monkeypatch):
     def _delete_folder(_drive_interface, folder_id):
         state["deleted"].extend(item["name"] for item in state["items"])
 
-    monkeypatch.setattr(export_engine, "_create_drive_staging_folder", lambda *_: "staging-1")
-    monkeypatch.setattr(export_engine, "_find_drive_items", _find)
-    monkeypatch.setattr(export_engine, "_delete_drive_folder", _delete_folder)
+    monkeypatch.setattr(export_drive, "create_staging_folder", lambda *_: "staging-1")
+    monkeypatch.setattr(export_drive, "find_items", _find)
+    monkeypatch.setattr(export_drive, "delete_folder", _delete_folder)
     return state
 
 
@@ -261,7 +262,7 @@ def test_cancel_while_copying_to_sepal_deletes_the_drive_staging_files(drive, mo
         release_copy.wait(5)
         return ()
 
-    monkeypatch.setattr(export_engine, "_copy_drive_items_to_sepal", _blocking_copy)
+    monkeypatch.setattr(export_drive, "copy_items_to_sepal", _blocking_copy)
     monkeypatch.setattr(export_engine, "resolve_sepal_folder", lambda *_args: "out")
 
     async def scenario():
