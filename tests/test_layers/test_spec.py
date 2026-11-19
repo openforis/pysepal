@@ -13,6 +13,7 @@ from pysepal.layers import (
     colormap_stops,
     uri_to_path,
 )
+from pysepal.layers.spec import _raster_style_from_ee
 
 
 def test_json_round_trip(byte):
@@ -112,6 +113,40 @@ def test_ee_colormap_becomes_palette():
 def test_to_ee_vis_params_drops_none():
     style = RasterStyle(bands=["B4"], min=0, max=1, extra={"opacity": 0.5})
     assert style.to_ee_vis_params() == {"bands": ["B4"], "min": 0, "max": 1, "opacity": 0.5}
+
+
+def test_ee_comma_strings_become_lists():
+    params = {"bands": "B4, B3,B2", "min": "0,0,0", "max": "3000, 3000, 3000", "gamma": 1.4}
+    style = _raster_style_from_ee(params, "", True)
+    assert style.bands == ["B4", "B3", "B2"]
+    assert (style.min, style.max, style.gamma) == ([0, 0, 0], [3000] * 3, 1.4)
+    assert _raster_style_from_ee({"min": "5", "max": 9}, "", True).min == 5.0
+
+
+@pytest.mark.parametrize("gamma", [[1.2, 1.1, 1.0], "1.2,1.1,1.0", "1.2, 1.1, 1.0"])
+def test_ee_per_band_gamma(gamma):
+    params = {"bands": ["B4", "B3", "B2"], "min": 0, "max": 3000, "gamma": gamma}
+    style = _raster_style_from_ee(params, "", True)
+    assert style.gamma == [1.2, 1.1, 1.0]
+    assert style.to_ee_vis_params()["gamma"] == [1.2, 1.1, 1.0]
+
+
+def test_ee_palette_and_extras_normalised():
+    params = {"palette": "red, 00ff00, #0000FF", "min": 0, "max": 1, "opacity": 0.5}
+    style = _raster_style_from_ee(params, "viz", False)
+    assert style.palette == ["#ff0000", "#00ff00", "#0000ff"]
+    assert style.extra == {"opacity": 0.5}
+    assert (style.viz_name, style.use_asset_viz) == ("viz", False)
+    bare = _raster_style_from_ee({"palette": ["FF0000", "00ff00"]}, "", True)
+    assert bare.palette == ["#ff0000", "#00ff00"]
+
+
+def test_ee_feature_style_normalised():
+    params = {"color": "FF0000", "width": 3, "fillColor": "00ff0080", "pointSize": 4}
+    style = VectorStyle.from_ee_style({**params, "lineType": None})
+    assert (style.stroke, style.fill, style.width) == ("#ff0000", "#00ff00", 3)
+    assert style.fill_opacity == pytest.approx(128 / 255)
+    assert style.extra == {"pointSize": 4}
 
 
 @pytest.mark.gee

@@ -142,7 +142,7 @@ class RasterStyle(BaseModel):
     class_colors: dict[int, str] | None = None
     class_labels: dict[int, str] | None = None
     nodata: float | None = None
-    gamma: float | None = None
+    gamma: float | list[float] | None = None
     viz_name: str = ""
     use_asset_viz: bool = True
     extra: dict[str, Any] = Field(default_factory=dict)
@@ -409,7 +409,7 @@ def _raster_style_from_ee(params: dict, viz_name: str, use_asset_viz: bool) -> R
     kwargs: dict[str, Any] = {"viz_name": viz_name, "use_asset_viz": use_asset_viz}
     if "bands" in params:
         kwargs["bands"] = _as_list(params.pop("bands"))
-    for key in ("min", "max"):
+    for key in ("min", "max", "gamma"):
         if key in params:
             value = params.pop(key)
             if isinstance(value, str):
@@ -418,6 +418,4 @@ def _raster_style_from_ee(params: dict, viz_name: str, use_asset_viz: bool) -> R
             kwargs[key] = value
     if "palette" in params:
         kwargs["palette"] = _as_list(params.pop("palette"))
-    if "gamma" in params:
-        kwargs["gamma"] = params.pop("gamma")
     return RasterStyle(**kwargs, extra=params)
