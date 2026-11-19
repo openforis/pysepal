@@ -76,10 +76,6 @@ def _to_uri(path_or_url: str | Path) -> str:
     return Path(text).expanduser().resolve().as_uri()
 
 
-def _local_size(uri: str) -> int | None:
-    return uri_to_path(uri).stat().st_size if uri.startswith("file:") else None
-
-
 def _canonical_hash(obj: Any) -> str:
     text = json.dumps(obj, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode()).hexdigest()
@@ -372,7 +368,7 @@ class LayerSpec(BaseModel):
         return cls(
             id=id or uuid.uuid4().hex,
             name=name or Path(urlparse(uri).path).stem,
-            source=RasterSource(uri=uri, size=_local_size(uri)),
+            source=RasterSource(uri=uri),
             style=style,
         )
 
@@ -393,9 +389,7 @@ class LayerSpec(BaseModel):
         suffix = Path(urlparse(uri).path).suffix.lower()
         if suffix not in _VECTOR_SUFFIXES:
             raise ValueError(f"Unsupported vector format: {suffix!r}")
-        source = VectorSource(
-            uri=uri, format=_VECTOR_SUFFIXES[suffix], layer=layer, size=_local_size(uri)
-        )
+        source = VectorSource(uri=uri, format=_VECTOR_SUFFIXES[suffix], layer=layer)
         return cls(
             id=id or uuid.uuid4().hex,
             name=name or Path(urlparse(uri).path).stem,

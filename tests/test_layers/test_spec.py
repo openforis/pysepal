@@ -122,3 +122,9 @@ def test_from_ee_round_trip(image_id):
     obj = LayerSpec.model_validate_json(spec.model_dump_json()).source.to_ee()
     assert isinstance(obj, ee.Image)
     assert ee.serializer.toJSON(obj) == ee.serializer.toJSON(ee.Image(image_id))
+
+
+def test_missing_local_files_build_without_io(tmp_path):
+    raster = LayerSpec.from_raster(tmp_path / "gone.tif")
+    vector = LayerSpec.from_vector(tmp_path / "gone.geojson")
+    assert raster.source.size is None and vector.source.size is None
