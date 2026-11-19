@@ -6,7 +6,7 @@ import reacton.ipyvuetify as rv
 import solara
 from pydantic import ValidationError
 
-from pysepal.layers import LayerSpec, RasterStyle, VectorStyle
+from pysepal.layers import LayerSpec, RasterStyle, VectorStyle, uri_to_path
 from pysepal.message import msg
 
 COLORMAPS = [
@@ -37,7 +37,7 @@ def _show_number(value: Any) -> str:
 def _field(name: str, widget, **kwargs):
     return widget(
         hide_details=True,
-        dense=True,
+        density="compact",
         attributes={"data-role": "field", "data-field": name},
         **kwargs,
     )
@@ -49,6 +49,17 @@ def _error_text(exc: Exception) -> str:
         loc = ".".join(str(part) for part in first["loc"])
         return f"{loc}: {first['msg']}" if loc else first["msg"]
     return str(exc)
+
+
+def _file_band_count(uri: str) -> int | None:
+    """Return the band count of a local raster, or None when it cannot be opened."""
+    import rasterio
+
+    try:
+        with rasterio.open(uri_to_path(uri)) as src:
+            return src.count
+    except Exception:
+        return None
 
 
 def _parse(name: str, raw: Any) -> Any:
@@ -72,6 +83,15 @@ def RestyleForm(spec: LayerSpec, on_apply: Callable[[dict], None]):
             is shown inline.
     """
     style = spec.style
+    # With no explicit bands a local file renders as an RGB composite when it has several.
+    count = solara.use_memo(
+        lambda: (
+            _file_band_count(spec.source.uri)
+            if spec.source.type == "raster" and getattr(style, "bands", None) is None
+            else None
+        ),
+        [getattr(spec.source, "uri", None)],
+    )
     edits = solara.use_ref({})
     error, set_error = solara.use_state("")
     # ipyvue binds the click handler once, so it reads the latest apply through a ref.
@@ -123,7 +143,13 @@ def RestyleForm(spec: LayerSpec, on_apply: Callable[[dict], None]):
                 on_v_model=edit("max"),
             ),
         ]
-        if len(style.bands or []) <= 1:
+        if style.bands is not None:
+            single = len(style.bands) <= 1
+        elif spec.source.type == "raster":
+            single = count == 1
+        else:
+            single = True
+        if single:
             fields += [
                 _field(
                     "colormap",
@@ -185,7 +211,7 @@ def RestyleForm(spec: LayerSpec, on_apply: Callable[[dict], None]):
             # Always rendered, so the element tree keeps its shape.
             rv.Html(
                 tag="div",
-                class_="error--text",
+                class_="text-error",
                 attributes={"data-role": "restyle-error"},
                 children=[error],
             ),

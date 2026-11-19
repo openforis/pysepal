@@ -70,3 +70,29 @@ def test_a_valid_apply_clears_the_error(raster_spec):
     set_field(box, "palette", "#000000,#ffffff")
     click_apply(box)
     assert store.get(raster_spec.id).revision == 1 and "palette" not in all_text(box).lower()
+
+
+def test_multiband_file_without_bands_has_only_min_max(tmp_path):
+    import numpy as np
+    import rasterio as rio
+    from rasterio.transform import from_origin
+
+    from pysepal.layers import LayerSpec
+
+    path = tmp_path / "rgb.tif"
+    with rio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=8,
+        width=8,
+        count=3,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=from_origin(0, 0, 0.01, 0.01),
+    ) as ds:
+        ds.write(np.ones((3, 8, 8), dtype="uint8"))
+    box, _ = solara.render(
+        RestyleForm(spec=LayerSpec.from_raster(path), on_apply=lambda c: None), handle_error=False
+    )
+    assert field_names(box) == ["min", "max"]
