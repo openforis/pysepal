@@ -251,6 +251,8 @@ class LeafletEngine:
             self._draw(layer_id, render)
             return
 
+        drawn = self._drawn.get(layer_id)
+        options = drawn[1].prepare_options if drawn is not None else {}
         self.store.set_status(layer_id, "pending")
         if self._tokens[layer_id] != token:
             return  # a status subscriber wrote to the layer meanwhile
@@ -260,19 +262,19 @@ class LeafletEngine:
             loop = None
         if loop is None:
             try:
-                render = prepare_sync(spec, gee_interface=self.gee_interface)
+                render = prepare_sync(spec, gee_interface=self.gee_interface, **options)
             except Exception as exc:
                 self._settle(layer_id, token, error=exc)
             else:
                 self._settle(layer_id, token, render=render)
             return
-        task = loop.create_task(self._prepare(layer_id, token, spec))
+        task = loop.create_task(self._prepare(layer_id, token, spec, options))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _prepare(self, layer_id: str, token: int, spec: LayerSpec) -> None:
+    async def _prepare(self, layer_id: str, token: int, spec: LayerSpec, options: dict) -> None:
         try:
-            render = await prepare(spec, gee_interface=self.gee_interface)
+            render = await prepare(spec, gee_interface=self.gee_interface, **options)
         except Exception as exc:
             self._settle(layer_id, token, error=exc)
         else:

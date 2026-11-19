@@ -314,3 +314,18 @@ def test_a_keyed_raster_without_a_name_keeps_its_name(byte):
     name = m.layer_store.get("k").name
     m.add_raster(byte, key="k", colormap="magma")
     assert m.layer_store.ids == ["k"] and m.layer_store.get("k").name == name
+
+
+@pytest.mark.parametrize("option", [{"warp_to_3857": True}, {"optimize": False}])
+def test_restyle_keeps_the_prepare_options(byte, monkeypatch, option):
+    m = SepalMap(gee=False)
+    m.add_raster(byte, key="w", **option)
+    seen = []
+
+    def spy(spec, **kwargs):
+        seen.append(kwargs)
+        return prepare_sync(spec, **kwargs)
+
+    monkeypatch.setattr("pysepal.mapping.layer_engine.prepare_sync", spy)
+    m.layer_store.restyle("w", colormap="magma")
+    assert len(seen) == 1 and option.items() <= seen[0].items()

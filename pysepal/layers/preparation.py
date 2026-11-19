@@ -360,7 +360,8 @@ async def prepare(
             render = _raster_render(spec, served, class_colors)
         else:
             render = _vector_render(spec, await asyncio.to_thread(_read_vector, spec.source))
-        return dataclasses.replace(render, fingerprint=fingerprint)
+        options = {"optimize": optimize, "warp_to_3857": warp_to_3857}
+        return dataclasses.replace(render, fingerprint=fingerprint, prepare_options=options)
     except Exception as exc:
         raise LayerPrepareError(f"{spec.name}: {exc}", layer_id=spec.id) from exc
 
@@ -405,6 +406,7 @@ def prepare_sync(
             render = _raster_render(spec, served, class_colors)
         else:
             render = _vector_render(spec, _read_vector(spec.source))
-        return dataclasses.replace(render, fingerprint=fingerprint)
+        options = {"optimize": optimize, "warp_to_3857": warp_to_3857}
+        return dataclasses.replace(render, fingerprint=fingerprint, prepare_options=options)
     except Exception as exc:
         raise LayerPrepareError(f"{spec.name}: {exc}", layer_id=spec.id) from exc

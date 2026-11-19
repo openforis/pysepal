@@ -1,6 +1,6 @@
 """The non-serialized, display-ready form of a layer."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .spec import Legend, VectorStyle
@@ -30,6 +30,8 @@ class RenderLayer:
         keepalive: object that must outlive the layer (the ``TileClient`` of a local raster).
         tile_kwargs: keyword arguments for ``get_leaflet_tile_layer`` of a local raster.
         fingerprint: ``(path, size, mtime_ns)`` of the local files this was built from.
+        prepare_options: the ``optimize`` and ``warp_to_3857`` a local raster was prepared with,
+            so that a restyle prepares it the same way.
     """
 
     render_hash: str
@@ -47,3 +49,4 @@ class RenderLayer:
     keepalive: Any = None
     tile_kwargs: dict | None = None
     fingerprint: tuple | None = None
+    prepare_options: dict = field(default_factory=dict)
