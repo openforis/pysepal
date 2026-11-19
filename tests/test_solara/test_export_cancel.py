@@ -13,7 +13,6 @@ from unittest.mock import MagicMock
 import pytest
 import solara
 
-from pysepal.solara.components import export_engine
 from pysepal.solara.components.export import (
     ExportDialog,
     ExportRequest,
@@ -21,7 +20,8 @@ from pysepal.solara.components.export import (
     submit_export_request,
     use_export_dialog,
 )
-from pysepal.solara.components.export_engine import cancel_export_task
+from pysepal.solara.components.export import engine as export_engine
+from pysepal.solara.components.export.engine import cancel_export_task
 
 
 class _FakeTable:

@@ -21,7 +21,7 @@ from pysepal.mapping.visualization import set_viz_params
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 
-from .export_models import (
+from .models import (
     FAILED_TASK_STATES,
     REMOTE_CANCEL_TIMEOUT_SECONDS,
     SUCCESS_TASK_STATES,
@@ -35,7 +35,7 @@ from .export_models import (
     resolve_sepal_folder,
     validate_asset_id_under_root,
 )
-from .export_taskmanager import select_backend, submit_taskmanager_export
+from .taskmanager import select_backend, submit_taskmanager_export
 
 StatusCallback = Optional[Callable[[str], None]]
 RemoteSubmittedCallback = Optional[Callable[[Optional[str]], None]]

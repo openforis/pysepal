@@ -559,7 +559,7 @@ returned by `use_notifications()`:
 
 The success toast uses a longer timeout (8s by default, vs the 3s global
 default) because it carries a copyable asset path or task id. Tune the
-constant in `pysepal/solara/components/export_hook.py:EXPORT_SUCCESS_TOAST_TIMEOUT`
+constant in `pysepal/solara/components/export/hook.py:EXPORT_SUCCESS_TOAST_TIMEOUT`
 if your app wants a different duration.
 
 All `Notifier` methods accept an optional `timeout` kwarg for per-call

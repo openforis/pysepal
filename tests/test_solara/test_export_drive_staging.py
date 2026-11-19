@@ -9,9 +9,9 @@ import httpx
 import pytest
 from eeclient.exceptions import EERestException
 
-from pysepal.solara.components import export_engine
-from pysepal.solara.components.export_engine import submit_export_request
-from pysepal.solara.components.export_models import ExportRequest
+from pysepal.solara.components.export import engine as export_engine
+from pysepal.solara.components.export.engine import submit_export_request
+from pysepal.solara.components.export.models import ExportRequest
 
 FOLDER = "application/vnd.google-apps.folder"
 

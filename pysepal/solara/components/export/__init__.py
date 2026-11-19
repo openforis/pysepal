@@ -1,7 +1,9 @@
-"""Stable import surface for the Solara export system.
+"""Solara export system: launcher, dialog, controller hook and export engine.
 
-This module keeps the legacy import path alive while the implementation is
-split across dedicated model, engine, hook, dialog, and launcher modules.
+Import from this package. Its submodules are internal: ``models`` (requests,
+results, sources), ``engine`` (direct Earth Engine, Drive and workspace
+exports), ``taskmanager`` (SEPAL TaskManager exports), ``hook``
+(``use_export_dialog``), ``dialog`` and ``launcher``.
 """
 
 from __future__ import annotations
@@ -14,11 +16,11 @@ from pysepal_api import SepalClient
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 
-from .export_dialog import ExportDialog
-from .export_engine import cancel_export_task, submit_export_request
-from .export_hook import ExportDialogController, use_export_dialog
-from .export_launcher import ExportLauncher
-from .export_models import (
+from .dialog import ExportDialog
+from .engine import cancel_export_task, submit_export_request
+from .hook import ExportDialogController, use_export_dialog
+from .launcher import ExportLauncher
+from .models import (
     DEFAULT_IMAGE_FILE_FORMAT,
     DEFAULT_TABLE_FILE_FORMAT,
     TABLE_FILE_FORMATS,
@@ -41,7 +43,7 @@ from .export_models import (
     sanitize_export_name,
     validate_asset_id_under_root,
 )
-from .export_taskmanager import cancel_taskmanager_export
+from .taskmanager import cancel_taskmanager_export
 
 
 @solara.component

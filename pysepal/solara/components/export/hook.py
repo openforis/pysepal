@@ -20,8 +20,8 @@ from pysepal.solara.utils import (
     get_current_sepal_client,
 )
 
-from .export_engine import submit_export_request
-from .export_models import (
+from .engine import submit_export_request
+from .models import (
     DEFAULT_IMAGE_FILE_FORMAT,
     DEFAULT_TABLE_FILE_FORMAT,
     TARGET_LABELS,
@@ -38,7 +38,7 @@ from .export_models import (
     sanitize_export_name,
     validate_asset_id_under_root,
 )
-from .export_taskmanager import select_backend, taskmanager_opted_in, validate_backend
+from .taskmanager import select_backend, taskmanager_opted_in, validate_backend
 
 # Longer than the 3s toast default so the asset path / task id stays copyable.
 EXPORT_SUCCESS_TOAST_TIMEOUT = 8.0

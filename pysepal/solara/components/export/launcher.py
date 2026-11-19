@@ -10,9 +10,9 @@ from pysepal_api import AsyncSepalClient, SepalClient
 from pysepal.scripts.drive_interface import GDriveInterface
 from pysepal.scripts.gee_interface import GEEInterface
 
-from .export_dialog import ExportDialog, InlineExportFeedback
-from .export_hook import ExportDialogController, use_export_dialog
-from .export_models import ExportBackend, ExportResult, ExportSource, ExportTarget
+from .dialog import ExportDialog, InlineExportFeedback
+from .hook import ExportDialogController, use_export_dialog
+from .models import ExportBackend, ExportResult, ExportSource, ExportTarget
 
 
 @solara.component

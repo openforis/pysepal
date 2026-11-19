@@ -9,7 +9,6 @@ import solara
 
 from pysepal.scripts import gee_interface as gee_interface_module
 from pysepal.scripts.gee_interface import _resolve_create_folder_paths
-from pysepal.solara.components import export_hook as export_hook_module
 from pysepal.solara.components.export import (
     DEFAULT_TABLE_FILE_FORMAT,
     ExportLauncher,
@@ -28,14 +27,15 @@ from pysepal.solara.components.export import (
     submit_export_request,
     validate_asset_id_under_root,
 )
-from pysepal.solara.components.export_dialog import (
+from pysepal.solara.components.export import hook as export_hook_module
+from pysepal.solara.components.export.dialog import (
     BandSelectorField,
     ExportDialog,
     ImageScaleField,
     _validation_message,
 )
-from pysepal.solara.components.export_engine import _apply_band_selection
-from pysepal.solara.components.export_hook import (
+from pysepal.solara.components.export.engine import _apply_band_selection
+from pysepal.solara.components.export.hook import (
     available_bands_for,
     default_bands_for,
     discover_image_bands,
@@ -619,7 +619,7 @@ def test_submit_export_request_embeds_vis_params_on_image_for_gee_asset(monkeypa
         return styled_image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export_engine.set_viz_params",
+        "pysepal.solara.components.export.engine.set_viz_params",
         fake_set_viz_params,
     )
 
@@ -667,7 +667,7 @@ def test_submit_export_request_skips_viz_embed_when_vis_params_missing(monkeypat
         return image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export_engine.set_viz_params",
+        "pysepal.solara.components.export.engine.set_viz_params",
         fake_set_viz_params,
     )
 
@@ -1590,7 +1590,7 @@ def test_submit_export_request_applies_band_selection_after_viz_embed(monkeypatc
         return styled_image
 
     monkeypatch.setattr(
-        "pysepal.solara.components.export_engine.set_viz_params",
+        "pysepal.solara.components.export.engine.set_viz_params",
         fake_set_viz_params,
     )
 

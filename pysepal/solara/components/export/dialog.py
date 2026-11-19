@@ -10,7 +10,7 @@ import solara
 
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
-from .export_hook import (
+from .hook import (
     ExportDialogController,
     available_bands_for,
     get_controller_source_state,
@@ -18,14 +18,14 @@ from .export_hook import (
     get_target_items,
     normalize_band_selection,
 )
-from .export_models import TABLE_FILE_FORMATS, ExportKind, validate_asset_id_under_root
+from .models import TABLE_FILE_FORMATS, ExportKind, validate_asset_id_under_root
 
 IMAGE_SCALE_PRESETS = [10, 15, 20, 30, 60, 100]
 
 # Field styling (bands / scale / destination) lives in the sibling CSS file so
 # it stays out of the component bodies; loaded once via ``solara.Style`` in
 # ``ExportDialog``.
-_EXPORT_DIALOG_CSS = Path(__file__).with_name("export_dialog.css").read_text(encoding="utf-8")
+_EXPORT_DIALOG_CSS = Path(__file__).with_name("dialog.css").read_text(encoding="utf-8")
 
 
 def _validation_message(
@@ -154,7 +154,7 @@ def BandSelectorField(
             dirty.set(True)
 
     # Title on top, picker below — consistent with the Scale and Destination
-    # fields. Styling is in export_dialog.css.
+    # fields. Styling is in dialog.css.
     with rv.Html(tag="div", class_="sepal-export-field"):
         solara.Text(label, classes=["sepal-export-field-title"])
 

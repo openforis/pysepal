@@ -657,7 +657,7 @@ class SessionManager:
                 # No credentials readable for the resolved auth_mode must degrade
                 # the sandbox path to "no client", not crash a render: that is
                 # what the sandbox exists to preserve
-                # (pysepal/solara/components/export_hook.py's local-filesystem
+                # (pysepal/solara/components/export/hook.py's local-filesystem
                 # fallback).
                 logger.debug(f"SEPAL API unavailable; no client for '{module_name}': {exc}")
                 return None

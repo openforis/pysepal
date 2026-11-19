@@ -17,7 +17,7 @@ from pysepal_api.paths import sanitize_write_path
 
 from pysepal.solara.errors import SessionScopeClosedError
 
-from .export_models import (
+from .models import (
     REMOTE_CANCEL_TIMEOUT_SECONDS,
     ExportBackend,
     ExportRequest,
@@ -247,7 +247,7 @@ async def _run(
 ) -> ExportResult:
     from pysepal_api.endpoints import ee_exports
 
-    from .export_engine import _apply_band_selection, _apply_viz_to_image, _notify
+    from .engine import _apply_band_selection, _apply_viz_to_image, _notify
 
     if client.results_path is None:
         raise ValueError("Workspace exports require a module results directory.")
