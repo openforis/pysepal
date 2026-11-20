@@ -3,6 +3,8 @@
 The nox run are build in isolated environment that will be stored in .nox. to force the venv update, remove the .nox/xxx folder.
 """
 
+from pathlib import Path
+
 import nox
 
 nox.options.sessions = ["lint", "test", "docs"]
@@ -105,6 +107,13 @@ def docs(session):
 @nox.session(name="map", reuse_venv=True)
 def map_widget(session):
     """Build and browser-test the pysepal-map package."""
+    # JupyterLab writes workspaces, kernel runtime files and the notebook
+    # signature database under the user's Jupyter dirs. Venv-installed
+    # extensions live in sys.prefix and are still found. Resolved before the
+    # chdir so the temporary directory stays at the repo root.
+    jupyter_data = Path(session.create_tmp()).resolve() / "jupyter-data"
+    workspaces = jupyter_data / "workspaces"
+    workspaces.mkdir(parents=True, exist_ok=True)
     with session.chdir("packages/pysepal-map"):
         session.run("npm", "ci", external=True)
         session.run("npm", "run", "typecheck", external=True)
@@ -117,6 +126,8 @@ def map_widget(session):
             "pytest",
             *(session.posargs or ["tests"]),
             env={
+                "JUPYTER_DATA_DIR": str(jupyter_data),
+                "JUPYTERLAB_WORKSPACES_DIR": str(workspaces),
                 "SOLARA_TEST_RUNNERS": "solara,voila,jupyter_lab",
                 "SOLARA_TEST_VUETIFY_WARMUP": "false",
             },
