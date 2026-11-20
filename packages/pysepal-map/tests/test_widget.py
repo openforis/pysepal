@@ -3,6 +3,8 @@
 import asyncio
 import dataclasses
 import hashlib
+import json
+import sys
 import threading
 
 import pytest
@@ -183,6 +185,49 @@ def test_instances_follow_input_order_and_keep_across_reorder():
     widget.draw(MapState(layers=(b, a)))
     assert instance(widget, "a") == 1
     assert instance(widget, "b") == 2
+
+
+@pytest.fixture
+def frequent_switches():
+    """Switch threads as often as the interpreter allows."""
+    previous = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    yield
+    sys.setswitchinterval(previous)
+
+
+def test_concurrent_draws_publish_whole_ordered_snapshots(frequent_switches):
+    widget = MapWidget()
+    shared = widget.add_payload(b"{}")
+    published = []
+    widget.observe(lambda change: published.append(change["new"]), "state")
+    threads, draws = 8, 25
+    barrier = threading.Barrier(threads)
+
+    def draw_many(n):
+        barrier.wait()
+        for i in range(draws):
+            raster = Layer("r", RasterSource((f"https://t/{n}/{i}/{{z}}/{{x}}/{{y}}.png",)))
+            vector = Layer("g", GeoJSONSource(shared), token=n * draws + i)
+            widget.draw(MapState(layers=(raster, vector)))
+
+    workers = [threading.Thread(target=draw_many, args=(n,)) for n in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    assert [state["revision"] for state in published] == list(range(1, threads * draws + 1))
+    descriptors: dict[int, set] = {}
+    for state in published:
+        for layer in state["layers"]:
+            source = json.dumps(layer["source"], sort_keys=True)
+            descriptor = (layer["id"], source, layer["attribution"], layer["token"])
+            descriptors.setdefault(layer["instance"], set()).add(descriptor)
+    assert all(len(shared_by) == 1 for shared_by in descriptors.values())
+    assert widget.state == published[-1]
+    current = {x["id"]: (x["token"], x["instance"]) for x in widget.state["layers"]}
+    assert widget._current == current
 
 
 @pytest.fixture
