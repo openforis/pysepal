@@ -1,5 +1,5 @@
 declare module "*.css";
-declare module "*.mjs" {
+declare module "psm:maplibre-worker" {
   const source: string;
   export default source;
 }

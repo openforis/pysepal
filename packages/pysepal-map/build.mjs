@@ -1,4 +1,25 @@
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { build, context } from "esbuild";
+
+// Plain ES syntax for the worker import: prettier 2 cannot parse
+// `import ... with { type: "text" }`.
+const workerAsText = {
+  name: "psm-maplibre-worker",
+  setup(b) {
+    const file = createRequire(import.meta.url).resolve(
+      "maplibre-gl/dist/maplibre-gl-worker.mjs"
+    );
+    b.onResolve({ filter: /^psm:maplibre-worker$/ }, () => ({
+      path: file,
+      namespace: "psm-worker",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "psm-worker" }, async (args) => ({
+      contents: await readFile(args.path, "utf8"),
+      loader: "text",
+    }));
+  },
+};
 
 const widget = {
   entryPoints: { widget: "js/index.ts" },
@@ -7,6 +28,7 @@ const widget = {
   format: "esm",
   minify: true,
   loader: { ".css": "css" },
+  plugins: [workerAsText],
   logLevel: "info",
 };
 
