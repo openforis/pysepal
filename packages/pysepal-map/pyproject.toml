@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-jupyter-builder"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
@@ -15,21 +15,13 @@ test = ["pytest", "pytest-asyncio", "pytest-ipywidgets", "voila", "jupyterlab"]
 
 [tool.hatch.build.targets.sdist]
 artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
-include = ["src", "js", "build.mjs", "package.json", "package-lock.json", "tsconfig.json", "README.md"]
+include = ["src", "js", "build.mjs", "hatch_build.py", "package.json", "package-lock.json", "tsconfig.json", "README.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pysepal_map"]
 artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
 
-[tool.hatch.build.hooks.jupyter-builder]
-dependencies = ["hatch-jupyter-builder"]
-build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
-skip-if-exists = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
-
-[tool.hatch.build.hooks.jupyter-builder.build-kwargs]
-build_cmd = "build"
-npm = ["npm"]
+[tool.hatch.build.hooks.custom]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
