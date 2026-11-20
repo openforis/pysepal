@@ -1,8 +1,10 @@
 // Test-only probes for mounted pysepal-map views, built to .build/harness.js
 // and injected into the page by the browser tests. It reaches a view through
 // `el.psmMap` and wraps that map instance's methods; the widget bundle never
-// imports it.
-import type { Map as MapLibreMap } from "maplibre-gl";
+// imports it. Terra Draw, a foreign drawing plugin, is bundled here only.
+import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+import { TerraDraw, TerraDrawPolygonMode } from "terra-draw";
+import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 
 import type { StatusMessage, StatusReporter } from "../../js/status";
 import type { ViewCamera, ViewReport } from "../../js/view";
@@ -173,6 +175,8 @@ function statuses(el: Element): StatusMessage[] {
 interface Gate {
   /** Hold the view's status reports instead of sending them. */
   holding: boolean;
+  /** Hold only the reports this accepts; the others go through. */
+  only?: (message: StatusMessage) => boolean;
   held: StatusMessage[];
   /** Send the held reports, in order, and stop holding. */
   release(): void;
@@ -196,8 +200,11 @@ function gate(el: Element): Gate {
     },
   };
   reporter.transmit = (message) => {
-    if (probe.holding) probe.held.push(message);
-    else transmit(message);
+    if (probe.holding && (probe.only?.(message) ?? true)) {
+      probe.held.push(message);
+    } else {
+      transmit(message);
+    }
   };
   gates.set(reporter, probe);
   return probe;
@@ -238,6 +245,98 @@ function cameraGate(el: Element): CameraGate {
   return probe;
 }
 
+/** The options index.ts built the view's reporter with. */
+function reporterOptions(el: Element): {
+  viewId: string;
+  send(content: unknown): unknown;
+} {
+  const reporter = (el as PsmElement).psmStatus as unknown as
+    | { options?: { viewId: string; send(content: unknown): unknown } }
+    | undefined;
+  if (!reporter?.options) throw new Error("the element holds no mounted view");
+  return reporter.options;
+}
+
+/** The id the view sends its messages under. */
+function viewId(el: Element): string {
+  return reporterOptions(el).viewId;
+}
+
+/** Send a message over the view's comm, as any view of the model could. */
+function post(el: Element, content: unknown): void {
+  reporterOptions(el).send(content);
+}
+
+/**
+ * What the view's map holds of the owned style: layers bottom-first, sources
+ * by id as they were set (without GeoJSON data), the coordinates each
+ * GeoJSON source holds in its worker, and the theme.
+ */
+async function ownedSnapshot(el: Element) {
+  const map = mapOf(el);
+  const layers = map
+    .getLayersOrder()
+    .filter(owned)
+    .map((id) => {
+      const spec = map.getLayer(id)!.serialize() as Record<string, any>;
+      return {
+        id,
+        type: spec.type,
+        source: spec.source ?? null,
+        source_layer: spec["source-layer"] ?? null,
+        visibility: spec.layout?.visibility ?? "visible",
+        paint: spec.paint ?? {},
+        min_zoom: spec.minzoom ?? 0,
+        max_zoom: spec.maxzoom ?? null,
+      };
+    });
+  // getStyle() would serialize foreign custom layers, which throws.
+  const style = (map as any).style;
+  const ids = Object.keys(style.tileManagers ?? style.sourceCaches ?? {});
+  const sources: Record<string, unknown> = {};
+  const coordinates: Record<string, unknown[]> = {};
+  for (const id of ids.filter(owned)) {
+    const source = map.getSource(id)!;
+    const { data: _data, ...spec } = source.serialize() as Record<
+      string,
+      unknown
+    >;
+    sources[id] = spec;
+    if (spec.type === "geojson") {
+      const data = (await (source as GeoJSONSource).getData()) as {
+        features: { geometry: { coordinates: unknown } }[];
+      };
+      coordinates[id] = data.features.map((f) => f.geometry.coordinates);
+    }
+  }
+  const theme = el.classList.contains("psm-dark") ? "dark" : "light";
+  return { layers, sources, coordinates, theme };
+}
+
+const drawings = new WeakMap<Element, TerraDraw>();
+
+/** Start Terra Draw's polygon mode on the view's map, as a plugin would. */
+function startDrawing(el: Element): void {
+  const map = mapOf(el);
+  const draw = new TerraDraw({
+    adapter: new TerraDrawMapLibreGLAdapter({ map }),
+    modes: [new TerraDrawPolygonMode()],
+  });
+  draw.start();
+  draw.setMode("polygon");
+  drawings.set(el, draw);
+}
+
+/** The polygons Terra Draw holds for the view. */
+function drawnPolygons(el: Element) {
+  const draw = drawings.get(el);
+  if (!draw) throw new Error("no drawing was started on the view");
+  return draw
+    .getSnapshot()
+    .filter((feature) => feature.geometry.type === "Polygon")
+    .map(({ geometry, properties }) => ({ geometry, properties }));
+}
+
 (window as unknown as { psmHarness: unknown }).psmHarness = {
   attach,
   quiet,
@@ -247,4 +346,9 @@ function cameraGate(el: Element): CameraGate {
   statuses,
   gate,
   cameraGate,
+  viewId,
+  post,
+  ownedSnapshot,
+  startDrawing,
+  drawnPolygons,
 };
