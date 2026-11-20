@@ -5,6 +5,7 @@ import workerSource from "maplibre-gl/dist/maplibre-gl-worker.mjs" with { type: 
 import type { RenderProps } from "@anywidget/types";
 
 import { MapSync } from "./maplive";
+import { StatusReporter, ViewPresence, newViewId } from "./status";
 
 // MapLibre 6 loads its worker from a file next to the module; the bundle has
 // no such file, so ship the worker inline.
@@ -23,7 +24,11 @@ interface Model {
 type PsmElement = HTMLElement & {
   psmMap?: maplibregl.Map;
   psmInspect?: () => unknown;
+  psmStatus?: StatusReporter;
 };
+
+// Phase 1 renders a single map; compare views will mount "left" and "right".
+const SIDE = "main";
 
 function render({ model, el }: RenderProps<Model>) {
   const root = el as PsmElement;
@@ -34,12 +39,33 @@ function render({ model, el }: RenderProps<Model>) {
   applyHeight();
   model.on("change:height", applyHeight);
 
+  const send = (content: unknown) => {
+    try {
+      model.send(content);
+    } catch (error) {
+      // A closed comm; reconnecting opens the view again.
+      console.error("pysepal-map: could not send", error);
+    }
+  };
+  const viewId = newViewId();
   const map = new maplibregl.Map({
     container: root,
     style: { version: 8, sources: {}, layers: [] },
   });
   root.psmMap = map;
-  const sync = new MapSync(map, model, root);
+  const reporter = new StatusReporter({
+    viewId,
+    side: SIDE,
+    send,
+    current: (id) => map.getSource(id),
+  });
+  root.psmStatus = reporter;
+  // Open before the first report, so Python counts the view in.
+  const presence = new ViewPresence({ viewId, side: SIDE, send, page: window });
+  presence.start();
+  const reopen = () => presence.reopen();
+  model.on("comm_live_update", reopen);
+  const sync = new MapSync(map, model, root, reporter);
   root.psmInspect = () => sync.inspect();
 
   const resizer = new ResizeObserver(() => map.resize());
@@ -47,10 +73,13 @@ function render({ model, el }: RenderProps<Model>) {
 
   return () => {
     sync.dispose();
+    model.off("comm_live_update", reopen);
+    presence.dispose();
     model.off("change:height", applyHeight);
     resizer.disconnect();
     delete root.psmMap;
     delete root.psmInspect;
+    delete root.psmStatus;
     map.remove();
   };
 }

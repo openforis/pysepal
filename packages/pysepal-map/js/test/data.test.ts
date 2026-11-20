@@ -37,14 +37,16 @@ const missing = (digest: string) => ({ type: "data", digest, missing: true });
 function setup(sent: () => boolean = () => true) {
   const requests: string[][] = [];
   const arrived = vi.fn();
+  const failed = vi.fn();
   const cache = new PayloadCache({
     request: (digests) => {
       requests.push([...digests]);
       return sent();
     },
     arrived,
+    failed,
   });
-  return { cache, requests, arrived };
+  return { cache, requests, arrived, failed };
 }
 
 // Pulls go out once the current task's wants are in.
@@ -247,8 +249,8 @@ describe("PayloadCache", () => {
     expect(nextPull(requests, 1000)).toBe(IN_FLIGHT_MS);
   });
 
-  it("does not retry a payload that fails to decode", async () => {
-    const { cache, requests, arrived } = setup();
+  it("does not retry a payload that fails to decode, and says why", async () => {
+    const { cache, requests, arrived, failed } = setup();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     cache.want(["a"]);
     await settle();
@@ -258,9 +260,13 @@ describe("PayloadCache", () => {
     expect(error).toHaveBeenCalledOnce();
     expect(cache.has("a")).toBe(false);
     expect(arrived).not.toHaveBeenCalled();
+    expect(failed).toHaveBeenCalledExactlyOnceWith("a");
+    expect(cache.failure("a")).toMatch(/^the payload is not GeoJSON: /);
     expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(10 * MAX_IN_FLIGHT_MS);
     expect(requests).toHaveLength(1);
+    cache.want([]);
+    expect(cache.failure("a")).toBeUndefined();
     error.mockRestore();
   });
 

@@ -4,9 +4,12 @@
 // imports it.
 import type { Map as MapLibreMap } from "maplibre-gl";
 
+import type { StatusMessage, StatusReporter } from "../../js/status";
+
 type PsmElement = HTMLElement & {
   psmMap?: MapLibreMap;
   psmInspect?: () => unknown;
+  psmStatus?: StatusReporter;
 };
 
 interface Probe {
@@ -160,10 +163,50 @@ function inspect(el: Element): unknown {
   return fn();
 }
 
+/** The view's current status reports, as it would replay them. */
+function statuses(el: Element): StatusMessage[] {
+  return (inspect(el) as { statuses: StatusMessage[] }).statuses;
+}
+
+interface Gate {
+  /** Hold the view's status reports instead of sending them. */
+  holding: boolean;
+  held: StatusMessage[];
+  /** Send the held reports, in order, and stop holding. */
+  release(): void;
+}
+
+const gates = new WeakMap<StatusReporter, Gate>();
+
+/** Hold a view's status reports at their origin, the reporter's `transmit`. */
+function gate(el: Element): Gate {
+  const reporter = (el as PsmElement).psmStatus;
+  if (!reporter) throw new Error("the element holds no mounted view");
+  const existing = gates.get(reporter);
+  if (existing) return existing;
+  const transmit = reporter.transmit.bind(reporter);
+  const probe: Gate = {
+    holding: false,
+    held: [],
+    release() {
+      probe.holding = false;
+      for (const message of probe.held.splice(0)) transmit(message);
+    },
+  };
+  reporter.transmit = (message) => {
+    if (probe.holding) probe.held.push(message);
+    else transmit(message);
+  };
+  gates.set(reporter, probe);
+  return probe;
+}
+
 (window as unknown as { psmHarness: unknown }).psmHarness = {
   attach,
   quiet,
   pixel,
   featuresAt,
   inspect,
+  statuses,
+  gate,
 };

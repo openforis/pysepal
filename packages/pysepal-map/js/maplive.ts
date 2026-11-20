@@ -7,7 +7,13 @@ import type {
 
 import { PayloadCache, type Buffer } from "./data";
 import { OWNED_PREFIX, apply, plan, type LiveMap, type Op } from "./reconcile";
-import { BASEMAP_ID, toOwnedStyle } from "./translate";
+import {
+  messageOf,
+  type LayerRef,
+  type SourceErrorEvent,
+  type StatusReporter,
+} from "./status";
+import { BASEMAP_ID, sourceId, toOwnedStyle } from "./translate";
 import type { MapState, OwnedStyle } from "./types";
 
 type Layout = Parameters<MapLibreMap["setLayoutProperty"]>;
@@ -83,16 +89,33 @@ function ownerOf(id: string): string | null {
 
 const opId = (op: Op): string => (op.kind === "addLayer" ? op.layer.id : op.id);
 
-function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  const message = (error as { message?: unknown } | null)?.message;
-  return message === undefined ? String(error) : String(message);
-}
-
 function digestsOf(state: Partial<MapState>): string[] {
   return (state.layers ?? []).flatMap((layer) =>
     layer.kind === "geojson" ? [layer.source.digest] : []
   );
+}
+
+/** A layer instance of the state, by the id of its owned source. */
+interface Wanted {
+  ref: LayerRef;
+  geojson: boolean;
+  digest?: string;
+}
+
+function wantedOf(state: Partial<MapState>): Map<string, Wanted> {
+  const wanted = new Map<string, Wanted>();
+  if (!Array.isArray(state.layers)) return wanted;
+  for (const layer of state.layers) {
+    const { id, token, instance } = layer ?? {};
+    if (typeof id !== "string" || typeof instance !== "number") continue;
+    const geojson = layer.kind === "geojson";
+    wanted.set(sourceId(layer), {
+      ref: { id, token, instance },
+      geojson,
+      digest: geojson ? layer.source?.digest : undefined,
+    });
+  }
+  return wanted;
 }
 
 /**
@@ -107,6 +130,7 @@ export class MapSync {
   private readonly map: MapLibreMap;
   private readonly model: ViewModel;
   private readonly root: HTMLElement;
+  private readonly reporter: StatusReporter;
   private readonly live: LiveMap;
   private readonly cache: PayloadCache;
   private readonly applied = new Map<string, Applied>();
@@ -129,14 +153,21 @@ export class MapSync {
   private checkQueued = false;
   private disposed = false;
 
-  constructor(map: MapLibreMap, model: ViewModel, root: HTMLElement) {
+  constructor(
+    map: MapLibreMap,
+    model: ViewModel,
+    root: HTMLElement,
+    reporter: StatusReporter
+  ) {
     this.map = map;
     this.model = model;
     this.root = root;
+    this.reporter = reporter;
     this.live = liveMap(map);
     this.cache = new PayloadCache({
       request: (digests) => this.send({ type: "pull", digests }),
       arrived: () => this.sync(true),
+      failed: () => this.sync(true),
     });
     model.on("change:state", this.onState);
     model.on("msg:custom", this.onMessage);
@@ -147,6 +178,7 @@ export class MapSync {
     map.on("styledata", this.onStyleChange);
     map.on("sourcedata", this.onSourceData);
     map.on("error", this.onError);
+    map.on("idle", this.onIdle);
     this.onState();
   }
 
@@ -156,6 +188,7 @@ export class MapSync {
       payloads: this.cache.digests(),
       sources: [...this.applied.keys()],
       rejections: this.rejected.map((rejection) => ({ ...rejection })),
+      statuses: this.reporter.inspect(),
     };
   }
 
@@ -169,7 +202,9 @@ export class MapSync {
     this.map.off("styledata", this.onStyleChange);
     this.map.off("sourcedata", this.onSourceData);
     this.map.off("error", this.onError);
+    this.map.off("idle", this.onIdle);
     this.cache.dispose();
+    this.reporter.dispose();
     this.applied.clear();
     this.clearMarker();
   }
@@ -182,6 +217,7 @@ export class MapSync {
 
   private readonly onMessage = (content: unknown, buffers?: Buffer[]) => {
     this.cache.receive(content, buffers);
+    this.reporter.receive(content);
   };
 
   private readonly onReconnect = () => this.cache.reconnect();
@@ -213,6 +249,7 @@ export class MapSync {
   };
 
   private readonly onSourceData = (event: MapEventType["sourcedata"]) => {
+    this.reporter.sourceData(event);
     if (event.sourceDataType !== "content") return;
     const record = this.applied.get(event.sourceId);
     // Only the source object this generation added acknowledges its digest.
@@ -231,9 +268,14 @@ export class MapSync {
       });
       return;
     }
+    // A source error (a tile, a TileJSON or a GeoJSON worker failure)
+    // carries the id of the source it came from.
+    this.reporter.sourceError(event as SourceErrorEvent);
     // Listening for errors turns off MapLibre's own logging of them.
     console.error(event.error);
   };
+
+  private readonly onIdle = () => this.reporter.idle();
 
   /** Run a pass; `input` is new state, payloads or style, not a style event. */
   private sync(input: boolean): void {
@@ -267,23 +309,34 @@ export class MapSync {
     ) {
       return;
     }
+    const wanted = wantedOf(state);
     let desired: OwnedStyle | undefined;
     const errors = this.capture(revision, () => {
       desired = toOwnedStyle(state as MapState);
-      this.reconcileAvailable(desired);
+      this.reconcileAvailable(desired, wanted);
     });
     this.prune();
+    this.reporter.sweep(new Set(wanted.keys()));
+    for (const [id, { ref, digest }] of wanted) {
+      const failure =
+        digest === undefined ? undefined : this.cache.failure(digest);
+      if (failure !== undefined) this.reporter.payloadFailed(id, ref, failure);
+    }
     if (errors.length || !desired) {
-      this.reject(errors, revision);
+      this.reject(errors, revision, wanted);
       return;
     }
     this.blocked = null;
     this.rejected = [];
+    if (revision !== null) this.reporter.reconciled(revision);
     this.publish(desired, revision);
   }
 
   /** Apply the desired sources whose payloads are at hand, and their layers. */
-  private reconcileAvailable(desired: OwnedStyle): void {
+  private reconcileAvailable(
+    desired: OwnedStyle,
+    wanted: Map<string, Wanted>
+  ): void {
     const sources = desired.sources.filter(
       (s) => s.digest === undefined || this.cache.has(s.digest)
     );
@@ -297,7 +350,7 @@ export class MapSync {
     const digests = new Map(
       sources.flatMap((s) => (s.digest ? [[s.id, s.digest] as const] : []))
     );
-    const live = this.tracked(digests);
+    const live = this.tracked(digests, wanted);
     this.dropUnapplied(live);
     apply(live, plan(live, available), (digest) => this.cache.get(digest)!);
     if (this.context!.errors.length) return;
@@ -337,33 +390,57 @@ export class MapSync {
     for (const id of stale) live.removeSource(id);
   }
 
-  /** The live map, noting each operation and each GeoJSON source added. */
-  private tracked(digests: Map<string, string>): LiveMap {
+  /**
+   * The live map, noting each operation and each GeoJSON source added. A
+   * layer's source is registered for status before the add starts loading
+   * it, and retired before it is removed.
+   */
+  private tracked(
+    digests: Map<string, string>,
+    wanted: Map<string, Wanted>
+  ): LiveMap {
     const live = this.live;
     const note = (id: string) => {
       if (this.context) this.context.id = id;
+    };
+    const add = (id: string, spec: Parameters<LiveMap["addSource"]>[1]) => {
+      const digest = digests.get(id);
+      if (spec.type !== "geojson" || digest === undefined) {
+        live.addSource(id, spec);
+        return;
+      }
+      // Its completion listener, `sourcedata`, is on since mount.
+      const record: Applied = {
+        digest,
+        generation: this.generation,
+        done: false,
+      };
+      this.applied.set(id, record);
+      live.addSource(id, spec);
+      record.source = this.map.getSource(id);
     };
     return {
       ...live,
       addSource: (id, spec) => {
         note(id);
-        const digest = digests.get(id);
-        if (spec.type !== "geojson" || digest === undefined) {
-          live.addSource(id, spec);
+        const want = wanted.get(id);
+        if (!want) {
+          add(id, spec);
           return;
         }
-        // Its completion listener, `sourcedata`, is on since mount.
-        const record: Applied = {
-          digest,
-          generation: this.generation,
-          done: false,
-        };
-        this.applied.set(id, record);
-        live.addSource(id, spec);
-        record.source = this.map.getSource(id);
+        this.reporter.track(id, want.ref, want.geojson);
+        try {
+          add(id, spec);
+        } catch (error) {
+          this.reporter.retire(id);
+          throw error;
+        }
+        // MapLibre adds nothing, without throwing, for a spec it rejects.
+        this.reporter.bind(id, this.map.getSource(id));
       },
       removeSource: (id) => {
         note(id);
+        this.reporter.retire(id);
         live.removeSource(id);
       },
       setTiles: (id, tiles) => {
@@ -433,7 +510,11 @@ export class MapSync {
     }
   }
 
-  private reject(errors: Rejection[], revision: number | null): void {
+  private reject(
+    errors: Rejection[],
+    revision: number | null,
+    wanted: Map<string, Wanted>
+  ): void {
     this.rejected = errors;
     this.blocked = { revision, generation: this.generation };
     this.clearMarker();
@@ -441,6 +522,12 @@ export class MapSync {
       console.error(
         `pysepal-map: revision ${revision} failed on layer ${layer}: ${message}`
       );
+      if (layer === null || revision === null) continue;
+      for (const [id, want] of wanted) {
+        if (want.ref.id === layer) {
+          this.reporter.styleFailed(id, want.ref, revision, message);
+        }
+      }
     }
   }
 

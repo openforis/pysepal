@@ -14,6 +14,8 @@ export interface PayloadCacheOptions {
   request(digests: string[]): boolean;
   /** New payloads are at hand: re-read the latest desired state. */
   arrived(): void;
+  /** A payload failed to decode; `failure` now names why. */
+  failed?(digest: string): void;
 }
 
 /** A digest that was pulled and still lacks bytes. */
@@ -54,7 +56,8 @@ export class PayloadCache {
   private readonly payloads = new Map<string, GeoJSON.GeoJSON>();
   private readonly pulls = new Map<string, Pull>();
   private readonly queued = new Set<string>();
-  private readonly failed = new Set<string>();
+  /** Undecodable payloads, never pulled again while wanted, and why. */
+  private readonly failed = new Map<string, string>();
   private flushing = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private timerDue = Infinity;
@@ -73,6 +76,11 @@ export class PayloadCache {
   /** The digests whose payloads are held. */
   digests(): string[] {
     return [...this.payloads.keys()];
+  }
+
+  /** Why a wanted payload could not be decoded, if it could not. */
+  failure(digest: string): string | undefined {
+    return this.failed.get(digest);
   }
 
   /** Replace the wanted digests; several sources may share one. */
@@ -109,9 +117,11 @@ export class PayloadCache {
     try {
       this.payloads.set(digest, decode(buffers[0]));
     } catch (error) {
-      this.failed.add(digest);
+      const why = error instanceof Error ? error.message : String(error);
+      this.failed.set(digest, `the payload is not GeoJSON: ${why}`);
       console.error(`pysepal-map: payload ${digest} is not GeoJSON`, error);
       this.schedule();
+      this.options.failed?.(digest);
       return;
     }
     this.schedule();

@@ -1,12 +1,15 @@
-"""Test the MapWidget snapshot bookkeeping and its payload replies."""
+"""Test the MapWidget snapshot bookkeeping, payload replies and layer status."""
 
+import asyncio
 import dataclasses
 import hashlib
+import threading
 
 import pytest
 from pysepal_map import (
     GeoJSONSource,
     Layer,
+    LayerStatus,
     MapState,
     MapWidget,
     PMTilesSource,
@@ -182,3 +185,446 @@ def test_instances_follow_input_order_and_keep_across_reorder():
     widget.draw(MapState(layers=(b, a)))
     assert instance(widget, "a") == 1
     assert instance(widget, "b") == 2
+
+
+@dataclasses.dataclass
+class FakeHandle:
+    when: float
+    callback: object
+    cancelled: bool = False
+
+    def cancel(self):
+        self.cancelled = True
+
+
+@dataclasses.dataclass
+class FakeLoop:
+    """The parts of an event loop the widget's expiry timer uses."""
+
+    now: float = 0.0
+    handles: list = dataclasses.field(default_factory=list)
+
+    def time(self):
+        return self.now
+
+    def is_running(self):
+        return False
+
+    def is_closed(self):
+        return False
+
+    def call_later(self, delay, callback, *args):
+        handle = FakeHandle(self.now + delay, lambda: callback(*args))
+        self.handles.append(handle)
+        return handle
+
+    def call_soon_threadsafe(self, callback, *args):
+        callback(*args)
+
+    def pending(self):
+        return [h for h in self.handles if not h.cancelled]
+
+    def advance(self, seconds):
+        target = self.now + seconds
+        while due := sorted(
+            (h for h in self.pending() if h.when <= target), key=lambda h: h.when
+        ):
+            handle = due[0]
+            self.handles.remove(handle)
+            self.now = handle.when
+            handle.callback()
+        self.now = target
+
+
+@pytest.fixture
+def loop():
+    return FakeLoop()
+
+
+@pytest.fixture
+def board(monkeypatch, loop):
+    """A widget with one raster layer, its outgoing messages and callbacks."""
+    widget = MapWidget(loop=loop)
+    sent = capture_sends(monkeypatch, widget)
+    calls = []
+    widget.on_status(lambda status: calls.append(dict(status)))
+    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    return widget, sent, calls
+
+
+def msg(widget, **content):
+    widget._handle_custom_msg(content, [])
+
+
+def open_view(widget, view, side="main"):
+    msg(widget, type="view_open", view_id=view, side=side)
+
+
+def close_view(widget, view, side="main"):
+    msg(widget, type="view_close", view_id=view, side=side)
+
+
+def report(widget, view, status, layer_id="r", side="main", error=None, **kw):
+    current = next(x for x in widget.state["layers"] if x["id"] == layer_id)
+    content = {
+        "type": "status",
+        "view_id": view,
+        "side": side,
+        "id": layer_id,
+        "token": current["token"],
+        "instance": current["instance"],
+        "status": status,
+        "error": error,
+    }
+    msg(widget, **{**content, **kw})
+
+
+def status_of(widget, layer_id="r"):
+    status = widget.layer_status.get(layer_id)
+    return None if status is None else (status.status, status.error)
+
+
+def test_layer_status_is_empty_without_views(board):
+    widget, _, calls = board
+    assert widget.layer_status == {}
+    report(widget, "a", "ready")
+    assert widget.layer_status == {}
+    assert calls == []
+
+
+def test_an_enrolled_view_is_loading_until_it_reports(board):
+    widget, sent, calls = board
+    open_view(widget, "a")
+    assert sent == [({"type": "status_request", "view_id": "a", "side": "main"}, None)]
+    assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 1)}
+    report(widget, "a", "ready")
+    assert widget.layer_status == {"r": LayerStatus("ready", None, 0, 1)}
+    assert calls == [
+        {"r": LayerStatus("loading", None, 0, 1)},
+        {"r": LayerStatus("ready", None, 0, 1)},
+    ]
+
+
+def test_layer_status_is_read_only(board):
+    widget, _, _ = board
+    open_view(widget, "a")
+    with pytest.raises(AttributeError):
+        widget.layer_status = {}
+    with pytest.raises(TypeError):
+        widget.layer_status["r"] = None
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        widget.layer_status["r"].status = "ready"
+
+
+def test_same_token_remove_and_readd_ignores_the_old_instance(board):
+    widget, _, _ = board
+    layer = Layer("r", RasterSource(("t",)))
+    open_view(widget, "a")
+    report(widget, "a", "ready")
+    old = {"token": 0, "instance": 1}
+    widget.draw(MapState())
+    assert widget.layer_status == {}
+    widget.draw(MapState(layers=(layer,)))
+    assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
+    report(widget, "a", "error", error="late", **old)
+    report(widget, "a", "ready", **old)
+    assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
+    report(widget, "a", "ready")
+    assert widget.layer_status == {"r": LayerStatus("ready", None, 0, 2)}
+
+
+def test_draw_retires_a_replaced_instance_before_publishing(board):
+    widget, _, _ = board
+    open_view(widget, "a")
+    report(widget, "a", "ready")
+    published = []
+    widget.observe(lambda _: published.append(dict(widget._reports)), "state")
+    widget.draw(MapState(layers=(Layer("r", RasterSource(("u",))),)))
+    assert published == [{("a", "main"): {}}]
+    assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
+
+
+COMPARE = {"main": ("main", "main"), "compare": ("left", "right")}
+
+
+class CompareWidget(MapWidget):
+    """The compare contract: ``l`` draws on the left only, the rest on both."""
+
+    compare = True
+
+    def _sides_of(self, layer_id):
+        if layer_id == "l":
+            return ("left",)
+        return ("left", "right") if self.compare else ("main",)
+
+
+@pytest.fixture(params=list(COMPARE))
+def pair(request, monkeypatch, loop):
+    """Two views on the same reducer: both ``main``, or ``left`` and ``right``."""
+    widget = CompareWidget(loop=loop)
+    widget.compare = request.param == "compare"
+    capture_sends(monkeypatch, widget)
+    calls = []
+    widget.on_status(lambda status: calls.append(dict(status)))
+    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    return widget, COMPARE[request.param], calls
+
+
+def test_conflicting_views_reduce_to_error_then_loading_then_ready(pair):
+    widget, (one, two), _ = pair
+    open_view(widget, "a", one)
+    open_view(widget, "b", two)
+    report(widget, "a", "ready", side=one)
+    assert status_of(widget) == ("loading", None)
+    report(widget, "b", "error", side=two, error="tile failed")
+    assert status_of(widget) == ("error", "tile failed")
+    report(widget, "a", "loading", side=one)
+    assert status_of(widget) == ("error", "tile failed")
+    report(widget, "b", "ready", side=two)
+    assert status_of(widget) == ("loading", None)
+    report(widget, "a", "ready", side=one)
+    assert status_of(widget) == ("ready", None)
+
+
+def test_closing_the_failed_view_drops_its_reports_for_good(pair):
+    widget, (one, two), calls = pair
+    open_view(widget, "a", one)
+    open_view(widget, "b", two)
+    report(widget, "a", "ready", side=one)
+    report(widget, "b", "error", side=two, error="tile failed")
+    close_view(widget, "b", two)
+    assert status_of(widget) == ("ready", None)
+    count = len(calls)
+    report(widget, "b", "error", side=two, error="late")
+    report(widget, "b", "loading", side=two)
+    assert status_of(widget) == ("ready", None)
+    assert len(calls) == count
+    close_view(widget, "a", one)
+    assert widget.layer_status == {}
+
+
+def test_a_left_only_layer_is_not_held_by_the_right_view(monkeypatch, loop):
+    widget = CompareWidget(loop=loop)
+    capture_sends(monkeypatch, widget)
+    left, both = Layer("l", RasterSource(("t",))), Layer("r", RasterSource(("u",)))
+    widget.draw(MapState(layers=(left, both)))
+    open_view(widget, "a", "left")
+    open_view(widget, "b", "right")
+    report(widget, "a", "ready", layer_id="l", side="left")
+    report(widget, "a", "ready", side="left")
+    assert status_of(widget, "l") == ("ready", None)
+    assert status_of(widget, "r") == ("loading", None)
+    # A right view's report about a left-only layer is not its to make.
+    report(widget, "b", "error", layer_id="l", side="right", error="x")
+    assert status_of(widget, "l") == ("ready", None)
+    close_view(widget, "a", "left")
+    assert set(widget.layer_status) == {"r"}
+
+
+def test_a_silent_failed_view_expires_after_60_s(board, loop):
+    widget, sent, calls = board
+    open_view(widget, "ok")
+    report(widget, "ok", "ready")
+    loop.advance(10)
+    open_view(widget, "bad")
+    report(widget, "bad", "error", error="tile failed")
+    assert status_of(widget) == ("error", "tile failed")
+    loop.advance(49.9)
+    open_view(widget, "ok")
+    # No message arrives from here on: the timer alone expires the view.
+    loop.advance(10)
+    assert status_of(widget) == ("error", "tile failed")
+    loop.advance(0.2)
+    assert status_of(widget) == ("ready", None)
+    assert calls[-1] == {"r": LayerStatus("ready", None, 0, 1)}
+
+    # The unchanged view comes back: Python asks it to replay, and it does.
+    sent.clear()
+    open_view(widget, "bad")
+    assert sent == [
+        ({"type": "status_request", "view_id": "bad", "side": "main"}, None)
+    ]
+    assert status_of(widget) == ("loading", None)
+    report(widget, "bad", "error", error="tile failed")
+    assert status_of(widget) == ("error", "tile failed")
+
+    loop.advance(61)
+    assert widget.layer_status == {}
+    assert loop.pending() == []
+
+
+def test_a_heartbeat_keeps_status_and_sends_nothing(board, loop):
+    widget, sent, calls = board
+    open_view(widget, "a")
+    report(widget, "a", "ready")
+    sent.clear()
+    count = len(calls)
+    for _ in range(10):
+        loop.advance(20)
+        open_view(widget, "a")
+    assert status_of(widget) == ("ready", None)
+    assert len(calls) == count
+    assert sent == []
+    assert len(loop.pending()) == 1
+
+
+def test_style_errors_count_only_for_the_current_draw(board):
+    widget, _, _ = board
+    open_view(widget, "a")
+    report(widget, "a", "ready")
+    report(widget, "a", "error", error="old paint", style_revision=0)
+    assert status_of(widget) == ("ready", None)
+    report(widget, "a", "error", error="paint", style_revision=1)
+    assert status_of(widget) == ("error", "paint")
+    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",)), opacity=0.5),)))
+    assert status_of(widget) == ("error", "paint")
+    report(widget, "a", "error", error="late paint", style_revision=1)
+    assert status_of(widget) == ("error", "paint")
+    report(widget, "a", "ready")
+    assert status_of(widget) == ("ready", None)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"view_id": "nobody"},
+        {"view_id": None},
+        {"side": "top"},
+        {"id": "nope"},
+        {"token": 5},
+        {"instance": 9},
+        {"instance": True},
+        {"status": "done"},
+        {"error": 3},
+        {"style_revision": "1"},
+    ],
+)
+def test_reports_that_do_not_match_are_ignored(board, change):
+    widget, _, _ = board
+    open_view(widget, "a")
+    report(widget, "a", "ready")
+    report(widget, "a", **{"status": "error", "error": "bad", **change})
+    assert status_of(widget) == ("ready", None)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        {"type": "view_open"},
+        {"type": "view_open", "view_id": "a", "side": "top"},
+        {"type": "view_open", "view_id": "", "side": "main"},
+        {"type": "view_open", "view_id": 3, "side": "main"},
+        {"type": "view_close", "view_id": "zzz", "side": "main"},
+    ],
+)
+def test_malformed_view_messages_are_ignored(board, content):
+    widget, sent, calls = board
+    msg(widget, **content)
+    assert widget.layer_status == {}
+    assert sent == [] and calls == []
+
+
+def test_close_cancels_expiry_and_late_messages_do_nothing(board, loop):
+    widget, sent, calls = board
+    open_view(widget, "a")
+    report(widget, "a", "error", error="x")
+    assert loop.pending()
+    count = len(calls)
+    widget.close()
+    assert loop.pending() == []
+    assert widget.layer_status == {}
+    sent.clear()
+    open_view(widget, "b")
+    report(widget, "a", "ready")
+    assert widget.layer_status == {} and sent == []
+    assert len(calls) == count
+
+
+def test_the_expiry_timer_stops_with_the_last_view(board, loop):
+    widget, _, _ = board
+    open_view(widget, "a")
+    assert len(loop.pending()) == 1
+    close_view(widget, "a")
+    assert loop.pending() == []
+
+
+def test_a_failing_status_callback_is_logged(board, caplog):
+    widget, _, calls = board
+
+    def broken(status):
+        raise RuntimeError("callback broke")
+
+    widget.on_status(broken)
+    with caplog.at_level("ERROR", logger="pysepal_map"):
+        open_view(widget, "a")
+    assert "callback broke" in caplog.text
+    assert len(calls) == 1
+    widget.on_status(broken, remove=True)
+    caplog.clear()
+    report(widget, "a", "ready")
+    assert caplog.text == ""
+    assert len(calls) == 2
+
+
+def test_the_supplied_loop_runs_the_expiry(loop):
+    widget = MapWidget(loop=loop)
+    assert widget._loop is loop
+    open_view(widget, "a")
+    assert [h.when for h in loop.pending()] == [60]
+
+
+def in_fresh_thread(scenario):
+    """Run ``scenario`` where no loop runs yet.
+
+    Once a Playwright browser test ran, its loop counts as running in the
+    main thread.
+    """
+    out = {}
+
+    def target():
+        try:
+            out["value"] = scenario()
+        except BaseException as error:
+            out["error"] = error
+
+    thread = threading.Thread(target=target)
+    thread.start()
+    thread.join()
+    if "error" in out:
+        raise out["error"]
+    return out["value"]
+
+
+def test_without_a_loop_expiry_binds_the_first_message_loop():
+    def scenario():
+        widget = MapWidget()
+        before = widget._loop
+
+        async def receive():
+            open_view(widget, "a")
+            when = widget._expiry.when() - asyncio.get_running_loop().time()
+            widget.close()
+            return asyncio.get_running_loop(), when
+
+        running, when = asyncio.run(receive())
+        return before, widget._loop is running, when
+
+    before, bound, when = in_fresh_thread(scenario)
+    assert before is None
+    assert bound
+    assert when == pytest.approx(60, abs=1)
+
+
+def test_the_loop_running_at_construction_runs_the_expiry():
+    async def construct():
+        widget = MapWidget()
+        loop = asyncio.get_running_loop()
+        open_view(widget, "a")
+        when = widget._expiry.when() - loop.time()
+        widget.close()
+        return widget._loop is loop, when, widget._expiry
+
+    captured, when, expiry = in_fresh_thread(lambda: asyncio.run(construct()))
+    assert captured
+    assert when == pytest.approx(60, abs=1)
+    assert expiry is None

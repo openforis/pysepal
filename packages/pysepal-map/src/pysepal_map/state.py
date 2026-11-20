@@ -172,6 +172,19 @@ class Controls:
 
 
 @dataclass(frozen=True)
+class LayerStatus:
+    """What the mounted views report for the current instance of a layer.
+
+    ``error`` holds a message only when ``status`` is ``"error"``.
+    """
+
+    status: Literal["loading", "ready", "error"]
+    error: str | None
+    token: int
+    instance: int
+
+
+@dataclass(frozen=True)
 class MapState:
     """Layers are top-first: index 0 draws on top."""
 
