@@ -9,16 +9,12 @@ BOX = (10, 10, 20, 20)
 
 
 def view_at(page, nth=0):
-    page.wait_for_function(
-        "n => document.querySelectorAll('.psm-map')[n]?.psmCamera", arg=nth
-    )
+    page.wait_for_function("n => document.querySelectorAll('.psm-map')[n]?.psmCamera", arg=nth)
     return page.locator(".psm-map").nth(nth).element_handle()
 
 
 def wait_views(page, count):
-    page.wait_for_function(
-        "n => document.querySelectorAll('.psm-map').length === n", arg=count
-    )
+    page.wait_for_function("n => document.querySelectorAll('.psm-map').length === n", arg=count)
 
 
 def wait_view(page, widget, check, timeout_ms=15_000):
@@ -168,9 +164,7 @@ def test_a_resize_report_updates_the_bounds(harness, page_session):
     page_session.wait_for_function("el => el.clientHeight === 500", arg=el)
 
     def taller(view):
-        return view["bounds"][3] - view["bounds"][1] > before["bounds"][3] - (
-            before["bounds"][1]
-        )
+        return view["bounds"][3] - view["bounds"][1] > before["bounds"][3] - (before["bounds"][1])
 
     after = wait_view(page_session, widget, taller)
     assert near(after["bounds"], camera(el)["bounds"])
@@ -194,9 +188,7 @@ def test_only_the_panned_views_resize_updates_its_camera(harness, page_session):
     # a grows, as on a fullscreen toggle: the bounds follow, the pan stays.
     one.layout.height = "320px"
     page_session.wait_for_function("el => el.clientHeight === 320", arg=a)
-    grown = wait_view(
-        page_session, widget, lambda v: near(v["bounds"], camera(a)["bounds"])
-    )
+    grown = wait_view(page_session, widget, lambda v: near(v["bounds"], camera(a)["bounds"]))
     assert near(grown["center"], panned["center"])
     assert grown["bounds"] != panned["bounds"]
 
@@ -337,9 +329,7 @@ def test_a_view_applies_a_request_another_view_acknowledged(harness, page_sessio
     # Hold b's reports at their origin; its user moves on request 1.
     b.evaluate("el => { psmHarness.cameraGate(el).holding = true; }")
     drag(page_session, middle(page_session, 1), (-150, 80))
-    page_session.wait_for_function(
-        "el => psmHarness.cameraGate(el).held.length > 0", arg=b
-    )
+    page_session.wait_for_function("el => psmHarness.cameraGate(el).held.length > 0", arg=b)
     two.layout.height = "0px"
     page_session.wait_for_function("el => el.clientHeight === 0", arg=b)
 

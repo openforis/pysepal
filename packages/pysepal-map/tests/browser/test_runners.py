@@ -86,9 +86,7 @@ def wait_hit(page, el, at, layer):
 
 
 def owned_layers(el):
-    return el.evaluate(
-        "el => el.psmMap.getLayersOrder().filter((id) => id.startsWith('psm:'))"
-    )
+    return el.evaluate("el => el.psmMap.getLayersOrder().filter((id) => id.startsWith('psm:'))")
 
 
 def model_id(page):
@@ -162,9 +160,7 @@ def test_a_new_voila_page_starts_fresh(ipywidgets_runner, page_session, load_har
     assert_only_initial(el)
 
 
-def test_a_new_solara_page_starts_fresh(
-    solara_server, solara_app, page_session, load_harness
-):
+def test_a_new_solara_page_starts_fresh(solara_server, solara_app, page_session, load_harness):
     with solara_app(f"{__name__}:FreshApp"):
         page_session.goto(solara_server.base_url)
         el = mounted_view(page_session, load_harness)

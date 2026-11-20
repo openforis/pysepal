@@ -38,11 +38,7 @@ def wait_status(page, widget, check, timeout_ms=15_000):
 def is_(layer_id, status, instance):
     def check(statuses):
         current = statuses.get(layer_id)
-        return (
-            current is not None
-            and current.status == status
-            and current.instance == instance
-        )
+        return current is not None and current.status == status and current.instance == instance
 
     return check
 

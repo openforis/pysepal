@@ -27,7 +27,7 @@ const LINE = geometryIn(
   "LineString",
   "MultiLineString",
   "Polygon",
-  "MultiPolygon",
+  "MultiPolygon"
 );
 const POINT = geometryIn("Point", "MultiPoint");
 
@@ -40,7 +40,7 @@ function zoomRange(layer: LayerState): { minzoom?: number; maxzoom?: number } {
 
 function vectorLayers(
   layer: GeoJSONLayerState | PMTilesLayerState,
-  source: string,
+  source: string
 ): LayerSpecification[] {
   const { paint, opacity } = layer;
   const layout = { visibility: layer.visible ? "visible" : "none" } as const;
@@ -92,7 +92,7 @@ function vectorLayers(
 
 function rasterLayer(
   layer: RasterLayerState,
-  source: string,
+  source: string
 ): LayerSpecification {
   return {
     id: `${source}:raster`,

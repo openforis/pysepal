@@ -73,9 +73,7 @@ def test_map_has_a_width_inside_an_hbox(solara_test, page_session):
 
 
 def test_explicit_height_holds_inside_a_taller_vbox(solara_test, page_session):
-    box = widgets.VBox(
-        [MapWidget(height="200px")], layout=widgets.Layout(height="500px")
-    )
+    box = widgets.VBox([MapWidget(height="200px")], layout=widgets.Layout(height="500px"))
     display(box)
     page_session.locator(".psm-map canvas.maplibregl-canvas").wait_for()
     assert page_session.locator(".psm-map").bounding_box()["height"] == 200

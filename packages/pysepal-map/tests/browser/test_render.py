@@ -64,8 +64,7 @@ def view(page, nth=0):
 
 def wait_revision(page, revision, nth=0):
     page.wait_for_function(
-        "([n, r]) => document.querySelectorAll('.psm-map')[n]?.dataset.psmRevision"
-        " === r",
+        "([n, r]) => document.querySelectorAll('.psm-map')[n]?.dataset.psmRevision" " === r",
         arg=[nth, str(revision)],
     )
 
@@ -215,9 +214,7 @@ def test_a_rejected_paint_change_waits_for_the_next_revision(harness, page_sessi
     el.evaluate("el => { psmHarness.attach(el).failPaint = true; }")
 
     draw("#0000ff")
-    page_session.wait_for_function(
-        "el => psmHarness.attach(el).forcedFailures > 0", arg=el
-    )
+    page_session.wait_for_function("el => psmHarness.attach(el).forcedFailures > 0", arg=el)
     failed = el.evaluate(
         """async el => {
             await psmHarness.quiet(el);
@@ -266,9 +263,7 @@ def test_an_externally_displaced_owned_layer_is_repaired(harness, page_session):
             map.moveLayer('foreign', 'psm:pt:1:circle');
         }"""
     )
-    page_session.wait_for_function(
-        "el => el.psmMap.getLayersOrder().at(-1) === 'foreign'", arg=el
-    )
+    page_session.wait_for_function("el => el.psmMap.getLayersOrder().at(-1) === 'foreign'", arg=el)
     counts = el.evaluate(
         """async el => {
             await psmHarness.quiet(el);
@@ -394,9 +389,7 @@ def test_a_view_outlives_late_replies_its_sibling_and_a_style_reset(
     # Messages arrive in order, so the reply was handled once the box empties.
     send(*withheld[0])
     first.children = ()
-    page_session.wait_for_function(
-        "() => document.querySelectorAll('.psm-map').length === 1"
-    )
+    page_session.wait_for_function("() => document.querySelectorAll('.psm-map').length === 1")
     assert gone.evaluate("el => el.psmMap === undefined && !el.psmInspect")
     assert revision_of(kept) == "2"
     assert features_at(kept, [20, 0], ["psm:pt:2:circle"]) > 0

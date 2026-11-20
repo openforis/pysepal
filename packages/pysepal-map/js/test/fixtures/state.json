@@ -5,9 +5,7 @@
     "fullscreen": true
   },
   "basemap": {
-    "tiles": [
-      "https://t/{z}/{x}/{y}.png"
-    ],
+    "tiles": ["https://t/{z}/{x}/{y}.png"],
     "attribution": "© OSM",
     "max_zoom": 19
   },
@@ -68,17 +66,10 @@
       "max_zoom": null,
       "attribution": "",
       "source": {
-        "tiles": [
-          "https://r/{z}/{x}/{y}.png"
-        ],
+        "tiles": ["https://r/{z}/{x}/{y}.png"],
         "tile_size": 256,
         "max_native_zoom": 20,
-        "bounds": [
-          -10,
-          -5,
-          10,
-          5
-        ]
+        "bounds": [-10, -5, 10, 5]
       },
       "paint": null,
       "instance": 3

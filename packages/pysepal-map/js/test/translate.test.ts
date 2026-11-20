@@ -48,7 +48,7 @@ describe("toOwnedStyle", () => {
     });
     const layers = toOwnedStyle(state).layers as any[];
     for (const l of layers.filter(
-      (x) => x.id.startsWith("psm:v1:") || x.id.startsWith("psm:r1:"),
+      (x) => x.id.startsWith("psm:v1:") || x.id.startsWith("psm:r1:")
     )) {
       expect(l.layout.visibility).toBe("none");
     }
@@ -65,10 +65,10 @@ describe("toOwnedStyle", () => {
     expect(byId(state, "psm:v1:1:fill").paint["fill-opacity"]).toBeCloseTo(0.2);
     expect(byId(state, "psm:v1:1:line").paint["line-opacity"]).toBe(0.5);
     expect(byId(state, "psm:v1:1:circle").paint["circle-stroke-opacity"]).toBe(
-      0.5,
+      0.5
     );
     expect(byId(state, "psm:v1:1:circle").paint["circle-opacity"]).toBeCloseTo(
-      0.2,
+      0.2
     );
     expect(byId(state, "psm:r1:3:raster").paint["raster-opacity"]).toBe(0.5);
   });
@@ -79,7 +79,7 @@ describe("toOwnedStyle", () => {
     });
     expect(byId(state, "psm:v1:1:fill").paint["fill-color"]).toBe("#ff0000");
     expect(byId(state, "psm:v1:1:circle").paint["circle-color"]).toBe(
-      "#ff0000",
+      "#ff0000"
     );
     expect(byId(base, "psm:v1:1:fill").paint["fill-color"]).toBe("#3388ff");
     expect(byId(base, "psm:v1:1:line").paint["line-width"]).toBe(2);
@@ -91,7 +91,7 @@ describe("toOwnedStyle", () => {
     const style = toOwnedStyle(
       withLayers((layers) => {
         layers[2].attribution = "© R";
-      }),
+      })
     );
     const source = style.sources.find((s) => s.id === "psm:r1:3")!.spec as any;
     expect(source.maxzoom).toBe(20);
@@ -105,7 +105,7 @@ describe("toOwnedStyle", () => {
     });
     expect(byId(capped, "psm:r1:3:raster").maxzoom).toBe(18);
     const cappedSource = toOwnedStyle(capped).sources.find(
-      (s) => s.id === "psm:r1:3",
+      (s) => s.id === "psm:r1:3"
     )!.spec as any;
     expect(cappedSource.maxzoom).toBe(20);
   });
@@ -133,7 +133,7 @@ describe("toOwnedStyle", () => {
     expect(geo.spec.type).toBe("geojson");
     expect(geo.spec).not.toHaveProperty("data");
     expect(geo.digest).toBe(
-      (base.layers[0] as GeoJSONLayerState).source.digest,
+      (base.layers[0] as GeoJSONLayerState).source.digest
     );
   });
 
@@ -142,7 +142,7 @@ describe("toOwnedStyle", () => {
       layers[0].id = "a b:c";
     });
     expect(toOwnedStyle(state).layers.map((l) => l.id)).toContain(
-      "psm:a%20b%3Ac:1:fill",
+      "psm:a%20b%3Ac:1:fill"
     );
   });
 
@@ -167,7 +167,7 @@ describe("toOwnedStyle", () => {
     const poly = compile("psm:v1:1:fill");
     const line = compile("psm:v1:1:line");
     const circle = compile("psm:v1:1:circle");
-    const feature = (type: string) => ({ type, properties: {} }) as any;
+    const feature = (type: string) => ({ type, properties: {} } as any);
     const ctx = { zoom: 0 };
     expect(poly(ctx, feature("Polygon"))).toBe(true);
     expect(poly(ctx, feature("MultiPolygon"))).toBe(true);
@@ -178,7 +178,7 @@ describe("toOwnedStyle", () => {
     expect(circle(ctx, feature("MultiPoint"))).toBe(true);
     expect(circle(ctx, feature("Polygon"))).toBe(false);
     // vector tiles report numeric types: 1 point, 2 line, 3 polygon
-    const tiled = (type: number) => ({ type, properties: {} }) as any;
+    const tiled = (type: number) => ({ type, properties: {} } as any);
     expect(poly(ctx, tiled(3))).toBe(true);
     expect(poly(ctx, tiled(2))).toBe(false);
     expect(line(ctx, tiled(2))).toBe(true);

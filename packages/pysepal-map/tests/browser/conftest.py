@@ -86,9 +86,7 @@ def owned_snapshot(page):
     coordinates of each GeoJSON source's features in its worker, and the
     theme.
     """
-    return page.evaluate(
-        f"() => Promise.all({MOUNTED}.map((el) => psmHarness.ownedSnapshot(el)))"
-    )
+    return page.evaluate(f"() => Promise.all({MOUNTED}.map((el) => psmHarness.ownedSnapshot(el)))")
 
 
 def _owned_id(layer):
@@ -185,9 +183,7 @@ def expected_snapshot(state, payloads):
             coordinates[source_id] = [
                 feature["geometry"]["coordinates"] for feature in data["features"]
             ]
-        source_layer = (
-            layer["source"]["source_layer"] if layer["kind"] == "pmtiles" else None
-        )
+        source_layer = layer["source"]["source_layer"] if layer["kind"] == "pmtiles" else None
         for part, paint in _paints(layer):
             layers.append(
                 {
@@ -431,9 +427,7 @@ class PMTiles:
         asked = route.request.headers.get("range")
         match = re.fullmatch(r"bytes=(\d+)-(\d*)", asked or "")
         if match is None:
-            route.fulfill(
-                status=200, body=data, content_type="application/octet-stream"
-            )
+            route.fulfill(status=200, body=data, content_type="application/octet-stream")
             return
         start = int(match[1])
         end = min(int(match[2]) if match[2] else size - 1, size - 1)

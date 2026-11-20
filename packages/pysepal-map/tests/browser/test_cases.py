@@ -33,8 +33,7 @@ def solid(rgb):
 
 def collection(*geometries):
     features = [
-        {"type": "Feature", "properties": {}, "geometry": geometry}
-        for geometry in geometries
+        {"type": "Feature", "properties": {}, "geometry": geometry} for geometry in geometries
     ]
     return json.dumps({"type": "FeatureCollection", "features": features}).encode()
 
@@ -132,9 +131,7 @@ def test_reorder_changes_top_pixel(harness, page_session, wait_settled):
         assert close(screen_color(page_session, el, overlap), top), revision
 
 
-def test_overwritten_payload_shows_new_coordinates(
-    harness, page_session, wait_settled, tmp_path
-):
+def test_overwritten_payload_shows_new_coordinates(harness, page_session, wait_settled, tmp_path):
     a, b = [-10, 0], [10, 0]
     path = tmp_path / "point.geojson"
     widget = MapWidget(center=(0, 0), zoom=3)
@@ -205,9 +202,7 @@ def test_reorder_while_drawing_polygon(harness, page_session, wait_settled):
     vertices = [vertex(at) for at in clicks]
     click(clicks[0], 1)
     click(clicks[1], 2)
-    started = el.evaluate(
-        "el => psmHarness.drawnPolygons(el)[0].geometry.coordinates[0]"
-    )
+    started = el.evaluate("el => psmHarness.drawnPolygons(el)[0].geometry.coordinates[0]")
 
     widget.draw(MapState(layers=(north, south)))
     wait_settled(page_session, 2)
@@ -276,9 +271,7 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
     widget.add_payload(data)
     widget.draw(MapState(layers=(pt,)))
     assert widget.state["layers"][0]["instance"] == 2
-    wait_status(
-        page_session, widget, lambda s: s.get("pt") == LayerStatus("ready", None, 0, 2)
-    )
+    wait_status(page_session, widget, lambda s: s.get("pt") == LayerStatus("ready", None, 0, 2))
 
     held = el.evaluate("el => psmHarness.gate(el).held.map((m) => m.status)")
     assert held[0] == "loading"
@@ -329,9 +322,7 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
     status("test-left", "left", "error", "left failed")
     status("test-right", "right", "ready")
     handled("status", "test-right")
-    assert widget.layer_status["cmp"] == LayerStatus(
-        "error", "left failed", 0, instance
-    )
+    assert widget.layer_status["cmp"] == LayerStatus("error", "left failed", 0, instance)
     assert widget.layer_status["pt"] == LayerStatus("ready", None, 0, 2)
 
     post({"type": "view_close", "view_id": "test-left", "side": "left"})
@@ -342,9 +333,7 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
     )
 
 
-def test_two_views_converge(
-    tiles, page_session, wait_settled, owned_snapshot, expected_snapshot
-):
+def test_two_views_converge(tiles, page_session, wait_settled, owned_snapshot, expected_snapshot):
     widget = MapWidget()
     payloads = {}
 
@@ -366,23 +355,17 @@ def test_two_views_converge(
 
     first.children = ()
     moved = geojson("points", collection(point(-5, 5)), RED)
-    widget.draw(
-        MapState(layers=(raster, replace(area, zone="overlay"), moved), theme="dark")
-    )
+    widget.draw(MapState(layers=(raster, replace(area, zone="overlay"), moved), theme="dark"))
     wait_settled(page_session, 2, expected_views=1)
     [survivor] = owned_snapshot(page_session)
     assert survivor == expected_snapshot(widget.state, payloads)
     assert survivor["theme"] == "dark"
 
 
-def test_large_payload_travels_as_a_buffer(
-    harness, page_session, wait_settled, monkeypatch
-):
+def test_large_payload_travels_as_a_buffer(harness, page_session, wait_settled, monkeypatch):
     widget = MapWidget()
     count = 50_000
-    payload = collection(
-        *(point(-180 + i * 0.0072, (i % 170) - 85) for i in range(count))
-    )
+    payload = collection(*(point(-180 + i * 0.0072, (i % 170) - 85) for i in range(count)))
     replies = []
     send = widget.send
 
@@ -392,9 +375,7 @@ def test_large_payload_travels_as_a_buffer(
         send(content, buffers)
 
     monkeypatch.setattr(widget, "send", record)
-    widget.draw(
-        MapState(layers=(Layer("many", GeoJSONSource(widget.add_payload(payload))),))
-    )
+    widget.draw(MapState(layers=(Layer("many", GeoJSONSource(widget.add_payload(payload))),)))
     assert len(json.dumps(widget.state)) < 10_000
     display(widget)
     wait_settled(page_session, 1)
@@ -431,9 +412,7 @@ def test_raster_overzooms_at_map_limit(tiles, page_session, wait_settled):
 
 def test_pmtiles_layer_draws(pmtiles, page_session, wait_settled):
     widget = MapWidget()
-    paint = VectorPaint(
-        stroke="#ff00ff", fill="#ff00ff", fill_opacity=1.0, point_radius=6
-    )
+    paint = VectorPaint(stroke="#ff00ff", fill="#ff00ff", fill_opacity=1.0, point_radius=6)
     layer = Layer("pm", PMTilesSource(pmtiles.url, "points"), paint=paint)
     widget.draw(MapState(layers=(layer,)))
     widget.fit_bounds(pmtiles.bounds, padding=40)

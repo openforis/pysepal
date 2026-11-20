@@ -46,8 +46,7 @@ def _numbers(value, count: int) -> list[float] | None:
     if not isinstance(value, (list, tuple)) or len(value) != count:
         return None
     if not all(
-        isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
-        for x in value
+        isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in value
     ):
         return None
     return [float(x) for x in value]
@@ -229,9 +228,7 @@ class MapWidget(anywidget.AnyWidget):
                 self._zoom = request["zoom"]
             self._request(request)
 
-    def fit_bounds(
-        self, bounds: tuple[float, float, float, float], padding: int = 20
-    ) -> None:
+    def fit_bounds(self, bounds: tuple[float, float, float, float], padding: int = 20) -> None:
         """Ask every view to fit ``(west, south, east, north)``, ``padding`` px in.
 
         A west east of east crosses the antimeridian. A view without a size
@@ -420,9 +417,7 @@ class MapWidget(anywidget.AnyWidget):
         with self._lock:
             if not self._closed:
                 expected = {
-                    layer_id: [
-                        v for v in self._views if v[1] in self._sides_of(layer_id)
-                    ]
+                    layer_id: [v for v in self._views if v[1] in self._sides_of(layer_id)]
                     for layer_id in self._current
                 }
                 status = _reduce_status(self._current, expected, self._reports)
@@ -500,9 +495,7 @@ class MapWidget(anywidget.AnyWidget):
         if not isinstance(state, MapState):
             raise TypeError("draw expects a MapState")
         referenced = {
-            layer.source.digest
-            for layer in state.layers
-            if isinstance(layer.source, GeoJSONSource)
+            layer.source.digest for layer in state.layers if isinstance(layer.source, GeoJSONSource)
         }
         missing = sorted(referenced - self._payloads.keys())
         if missing:
@@ -522,9 +515,7 @@ class MapWidget(anywidget.AnyWidget):
             instances[layer.id] = (identity, instance)
             entry["instance"] = instance
         data["revision"] = self._revision + 1
-        current = {
-            layer.id: (layer.token, instances[layer.id][1]) for layer in state.layers
-        }
+        current = {layer.id: (layer.token, instances[layer.id][1]) for layer in state.layers}
 
         with self._lock:
             self._instances = instances

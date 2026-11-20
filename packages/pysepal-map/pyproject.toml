@@ -23,6 +23,9 @@ artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.
 
 [tool.hatch.build.hooks.custom]
 
+[tool.black]
+line-length = 100
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

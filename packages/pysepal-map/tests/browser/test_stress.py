@@ -145,9 +145,7 @@ class Scenario:
         }
 
     def _pick(self, kinds=None):
-        return self.rng.choice(
-            [s for s in self.layers if kinds is None or s["kind"] in kinds]
-        )
+        return self.rng.choice([s for s in self.layers if kinds is None or s["kind"] in kinds])
 
     def _payload_bytes(self):
         """A point, a line and a polygon at a random place, never repeated."""
@@ -159,14 +157,11 @@ class Scenario:
             {"type": "LineString", "coordinates": [[x, y], [x + 5, y + 3]]},
             {
                 "type": "Polygon",
-                "coordinates": [
-                    [[x, y], [x + 4, y], [x + 4, y + 4], [x, y + 4], [x, y]]
-                ],
+                "coordinates": [[[x, y], [x + 4, y], [x + 4, y + 4], [x, y + 4], [x, y]]],
             },
         ]
         features = [
-            {"type": "Feature", "properties": {"n": self.count}, "geometry": g}
-            for g in geometries
+            {"type": "Feature", "properties": {"n": self.count}, "geometry": g} for g in geometries
         ]
         return json.dumps({"type": "FeatureCollection", "features": features}).encode()
 
@@ -225,9 +220,7 @@ class Scenario:
 
     def _opacity(self):
         spec = self._pick()
-        spec["opacity"] = self.rng.choice(
-            [o for o in OPACITIES if o != spec["opacity"]]
-        )
+        spec["opacity"] = self.rng.choice([o for o in OPACITIES if o != spec["opacity"]])
         return f"opacity of {spec['id']!r} to {spec['opacity']}"
 
     def _repaint(self):
@@ -357,9 +350,9 @@ def test_random_operations_converge(
     # foreign layer the plugin added to the first view's map only.
     opened = []
     widget.on_msg(
-        lambda _, content, __: opened.append(content["view_id"])
-        if content.get("type") == "view_open"
-        else None
+        lambda _, content, __: (
+            opened.append(content["view_id"]) if content.get("type") == "view_open" else None
+        )
     )
     column.children = (first_box, widgets.VBox([widget]))
     check(["display a second view"], views=2)

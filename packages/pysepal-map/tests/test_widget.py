@@ -109,9 +109,7 @@ def test_source_attribution_and_token_changes_retire_the_instance(change):
     else:
         layer = Layer("v", PMTilesSource("https://x/a.pmtiles", "roads"))
         new = {
-            "url": dataclasses.replace(
-                layer, source=PMTilesSource("https://x/b.pmtiles", "roads")
-            ),
+            "url": dataclasses.replace(layer, source=PMTilesSource("https://x/b.pmtiles", "roads")),
             "attribution": dataclasses.replace(layer, attribution="x"),
             "token": dataclasses.replace(layer, token=1),
         }[change]
@@ -390,9 +388,7 @@ def test_a_silent_failed_view_expires_after_150_s(board, loop):
     # The unchanged view comes back: Python asks it to replay, and it does.
     sent.clear()
     open_view(widget, "bad")
-    assert sent == [
-        ({"type": "status_request", "view_id": "bad", "side": "main"}, None)
-    ]
+    assert sent == [({"type": "status_request", "view_id": "bad", "side": "main"}, None)]
     assert status_of(widget) == ("loading", None)
     report(widget, "bad", "error", error="tile failed")
     assert status_of(widget) == ("error", "tile failed")

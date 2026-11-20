@@ -51,7 +51,9 @@ export interface RasterLayerState extends LayerBase {
 }
 
 export type LayerState =
-  GeoJSONLayerState | PMTilesLayerState | RasterLayerState;
+  | GeoJSONLayerState
+  | PMTilesLayerState
+  | RasterLayerState;
 
 export interface BasemapState {
   tiles: string[];
@@ -68,7 +70,8 @@ export interface MapState {
 }
 
 export type OwnedSourceSpec =
-  SourceSpecification | Omit<GeoJSONSourceSpecification, "data">;
+  | SourceSpecification
+  | Omit<GeoJSONSourceSpecification, "data">;
 
 export interface OwnedSource {
   id: string;

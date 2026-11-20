@@ -60,9 +60,7 @@ class FakeLoop:
 
     def advance(self, seconds):
         target = self.now + seconds
-        while due := sorted(
-            (h for h in self.pending() if h.when <= target), key=lambda h: h.when
-        ):
+        while due := sorted((h for h in self.pending() if h.when <= target), key=lambda h: h.when):
             handle = due[0]
             self.handles.remove(handle)
             self.now = handle.when
