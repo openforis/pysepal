@@ -1,12 +1,10 @@
 /* ipywidgets' layout owns the view's inline style and removes any height
    its own layout does not set, so the height trait goes through a variable.
    Inside a Box or HBox a block with no width collapses to nothing, hence
-   the width rules. */
+   the width. */
 .psm-map {
   height: var(--psm-height);
   width: 100%;
-  min-width: 200px;
-  flex: 1 1 auto;
 }
 
 /* The control icons are background images, so they are inverted on the dark

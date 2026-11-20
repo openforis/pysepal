@@ -52,11 +52,14 @@ def test_dark_controls_use_the_dark_surface(solara_test, page_session):
     display(widget)
     button = page_session.locator(f".psm-dark {ZOOM_IN}")
     button.wait_for()
-    background, icon_filter = button.evaluate(
-        "el => [getComputedStyle(el).backgroundColor,"
+    background, color, border, icon_filter = button.evaluate(
+        "el => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color,"
+        " getComputedStyle(el.parentElement).boxShadow,"
         " getComputedStyle(el.querySelector('span')).filter]"
     )
     assert background == "rgb(30, 30, 30)"
+    assert color == "rgb(255, 255, 255)"
+    assert "rgb(66, 66, 66)" in border
     assert "invert" in icon_filter
 
 
@@ -67,3 +70,12 @@ def test_map_has_a_width_inside_an_hbox(solara_test, page_session):
         "document.querySelector('.psm-map').getBoundingClientRect().width > 100"
         " && document.querySelector('.psm-map canvas').clientWidth > 100"
     )
+
+
+def test_explicit_height_holds_inside_a_taller_vbox(solara_test, page_session):
+    box = widgets.VBox(
+        [MapWidget(height="200px")], layout=widgets.Layout(height="500px")
+    )
+    display(box)
+    page_session.locator(".psm-map canvas.maplibregl-canvas").wait_for()
+    assert page_session.locator(".psm-map").bounding_box()["height"] == 200
