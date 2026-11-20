@@ -22,6 +22,8 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parent.parent
 STATIC = ("pysepal_map/static/widget.js", "pysepal_map/static/widget.css")
+#: Shipped at the sdist root and among the wheel's dist-info license files.
+NOTICES = ("LICENSE", "THIRD_PARTY_NOTICES.md")
 IGNORED = shutil.ignore_patterns("node_modules", "static", ".build", "__pycache__", "tests")
 SMOKE_TEST = "browser/test_render.py::test_bundled_worker_renders_offline"
 
@@ -57,6 +59,7 @@ def main():
             members = {name.split("/", 1)[1] for name in tar.getnames() if "/" in name}
             tar.extractall(tmp / "unpacked", filter="data")
         missing = [f"src/{t}" for t in STATIC if f"src/{t}" not in members]
+        missing += [n for n in NOTICES if n not in members]
         assert not missing, f"sdist lacks {missing}"
         [unpacked] = (tmp / "unpacked").iterdir()
 
@@ -80,8 +83,13 @@ def main():
         [wheel] = (tmp / "wheels").glob("*.whl")
         with zipfile.ZipFile(wheel) as archive:
             names = set(archive.namelist())
+            [metadata] = [n for n in names if n.endswith(".dist-info/METADATA")]
+            metadata = archive.read(metadata).decode()
+        licenses = {Path(n).name for n in names if n.split("/", 1)[0].endswith(".dist-info")}
         missing = [t for t in STATIC if t not in names]
+        missing += [n for n in NOTICES if n not in licenses]
         assert not missing, f"wheel lacks {missing}"
+        assert "License: MIT" in metadata.splitlines(), "wheel metadata names no MIT license"
 
         python = make_venv(tmp / "clean")
         run(python, "-m", "pip", "install", "--quiet", f"{wheel}[test]")

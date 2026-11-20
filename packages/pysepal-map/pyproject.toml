@@ -7,15 +7,30 @@ name = "pysepal-map"
 version = "0.1.0"
 description = "A generic MapLibre GL JS widget for Jupyter."
 readme = "README.md"
+license = {text = "MIT"}
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{name = "Pierrick Rambaud", email = "pierrick.rambaud49@gmail.com"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Jupyter",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 requires-python = ">=3.10"
 dependencies = ["anywidget>=0.9", "traitlets"]
+
+[project.urls]
+Homepage = "https://github.com/openforis/pysepal"
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-asyncio", "pytest-ipywidgets", "voila", "jupyterlab"]
 
 [tool.hatch.build.targets.sdist]
 artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
-include = ["src", "js", "build.mjs", "hatch_build.py", "package.json", "package-lock.json", "tsconfig.json", "README.md"]
+include = ["src", "js", "build.mjs", "hatch_build.py", "package.json", "package-lock.json", "tsconfig.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pysepal_map"]
