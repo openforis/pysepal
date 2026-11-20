@@ -328,11 +328,11 @@ export class MapSync {
     );
     if (!stale.size) return;
     for (const id of live.layerOrder()) {
+      // Never read a foreign layer: a custom one throws on serialize().
+      if (!id.startsWith(OWNED_PREFIX)) continue;
       const source = (live.layer(id) as { source?: string } | undefined)
         ?.source;
-      if (id.startsWith(OWNED_PREFIX) && source && stale.has(source)) {
-        live.removeLayer(id);
-      }
+      if (source && stale.has(source)) live.removeLayer(id);
     }
     for (const id of stale) live.removeSource(id);
   }
@@ -471,12 +471,14 @@ export class MapSync {
     return state && typeof state === "object" ? (state as MapState) : {};
   }
 
-  private send(content: unknown): void {
+  private send(content: unknown): boolean {
     try {
       this.model.send(content);
+      return true;
     } catch (error) {
       // A closed comm; the retry timer or a reconnect pulls again.
       console.error("pysepal-map: could not send", error);
+      return false;
     }
   }
 }

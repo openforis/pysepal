@@ -288,6 +288,55 @@ def test_an_externally_displaced_owned_layer_is_repaired(harness, page_session):
     wait_revision(page_session, 1)
 
 
+def test_a_diffed_style_switch_beside_a_custom_layer_is_rebuilt(harness, page_session):
+    widget = MapWidget()
+    point = Layer("pt", GeoJSONSource(widget.add_payload(points([0, 0]))))
+    widget.draw(MapState(layers=(point,)))
+    display(widget)
+    wait_revision(page_session, 1)
+    el = view(page_session)
+    # A basemap switch that carries the current sources and layers over keeps
+    # the owned GeoJSON source; the custom layer survives the diff because
+    # MapLibre cannot serialize it.
+    el.evaluate(
+        """el => {
+            const map = el.psmMap;
+            map.addLayer({id: 'custom', type: 'custom', render() {}});
+            window.psmOldSource = map.getSource('psm:pt:1');
+            const background = {
+                id: 'bg', type: 'background', paint: {'background-opacity': 0}
+            };
+            map.setStyle({version: 8, sources: {}, layers: [background]}, {
+                transformStyle: (previous, next) => ({
+                    ...next,
+                    sources: {...previous.sources, ...next.sources},
+                    layers: [...previous.layers, ...next.layers],
+                }),
+            });
+        }"""
+    )
+    wait_revision(page_session, 1)
+    after = el.evaluate(
+        """el => ({
+            fresh: el.psmMap.getSource('psm:pt:1') !== window.psmOldSource,
+            layers: el.psmMap.getLayersOrder(),
+            rejections: psmHarness.inspect(el).rejections,
+        })"""
+    )
+    assert after == {
+        "fresh": True,
+        "layers": [
+            "psm:pt:1:fill",
+            "psm:pt:1:line",
+            "psm:pt:1:circle",
+            "custom",
+            "bg",
+        ],
+        "rejections": [],
+    }
+    wait_feature(page_session, el, [0, 0], ["psm:pt:1:circle"])
+
+
 def test_a_stale_worker_completion_is_ignored(harness, page_session):
     widget = MapWidget()
     widget.draw(MapState())

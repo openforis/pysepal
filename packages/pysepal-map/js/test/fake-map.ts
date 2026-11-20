@@ -68,6 +68,7 @@ export class FakeMap implements LiveMap {
   private order: string[] = [];
   private layers = new Map<string, Spec>();
   private sources = new Map<string, Spec>();
+  private custom = new Set<string>();
 
   constructor(
     init: {
@@ -87,6 +88,10 @@ export class FakeMap implements LiveMap {
   }
 
   layer(id: string): LayerSpecification | undefined {
+    // Like CustomStyleLayer.serialize in MapLibre 6.
+    if (this.custom.has(id)) {
+      throw new Error("Custom layers cannot be serialized");
+    }
     const layer = this.layers.get(id);
     return layer && (clone(layer) as LayerSpecification);
   }
@@ -164,6 +169,13 @@ export class FakeMap implements LiveMap {
     const index = beforeId ? this.order.indexOf(beforeId) : this.order.length;
     this.order.splice(index, 0, spec.id);
     this.layers.set(spec.id, layer);
+  }
+
+  /** A foreign custom layer, which has no definition to read. */
+  addCustomLayer(id: string, beforeId?: string): void {
+    const index = beforeId ? this.order.indexOf(beforeId) : this.order.length;
+    this.order.splice(index, 0, id);
+    this.custom.add(id);
   }
 
   removeLayer(id: string): void {

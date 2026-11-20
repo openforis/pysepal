@@ -1,17 +1,33 @@
 /// <reference types="geojson" />
 
-/** First retry of an unanswered pull; each further retry doubles it. */
+/** Retry of a `missing` reply or an unsent pull; it doubles per retry. */
 export const RETRY_MS = 500;
 export const MAX_RETRY_MS = 8000;
+/** How long a sent pull waits for its reply before it is sent again. */
+export const IN_FLIGHT_MS = 30_000;
+export const MAX_IN_FLIGHT_MS = 120_000;
 
 export type Buffer = ArrayBuffer | ArrayBufferView;
 
 export interface PayloadCacheOptions {
-  /** Ask Python for the bytes of these digests (a `pull` message). */
-  request(digests: string[]): void;
+  /** Ask Python for these digests (a `pull`); false if it was not sent. */
+  request(digests: string[]): boolean;
   /** New payloads are at hand: re-read the latest desired state. */
   arrived(): void;
 }
+
+/** A digest that was pulled and still lacks bytes. */
+interface Pull {
+  /** Sent and awaiting its reply, rather than waiting for a retry. */
+  inFlight: boolean;
+  /** When to pull it again. */
+  due: number;
+  retries: number;
+  timeouts: number;
+}
+
+const backoff = (base: number, max: number, count: number) =>
+  Math.min(base * 2 ** count, max);
 
 function decode(buffer: Buffer): GeoJSON.GeoJSON {
   const bytes = ArrayBuffer.isView(buffer)
@@ -25,20 +41,23 @@ function decode(buffer: Buffer): GeoJSON.GeoJSON {
  *
  * `want` names the digests the latest state references. Bytes no longer
  * wanted are released, replies for them are ignored, and a decoded payload
- * is never replaced or evicted by a later reply for its digest. Every
- * digest still lacking bytes is pulled again by one timer with capped
- * exponential backoff, so a lost request or reply cannot leave the view
- * waiting for a draw that may never come.
+ * is never replaced or evicted by a later reply for its digest.
+ *
+ * One timer pulls again what still lacks bytes, so a lost pull cannot leave
+ * the view waiting for a draw that may never come. A pull that was sent is
+ * most likely just slow, and each one makes Python send the whole payload,
+ * so it is repeated only after a long wait or on reconnect. A `missing`
+ * reply or a pull that could not be sent is retried soon.
  */
 export class PayloadCache {
   private wanted = new Set<string>();
   private readonly payloads = new Map<string, GeoJSON.GeoJSON>();
-  private readonly inFlight = new Set<string>();
+  private readonly pulls = new Map<string, Pull>();
   private readonly queued = new Set<string>();
   private readonly failed = new Set<string>();
   private flushing = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  private attempt = 0;
+  private timerDue = Infinity;
   private disposed = false;
 
   constructor(private readonly options: PayloadCacheOptions) {}
@@ -60,21 +79,17 @@ export class PayloadCache {
   want(digests: Iterable<string>): void {
     if (this.disposed) return;
     this.wanted = new Set(digests);
-    for (const set of [
-      this.payloads,
-      this.inFlight,
-      this.queued,
-      this.failed,
-    ]) {
+    for (const set of [this.payloads, this.pulls, this.queued, this.failed]) {
       for (const digest of set.keys()) {
         if (!this.wanted.has(digest)) set.delete(digest);
       }
     }
+    // A new state may now answer what was missing; its reply is on the way.
     for (const digest of this.outstanding()) {
-      if (!this.inFlight.has(digest)) this.queued.add(digest);
+      if (!this.pulls.get(digest)?.inFlight) this.queued.add(digest);
     }
     this.scheduleFlush();
-    this.updateTimer();
+    this.schedule();
   }
 
   /** Handle a `data` reply: one UTF-8 GeoJSON buffer, or `missing`. */
@@ -85,27 +100,33 @@ export class PayloadCache {
     if (!this.wanted.has(digest) || this.payloads.has(digest)) return;
     if (missing === true) {
       // Python dropped it, so a newer state is on its way; retry meanwhile.
-      this.inFlight.delete(digest);
+      this.retryLater(digest);
+      this.schedule();
       return;
     }
     if (buffers.length !== 1) return;
-    this.inFlight.delete(digest);
+    this.pulls.delete(digest);
     try {
       this.payloads.set(digest, decode(buffers[0]));
     } catch (error) {
       this.failed.add(digest);
       console.error(`pysepal-map: payload ${digest} is not GeoJSON`, error);
-      this.updateTimer();
+      this.schedule();
       return;
     }
-    this.updateTimer();
+    this.schedule();
     this.options.arrived();
   }
 
   /** The comm came back: pull everything still lacking bytes now. */
   reconnect(): void {
     if (this.disposed) return;
-    this.restart();
+    for (const pull of this.pulls.values()) {
+      pull.retries = 0;
+      pull.timeouts = 0;
+    }
+    for (const digest of this.outstanding()) this.queued.add(digest);
+    this.flush();
   }
 
   dispose(): void {
@@ -113,7 +134,7 @@ export class PayloadCache {
     this.cancelTimer();
     this.wanted.clear();
     this.payloads.clear();
-    this.inFlight.clear();
+    this.pulls.clear();
     this.queued.clear();
   }
 
@@ -121,6 +142,22 @@ export class PayloadCache {
     return [...this.wanted].filter(
       (d) => !this.payloads.has(d) && !this.failed.has(d)
     );
+  }
+
+  private pull(digest: string): Pull {
+    let pull = this.pulls.get(digest);
+    if (!pull) {
+      pull = { inFlight: false, due: 0, retries: 0, timeouts: 0 };
+      this.pulls.set(digest, pull);
+    }
+    return pull;
+  }
+
+  private retryLater(digest: string): void {
+    const pull = this.pull(digest);
+    pull.inFlight = false;
+    pull.due = Date.now() + backoff(RETRY_MS, MAX_RETRY_MS, pull.retries);
+    pull.retries += 1;
   }
 
   private scheduleFlush(): void {
@@ -136,36 +173,48 @@ export class PayloadCache {
     if (this.disposed || !this.queued.size) return;
     const digests = [...this.queued];
     this.queued.clear();
-    for (const digest of digests) this.inFlight.add(digest);
-    this.options.request(digests);
-    this.updateTimer();
+    const sent = this.options.request(digests);
+    const now = Date.now();
+    for (const digest of digests) {
+      if (!sent) {
+        this.retryLater(digest);
+        continue;
+      }
+      const pull = this.pull(digest);
+      pull.inFlight = true;
+      pull.due = now + backoff(IN_FLIGHT_MS, MAX_IN_FLIGHT_MS, pull.timeouts);
+    }
+    this.schedule();
   }
 
-  private restart(): void {
-    this.cancelTimer();
-    this.attempt = 0;
-    for (const digest of this.outstanding()) this.queued.add(digest);
-    this.flush();
-  }
-
-  private updateTimer(): void {
-    if (!this.outstanding().length) {
+  /** Point the one timer at the earliest pull that is due again. */
+  private schedule(): void {
+    let due = Infinity;
+    for (const pull of this.pulls.values()) due = Math.min(due, pull.due);
+    if (this.disposed || due === Infinity) {
       this.cancelTimer();
-      this.attempt = 0;
       return;
     }
-    if (this.timer !== undefined || this.disposed) return;
-    const delay = Math.min(RETRY_MS * 2 ** this.attempt, MAX_RETRY_MS);
+    if (this.timer !== undefined && this.timerDue === due) return;
+    this.cancelTimer();
+    this.timerDue = due;
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      this.attempt += 1;
-      for (const digest of this.outstanding()) this.queued.add(digest);
+      this.timerDue = Infinity;
+      const now = Date.now();
+      for (const [digest, pull] of this.pulls) {
+        if (pull.due > now) continue;
+        if (pull.inFlight) pull.timeouts += 1;
+        this.queued.add(digest);
+      }
       this.flush();
-    }, delay);
+      this.schedule();
+    }, Math.max(0, due - Date.now()));
   }
 
   private cancelTimer(): void {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
+    this.timerDue = Infinity;
   }
 }

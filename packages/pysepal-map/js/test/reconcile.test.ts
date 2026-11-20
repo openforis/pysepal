@@ -227,6 +227,27 @@ describe("FakeMap", () => {
 });
 
 describe("reconcile", () => {
+  it("never reads a foreign layer, which a custom one cannot serialize", () => {
+    const fake = withForeign();
+    const { resolve, payloadOf } = payloads();
+    const style = toOwnedStyle(base);
+    reconcile(fake, style, resolve);
+    fake.addCustomLayer("td-custom", fake.layerOrder().find(isOwned));
+
+    reconcile(fake, style, resolve);
+    expectConverged(fake, style, payloadOf);
+    const order = fake.layerOrder();
+    const owned = order.filter(isOwned);
+    expect(order.slice(owned.length)).toEqual([
+      "td-custom",
+      "td-poly",
+      "td-point",
+    ]);
+    const fewer = toOwnedStyle(withState((s) => void s.layers.pop()));
+    reconcile(fake, fewer, resolve);
+    expectConverged(fake, fewer, payloadOf);
+  });
+
   it("reaches the desired style from empty", () => {
     const fake = new FakeMap();
     const style = toOwnedStyle(base);

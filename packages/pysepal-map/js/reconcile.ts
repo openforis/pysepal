@@ -15,7 +15,8 @@ const isOwned = (id: string): boolean => id.startsWith(OWNED_PREFIX);
  * The view of a map the reconciler reads and changes. `layer` and `source`
  * return definitions as they were set (MapLibre's `serialize`), without
  * defaults filled in; a GeoJSON source may include its `data`, which the
- * reconciler never reads.
+ * reconciler never reads. Only owned ids are ever passed to `layer` and
+ * `source`: MapLibre throws when it serializes a custom layer.
  */
 export interface LiveMap {
   layerOrder(): string[]; // every layer in the style, bottom-first
