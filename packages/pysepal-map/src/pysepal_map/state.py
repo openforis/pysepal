@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -11,21 +12,56 @@ ZONES = ("data", "overlay")
 
 
 def _finite(name: str, value: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    """``value`` as a plain float; any finite real number but a bool."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a number, got {value!r}")
     if not math.isfinite(value):
         raise ValueError(f"{name} must be finite, got {value!r}")
-    return value
+    return float(value)
 
 
-def _unit(name: str, value: float) -> None:
-    if not 0 <= _finite(name, value) <= 1:
+def _int(name: str, value: int) -> int:
+    """``value`` as a plain int; any integer but a bool."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise ValueError(f"{name} must be an int, got {value!r}")
+    return int(value)
+
+
+def _zoom_level(name: str, value: int) -> int:
+    level = _int(name, value)
+    if not 0 <= level <= 24:
+        raise ValueError(f"{name} must be an int in [0, 24], got {value!r}")
+    return level
+
+
+def _unit(name: str, value: float) -> float:
+    number = _finite(name, value)
+    if not 0 <= number <= 1:
         raise ValueError(f"{name} must be in [0, 1], got {value!r}")
+    return number
 
 
 def _tiles(name: str, tiles: tuple[str, ...]) -> None:
     if isinstance(tiles, str) or not tiles:
         raise ValueError(f"{name} needs a non-empty tuple of tile URLs")
+    for tile in tiles:
+        if not isinstance(tile, str) or not tile:
+            raise ValueError(f"{name} entries must be non-empty strings, got {tile!r}")
+
+
+def _bounds(name: str, bounds) -> tuple[float, float, float, float]:
+    """``(west, south, east, north)`` as floats; west may exceed east."""
+    try:
+        values = tuple(bounds)
+    except TypeError:
+        values = ()
+    if isinstance(bounds, str) or len(values) != 4:
+        raise ValueError(f"{name} must be (west, south, east, north), got {bounds!r}")
+    corners = ("west", "south", "east", "north")
+    west, south, east, north = (_finite(f"{name} {c}", v) for c, v in zip(corners, values))
+    if not -90 <= south <= north <= 90:
+        raise ValueError(f"{name} needs -90 <= south <= north <= 90, got {bounds!r}")
+    return west, south, east, north
 
 
 @dataclass(frozen=True)
@@ -36,8 +72,17 @@ class RasterSource:
     max_native_zoom: int | None = None
 
     def __post_init__(self) -> None:
-        """Reject an empty or bare-string tile list."""
+        """Reject bad tiles, tile size, bounds or native zoom; store plain numbers."""
         _tiles("RasterSource.tiles", self.tiles)
+        tile_size = _int("RasterSource.tile_size", self.tile_size)
+        if tile_size < 1:
+            raise ValueError(f"RasterSource.tile_size must be positive, got {self.tile_size!r}")
+        object.__setattr__(self, "tile_size", tile_size)
+        if self.bounds is not None:
+            object.__setattr__(self, "bounds", _bounds("RasterSource.bounds", self.bounds))
+        if self.max_native_zoom is not None:
+            zoom = _zoom_level("RasterSource.max_native_zoom", self.max_native_zoom)
+            object.__setattr__(self, "max_native_zoom", zoom)
 
     def to_json(self) -> dict:
         """The source as the JSON the front end reads, with bounds as a plain list."""
@@ -78,10 +123,12 @@ class VectorPaint:
 
     def __post_init__(self) -> None:
         """Reject an opacity outside [0, 1] and a negative or non-finite size."""
-        _unit("fill_opacity", self.fill_opacity)
+        object.__setattr__(self, "fill_opacity", _unit("fill_opacity", self.fill_opacity))
         for name in ("width", "point_radius"):
-            if _finite(name, getattr(self, name)) < 0:
+            value = _finite(name, getattr(self, name))
+            if value < 0:
                 raise ValueError(f"{name} must not be negative")
+            object.__setattr__(self, name, value)
 
     def to_json(self) -> dict:
         """The paint as the JSON the front end reads."""
@@ -108,18 +155,21 @@ class Layer:
     attribution: str = ""
 
     def __post_init__(self) -> None:
-        """Reject an unknown source or zone, out-of-range opacity or zooms, and a paint on a raster layer; give vector layers the default paint."""
+        """Reject an unknown source or zone, a non-int token, out-of-range opacity or zooms, and a paint on a raster layer; give vector layers the default paint."""
         if not isinstance(self.source, (RasterSource, GeoJSONSource, PMTilesSource)):
             raise ValueError(f"unsupported source {self.source!r}")
+        object.__setattr__(self, "token", _int("token", self.token))
         if self.zone not in ZONES:
             raise ValueError(f"zone must be one of {ZONES}, got {self.zone!r}")
-        _unit("opacity", self.opacity)
+        object.__setattr__(self, "opacity", _unit("opacity", self.opacity))
         for name in ("min_zoom", "max_zoom"):
             value = getattr(self, name)
             if value is None and name == "max_zoom":
                 continue
-            if not 0 <= _finite(name, value) <= 24:
+            zoom = _finite(name, value)
+            if not 0 <= zoom <= 24:
                 raise ValueError(f"{name} must be in [0, 24], got {value!r}")
+            object.__setattr__(self, name, zoom)
         if self.max_zoom is not None and self.min_zoom >= self.max_zoom:
             raise ValueError("min_zoom must be below max_zoom")
         if self.kind == "raster":
@@ -161,8 +211,9 @@ class Basemap:
     max_zoom: int = 19
 
     def __post_init__(self) -> None:
-        """Reject an empty or bare-string tile list."""
+        """Reject bad tiles or a max zoom outside [0, 24]."""
         _tiles("Basemap.tiles", self.tiles)
+        object.__setattr__(self, "max_zoom", _zoom_level("Basemap.max_zoom", self.max_zoom))
 
     def to_json(self) -> dict:
         """The basemap as the JSON the front end reads."""
