@@ -82,6 +82,7 @@ class FakeMapLibre extends Emitter {
 
 class FakeModel extends Emitter implements ViewModel {
   readonly sent: any[] = [];
+  readonly pulls: any[] = [];
 
   constructor(private state: unknown) {
     super();
@@ -96,8 +97,9 @@ class FakeModel extends Emitter implements ViewModel {
     this.emit("change:state");
   }
 
-  send(content: unknown) {
+  send(content: any) {
     this.sent.push(content);
+    if (content.type === "pull") this.pulls.push(content);
   }
 
   /** Answer every pull so far from `payloads`. */
@@ -175,7 +177,8 @@ async function setup(initial: MapState) {
     map as unknown as MapLibreMap,
     model,
     root as unknown as HTMLElement,
-    reporter
+    reporter,
+    { viewId: "view-1", side: "main" }
   );
   map.emit("style.load");
   await settle();
@@ -186,6 +189,14 @@ async function setup(initial: MapState) {
 }
 
 describe("MapSync", () => {
+  it("names its view and side in each pull", async () => {
+    const { model, root } = await setup(state(1, geojson("a", 1, "x")));
+    expect(root.dataset.psmRevision).toBe("1");
+    expect(model.pulls).toEqual([
+      { type: "pull", view_id: "view-1", side: "main", digests: ["x"] },
+    ]);
+  });
+
   it("re-adds a GeoJSON source whose digest changed under the same id", async () => {
     const { map, model, root, sync } = await setup(
       state(1, geojson("a", 1, "x"), geojson("b", 2, "y"))

@@ -68,6 +68,12 @@ export interface ViewModel {
   send(content: unknown): void;
 }
 
+/** Which view and side a MapSync keeps, named in its pulls. */
+export interface ViewIdentity {
+  viewId: string;
+  side: string;
+}
+
 /** A GeoJSON source this view added, and whether its worker load finished. */
 interface Applied {
   digest: string;
@@ -157,7 +163,8 @@ export class MapSync {
     map: MapLibreMap,
     model: ViewModel,
     root: HTMLElement,
-    reporter: StatusReporter
+    reporter: StatusReporter,
+    { viewId, side }: ViewIdentity
   ) {
     this.map = map;
     this.model = model;
@@ -165,7 +172,9 @@ export class MapSync {
     this.reporter = reporter;
     this.live = liveMap(map);
     this.cache = new PayloadCache({
-      request: (digests) => this.send({ type: "pull", digests }),
+      // Named, so a pull also tells Python the view is still there.
+      request: (digests) =>
+        this.send({ type: "pull", view_id: viewId, side, digests }),
       arrived: () => this.sync(true),
       failed: () => this.sync(true),
     });

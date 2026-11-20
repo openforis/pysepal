@@ -74,7 +74,7 @@ function render({ model, el }: RenderProps<Model>) {
   // Open before the first report, so Python counts the view in.
   const presence = new ViewPresence({ viewId, side: SIDE, send, page: window });
   presence.start();
-  const sync = new MapSync(map, model, root, reporter);
+  const sync = new MapSync(map, model, root, reporter, { viewId, side: SIDE });
   root.psmInspect = () => sync.inspect();
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
   root.psmCamera = camera;

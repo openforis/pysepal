@@ -6,6 +6,7 @@ import threading
 import pytest
 from pysepal_map import Layer, LayerStatus, MapState, MapWidget, RasterSource
 from pysepal_map._callbacks import dispatch
+from pysepal_map.widget import VIEW_EXPIRY_S, VIEW_GRACE_S
 
 VIEW = {"center": [1.0, 2.0], "zoom": 3.0, "bounds": [0.0, 1.0, 2.0, 3.0]}
 
@@ -149,19 +150,24 @@ def test_reports_of_views_that_are_not_mounted_are_ignored(loop):
     close_view(widget, "gone")
     report(widget, "gone")
     open_view(widget, "silent")
-    loop.advance(151)
+    loop.advance(VIEW_EXPIRY_S + VIEW_GRACE_S + 1)
     report(widget, "silent")
     assert widget.view == {} and seen == []
 
 
-def test_a_report_that_expires_the_last_view_clears_the_status(loop):
+def test_a_report_past_the_grace_expires_the_last_view_and_clears_the_status(loop):
     widget = MapWidget(loop=loop)
     widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
     open_view(widget)
-    assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 1)}
-    # Its deadline passes before the timer gets to run.
-    loop.now += 151
-    report(widget)
+    loading = {"r": LayerStatus("loading", None, 0, 1)}
+    assert widget.layer_status == loading
+    # Its deadline and then its grace pass before the timer gets to run;
+    # reports from a view never opened find it late, then gone.
+    loop.block(VIEW_EXPIRY_S + 1)
+    report(widget, "other")
+    assert widget.layer_status == loading
+    loop.block(VIEW_GRACE_S)
+    report(widget, "other")
     assert widget.view == {}
     assert widget.layer_status == {}
 

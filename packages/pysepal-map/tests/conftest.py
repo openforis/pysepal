@@ -59,13 +59,18 @@ class FakeLoop:
         return [h for h in self.handles if not h.cancelled]
 
     def advance(self, seconds):
+        """Run the timers due within ``seconds``; an overdue one runs late."""
         target = self.now + seconds
         while due := sorted((h for h in self.pending() if h.when <= target), key=lambda h: h.when):
             handle = due[0]
             self.handles.remove(handle)
-            self.now = handle.when
+            self.now = max(self.now, handle.when)
             handle.callback()
         self.now = target
+
+    def block(self, seconds):
+        """Let time pass and run nothing, as while a long cell holds the loop."""
+        self.now += seconds
 
 
 @pytest.fixture

@@ -26,9 +26,14 @@ SIDES = ("main", "left", "right")
 STATUSES = ("loading", "ready", "error")
 #: What moved a view's camera: a user, a request, or anything else.
 CAUSES = ("user", "request", "resize")
-#: A mounted view repeats ``view_open`` every 20 s; one silent this long is
-#: gone. Chrome runs the timers of a hidden tab as rarely as once a minute.
+#: A mounted view repeats ``view_open`` every 20 s, and any message from it
+#: renews it; one silent this long is late. Chrome runs the timers of a
+#: hidden tab as rarely as once a minute.
 VIEW_EXPIRY_S = 150.0
+#: How long a late view has left. A cell that holds the loop past every
+#: deadline makes them all late at once; the messages queued behind it then
+#: renew them within this grace.
+VIEW_GRACE_S = 10.0
 #: The map's maximum zoom.
 MAX_ZOOM = 24
 
@@ -158,6 +163,8 @@ class MapWidget(anywidget.AnyWidget):
         self._expiry: asyncio.TimerHandle | None = None
         # (view_id, side) -> monotonic deadline of each mounted view
         self._views: dict[View, float] = {}
+        # The views past their deadline, now in their grace period.
+        self._late: set[View] = set()
         # (view_id, side) -> layer id -> that view's report on the layer
         self._reports: dict[View, dict[str, LayerStatus]] = {}
         self._status: dict[str, LayerStatus] = {}
@@ -242,6 +249,7 @@ class MapWidget(anywidget.AnyWidget):
             self._closed = True
             self._cancel_expiry()
             self._views.clear()
+            self._late.clear()
             self._reports.clear()
             self._status = {}
         self._callbacks.close()
@@ -265,6 +273,7 @@ class MapWidget(anywidget.AnyWidget):
                 # A dead loop took its timer along; the next arm makes one.
                 self._loop = running_loop()
                 self._expiry = None
+            self._renew(content)
         kind = content.get("type")
         if kind == "pull":
             self._answer_pull(content.get("digests"))
@@ -287,6 +296,21 @@ class MapWidget(anywidget.AnyWidget):
                 self.send({"type": "data", "digest": digest, "missing": True}, [])
             else:
                 self.send({"type": "data", "digest": digest}, [data])
+
+    def _renew(self, content: dict) -> None:
+        """Renew the known views a message came from; call with the lock held.
+
+        A message without a side, such as ``view_report``, renews every side
+        of its view.
+        """
+        view_id, side = content.get("view_id"), content.get("side")
+        if not isinstance(view_id, str):
+            return
+        due = self._now() + VIEW_EXPIRY_S
+        for view in self._views:
+            if view[0] == view_id and side in (None, view[1]):
+                self._views[view] = due
+                self._late.discard(view)
 
     @staticmethod
     def _view_of(content: dict) -> View | None:
@@ -319,6 +343,7 @@ class MapWidget(anywidget.AnyWidget):
             if view not in self._views:
                 return
             del self._views[view]
+            self._late.discard(view)
             self._reports.pop(view, None)
             if not self._views:
                 self._cancel_expiry()
@@ -434,18 +459,29 @@ class MapWidget(anywidget.AnyWidget):
         return time.monotonic() if loop is None else loop.time()
 
     def _expire_due(self) -> None:
-        """Drop views silent past their deadline; call with the lock held."""
+        """Drop views silent through their grace; call with the lock held.
+
+        A view found past its deadline is late, not gone: it has
+        ``VIEW_GRACE_S`` more, and any message from it meanwhile renews it.
+        """
         now = self._now()
-        for view in [v for v, due in self._views.items() if due <= now]:
-            del self._views[view]
-            self._reports.pop(view, None)
+        for view, due in list(self._views.items()):
+            if due > now:
+                continue
+            if view in self._late:
+                del self._views[view]
+                self._late.discard(view)
+                self._reports.pop(view, None)
+            else:
+                self._late.add(view)
+                self._views[view] = now + VIEW_GRACE_S
         if not self._views:
             self._cancel_expiry()
 
     def _arm_expiry(self) -> None:
         """Point the one expiry timer at the earliest deadline, under the lock.
 
-        A renewed deadline is only ever later, so a heartbeat never re-arms
+        A renewed deadline, or a grace, is only ever later, so neither re-arms
         it: the timer re-arms itself for the next deadline when it fires.
         """
         loop = self._loop

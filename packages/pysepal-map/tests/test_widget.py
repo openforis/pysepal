@@ -413,7 +413,7 @@ def test_a_left_only_layer_is_not_held_by_the_right_view(monkeypatch, loop):
     assert set(widget.layer_status) == {"r"}
 
 
-def test_a_silent_failed_view_expires_after_150_s(board, loop):
+def test_a_silent_failed_view_expires_after_150_s_and_a_grace(board, loop):
     widget, sent, calls = board
     open_view(widget, "ok")
     report(widget, "ok", "ready")
@@ -424,6 +424,8 @@ def test_a_silent_failed_view_expires_after_150_s(board, loop):
     loop.advance(139.9)
     open_view(widget, "ok")
     # No message arrives from here on: the timer alone expires the view.
+    loop.advance(10)
+    assert status_of(widget) == ("error", "tile failed")
     loop.advance(10)
     assert status_of(widget) == ("error", "tile failed")
     loop.advance(0.2)
@@ -438,9 +440,74 @@ def test_a_silent_failed_view_expires_after_150_s(board, loop):
     report(widget, "bad", "error", error="tile failed")
     assert status_of(widget) == ("error", "tile failed")
 
-    loop.advance(151)
+    loop.advance(161)
     assert widget.layer_status == {}
     assert loop.pending() == []
+
+
+def view_report(widget, view, seq=1, cause="request"):
+    camera = {"center": [0, 0], "zoom": 2, "bounds": [-1, -1, 1, 1]}
+    msg(widget, type="view_report", view_id=view, request_seq=seq, cause=cause, **camera)
+
+
+def pull(widget, view, side="main"):
+    msg(widget, type="pull", view_id=view, side=side, digests=[])
+
+
+#: One view per kind of message a view sends, and how it sends it.
+SENDERS = {
+    "heartbeat": open_view,
+    "status": lambda widget, view: report(widget, view, "ready"),
+    "view_report": view_report,
+    "pull": pull,
+}
+
+
+@pytest.mark.parametrize("timer_first", [False, True], ids=["messages-first", "timer-first"])
+def test_messages_queued_behind_a_long_cell_keep_their_views(board, loop, timer_first):
+    widget, sent, calls = board
+    for view in SENDERS:
+        open_view(widget, view)
+        report(widget, view, "ready")
+    open_view(widget, "silent")
+    report(widget, "silent", "error", error="tile failed")
+    sent.clear()
+    count = len(calls)
+
+    # A cell holds the loop past every deadline; then the overdue timer and
+    # the messages the views sent meanwhile run, in either order.
+    loop.block(200)
+    if timer_first:
+        loop.advance(0)
+    for view, send in SENDERS.items():
+        send(widget, view)
+    loop.advance(0)
+    views = {(view, "main") for view in SENDERS}
+    assert set(widget._views) == views | {("silent", "main")}
+    assert status_of(widget) == ("error", "tile failed")
+    assert len(calls) == count
+    assert sent == []
+
+    # Only the view that stayed silent through the grace expires.
+    loop.advance(10)
+    assert set(widget._views) == views
+    assert status_of(widget) == ("ready", None)
+    loop.advance(140)
+    assert set(widget._views) == views
+
+
+def test_a_message_during_the_grace_renews_the_view(board, loop):
+    widget, sent, _ = board
+    open_view(widget, "a")
+    report(widget, "a", "ready")
+    loop.advance(150)
+    assert ("a", "main") in widget._views
+    loop.advance(9)
+    view_report(widget, "a")
+    loop.advance(149)
+    assert status_of(widget) == ("ready", None)
+    loop.advance(11)
+    assert widget.layer_status == {}
 
 
 def test_a_heartbeat_keeps_status_and_sends_nothing(board, loop):
