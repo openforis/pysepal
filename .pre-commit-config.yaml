@@ -49,5 +49,6 @@ repos:
     hooks:
       - id: codespell
         stages: [pre-commit]
+        exclude: package-lock\.json$
         additional_dependencies:
           - tomli
