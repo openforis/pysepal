@@ -1,0 +1,5 @@
+/* ipywidgets' layout owns the view's inline style and removes any height
+   its own layout does not set, so the height trait goes through a variable. */
+.psm-map {
+  height: var(--psm-height);
+}

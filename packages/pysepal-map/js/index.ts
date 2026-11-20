@@ -1,5 +1,6 @@
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "./style.css";
 import { Protocol } from "pmtiles";
 import workerSource from "maplibre-gl/dist/maplibre-gl-worker.mjs" with { type: "text" };
 import type { RenderProps } from "@anywidget/types";
@@ -34,7 +35,7 @@ function render({ model, el }: RenderProps<Model>) {
   const root = el as PsmElement;
   root.classList.add("psm-map");
   const applyHeight = () => {
-    root.style.height = model.get("height");
+    root.style.setProperty("--psm-height", model.get("height"));
   };
   applyHeight();
   model.on("change:height", applyHeight);
