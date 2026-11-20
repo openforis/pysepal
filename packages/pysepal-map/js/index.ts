@@ -1,7 +1,14 @@
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Protocol } from "pmtiles";
+import workerSource from "maplibre-gl/dist/maplibre-gl-worker.mjs" with { type: "text" };
 import type { RenderProps } from "@anywidget/types";
+
+// MapLibre 6 loads its worker from a file next to the module; the bundle has
+// no such file, so ship the worker inline.
+maplibregl.setWorkerUrl(
+  URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" })),
+);
 
 // One registration per bundled MapLibre instance, shared by all its views.
 maplibregl.addProtocol("pmtiles", new Protocol().tile);
