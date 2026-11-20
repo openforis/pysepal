@@ -3,6 +3,7 @@
 The nox run are build in isolated environment that will be stored in .nox. to force the venv update, remove the .nox/xxx folder.
 """
 
+import os
 from pathlib import Path
 
 import nox
@@ -104,6 +105,12 @@ def docs(session):
     session.run("python", "tests/check_warnings.py")
 
 
+def _playwright_install():
+    """The browser install command; CI runners also need the system libraries."""
+    flags = ["--with-deps"] if os.environ.get("CI") else []
+    return ["playwright", "install", *flags, "chromium"]
+
+
 @nox.session(name="map", reuse_venv=True)
 def map_widget(session):
     """Build and browser-test the pysepal-map package."""
@@ -121,7 +128,7 @@ def map_widget(session):
         session.run("npm", "run", "build", external=True)
         session.run("npm", "run", "build:harness", external=True)
         session.install("-e", ".[test]")
-        session.run("playwright", "install", "chromium")
+        session.run(*_playwright_install())
         session.run(
             "pytest",
             *(session.posargs or ["tests"]),
@@ -150,3 +157,12 @@ def mypy(session):
         "--warn-redundant-casts",
         *test_files,
     )
+
+
+@nox.session(name="map-release", reuse_venv=True)
+def map_release(session):
+    """Build pysepal-map's sdist and wheel and smoke-test the installed wheel."""
+    with session.chdir("packages/pysepal-map"):
+        session.run("npm", "ci", external=True)
+        session.run("npm", "run", "build:harness", external=True)
+    session.run("python", "packages/pysepal-map/scripts/release_check.py")
