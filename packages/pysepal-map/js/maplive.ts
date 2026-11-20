@@ -352,7 +352,7 @@ export class MapSync {
       sources.flatMap((s) => (s.digest ? [[s.id, s.digest] as const] : []))
     );
     const live = this.tracked(digests, wanted);
-    this.dropUnapplied(live);
+    this.dropUnapplied(live, digests);
     apply(live, plan(live, available), (digest) => this.cache.get(digest)!);
     if (this.context!.errors.length) return;
     // An operation MapLibre ignored without an error would be retried on
@@ -367,9 +367,11 @@ export class MapSync {
   /**
    * Remove owned GeoJSON sources this view did not add in this style
    * generation, such as ones a diffed setStyle kept: their worker state is
-   * unknown, so the plan adds them again.
+   * unknown, so the plan adds them again. So is one added with other bytes
+   * than `digests` now names for its id, which the contract rules out but
+   * would otherwise never settle.
    */
-  private dropUnapplied(live: LiveMap): void {
+  private dropUnapplied(live: LiveMap, digests: Map<string, string>): void {
     const stale = new Set(
       live
         .sourceIds()
@@ -377,7 +379,9 @@ export class MapSync {
           (id) =>
             id.startsWith(OWNED_PREFIX) &&
             live.source(id)?.type === "geojson" &&
-            !this.isApplied(id)
+            (!this.isApplied(id) ||
+              (digests.has(id) &&
+                this.applied.get(id)!.digest !== digests.get(id)))
         )
     );
     if (!stale.size) return;
