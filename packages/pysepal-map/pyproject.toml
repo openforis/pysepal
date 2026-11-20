@@ -27,3 +27,9 @@ artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # pytest-playwright 0.10's fallback base_url fixture (used without
+    # pytest-base-url) is a session fixture defined as a method, which pytest 9
+    # deprecates; it is not ours to fix.
+    "ignore:Session-scoped fixtures defined as instance methods:pytest.PytestRemovedIn10Warning",
+]
