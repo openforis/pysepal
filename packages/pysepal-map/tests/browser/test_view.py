@@ -178,26 +178,40 @@ def test_a_resize_report_updates_the_bounds(harness, page_session):
     assert after["request_seq"] == 1
 
 
-def test_a_resize_keeps_the_camera_of_a_user_move(harness, page_session):
+def test_only_the_panned_views_resize_updates_its_camera(harness, page_session):
     widget = MapWidget(height="100%")
     received = []
     widget.on_msg(lambda _, content, buffers: received.append(content))
-    box = widgets.VBox([widget], layout=widgets.Layout(height="300px"))
-    display(box)
+    one = widgets.VBox([widget], layout=widgets.Layout(height="200px"))
+    two = widgets.VBox([widget], layout=widgets.Layout(height="200px"))
+    display(widgets.VBox([one, two]))
+    wait_views(page_session, 2)
+    a, b = view_at(page_session, 0), view_at(page_session, 1)
     wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
-    el = view_at(page_session)
-    drag(page_session, middle(page_session), (-150, 80))
-    panned = wait_view(page_session, widget, matches(el))
+    drag(page_session, middle(page_session, 0), (-150, 80))
+    panned = wait_view(page_session, widget, matches(a))
 
+    # a grows, as on a fullscreen toggle: the bounds follow, the pan stays.
+    one.layout.height = "320px"
+    page_session.wait_for_function("el => el.clientHeight === 320", arg=a)
+    grown = wait_view(
+        page_session, widget, lambda v: near(v["bounds"], camera(a)["bounds"])
+    )
+    assert near(grown["center"], panned["center"])
+    assert grown["bounds"] != panned["bounds"]
+
+    # b's resize on the same request leaves the camera of a's pan alone.
+    panner = next(m["view_id"] for m in received if m.get("cause") == "user")
     received.clear()
-    box.layout.height = "500px"
+    two.layout.height = "320px"
+    page_session.wait_for_function("el => el.clientHeight === 320", arg=b)
     for _ in range(750):
-        if any(m.get("cause") == "resize" for m in received):
+        if any(m.get("cause") == "resize" and m["view_id"] != panner for m in received):
             break
         page_session.wait_for_timeout(20)
     else:
-        raise AssertionError("the resize was never reported")
-    assert widget.view == panned
+        raise AssertionError("b's resize was never reported")
+    assert widget.view == grown
 
 
 def test_a_collapsed_host_fits_its_latest_request_once_shown(harness, page_session):

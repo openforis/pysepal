@@ -167,8 +167,8 @@ class MapWidget(anywidget.AnyWidget):
         # The last request issued, and the one the last accepted report applied.
         self._issued = 1
         self._acknowledged = 0
-        # Whether the camera in ``view`` came from a user move on that request.
-        self._by_user = False
+        # The view whose user move on that request gave the camera in ``view``.
+        self._user_view: str | None = None
         lng, lat = center
         first = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
         # The last zoom asked for, until a report says what the views show.
@@ -367,8 +367,9 @@ class MapWidget(anywidget.AnyWidget):
         A report of a view that is not mounted, or on a request older than
         the one the last accepted report applied, is stale and ignored. On
         the same request, a camera a user move gave is kept for redisplay:
-        only a later user move replaces it, not an acknowledgement or a
-        resize, from whichever view.
+        a later user move replaces it, and so does a resize of the view the
+        user moved, which keeps it that user's camera. An acknowledgement,
+        or another view's resize, does not.
         """
         view_id, seq = content.get("view_id"), content.get("request_seq")
         center = _numbers(content.get("center"), 2)
@@ -386,7 +387,9 @@ class MapWidget(anywidget.AnyWidget):
             return
         with self._lock:
             self._expire_due()
-            kept = seq == self._acknowledged and self._by_user and cause != "user"
+            same = seq == self._acknowledged and self._user_view is not None
+            own_resize = same and cause == "resize" and view_id == self._user_view
+            kept = same and cause != "user" and not own_resize
             if (
                 not self._closed
                 and any(v[0] == view_id for v in self._views)
@@ -394,7 +397,10 @@ class MapWidget(anywidget.AnyWidget):
                 and not kept
             ):
                 self._acknowledged = seq
-                self._by_user = cause == "user"
+                if cause == "user":
+                    self._user_view = view_id
+                elif not own_resize:
+                    self._user_view = None
                 # A new view now restores this camera, zoom included.
                 self._zoom = None
                 view = {"center": center, "zoom": zoom[0], "bounds": bounds}

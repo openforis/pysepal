@@ -200,10 +200,10 @@ def test_only_a_user_report_replaces_a_user_camera_on_the_same_request(loop):
     open_view(widget, "a")
     open_view(widget, "b")
     report(widget, "a", cause="user", center=[5.0, 5.0])
-    # Whichever view sends them, an acknowledgement or a resize keeps it.
+    # An acknowledgement keeps it, from either view; so does b's resize.
+    report(widget, "a", cause="request", center=[6.0, 6.0])
     report(widget, "b", cause="request", center=[6.0, 6.0])
     report(widget, "b", cause="resize", center=[7.0, 7.0])
-    report(widget, "a", cause="resize", bounds=[-9.0, -9.0, 9.0, 9.0])
     assert widget.view == {**VIEW, "center": [5.0, 5.0], "request_seq": 1}
     assert len(seen) == 1
     report(widget, "b", cause="user", center=[8.0, 8.0])
@@ -213,6 +213,29 @@ def test_only_a_user_report_replaces_a_user_camera_on_the_same_request(loop):
     report(widget, "b", seq=2, cause="resize", center=[0.0, 0.0])
     assert widget.view["center"] == [0.0, 0.0]
     assert len(seen) == 3
+
+
+def test_the_user_views_own_resize_updates_the_user_camera(loop):
+    widget = MapWidget(loop=loop)
+    open_view(widget, "a")
+    open_view(widget, "b")
+    report(widget, "a", cause="user", center=[5.0, 5.0])
+    # a goes fullscreen: its bounds follow, and the camera is still a's pan.
+    wide = [-9.0, -9.0, 9.0, 9.0]
+    report(widget, "a", cause="resize", center=[5.0, 5.0], bounds=wide)
+    assert widget.view == {
+        **VIEW,
+        "center": [5.0, 5.0],
+        "bounds": wide,
+        "request_seq": 1,
+    }
+    report(widget, "b", cause="resize", center=[7.0, 7.0])
+    report(widget, "b", cause="request", center=[7.0, 7.0])
+    assert widget.view["bounds"] == wide and widget.view["center"] == [5.0, 5.0]
+    # Once b moves it, a's resize no longer counts.
+    report(widget, "b", cause="user", center=[8.0, 8.0])
+    report(widget, "a", cause="resize", center=[5.0, 5.0])
+    assert widget.view["center"] == [8.0, 8.0]
 
 
 def test_a_report_on_a_request_never_issued_is_ignored(loop):
