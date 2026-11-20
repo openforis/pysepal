@@ -5,11 +5,13 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
 
 import type { StatusMessage, StatusReporter } from "../../js/status";
+import type { ViewCamera, ViewReport } from "../../js/view";
 
 type PsmElement = HTMLElement & {
   psmMap?: MapLibreMap;
   psmInspect?: () => unknown;
   psmStatus?: StatusReporter;
+  psmCamera?: ViewCamera;
 };
 
 interface Probe {
@@ -201,6 +203,41 @@ function gate(el: Element): Gate {
   return probe;
 }
 
+interface CameraGate {
+  /** Hold the view's camera reports instead of sending them. */
+  holding: boolean;
+  held: ViewReport[];
+  /** Send the held reports, newest first if asked, and stop holding. */
+  release(newestFirst?: boolean): void;
+}
+
+const cameraGates = new WeakMap<ViewCamera, CameraGate>();
+
+/** Hold a view's camera reports at their origin, the camera's `transmit`. */
+function cameraGate(el: Element): CameraGate {
+  const camera = (el as PsmElement).psmCamera;
+  if (!camera) throw new Error("the element holds no mounted view");
+  const existing = cameraGates.get(camera);
+  if (existing) return existing;
+  const transmit = camera.transmit.bind(camera);
+  const probe: CameraGate = {
+    holding: false,
+    held: [],
+    release(newestFirst = false) {
+      probe.holding = false;
+      const held = probe.held.splice(0);
+      if (newestFirst) held.reverse();
+      for (const report of held) transmit(report);
+    },
+  };
+  camera.transmit = (report) => {
+    if (probe.holding) probe.held.push(report);
+    else transmit(report);
+  };
+  cameraGates.set(camera, probe);
+  return probe;
+}
+
 (window as unknown as { psmHarness: unknown }).psmHarness = {
   attach,
   quiet,
@@ -209,4 +246,5 @@ function gate(el: Element): Gate {
   inspect,
   statuses,
   gate,
+  cameraGate,
 };

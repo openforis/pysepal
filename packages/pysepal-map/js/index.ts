@@ -7,6 +7,7 @@ import type { RenderProps } from "@anywidget/types";
 
 import { MapSync } from "./maplive";
 import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
+import { CAMERA_OPTIONS, ViewCamera, lockRotation } from "./view";
 
 // MapLibre 6 loads its worker from a file next to the module; the bundle has
 // no such file, so ship the worker inline.
@@ -20,12 +21,15 @@ maplibregl.addProtocol("pmtiles", new Protocol().tile);
 interface Model {
   height: string;
   state: unknown;
+  view: unknown;
+  view_request: unknown;
 }
 
 type PsmElement = HTMLElement & {
   psmMap?: maplibregl.Map;
   psmInspect?: () => unknown;
   psmStatus?: StatusReporter;
+  psmCamera?: ViewCamera;
 };
 
 // Phase 1 renders a single map; compare views will mount "left" and "right".
@@ -40,19 +44,23 @@ function render({ model, el }: RenderProps<Model>) {
   applyHeight();
   model.on("change:height", applyHeight);
 
-  const send = (content: unknown) => {
+  const send = (content: unknown): boolean => {
     try {
       model.send(content);
+      return true;
     } catch (error) {
       // A closed comm; reconnecting opens the view again.
       console.error("pysepal-map: could not send", error);
+      return false;
     }
   };
   const viewId = newViewId();
   const map = new maplibregl.Map({
     container: root,
     style: { version: 8, sources: {}, layers: [] },
+    ...CAMERA_OPTIONS,
   });
+  lockRotation(map);
   root.psmMap = map;
   const reporter = new StatusReporter({
     viewId,
@@ -66,11 +74,15 @@ function render({ model, el }: RenderProps<Model>) {
   presence.start();
   const sync = new MapSync(map, model, root, reporter);
   root.psmInspect = () => sync.inspect();
+  const camera = new ViewCamera({ map, model, viewId, host: root, send });
+  root.psmCamera = camera;
+  camera.start();
   // Python may have expired the view, and reports sent meanwhile be lost.
   const stopLive = onLiveAgain(model, () => {
     presence.reopen();
     reporter.replay();
     sync.reconnect();
+    camera.reconnect();
   });
 
   const resizer = new ResizeObserver(() => map.resize());
@@ -78,6 +90,7 @@ function render({ model, el }: RenderProps<Model>) {
 
   return () => {
     stopLive();
+    camera.dispose();
     sync.dispose();
     presence.dispose();
     model.off("change:height", applyHeight);
@@ -85,6 +98,7 @@ function render({ model, el }: RenderProps<Model>) {
     delete root.psmMap;
     delete root.psmInspect;
     delete root.psmStatus;
+    delete root.psmCamera;
     map.remove();
   };
 }

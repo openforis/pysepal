@@ -1,8 +1,20 @@
-"""Shared test fixtures."""
+"""Shared fixtures, and the browser tests moved to the end of the run."""
 
 import dataclasses
+from pathlib import Path
 
 import pytest
+
+BROWSER = Path(__file__).parent / "browser"
+
+
+def pytest_collection_modifyitems(items):
+    """Run the browser tests last.
+
+    Once Playwright's sync API has started, its loop counts as running in the
+    main thread, and pytest-asyncio can no longer run a test there.
+    """
+    items.sort(key=lambda item: item.path.is_relative_to(BROWSER))
 
 
 @dataclasses.dataclass

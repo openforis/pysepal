@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
-import logging
+import math
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import anywidget
 import traitlets
 
-from .state import GeoJSONSource, LayerStatus, MapState
+from ._callbacks import CallbackQueue, running_loop
+from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
 _STATIC = Path(__file__).parent / "static"
-
-logger = logging.getLogger("pysepal_map")
 
 #: The sides a view can render: ``main``, or one half of a compare view.
 SIDES = ("main", "left", "right")
@@ -26,20 +27,59 @@ STATUSES = ("loading", "ready", "error")
 #: A mounted view repeats ``view_open`` every 20 s; one silent this long is
 #: gone. Chrome runs the timers of a hidden tab as rarely as once a minute.
 VIEW_EXPIRY_S = 150.0
+#: The map's maximum zoom.
+MAX_ZOOM = 24
 
 StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
+ViewCallback = Callable[[dict], Any]
 View = tuple[str, str]
-
-
-def _running_loop() -> asyncio.AbstractEventLoop | None:
-    try:
-        return asyncio.get_running_loop()
-    except RuntimeError:
-        return None
 
 
 def _is_int(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _numbers(value, count: int) -> list[float] | None:
+    """``value`` as a list of ``count`` finite numbers, or None."""
+    if not isinstance(value, (list, tuple)) or len(value) != count:
+        return None
+    if not all(
+        isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+        for x in value
+    ):
+        return None
+    return [float(x) for x in value]
+
+
+def _latitude(name: str, value) -> float:
+    if not -90 <= _finite(name, value) <= 90:
+        raise ValueError(f"{name} must be in [-90, 90], got {value!r}")
+    return float(value)
+
+
+def _center_request(lng, lat, zoom) -> dict:
+    center = [float(_finite("lng", lng)), _latitude("lat", lat)]
+    if zoom is not None and not 0 <= _finite("zoom", zoom) <= MAX_ZOOM:
+        raise ValueError(f"zoom must be in [0, {MAX_ZOOM}], got {zoom!r}")
+    return {"center": center, "zoom": None if zoom is None else float(zoom)}
+
+
+def _bounds_request(bounds, padding) -> dict:
+    corners = tuple(bounds)
+    if len(corners) != 4:
+        raise ValueError(f"bounds must be (west, south, east, north), got {bounds!r}")
+    west, south, east, north = corners
+    box = [
+        float(_finite("west", west)),
+        _latitude("south", south),
+        float(_finite("east", east)),
+        _latitude("north", north),
+    ]
+    if box[1] > box[3]:
+        raise ValueError(f"south must not be above north, got {bounds!r}")
+    if not _is_int(padding) or padding < 0:
+        raise ValueError(f"padding must be a whole number of pixels, got {padding!r}")
+    return {"bounds": box, "padding": padding}
 
 
 def _reduce_status(
@@ -95,20 +135,25 @@ class MapWidget(anywidget.AnyWidget):
     def __init__(
         self,
         *,
+        center: tuple[float, float] = (0.0, 0.0),
+        zoom: float = 2.0,
         height: str = "400px",
         loop: asyncio.AbstractEventLoop | None = None,
         **kwargs,
     ):
-        """Create an empty map of the given CSS height.
+        """Create an empty map of the given CSS height, at ``center`` and ``zoom``.
 
-        ``loop`` runs the timer that expires silent views. It defaults to
-        the loop running now, else the one running when the first message
-        from a view arrives.
+        ``center`` is ``(lng, lat)``. ``loop`` is the session loop: callbacks
+        run there, and so does the timer that expires silent views. It
+        defaults to the loop running now, else the one running when the
+        first message from a view arrives. A Solara render can run with no
+        loop running, so pass the session loop there.
         """
-        # Set before the widget opens, since close() reads them.
+        # Set before anything can raise, since close() reads them.
         self._lock = threading.RLock()
         self._closed = False
-        self._loop = loop if loop is not None else _running_loop()
+        self._loop = loop if loop is not None else running_loop()
+        self._callbacks = CallbackQueue()
         self._expiry: asyncio.TimerHandle | None = None
         # (view_id, side) -> monotonic deadline of each mounted view
         self._views: dict[View, float] = {}
@@ -116,7 +161,13 @@ class MapWidget(anywidget.AnyWidget):
         self._reports: dict[View, dict[str, LayerStatus]] = {}
         self._status: dict[str, LayerStatus] = {}
         self._status_callbacks: list[StatusCallback] = []
-        super().__init__(height=height, **kwargs)
+        self._view_callbacks: list[ViewCallback] = []
+        # The last request issued, and the one the last accepted report applied.
+        self._issued = 1
+        self._acknowledged = 0
+        lng, lat = center
+        first = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
+        super().__init__(height=height, view_request=first, **kwargs)
         self._payloads: dict[str, bytes] = {}
         self._revision = 0
         self._next_instance = 1
@@ -146,6 +197,32 @@ class MapWidget(anywidget.AnyWidget):
             elif callback not in self._status_callbacks:
                 self._status_callbacks.append(callback)
 
+    def on_view(self, callback: ViewCallback, remove: bool = False) -> None:
+        """Call ``callback(view)`` with the new ``view`` on each accepted report.
+
+        ``remove=True`` unregisters it.
+        """
+        with self._lock:
+            if remove:
+                if callback in self._view_callbacks:
+                    self._view_callbacks.remove(callback)
+            elif callback not in self._view_callbacks:
+                self._view_callbacks.append(callback)
+
+    def set_center(self, lng: float, lat: float, zoom: float | None = None) -> None:
+        """Ask every view to center on ``(lng, lat)``; no zoom keeps theirs."""
+        self._request(_center_request(lng, lat, zoom))
+
+    def fit_bounds(
+        self, bounds: tuple[float, float, float, float], padding: int = 20
+    ) -> None:
+        """Ask every view to fit ``(west, south, east, north)``, ``padding`` px in.
+
+        A west east of east crosses the antimeridian. A view without a size
+        fits once it has one.
+        """
+        self._request(_bounds_request(bounds, padding))
+
     def close(self) -> None:
         """Close the widget; later messages from its views do nothing."""
         with self._lock:
@@ -154,7 +231,14 @@ class MapWidget(anywidget.AnyWidget):
             self._views.clear()
             self._reports.clear()
             self._status = {}
+        self._callbacks.close()
         super().close()
+
+    def _request(self, request: dict) -> None:
+        # Under the lock, so requests from several threads go out in seq order.
+        with self._lock:
+            self._issued += 1
+            self.view_request = {"seq": self._issued, **request}
 
     def _sides_of(self, layer_id: str) -> Sequence[str]:
         """The sides that draw a layer; every Phase 1 layer is on ``main``."""
@@ -166,7 +250,7 @@ class MapWidget(anywidget.AnyWidget):
         with self._lock:
             if self._loop is None or self._loop.is_closed():
                 # A dead loop took its timer along; the next arm makes one.
-                self._loop = _running_loop()
+                self._loop = running_loop()
                 self._expiry = None
         kind = content.get("type")
         if kind == "pull":
@@ -177,6 +261,8 @@ class MapWidget(anywidget.AnyWidget):
             self._view_close(content)
         elif kind == "status":
             self._report(content)
+        elif kind == "view_report":
+            self._view_report(content)
 
     def _answer_pull(self, digests) -> None:
         """Send each digest's bytes, or ``missing`` once a draw dropped them."""
@@ -259,26 +345,64 @@ class MapWidget(anywidget.AnyWidget):
                 self._reports[view][layer_id] = report
         self._refresh()
 
-    def _refresh(self) -> None:
-        """Reduce the reports again and tell the callbacks if that changed."""
+    def _view_report(self, content: dict) -> None:
+        """Mirror one view's camera in ``view`` and tell the callbacks.
+
+        A report of a view that is not mounted, or on a request older than
+        the one the last accepted report applied, is stale and ignored.
+        Among reports on the same request the latest wins: a view reports
+        only the moves a request or its user made, so that is the last move.
+        """
+        view_id, seq = content.get("view_id"), content.get("request_seq")
+        center = _numbers(content.get("center"), 2)
+        zoom = _numbers([content.get("zoom")], 1)
+        bounds = _numbers(content.get("bounds"), 4)
+        if (
+            not isinstance(view_id, str)
+            or not (_is_int(seq) and seq >= 0)
+            or center is None
+            or zoom is None
+            or bounds is None
+        ):
+            return
         with self._lock:
-            if self._closed:
-                return
-            expected = {
-                layer_id: [v for v in self._views if v[1] in self._sides_of(layer_id)]
-                for layer_id in self._current
-            }
-            status = _reduce_status(self._current, expected, self._reports)
-            if status == self._status:
-                return
-            self._status = status
-            callbacks = list(self._status_callbacks)
-        snapshot = MappingProxyType(status)
-        for callback in callbacks:
-            try:
-                callback(snapshot)
-            except Exception:
-                logger.exception("pysepal-map: a status callback failed")
+            self._expire_due()
+            if (
+                not self._closed
+                and any(v[0] == view_id for v in self._views)
+                and self._acknowledged <= seq <= self._issued
+            ):
+                self._acknowledged = seq
+                view = {"center": center, "zoom": zoom[0], "bounds": bounds}
+                view["request_seq"] = seq
+                # Under the lock, so reports on other threads cannot reorder it.
+                self.view = view
+                for callback in self._view_callbacks:
+                    self._callbacks.put(callback, copy.deepcopy(view))
+        # Expiring a view can change the status too.
+        self._refresh()
+
+    def _refresh(self) -> None:
+        """Reduce the reports again, tell the callbacks if that changed.
+
+        Also runs whatever callbacks are queued.
+        """
+        with self._lock:
+            if not self._closed:
+                expected = {
+                    layer_id: [
+                        v for v in self._views if v[1] in self._sides_of(layer_id)
+                    ]
+                    for layer_id in self._current
+                }
+                status = _reduce_status(self._current, expected, self._reports)
+                if status != self._status:
+                    self._status = status
+                    snapshot = MappingProxyType(status)
+                    # Queued as the snapshot is taken: they run in its order.
+                    for callback in self._status_callbacks:
+                        self._callbacks.put(callback, snapshot)
+        self._callbacks.flush(self._loop)
 
     def _now(self) -> float:
         loop = self._loop
@@ -304,7 +428,7 @@ class MapWidget(anywidget.AnyWidget):
             return
         if loop is None or loop.is_closed():
             return
-        if loop.is_running() and _running_loop() is not loop:
+        if loop.is_running() and running_loop() is not loop:
             # A message handled off the owner loop's thread.
             loop.call_soon_threadsafe(self._arm_expiry_locked)
             return
@@ -330,7 +454,7 @@ class MapWidget(anywidget.AnyWidget):
         if handle is None:
             return
         loop = self._loop
-        if loop is not None and loop.is_running() and _running_loop() is not loop:
+        if loop is not None and loop.is_running() and running_loop() is not loop:
             loop.call_soon_threadsafe(handle.cancel)
         else:
             handle.cancel()
