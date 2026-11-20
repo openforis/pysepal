@@ -23,8 +23,9 @@ logger = logging.getLogger("pysepal_map")
 #: The sides a view can render: ``main``, or one half of a compare view.
 SIDES = ("main", "left", "right")
 STATUSES = ("loading", "ready", "error")
-#: A mounted view repeats ``view_open`` every 20 s; one silent this long is gone.
-VIEW_EXPIRY_S = 60.0
+#: A mounted view repeats ``view_open`` every 20 s; one silent this long is
+#: gone. Chrome runs the timers of a hidden tab as rarely as once a minute.
+VIEW_EXPIRY_S = 150.0
 
 StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
 View = tuple[str, str]

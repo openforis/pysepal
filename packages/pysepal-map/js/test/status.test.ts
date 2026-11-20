@@ -4,6 +4,7 @@ import {
   HEARTBEAT_MS,
   StatusReporter,
   ViewPresence,
+  onLiveAgain,
   type LayerRef,
 } from "../status";
 
@@ -226,6 +227,22 @@ describe("StatusReporter", () => {
     ]);
   });
 
+  it("replays every status on reconnect, since reports sent meanwhile may be lost", () => {
+    const { sent, add, loaded, reporter } = setup();
+    add("psm:r:1", { id: "r", token: 0, instance: 1 });
+    add("psm:v:2", V2, true);
+    loaded("psm:r:1");
+    const before = sent.length;
+    reporter.replay();
+    expect(sent.slice(before).map((m) => [m.id, m.status])).toEqual([
+      ["r", "ready"],
+      ["v", "loading"],
+    ]);
+    reporter.dispose();
+    reporter.replay();
+    expect(sent.length).toBe(before + 2);
+  });
+
   it("reports a rejected style operation with its draw revision", () => {
     const { sent, add, loaded, reporter, statuses } = setup();
     add("psm:v:1", V1);
@@ -388,5 +405,99 @@ describe("ViewPresence", () => {
     view.reopen();
     expect(types()).toEqual(["view_open", "view_close"]);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("onLiveAgain", () => {
+  /**
+   * A model whose `comm_live_update` listeners run as anywidget runs them:
+   * with the widget view as `this`, whose model holds `comm_live`.
+   */
+  function host() {
+    const listeners = new Set<(this: unknown) => void>();
+    const model = {
+      on: (_: string, listener: (this: unknown) => void) =>
+        void listeners.add(listener),
+      off: (_: string, listener: (this: unknown) => void) =>
+        void listeners.delete(listener),
+    };
+    const update = (context: unknown) => {
+      for (const listener of [...listeners]) listener.call(context);
+    };
+    const live = (comm_live: boolean) => update({ model: { comm_live } });
+    return { model, listeners, update, live };
+  }
+
+  it("calls back on the edge back to live only", () => {
+    const { model, live } = host();
+    const back = vi.fn();
+    onLiveAgain(model, back);
+    live(true);
+    expect(back).not.toHaveBeenCalled();
+    live(false);
+    live(false);
+    expect(back).not.toHaveBeenCalled();
+    live(true);
+    expect(back).toHaveBeenCalledTimes(1);
+    live(true);
+    expect(back).toHaveBeenCalledTimes(1);
+    live(false);
+    live(true);
+    expect(back).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls back on every update where it cannot tell the edge", () => {
+    const { model, update } = host();
+    const back = vi.fn();
+    onLiveAgain(model, back);
+    update(undefined);
+    update({ el: {} });
+    expect(back).toHaveBeenCalledTimes(2);
+  });
+
+  it("reopens the view and replays its statuses, without sending while down", () => {
+    const { model, live } = host();
+    const sent: any[] = [];
+    let up = true;
+    const send = (message: unknown) => {
+      if (!up) throw new Error("comm closed");
+      sent.push(message);
+    };
+    const presence = new ViewPresence({
+      viewId: "view-1",
+      side: "main",
+      send,
+      page: new EventTarget(),
+    });
+    const reporter = new StatusReporter({
+      viewId: "view-1",
+      side: "main",
+      send,
+      current: () => source,
+    });
+    const source = {};
+    presence.start();
+    reporter.track("psm:v:1", V1, false);
+    reporter.bind("psm:v:1", source);
+    onLiveAgain(model, () => {
+      presence.reopen();
+      reporter.replay();
+    });
+    sent.length = 0;
+
+    up = false;
+    live(false);
+    up = true;
+    live(true);
+    expect(sent.map((m) => m.type)).toEqual(["view_open", "status"]);
+    presence.dispose();
+  });
+
+  it("stops listening once unsubscribed", () => {
+    const { model, listeners } = host();
+    const off = onLiveAgain(model, () => {});
+    expect(listeners.size).toBe(1);
+    off();
+    expect(listeners.size).toBe(0);
   });
 });

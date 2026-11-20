@@ -6,7 +6,7 @@ import workerSource from "maplibre-gl/dist/maplibre-gl-worker.mjs" with { type: 
 import type { RenderProps } from "@anywidget/types";
 
 import { MapSync } from "./maplive";
-import { StatusReporter, ViewPresence, newViewId } from "./status";
+import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
 
 // MapLibre 6 loads its worker from a file next to the module; the bundle has
 // no such file, so ship the worker inline.
@@ -64,17 +64,21 @@ function render({ model, el }: RenderProps<Model>) {
   // Open before the first report, so Python counts the view in.
   const presence = new ViewPresence({ viewId, side: SIDE, send, page: window });
   presence.start();
-  const reopen = () => presence.reopen();
-  model.on("comm_live_update", reopen);
   const sync = new MapSync(map, model, root, reporter);
   root.psmInspect = () => sync.inspect();
+  // Python may have expired the view, and reports sent meanwhile be lost.
+  const stopLive = onLiveAgain(model, () => {
+    presence.reopen();
+    reporter.replay();
+    sync.reconnect();
+  });
 
   const resizer = new ResizeObserver(() => map.resize());
   resizer.observe(root);
 
   return () => {
+    stopLive();
     sync.dispose();
-    model.off("comm_live_update", reopen);
     presence.dispose();
     model.off("change:height", applyHeight);
     resizer.disconnect();

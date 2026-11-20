@@ -171,7 +171,6 @@ export class MapSync {
     });
     model.on("change:state", this.onState);
     model.on("msg:custom", this.onMessage);
-    model.on("comm_live_update", this.onReconnect);
     // In place before the first style load, which waits for a frame.
     map.on("styledataloading", this.onStyleLoading);
     map.on("style.load", this.onStyleLoad);
@@ -192,11 +191,15 @@ export class MapSync {
     };
   }
 
+  /** The comm came back: pull every payload still lacking now. */
+  reconnect(): void {
+    if (!this.disposed) this.cache.reconnect();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.model.off("change:state", this.onState);
     this.model.off("msg:custom", this.onMessage);
-    this.model.off("comm_live_update", this.onReconnect);
     this.map.off("styledataloading", this.onStyleLoading);
     this.map.off("style.load", this.onStyleLoad);
     this.map.off("styledata", this.onStyleChange);
@@ -219,8 +222,6 @@ export class MapSync {
     this.cache.receive(content, buffers);
     this.reporter.receive(content);
   };
-
-  private readonly onReconnect = () => this.cache.reconnect();
 
   private readonly onStyleLoading = () => {
     // A new style replaces this one; nothing applied to it survives.

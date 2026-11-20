@@ -1,4 +1,4 @@
-/** How often a mounted view repeats `view_open`; Python expires one after 60 s. */
+/** How often a mounted view repeats `view_open`; Python expires one after 150 s. */
 export const HEARTBEAT_MS = 20_000;
 
 export type Status = "loading" | "ready" | "error";
@@ -213,6 +213,12 @@ export class StatusReporter {
     const { type, view_id, side } = content as Record<string, unknown>;
     if (type !== "status_request") return;
     if (view_id !== this.options.viewId || side !== this.options.side) return;
+    this.replay();
+  }
+
+  /** Send every current report again, as after a reconnect. */
+  replay(): void {
+    if (this.disposed) return;
     for (const id of this.entries.keys()) this.update(id, true);
   }
 
@@ -366,6 +372,37 @@ export class ViewPresence {
       side: this.options.side,
     });
   }
+}
+
+/** The part of the model `onLiveAgain` listens to. */
+export interface LiveModel {
+  on(name: "comm_live_update", callback: (this: unknown) => void): void;
+  off(name: "comm_live_update", callback: (this: unknown) => void): void;
+}
+
+/**
+ * Calls `back` each time the comm comes back live, never as it drops.
+ *
+ * ipywidgets fires `comm_live_update` on both edges, without arguments.
+ * anywidget runs a view's listeners with that view as `this`, whose model
+ * holds `comm_live`. Where it cannot be read, every update counts as a
+ * return. Returns the unsubscribe.
+ */
+export function onLiveAgain(model: LiveModel, back: () => void): () => void {
+  let live = true;
+  const listener = function (this: unknown) {
+    const view = this as { model?: { comm_live?: unknown } } | undefined;
+    const now = view?.model?.comm_live;
+    if (now === false) {
+      live = false;
+      return;
+    }
+    if (now === true && live) return;
+    live = true;
+    back();
+  };
+  model.on("comm_live_update", listener);
+  return () => model.off("comm_live_update", listener);
 }
 
 /** A random id for one mounted view; `getRandomValues` works off HTTPS too. */

@@ -187,60 +187,6 @@ def test_instances_follow_input_order_and_keep_across_reorder():
     assert instance(widget, "b") == 2
 
 
-@dataclasses.dataclass
-class FakeHandle:
-    when: float
-    callback: object
-    cancelled: bool = False
-
-    def cancel(self):
-        self.cancelled = True
-
-
-@dataclasses.dataclass
-class FakeLoop:
-    """The parts of an event loop the widget's expiry timer uses."""
-
-    now: float = 0.0
-    handles: list = dataclasses.field(default_factory=list)
-
-    def time(self):
-        return self.now
-
-    def is_running(self):
-        return False
-
-    def is_closed(self):
-        return False
-
-    def call_later(self, delay, callback, *args):
-        handle = FakeHandle(self.now + delay, lambda: callback(*args))
-        self.handles.append(handle)
-        return handle
-
-    def call_soon_threadsafe(self, callback, *args):
-        callback(*args)
-
-    def pending(self):
-        return [h for h in self.handles if not h.cancelled]
-
-    def advance(self, seconds):
-        target = self.now + seconds
-        while due := sorted(
-            (h for h in self.pending() if h.when <= target), key=lambda h: h.when
-        ):
-            handle = due[0]
-            self.handles.remove(handle)
-            self.now = handle.when
-            handle.callback()
-        self.now = target
-
-
-@pytest.fixture
-def loop():
-    return FakeLoop()
-
-
 @pytest.fixture
 def board(monkeypatch, loop):
     """A widget with one raster layer, its outgoing messages and callbacks."""
@@ -338,7 +284,10 @@ def test_draw_retires_a_replaced_instance_before_publishing(board):
     open_view(widget, "a")
     report(widget, "a", "ready")
     published = []
-    widget.observe(lambda _: published.append(dict(widget._reports)), "state")
+    widget.observe(
+        lambda _: published.append({k: dict(v) for k, v in widget._reports.items()}),
+        "state",
+    )
     widget.draw(MapState(layers=(Layer("r", RasterSource(("u",))),)))
     assert published == [{("a", "main"): {}}]
     assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
@@ -421,7 +370,7 @@ def test_a_left_only_layer_is_not_held_by_the_right_view(monkeypatch, loop):
     assert set(widget.layer_status) == {"r"}
 
 
-def test_a_silent_failed_view_expires_after_60_s(board, loop):
+def test_a_silent_failed_view_expires_after_150_s(board, loop):
     widget, sent, calls = board
     open_view(widget, "ok")
     report(widget, "ok", "ready")
@@ -429,7 +378,7 @@ def test_a_silent_failed_view_expires_after_60_s(board, loop):
     open_view(widget, "bad")
     report(widget, "bad", "error", error="tile failed")
     assert status_of(widget) == ("error", "tile failed")
-    loop.advance(49.9)
+    loop.advance(139.9)
     open_view(widget, "ok")
     # No message arrives from here on: the timer alone expires the view.
     loop.advance(10)
@@ -448,7 +397,7 @@ def test_a_silent_failed_view_expires_after_60_s(board, loop):
     report(widget, "bad", "error", error="tile failed")
     assert status_of(widget) == ("error", "tile failed")
 
-    loop.advance(61)
+    loop.advance(151)
     assert widget.layer_status == {}
     assert loop.pending() == []
 
@@ -570,7 +519,7 @@ def test_the_supplied_loop_runs_the_expiry(loop):
     widget = MapWidget(loop=loop)
     assert widget._loop is loop
     open_view(widget, "a")
-    assert [h.when for h in loop.pending()] == [60]
+    assert [h.when for h in loop.pending()] == [150]
 
 
 def in_fresh_thread(scenario):
@@ -612,7 +561,7 @@ def test_without_a_loop_expiry_binds_the_first_message_loop():
     before, bound, when = in_fresh_thread(scenario)
     assert before is None
     assert bound
-    assert when == pytest.approx(60, abs=1)
+    assert when == pytest.approx(150, abs=1)
 
 
 def test_the_loop_running_at_construction_runs_the_expiry():
@@ -626,5 +575,5 @@ def test_the_loop_running_at_construction_runs_the_expiry():
 
     captured, when, expiry = in_fresh_thread(lambda: asyncio.run(construct()))
     assert captured
-    assert when == pytest.approx(60, abs=1)
+    assert when == pytest.approx(150, abs=1)
     assert expiry is None
