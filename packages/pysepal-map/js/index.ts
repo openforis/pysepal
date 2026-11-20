@@ -2,17 +2,19 @@ import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./style.css";
 import { Protocol } from "pmtiles";
-import workerSource from "maplibre-gl/dist/maplibre-gl-worker.mjs" with { type: "text" };
+import workerSource from "psm:maplibre-worker";
 import type { RenderProps } from "@anywidget/types";
 
+import { syncControls } from "./controls";
 import { MapSync } from "./maplive";
 import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
+import type { MapState } from "./types";
 import { CAMERA_OPTIONS, ViewCamera, lockRotation } from "./view";
 
 // MapLibre 6 loads its worker from a file next to the module; the bundle has
 // no such file, so ship the worker inline.
 maplibregl.setWorkerUrl(
-  URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" })),
+  URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }))
 );
 
 // One registration per bundled MapLibre instance, shared by all its views.
@@ -85,6 +87,11 @@ function render({ model, el }: RenderProps<Model>) {
     camera.reconnect();
   });
 
+  const applyControls = () =>
+    syncControls(map, root, model.get("state") as Partial<MapState>);
+  applyControls();
+  model.on("change:state", applyControls);
+
   const resizer = new ResizeObserver(() => map.resize());
   resizer.observe(root);
 
@@ -94,6 +101,7 @@ function render({ model, el }: RenderProps<Model>) {
     sync.dispose();
     presence.dispose();
     model.off("change:height", applyHeight);
+    model.off("change:state", applyControls);
     resizer.disconnect();
     delete root.psmMap;
     delete root.psmInspect;

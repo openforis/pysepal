@@ -1,5 +1,30 @@
 /* ipywidgets' layout owns the view's inline style and removes any height
-   its own layout does not set, so the height trait goes through a variable. */
+   its own layout does not set, so the height trait goes through a variable.
+   Inside a Box or HBox a block with no width collapses to nothing, hence
+   the width rules. */
 .psm-map {
   height: var(--psm-height);
+  width: 100%;
+  min-width: 200px;
+  flex: 1 1 auto;
+}
+
+/* The control icons are background images, so they are inverted on the dark
+   surface. */
+.psm-dark .maplibregl-ctrl-group {
+  background-color: #1e1e1e;
+  box-shadow: 0 0 0 1px #424242;
+}
+.psm-dark .maplibregl-ctrl-group button {
+  background-color: #1e1e1e;
+  color: #ffffff;
+}
+.psm-dark .maplibregl-ctrl-group button + button {
+  border-top-color: #424242;
+}
+.psm-dark .maplibregl-ctrl-group button:not(:disabled):hover {
+  background-color: #424242;
+}
+.psm-dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
+  filter: invert(1);
 }
