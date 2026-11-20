@@ -110,6 +110,7 @@ def map_widget(session):
         session.run("npm", "run", "typecheck", external=True)
         session.run("npm", "test", external=True)
         session.run("npm", "run", "build", external=True)
+        session.run("npm", "run", "build:harness", external=True)
         session.install("-e", ".[test]")
         session.run("playwright", "install", "chromium")
         session.run(

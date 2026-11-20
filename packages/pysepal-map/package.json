@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "build:harness": "node build.mjs --harness",
     "dev": "node build.mjs --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
