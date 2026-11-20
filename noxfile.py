@@ -102,6 +102,24 @@ def docs(session):
     session.run("python", "tests/check_warnings.py")
 
 
+@nox.session(name="map", reuse_venv=True)
+def map_widget(session):
+    """Build and browser-test the pysepal-map package."""
+    with session.chdir("packages/pysepal-map"):
+        session.run("npm", "ci", external=True)
+        session.run("npm", "run", "build", external=True)
+        session.install("-e", ".[test]")
+        session.run("playwright", "install", "chromium")
+        session.run(
+            "pytest",
+            *(session.posargs or ["tests"]),
+            env={
+                "SOLARA_TEST_RUNNERS": "solara,voila,jupyter_lab",
+                "SOLARA_TEST_VUETIFY_WARMUP": "false",
+            },
+        )
+
+
 @nox.session(reuse_venv=True)
 def mypy(session):
     """Run a mypy check of the lib."""

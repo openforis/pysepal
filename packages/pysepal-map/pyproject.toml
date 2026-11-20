@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling", "hatch-jupyter-builder"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pysepal-map"
+version = "0.1.0"
+description = "A generic MapLibre GL JS widget for Jupyter."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["anywidget>=0.9", "traitlets"]
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio", "pytest-ipywidgets", "voila", "jupyterlab"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
+include = ["src", "js", "build.mjs", "package.json", "package-lock.json", "tsconfig.json", "README.md"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pysepal_map"]
+artifacts = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
+
+[tool.hatch.build.hooks.jupyter-builder]
+dependencies = ["hatch-jupyter-builder"]
+build-function = "hatch_jupyter_builder.npm_builder"
+ensured-targets = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
+skip-if-exists = ["src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.css"]
+
+[tool.hatch.build.hooks.jupyter-builder.build-kwargs]
+build_cmd = "build"
+npm = ["npm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

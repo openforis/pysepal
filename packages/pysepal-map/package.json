@@ -1,0 +1,22 @@
+{
+  "name": "pysepal-map",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "maplibre-gl": "^5.24.1",
+    "pmtiles": "^4.5.0"
+  },
+  "devDependencies": {
+    "@anywidget/types": "^0.4.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
