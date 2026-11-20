@@ -1,8 +1,9 @@
+"""Test the MapWidget snapshot bookkeeping and its payload replies."""
+
 import dataclasses
 import hashlib
 
 import pytest
-
 from pysepal_map import (
     GeoJSONSource,
     Layer,
@@ -116,6 +117,61 @@ def test_source_attribution_and_token_changes_retire_the_instance(change):
         new = geo(widget, b"2")
     widget.draw(MapState(layers=(new,)))
     assert instance(widget) == 2
+
+
+def capture_sends(monkeypatch, widget):
+    sent = []
+    monkeypatch.setattr(
+        widget, "send", lambda content, buffers=None: sent.append((content, buffers))
+    )
+    return sent
+
+
+def test_pull_answers_with_buffers(monkeypatch):
+    widget = MapWidget()
+    data = b'{"type": "FeatureCollection", "features": []}'
+    layer = geo(widget, data)
+    widget.draw(MapState(layers=(layer,)))
+    sent = capture_sends(monkeypatch, widget)
+    digest = layer.source.digest
+    widget._handle_custom_msg({"type": "pull", "digests": [digest]}, [])
+    assert sent == [({"type": "data", "digest": digest}, [data])]
+
+
+def test_pull_of_a_dropped_digest_answers_missing(monkeypatch):
+    widget = MapWidget()
+    kept = geo(widget, b"kept")
+    dropped = Layer("w", GeoJSONSource(widget.add_payload(b"dropped")))
+    widget.draw(MapState(layers=(kept, dropped)))
+    widget.draw(MapState(layers=(kept,)))
+    sent = capture_sends(monkeypatch, widget)
+    digests = [dropped.source.digest, kept.source.digest]
+    widget._handle_custom_msg({"type": "pull", "digests": digests}, [])
+    assert sent == [
+        ({"type": "data", "digest": dropped.source.digest, "missing": True}, []),
+        ({"type": "data", "digest": kept.source.digest}, [b"kept"]),
+    ]
+
+
+def test_pull_after_close_does_not_raise(monkeypatch):
+    widget = MapWidget()
+    layer = geo(widget)
+    widget.draw(MapState(layers=(layer,)))
+    sent = capture_sends(monkeypatch, widget)
+    widget.close()
+    widget._handle_custom_msg({"type": "pull", "digests": [layer.source.digest]}, [])
+    assert sent == []
+
+
+@pytest.mark.parametrize(
+    "content",
+    [{"type": "pull"}, {"type": "pull", "digests": "abc"}, {"type": "other"}, []],
+)
+def test_malformed_messages_are_ignored(monkeypatch, content):
+    widget = MapWidget()
+    sent = capture_sends(monkeypatch, widget)
+    widget._handle_custom_msg(content, [])
+    assert sent == []
 
 
 def test_instances_follow_input_order_and_keep_across_reorder():

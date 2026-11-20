@@ -25,14 +25,34 @@ class MapWidget(anywidget.AnyWidget):
     height = traitlets.Unicode("400px").tag(sync=True)
 
     def __init__(self, *, height: str = "400px", **kwargs):
+        """Create an empty map of the given CSS height."""
         super().__init__(height=height, **kwargs)
         self._payloads: dict[str, bytes] = {}
         self._revision = 0
         self._next_instance = 1
         # id -> (identity, instance) of the last published snapshot
         self._instances: dict[str, tuple[tuple, int]] = {}
+        self.on_msg(self._on_message)
+
+    def _on_message(self, _widget, content, _buffers) -> None:
+        if self.comm is None or not isinstance(content, dict):
+            return
+        if content.get("type") == "pull":
+            self._answer_pull(content.get("digests"))
+
+    def _answer_pull(self, digests) -> None:
+        """Send each digest's bytes, or ``missing`` once a draw dropped them."""
+        if not isinstance(digests, list):
+            return
+        for digest in dict.fromkeys(d for d in digests if isinstance(d, str)):
+            data = self._payloads.get(digest)
+            if data is None:
+                self.send({"type": "data", "digest": digest, "missing": True}, [])
+            else:
+                self.send({"type": "data", "digest": digest}, [data])
 
     def add_payload(self, data: bytes) -> str:
+        """Keep GeoJSON bytes for the next draw and return their sha256 digest."""
         digest = hashlib.sha256(data).hexdigest()
         self._payloads[digest] = bytes(data)
         return digest
