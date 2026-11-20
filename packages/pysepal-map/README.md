@@ -20,7 +20,7 @@ display(widget)
 - GeoJSON bytes never travel inside the state: `add_payload` returns a sha256 digest, and the browser pulls the bytes it lacks.
 - Everything the widget adds to the MapLibre style has an id starting with `psm:`; it never touches other layers, such as those of a drawing plugin.
 
-The full contract, with its invariants, is documented in [`src/pysepal_map/state.py`](src/pysepal_map/state.py) and [`widget.py`](src/pysepal_map/widget.py).
+[`src/pysepal_map/state.py`](src/pysepal_map/state.py) declares and validates the state. The module docstring of [`widget.py`](src/pysepal_map/widget.py) describes the rest of the contract: how draws give out instances, the owned style ids, the messages between Python and the views, and the camera request and report rules.
 
 ## Build
 

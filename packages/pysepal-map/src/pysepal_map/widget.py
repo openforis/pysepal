@@ -1,4 +1,50 @@
-"""The MapLibre map widget."""
+"""The MapLibre map widget, and the rules between it and its views.
+
+``state.py`` declares and validates the state. This module publishes it and
+keeps the rest of the contract, summed up here for whoever drives a widget or
+writes a front end for it.
+
+Draws. ``MapWidget.draw`` publishes a whole ``MapState`` in the ``state``
+trait, with a ``revision`` one above the last. Each layer gets an
+``instance``, an integer that grows over the widget's life, given in input
+order from 1. A layer gets a new one when it first appears, when it comes back
+after a draw without it, and when its source, source attribution or token
+changes; visibility, opacity, paint, zooms, zone and order keep it. A draw that
+raises publishes nothing and changes no counter.
+
+Style ids. A view owns every source and layer whose id starts with ``psm:``. A
+layer's source is ``psm:<id>:<instance>``, with the id escaped as
+``encodeURIComponent`` does, and its layers add a part: ``:fill``, ``:line``
+and ``:circle``, or ``:raster``. The basemap's source and layer are
+``psm:basemap``. A new instance is a new source, so nothing reported about the
+old one counts for it. Owned layers stay below every other layer, and the view
+never changes those.
+
+Messages. Each mounted view has a unique ``view_id`` and a side (``main``;
+``left`` and ``right`` are kept for a compare view). It sends JSON messages
+with a ``type``: ``view_open`` on mount and every 20 s, ``view_close``,
+``pull`` with the GeoJSON digests it lacks, ``status`` on one layer instance,
+and ``view_report`` with its camera. A ``status`` on a rejected style operation
+also carries its ``style_revision``, which counts only for the current draw.
+Python answers each pulled digest with a ``data`` message that carries the
+UTF-8 GeoJSON as one buffer, or ``missing: true`` once a draw dropped it, and
+sends ``status_request`` to ask one view and side to send its statuses again.
+Python's messages reach every view, so each ignores what it did not ask for.
+Any message renews its view; one silent for ``VIEW_EXPIRY_S`` and then
+``VIEW_GRACE_S`` is dropped with its reports.
+
+Camera. The browser owns it. ``set_center`` and ``fit_bounds`` write
+``view_request`` with a ``seq`` that only grows. A new view first restores the
+camera saved in ``view``, then applies each request newer than the last one it
+applied, and every report names that request and its ``cause``: ``user``,
+``request`` or ``resize``. ``view`` mirrors the last accepted report. Reports
+from views not mounted, or on an older request, are dropped, and on the same
+request a user's camera is kept over an acknowledgement or another view's
+resize.
+
+A view marks its root element with ``data-psm-revision`` once its owned style
+matches that revision and every GeoJSON source has loaded its data.
+"""
 
 from __future__ import annotations
 
@@ -521,14 +567,25 @@ class MapWidget(anywidget.AnyWidget):
             handle.cancel()
 
     def add_payload(self, data: bytes) -> str:
-        """Keep GeoJSON bytes for the next draw and return their sha256 digest."""
+        """Keep GeoJSON bytes for the next draw and return their sha256 digest.
+
+        The next ``draw`` drops every payload its state does not reference,
+        including ones added since the draw before it, so add payloads right
+        before the draw that uses them.
+        """
         digest = hashlib.sha256(data).hexdigest()
         with self._lock:
             self._payloads[digest] = bytes(data)
         return digest
 
     def draw(self, state: MapState) -> None:
-        """Publish ``state`` as the next snapshot; a failure changes nothing."""
+        """Publish ``state`` as the next snapshot; a failure changes nothing.
+
+        Every GeoJSON digest in ``state`` must come from ``add_payload``. The
+        draw then drops the payloads ``state`` does not reference, even ones
+        added since the last draw: add each payload right before the draw
+        that uses it. Draws from several threads publish one at a time.
+        """
         if not isinstance(state, MapState):
             raise TypeError("draw expects a MapState")
         # One draw at a time from validation to prune, so concurrent draws
