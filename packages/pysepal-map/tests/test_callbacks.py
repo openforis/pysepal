@@ -22,9 +22,9 @@ def close_view(widget, view="a"):
     msg(widget, type="view_close", view_id=view, side="main")
 
 
-def report(widget, view="a", seq=1, **change):
+def report(widget, view="a", seq=1, cause="request", **change):
     content = {"type": "view_report", "view_id": view, **VIEW, "request_seq": seq}
-    msg(widget, **{**content, **change})
+    msg(widget, **{**content, "cause": cause, **change})
 
 
 def in_thread(scenario):
@@ -55,8 +55,8 @@ def test_init_issues_request_seq_1():
 
 def test_requests_increment_seq():
     widget = MapWidget()
-    widget.set_center(30, 10)
-    assert widget.view_request == {"seq": 2, "center": [30.0, 10.0], "zoom": None}
+    widget.set_center(30, 10, zoom=3)
+    assert widget.view_request == {"seq": 2, "center": [30.0, 10.0], "zoom": 3.0}
     widget.set_center(30, 10, zoom=5)
     assert widget.view_request == {"seq": 3, "center": [30.0, 10.0], "zoom": 5.0}
     widget.fit_bounds((10, 10, 20, 20))
@@ -72,6 +72,22 @@ def test_requests_increment_seq():
         "bounds": [170.0, -10.0, -170.0, 10.0],
         "padding": 0,
     }
+
+
+def test_a_zoomless_center_keeps_the_last_zoom_until_a_view_reports(loop):
+    widget = MapWidget(zoom=6, loop=loop)
+    # A view mounted now has no reported camera whose zoom it could keep.
+    widget.set_center(10, 10)
+    assert widget.view_request == {"seq": 2, "center": [10.0, 10.0], "zoom": 6.0}
+    widget.fit_bounds((0, 0, 1, 1))
+    widget.set_center(1, 1, zoom=8)
+    widget.set_center(2, 2)
+    assert widget.view_request["zoom"] == 8.0
+    open_view(widget)
+    report(widget, seq=5)
+    # Now a new view restores the reported zoom first.
+    widget.set_center(3, 3)
+    assert widget.view_request == {"seq": 6, "center": [3.0, 3.0], "zoom": None}
 
 
 @pytest.mark.parametrize(
@@ -157,13 +173,46 @@ def test_an_older_report_never_rolls_the_view_back(loop):
     open_view(widget, "b")
     report(widget, "a", seq=2, center=[5.0, 5.0])
     # b moved before it took request 2; its report arrives last.
-    report(widget, "b", seq=1, center=[-50.0, -20.0])
+    report(widget, "b", seq=1, cause="user", center=[-50.0, -20.0])
     assert widget.view["center"] == [5.0, 5.0]
     assert widget.view["request_seq"] == 2
-    # Among reports on the same request, the last user move wins.
-    report(widget, "b", seq=2, center=[6.0, 6.0])
-    report(widget, "a", seq=2, center=[7.0, 7.0])
+    # Among user moves on the same request, the last one wins.
+    report(widget, "b", seq=2, cause="user", center=[6.0, 6.0])
+    report(widget, "a", seq=2, cause="user", center=[7.0, 7.0])
     assert widget.view["center"] == [7.0, 7.0]
+
+
+def test_a_resize_report_updates_the_bounds(loop):
+    widget = MapWidget(loop=loop)
+    seen = []
+    widget.on_view(seen.append)
+    open_view(widget)
+    report(widget)
+    report(widget, cause="resize", bounds=[-1.0, 0.0, 3.0, 4.0])
+    assert widget.view["bounds"] == [-1.0, 0.0, 3.0, 4.0]
+    assert [v["bounds"] for v in seen] == [VIEW["bounds"], [-1.0, 0.0, 3.0, 4.0]]
+
+
+def test_only_a_user_report_replaces_a_user_camera_on_the_same_request(loop):
+    widget = MapWidget(loop=loop)
+    seen = []
+    widget.on_view(seen.append)
+    open_view(widget, "a")
+    open_view(widget, "b")
+    report(widget, "a", cause="user", center=[5.0, 5.0])
+    # Whichever view sends them, an acknowledgement or a resize keeps it.
+    report(widget, "b", cause="request", center=[6.0, 6.0])
+    report(widget, "b", cause="resize", center=[7.0, 7.0])
+    report(widget, "a", cause="resize", bounds=[-9.0, -9.0, 9.0, 9.0])
+    assert widget.view == {**VIEW, "center": [5.0, 5.0], "request_seq": 1}
+    assert len(seen) == 1
+    report(widget, "b", cause="user", center=[8.0, 8.0])
+    assert widget.view["center"] == [8.0, 8.0]
+    # A newer request's camera replaces it, whatever moved it.
+    widget.set_center(0, 0)
+    report(widget, "b", seq=2, cause="resize", center=[0.0, 0.0])
+    assert widget.view["center"] == [0.0, 0.0]
+    assert len(seen) == 3
 
 
 def test_a_report_on_a_request_never_issued_is_ignored(loop):
@@ -191,6 +240,8 @@ def test_a_report_on_a_request_never_issued_is_ignored(loop):
         {"request_seq": True},
         {"request_seq": 1.0},
         {"request_seq": -1},
+        {"cause": "pan"},
+        {"cause": None},
     ],
 )
 def test_malformed_reports_are_ignored(loop, change):

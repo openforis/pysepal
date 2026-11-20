@@ -35,7 +35,9 @@ def camera(el):
     return el.evaluate(
         """async el => {
             const map = el.psmMap;
-            while (map.isMoving()) await map.once('moveend');
+            for (let i = 0; i < 250 && map.isMoving(); i++) {
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
             const c = map.getCenter();
             const b = map.getBounds();
             return {
@@ -129,6 +131,73 @@ def test_request_before_display_applies(harness, page_session):
     view = wait_view(page_session, widget, lambda v: v["request_seq"] == 2)
     assert contains(view["bounds"], BOX)
     assert contains(camera(view_at(page_session))["bounds"], BOX)
+
+
+def test_a_zoomless_center_before_display_keeps_the_zoom(harness, page_session):
+    widget = MapWidget(zoom=6)
+    widget.set_center(10, 10)
+    display(widget)
+    view = wait_view(page_session, widget, lambda v: v["request_seq"] == 2)
+    assert near(view["center"], [10, 10]) and view["zoom"] == 6
+    shown = camera(view_at(page_session))
+    assert near(shown["center"], [10, 10]) and shown["zoom"] == 6
+
+
+def test_a_short_map_reports_no_zoom_python_rejects(harness, page_session):
+    widget = MapWidget(height="100px", zoom=0)
+    display(widget)
+    wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    x, y = middle(page_session)
+    page_session.mouse.move(x, y)
+    for _ in range(5):
+        page_session.mouse.wheel(0, 600)
+        page_session.wait_for_timeout(100)
+    view = wait_view(page_session, widget, matches(el))
+    assert view["zoom"] == 0
+    widget.set_center(*view["center"], zoom=view["zoom"])
+
+
+def test_a_resize_report_updates_the_bounds(harness, page_session):
+    widget = MapWidget(height="100%")
+    box = widgets.VBox([widget], layout=widgets.Layout(height="300px"))
+    display(box)
+    before = wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    box.layout.height = "500px"
+    page_session.wait_for_function("el => el.clientHeight === 500", arg=el)
+
+    def taller(view):
+        return view["bounds"][3] - view["bounds"][1] > before["bounds"][3] - (
+            before["bounds"][1]
+        )
+
+    after = wait_view(page_session, widget, taller)
+    assert near(after["bounds"], camera(el)["bounds"])
+    assert near(after["center"], before["center"])
+    assert after["request_seq"] == 1
+
+
+def test_a_resize_keeps_the_camera_of_a_user_move(harness, page_session):
+    widget = MapWidget(height="100%")
+    received = []
+    widget.on_msg(lambda _, content, buffers: received.append(content))
+    box = widgets.VBox([widget], layout=widgets.Layout(height="300px"))
+    display(box)
+    wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    drag(page_session, middle(page_session), (-150, 80))
+    panned = wait_view(page_session, widget, matches(el))
+
+    received.clear()
+    box.layout.height = "500px"
+    for _ in range(750):
+        if any(m.get("cause") == "resize" for m in received):
+            break
+        page_session.wait_for_timeout(20)
+    else:
+        raise AssertionError("the resize was never reported")
+    assert widget.view == panned
 
 
 def test_a_collapsed_host_fits_its_latest_request_once_shown(harness, page_session):
@@ -266,17 +335,21 @@ def test_a_view_applies_a_request_another_view_acknowledged(harness, page_sessio
     assert contains(camera(a)["bounds"], BOX)
     assert b.evaluate("el => el.psmCamera.inspect()")["pending"] == 2
 
+    # The user pans a on request 2.
+    drag(page_session, middle(page_session, 0), (-150, 80))
+    panned = wait_view(page_session, widget, matches(a))
+    assert panned["request_seq"] == 2
+
     # b takes request 2 once shown, though Python saw a acknowledge it.
     two.layout.height = "300px"
     page_session.wait_for_function("el => el.psmCamera.inspect().applied === 2", arg=b)
-    fitted = camera(b)
-    assert contains(fitted["bounds"], BOX)
-    assert contains(camera(a)["bounds"], BOX)
+    assert contains(camera(b)["bounds"], BOX)
     page_session.wait_for_function(
         "el => psmHarness.cameraGate(el).held.some(r => r.request_seq === 2)", arg=b
     )
 
-    # Deliver b's reports newest first, so the one on request 1 comes last.
+    # b's late acknowledgement, then its report on request 1, reach Python
+    # after the pan; neither replaces it.
     received.clear()
     b.evaluate("el => psmHarness.cameraGate(el).release(true)")
     for _ in range(750):
@@ -285,6 +358,5 @@ def test_a_view_applies_a_request_another_view_acknowledged(harness, page_sessio
         page_session.wait_for_timeout(20)
     else:
         raise AssertionError("the old report never arrived")
-    assert widget.view["request_seq"] == 2
-    assert near(widget.view["center"], fitted["center"])
-    assert contains(widget.view["bounds"], BOX)
+    assert any(m.get("cause") == "request" for m in received)
+    assert widget.view == panned

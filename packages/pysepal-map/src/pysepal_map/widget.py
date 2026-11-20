@@ -24,6 +24,8 @@ _STATIC = Path(__file__).parent / "static"
 #: The sides a view can render: ``main``, or one half of a compare view.
 SIDES = ("main", "left", "right")
 STATUSES = ("loading", "ready", "error")
+#: What moved a view's camera: a user, a request, or anything else.
+CAUSES = ("user", "request", "resize")
 #: A mounted view repeats ``view_open`` every 20 s; one silent this long is
 #: gone. Chrome runs the timers of a hidden tab as rarely as once a minute.
 VIEW_EXPIRY_S = 150.0
@@ -165,8 +167,12 @@ class MapWidget(anywidget.AnyWidget):
         # The last request issued, and the one the last accepted report applied.
         self._issued = 1
         self._acknowledged = 0
+        # Whether the camera in ``view`` came from a user move on that request.
+        self._by_user = False
         lng, lat = center
         first = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
+        # The last zoom asked for, until a report says what the views show.
+        self._zoom: float | None = first["zoom"]
         super().__init__(height=height, view_request=first, **kwargs)
         self._payloads: dict[str, bytes] = {}
         self._revision = 0
@@ -210,8 +216,18 @@ class MapWidget(anywidget.AnyWidget):
                 self._view_callbacks.append(callback)
 
     def set_center(self, lng: float, lat: float, zoom: float | None = None) -> None:
-        """Ask every view to center on ``(lng, lat)``; no zoom keeps theirs."""
-        self._request(_center_request(lng, lat, zoom))
+        """Ask every view to center on ``(lng, lat)``; no zoom keeps theirs.
+
+        Until a view reports, a new view has no zoom to keep, so no zoom
+        means the last one asked for.
+        """
+        request = _center_request(lng, lat, zoom)
+        with self._lock:
+            if zoom is None:
+                request["zoom"] = self._zoom
+            elif self._zoom is not None:
+                self._zoom = request["zoom"]
+            self._request(request)
 
     def fit_bounds(
         self, bounds: tuple[float, float, float, float], padding: int = 20
@@ -349,30 +365,38 @@ class MapWidget(anywidget.AnyWidget):
         """Mirror one view's camera in ``view`` and tell the callbacks.
 
         A report of a view that is not mounted, or on a request older than
-        the one the last accepted report applied, is stale and ignored.
-        Among reports on the same request the latest wins: a view reports
-        only the moves a request or its user made, so that is the last move.
+        the one the last accepted report applied, is stale and ignored. On
+        the same request, a camera a user move gave is kept for redisplay:
+        only a later user move replaces it, not an acknowledgement or a
+        resize, from whichever view.
         """
         view_id, seq = content.get("view_id"), content.get("request_seq")
         center = _numbers(content.get("center"), 2)
         zoom = _numbers([content.get("zoom")], 1)
         bounds = _numbers(content.get("bounds"), 4)
+        cause = content.get("cause")
         if (
             not isinstance(view_id, str)
             or not (_is_int(seq) and seq >= 0)
             or center is None
             or zoom is None
             or bounds is None
+            or cause not in CAUSES
         ):
             return
         with self._lock:
             self._expire_due()
+            kept = seq == self._acknowledged and self._by_user and cause != "user"
             if (
                 not self._closed
                 and any(v[0] == view_id for v in self._views)
                 and self._acknowledged <= seq <= self._issued
+                and not kept
             ):
                 self._acknowledged = seq
+                self._by_user = cause == "user"
+                # A new view now restores this camera, zoom included.
+                self._zoom = None
                 view = {"center": center, "zoom": zoom[0], "bounds": bounds}
                 view["request_seq"] = seq
                 # Under the lock, so reports on other threads cannot reorder it.

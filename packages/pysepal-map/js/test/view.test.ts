@@ -173,10 +173,11 @@ function setup({
     },
   });
   const seqs = () => sent.map((r) => r.request_seq);
+  const causes = () => sent.map((r) => [r.request_seq, r.cause]);
   const setLive = (value: boolean) => {
     live = value;
   };
-  return { model, map, host, sent, camera, seqs, setLive };
+  return { model, map, host, sent, camera, seqs, causes, setLive };
 }
 
 describe("ViewCamera", () => {
@@ -198,6 +199,7 @@ describe("ViewCamera", () => {
         zoom: 2,
         bounds: [-1, -1, 1, 1],
         request_seq: 1,
+        cause: "request",
       },
     ]);
     expect(REPORT_DELAY_MS).toBe(250);
@@ -284,17 +286,39 @@ describe("ViewCamera", () => {
     vi.advanceTimersByTime(REPORT_DELAY_MS - 101);
     expect(sent).toEqual([]);
     vi.advanceTimersByTime(1);
-    expect(sent.map((r) => [r.center, r.request_seq])).toEqual([[[2, 2], 1]]);
+    expect(sent.map((r) => [r.center, r.request_seq, r.cause])).toEqual([
+      [[2, 2], 1, "user"],
+    ]);
   });
 
-  it("reports no move that neither a request nor the user made", () => {
-    const { camera, map, seqs } = setup();
+  it("reports every other move as a resize", () => {
+    const { camera, map, causes } = setup();
     camera.start();
     vi.runAllTimers();
     map.fire("moveend");
+    vi.runAllTimers();
     map.grow(500, 300);
     vi.runAllTimers();
-    expect(seqs()).toEqual([1]);
+    expect(causes()).toEqual([
+      [1, "request"],
+      [1, "resize"],
+      [1, "resize"],
+    ]);
+  });
+
+  it("reports a window with a user move as the user's", () => {
+    const { camera, map, causes } = setup();
+    camera.start();
+    map.userMove(1, 1);
+    map.fire("moveend");
+    vi.runAllTimers();
+    map.fire("moveend");
+    map.userMove(2, 2);
+    vi.runAllTimers();
+    expect(causes()).toEqual([
+      [1, "user"],
+      [1, "user"],
+    ]);
   });
 
   it("acknowledges a request that does not move the camera", () => {
@@ -315,16 +339,20 @@ describe("ViewCamera", () => {
     map.userMove(9, 9);
     model.set("view_request", { seq: 2, center: [3, 3], zoom: 4 });
     vi.runAllTimers();
-    expect(sent.map((r) => [r.request_seq, r.center])).toEqual([[2, [3, 3]]]);
+    expect(sent.map((r) => [r.request_seq, r.center, r.cause])).toEqual([
+      [2, [3, 3], "request"],
+    ]);
   });
 
   it("fits only once its host has a size, and then the latest request", () => {
-    const { camera, map, model, seqs } = setup({ width: 0, height: 0 });
+    const { camera, map, model, causes } = setup({ width: 0, height: 0 });
     camera.start();
     // A center needs no size; its report waits for one.
     expect(camera.inspect()).toEqual({ applied: 1, pending: null, owed: 1 });
     vi.runAllTimers();
-    expect(seqs()).toEqual([]);
+    map.grow(0, 0);
+    vi.runAllTimers();
+    expect(causes()).toEqual([]);
 
     model.set("view_request", { seq: 2, bounds: [0, 0, 10, 10], padding: 20 });
     model.set("view_request", {
@@ -344,7 +372,7 @@ describe("ViewCamera", () => {
     ]);
     expect(camera.inspect()).toEqual({ applied: 3, pending: null, owed: 3 });
     vi.runAllTimers();
-    expect(seqs()).toEqual([3]);
+    expect(causes()).toEqual([[3, "request"]]);
   });
 
   it("keeps a fit MapLibre cannot make pending until it fits", () => {
@@ -399,9 +427,9 @@ describe("ViewCamera", () => {
     setLive(true);
     camera.reconnect();
     vi.runAllTimers();
-    expect(sent.map((r) => [r.request_seq, r.center])).toEqual([
-      [1, [0, 0]],
-      [1, [5, 5]],
+    expect(sent.map((r) => [r.request_seq, r.center, r.cause])).toEqual([
+      [1, [0, 0], "request"],
+      [1, [5, 5], "user"],
     ]);
   });
 

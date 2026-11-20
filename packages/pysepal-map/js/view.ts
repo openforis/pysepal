@@ -6,6 +6,8 @@ export const REPORT_DELAY_MS = 250;
  * center and a zoom describe it, while panning and zooming still work.
  */
 export const CAMERA_OPTIONS = {
+  // MapLibre's own minimum, -2, lets a short map reach zooms Python rejects.
+  minZoom: 0,
   maxZoom: 24,
   maxPitch: 0,
   pitchWithRotate: false,
@@ -34,14 +36,24 @@ export interface ViewRequest {
   padding?: number;
 }
 
+/**
+ * What moved the camera: a user gesture or its inertia, applying or
+ * acknowledging a request, or anything else, such as a resize.
+ */
+export type Cause = "user" | "request" | "resize";
+
+/** Within one report the strongest cause wins. */
+const RANK: Record<Cause, number> = { resize: 0, request: 1, user: 2 };
+
 export interface ViewReport {
   type: "view_report";
   view_id: string;
   center: LngLat;
   zoom: number;
   bounds: Bounds;
-  /** The request the view last applied; user moves count as moves on it. */
+  /** The request the view last applied; other moves count as moves on it. */
   request_seq: number;
+  cause: Cause;
 }
 
 /** The eventData key that marks a move a request made, with its `seq`. */
@@ -139,22 +151,23 @@ function savedOf(
  * the one it applied itself. Another view's acknowledgement in `view` never
  * counts as this view's, and moves in another view never move this one.
  *
- * Each report carries the sequence of the request the view last applied:
- * a move a request made is tagged with it, and a user move counts as a
- * move on it. A newer request drops the report an older one still owed,
- * so Python never gets a camera under a sequence it did not come from.
- * Only requests and user moves are reported, so among reports on one
- * request the last is the last user move.
+ * Every move is reported, with the sequence of the request the view last
+ * applied: a move a request made is tagged with it, and any other move
+ * counts as a move on it. A newer request drops the report an older one
+ * still owed, so Python never gets a camera under a sequence it did not
+ * come from. Each report says what moved the camera, so that Python can
+ * keep the last user move over a later acknowledgement or resize.
  */
 export class ViewCamera {
   /** The sequence of the last request this view applied. */
   private applied = 0;
   /** A fit waiting for the host to have a size; only the latest is kept. */
   private pending: ViewRequest | null = null;
-  /** The sequence a report is owed for. */
+  /** The sequence a report is owed for, and what moved the camera. */
   private owed: number | null = null;
-  /** The sequence of a report the comm refused, sent again on reconnect. */
-  private refused: number | null = null;
+  private cause: Cause = "resize";
+  /** A report the comm refused, sent again on reconnect. */
+  private refused: { seq: number; cause: Cause } | null = null;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
 
@@ -182,9 +195,9 @@ export class ViewCamera {
   /** The comm came back: send again a report it refused meanwhile. */
   reconnect(): void {
     if (this.disposed || this.refused === null) return;
-    const seq = this.refused;
+    const { seq, cause } = this.refused;
     this.refused = null;
-    this.owe(seq);
+    this.owe(seq, cause);
   }
 
   /** What the camera waits for, for tests. */
@@ -198,7 +211,8 @@ export class ViewCamera {
 
   /** The single exit for reports; the browser harness may hold them here. */
   transmit(report: ViewReport): void {
-    this.refused = this.options.send(report) ? null : report.request_seq;
+    const { request_seq: seq, cause } = report;
+    this.refused = this.options.send(report) ? null : { seq, cause };
   }
 
   dispose(): void {
@@ -255,13 +269,13 @@ export class ViewCamera {
     }
     this.applied = request.seq;
     // A jump that changes nothing need not fire a move, so acknowledge here.
-    this.owe(request.seq);
+    this.owe(request.seq, "request");
   }
 
   private readonly onMoveEnd = (event: MoveEvent) => {
     // A request's own move is acknowledged by apply().
     if (event[REQUEST] !== undefined) return;
-    if (event.originalEvent !== undefined) this.owe(this.applied);
+    this.owe(this.applied, event.originalEvent ? "user" : "resize");
   };
 
   private readonly onResize = (event: MoveEvent) => {
@@ -272,12 +286,17 @@ export class ViewCamera {
     this.pending = null;
     if (pending) this.apply(pending);
     // A report held while the host had no size goes out now.
-    if (this.owed !== null) this.owe(this.owed);
+    if (this.owed !== null) this.owe(this.owed, this.cause);
   };
 
   /** Owe a report on `seq`; moves within one delay share a trailing one. */
-  private owe(seq: number): void {
-    this.owed = Math.max(this.owed ?? seq, seq);
+  private owe(seq: number, cause: Cause): void {
+    if (this.owed === null || seq > this.owed) {
+      this.owed = seq;
+      this.cause = cause;
+    } else if (seq === this.owed && RANK[cause] > RANK[this.cause]) {
+      this.cause = cause;
+    }
     this.timer ??= setTimeout(this.flush, REPORT_DELAY_MS);
   }
 
@@ -286,7 +305,7 @@ export class ViewCamera {
     if (this.disposed || this.owed === null || !this.hasSize()) return;
     const seq = this.owed;
     this.owed = null;
-    this.transmit(this.report(seq));
+    this.transmit(this.report(seq, this.cause));
   };
 
   private cancel(): void {
@@ -300,7 +319,7 @@ export class ViewCamera {
     return host.clientWidth > 0 && host.clientHeight > 0;
   }
 
-  private report(seq: number): ViewReport {
+  private report(seq: number, cause: Cause): ViewReport {
     const { map, viewId } = this.options;
     const center = map.getCenter();
     const bounds = map.getBounds();
@@ -316,6 +335,7 @@ export class ViewCamera {
         bounds.getNorth(),
       ],
       request_seq: seq,
+      cause,
     };
   }
 }
