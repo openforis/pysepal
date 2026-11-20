@@ -1,8 +1,9 @@
+"""Tests for the frozen map state: validation and the JSON it publishes."""
+
 import json
 from pathlib import Path
 
 import pytest
-
 from pysepal_map import (
     Basemap,
     GeoJSONSource,

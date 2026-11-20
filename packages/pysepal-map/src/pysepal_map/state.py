@@ -36,9 +36,11 @@ class RasterSource:
     max_native_zoom: int | None = None
 
     def __post_init__(self) -> None:
+        """Reject an empty or bare-string tile list."""
         _tiles("RasterSource.tiles", self.tiles)
 
     def to_json(self) -> dict:
+        """The source as the JSON the front end reads, with bounds as a plain list."""
         return {
             "tiles": list(self.tiles),
             "tile_size": self.tile_size,
@@ -52,6 +54,7 @@ class GeoJSONSource:
     digest: str
 
     def to_json(self) -> dict:
+        """The source as JSON: only the digest, since the data travels apart."""
         return {"digest": self.digest}
 
 
@@ -61,6 +64,7 @@ class PMTilesSource:
     source_layer: str
 
     def to_json(self) -> dict:
+        """The source as JSON: the archive URL and the vector layer to draw."""
         return {"url": self.url, "source_layer": self.source_layer}
 
 
@@ -73,12 +77,14 @@ class VectorPaint:
     point_radius: float = 5.0
 
     def __post_init__(self) -> None:
+        """Reject an opacity outside [0, 1] and a negative or non-finite size."""
         _unit("fill_opacity", self.fill_opacity)
         for name in ("width", "point_radius"):
             if _finite(name, getattr(self, name)) < 0:
                 raise ValueError(f"{name} must not be negative")
 
     def to_json(self) -> dict:
+        """The paint as the JSON the front end reads."""
         return {
             "stroke": self.stroke,
             "fill": self.fill,
@@ -102,6 +108,7 @@ class Layer:
     attribution: str = ""
 
     def __post_init__(self) -> None:
+        """Reject an unknown source or zone, out-of-range opacity or zooms, and a paint on a raster layer; give vector layers the default paint."""
         if not isinstance(self.source, (RasterSource, GeoJSONSource, PMTilesSource)):
             raise ValueError(f"unsupported source {self.source!r}")
         if self.zone not in ZONES:
@@ -123,6 +130,7 @@ class Layer:
 
     @property
     def kind(self) -> Literal["raster", "geojson", "pmtiles"]:
+        """Which kind of layer the source makes: "raster", "geojson" or "pmtiles"."""
         if isinstance(self.source, RasterSource):
             return "raster"
         if isinstance(self.source, GeoJSONSource):
@@ -130,6 +138,7 @@ class Layer:
         return "pmtiles"
 
     def to_json(self) -> dict:
+        """The layer as JSON, with its source and paint nested."""
         return {
             "id": self.id,
             "kind": self.kind,
@@ -152,9 +161,11 @@ class Basemap:
     max_zoom: int = 19
 
     def __post_init__(self) -> None:
+        """Reject an empty or bare-string tile list."""
         _tiles("Basemap.tiles", self.tiles)
 
     def to_json(self) -> dict:
+        """The basemap as the JSON the front end reads."""
         return {
             "tiles": list(self.tiles),
             "attribution": self.attribution,
@@ -168,6 +179,7 @@ class Controls:
     fullscreen: bool = True
 
     def to_json(self) -> dict:
+        """The control switches as JSON."""
         return {"zoom": self.zoom, "fullscreen": self.fullscreen}
 
 
@@ -194,6 +206,7 @@ class MapState:
     controls: Controls = field(default_factory=Controls)
 
     def __post_init__(self) -> None:
+        """Reject an unknown theme and missing or duplicate layer ids."""
         if self.theme not in THEMES:
             raise ValueError(f"theme must be one of {THEMES}, got {self.theme!r}")
         seen: set[str] = set()
@@ -205,6 +218,7 @@ class MapState:
             seen.add(layer.id)
 
     def to_json(self) -> dict:
+        """The whole desired state as the JSON published to the views."""
         return {
             "theme": self.theme,
             "controls": self.controls.to_json(),

@@ -10,6 +10,7 @@ TARGETS = ("src/pysepal_map/static/widget.js", "src/pysepal_map/static/widget.cs
 
 class JSBuildHook(BuildHookInterface):
     def initialize(self, version, build_data):
+        """Build the JS bundle unless the sdist already carries it."""
         root = Path(self.root)
         # A wheel built from a populated sdist has no JS toolchain inputs.
         if all((root / t).exists() for t in TARGETS):
