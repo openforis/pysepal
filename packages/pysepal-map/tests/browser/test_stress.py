@@ -333,6 +333,8 @@ def test_random_operations_converge(
         except PlaywrightError as error:
             fail(burst, f"never settled: {error.message}")
         expected = expected_snapshot(widget.state, scenario.payloads)
+        if len(live) != views:
+            fail(burst, f"{len(live)} live snapshots for {views} views", live)
         if any(view != expected for view in live):
             fail(burst, "a view differs from the desired state", live)
         order = first.evaluate("el => el.psmMap.getLayersOrder()")

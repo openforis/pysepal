@@ -125,7 +125,12 @@ def test_a_jupyterlab_reload_shows_the_live_widget(
     page_session.locator('css=[data-command="docmanager:save"]').first.click()
     saved = []
     for _ in range(750):
-        cells = json.loads(Path(notebook_path).read_text())["cells"]
+        try:
+            cells = json.loads(Path(notebook_path).read_text())["cells"]
+        except json.JSONDecodeError:
+            # Caught while the server is rewriting the file.
+            page_session.wait_for_timeout(20)
+            continue
         saved = [
             output["data"]["application/vnd.jupyter.widget-view+json"]["model_id"]
             for cell in cells

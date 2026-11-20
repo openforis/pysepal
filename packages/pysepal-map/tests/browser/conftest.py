@@ -278,6 +278,9 @@ def ipywidgets_runner(
     A test that names its runner skips when SOLARA_TEST_RUNNERS leaves it out,
     since its server is then never started.
     """
+    # pytest-ipywidgets 1.66.3 runs cells with a JupyterLab command that 4.6
+    # renamed to `notebook:run-cell-and-select-next`. Drop this override once
+    # upstream supports it.
     runner = request.param
     if runner not in ipywidgets_plugin.runners:
         pytest.skip(f"SOLARA_TEST_RUNNERS does not include {runner}")
