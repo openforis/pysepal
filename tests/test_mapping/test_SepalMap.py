@@ -259,6 +259,13 @@ def test_map_theme_trait_follows_its_own_theme_state() -> None:
     assert (a.theme, a.state["theme"]) == ("light", "light")
 
 
+def test_the_map_theme_is_read_only() -> None:
+    m = SepalMap(gee=False, theme_state=ThemeState(mode="light"))
+    with pytest.raises(traitlets.TraitError):
+        m.theme = "dark"
+    assert (m.theme, m.state["theme"]) == ("light", "light")
+
+
 def _dark_observers(source):
     """Return the handlers ``source`` will call when ``dark`` changes."""
     return source._trait_notifiers.get("dark", {}).get("change", [])

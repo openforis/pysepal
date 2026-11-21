@@ -103,8 +103,8 @@ class SepalMap(MapWidget):
     basemap = traitlets.Unicode()
     "The basemap shown, one of :attr:`basemaps`."
 
-    theme = traitlets.Unicode("light")
-    "The theme the map draws in, ``light`` or ``dark``. Only the map sets it, after its theme state."
+    theme = traitlets.Unicode("light", read_only=True)
+    "The theme the map draws in, ``light`` or ``dark``, read-only: the map follows its theme state."
 
     gee: bool = True
     "Whether the map uses the Earth Engine binding."
@@ -210,7 +210,7 @@ class SepalMap(MapWidget):
                 su.init_ee()
 
             source = theme_state if theme_state is not None else v.theme
-            self.theme = "dark" if self._theme_is_dark(source) else "light"
+            self.set_trait("theme", "dark" if self._theme_is_dark(source) else "light")
             choices = tuple(basemaps) or (f"SEPAL_{self.theme.upper()}",)
             self._set_basemaps(choices, choices[0])
 
@@ -285,7 +285,7 @@ class SepalMap(MapWidget):
         theme = "dark" if is_dark else "light"
         if theme == self.theme:
             return
-        self.theme = theme
+        self.set_trait("theme", theme)
         if self.layer_engine is not None:
             self.layer_engine.configure(theme=theme)
         variant = f"SEPAL_{theme.upper()}"
