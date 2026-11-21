@@ -6,27 +6,28 @@ import threading
 import zipfile
 from pathlib import Path
 
+import pytest
 import solara
 
 from pysepal.layers import LayerSpec, LayerStore
 from pysepal.mapping import SepalMap
 from pysepal.mapping.basemaps import basemap_label
-from pysepal.solara.components.layer_panel import LayerPanel, download
+from pysepal.solara.components.layer_panel import LayerPanel, download, row
 from pysepal.solara.components.layer_panel.download import download_payload
 from pysepal.solara.theme import ThemeState
-from tests.test_solara._harness import walk
+from tests.test_solara._harness import wait_until, walk
 from tests.test_solara._layer_panel_helpers import (
     all_text,
     button_icon,
     click,
-    expand,
     export_button,
     export_buttons,
     file_downloads,
     find_by_role,
     find_visibility_toggle,
-    inline_legends,
+    header_roles,
     of_kind,
+    open_settings,
     pick_basemap,
     role_widgets,
     row_ids,
@@ -127,7 +128,7 @@ def test_vuetify_3_sizes(raster_spec):
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
     assert role_widgets(box, "basemap")[0].density == "compact"
     icons = of_kind(box, "Icon")
-    assert len(icons) == 3 and {icon.size for icon in icons} == {"small"}
+    assert len(icons) == 5 and {icon.size for icon in icons} == {"small"}
 
 
 def test_basemap_picker_lists_the_choices_and_switches_the_map():
@@ -191,7 +192,6 @@ def test_row_remove_button_drops_the_row(raster_spec, raster_spec_b):
     store.add(raster_spec)
     store.add(raster_spec_b)
     box, rc = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
     click(find_by_role(box, "remove", raster_spec.id))
     assert store.ids == [raster_spec_b.id]
     assert shown_rows(box) == [raster_spec_b.id]
@@ -232,21 +232,21 @@ def test_removal_from_another_thread(raster_spec, raster_spec_b):
     rc.close()
 
 
-def test_expand_then_collapse(raster_spec):
+def test_remove_is_always_on_the_row(raster_spec):
     store = LayerStore()
     store.add(raster_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
     assert role_widgets(box, "remove")
-    expand(box, raster_spec.id)
-    assert not role_widgets(box, "remove")
+    open_settings(box, raster_spec.id)
+    open_settings(box, raster_spec.id)
+    assert role_widgets(box, "remove")
 
 
-def test_visibility_toggle_after_expanding(raster_spec):
+def test_visibility_toggle_with_settings_open(raster_spec):
     store = LayerStore()
     store.add(raster_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
+    open_settings(box, raster_spec.id)
     click(find_visibility_toggle(box, raster_spec.id))
     assert store.view(raster_spec.id).visible is False
     assert button_icon(find_visibility_toggle(box, raster_spec.id)) == "mdi-eye-off"
@@ -256,28 +256,29 @@ def test_opacity_slider_sets_view_opacity(raster_spec):
     store = LayerStore()
     store.add(raster_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
+    open_settings(box, raster_spec.id)
     find_by_role(box, "opacity", raster_spec.id).v_model = 0.4
     assert store.view(raster_spec.id).opacity == 0.4
 
 
-def test_no_opacity_slider_for_pmtiles(pmtiles_spec):
+def test_pmtiles_row_has_opacity(pmtiles_spec):
     store = LayerStore()
     store.add(pmtiles_spec)
     store.set_status(pmtiles_spec.id, "ready", kind="pmtiles")
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, pmtiles_spec.id)
-    assert role_widgets(box, "remove") and not role_widgets(box, "opacity")
+    open_settings(box, pmtiles_spec.id)
+    find_by_role(box, "opacity", pmtiles_spec.id).v_model = 0.3
+    assert store.view(pmtiles_spec.id).opacity == 0.3
 
 
-def test_expanded_row_shows_inline_legend(byte):
+def test_row_has_no_legend(byte):
     store = LayerStore()
     spec = LayerSpec.from_raster(byte, vmin=0, vmax=255)
     store.add(spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, spec.id)
-    legends = inline_legends(box)
-    assert len(legends) == 1 and legends[0].legend_data["gradients"]
+    open_settings(box, spec.id)
+    assert not [w for w in of_kind(box, "LegendComponent")]
+    assert "Legend" not in all_text(box)
 
 
 def test_download_only_for_file_sources(raster_spec, gee_spec):
@@ -285,24 +286,24 @@ def test_download_only_for_file_sources(raster_spec, gee_spec):
     store.add(raster_spec)
     store.add(gee_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
+    open_settings(box, raster_spec.id)
     assert len(file_downloads(box)) == 1
-    expand(box, raster_spec.id)
-    expand(box, gee_spec.id)
+    find_by_role(box, "settings-menu", raster_spec.id).v_model = False
+    open_settings(box, gee_spec.id)
     assert role_widgets(box, "remove") and not file_downloads(box)
 
 
-def _expanded(spec):
+def _opened(spec):
     store = LayerStore()
     store.add(spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, spec.id)
+    open_settings(box, spec.id)
     return box
 
 
 def test_download_disabled_above_the_size_limit(raster_spec, monkeypatch):
     monkeypatch.setattr(download, "DOWNLOAD_MAX_BYTES", 10)
-    box = _expanded(raster_spec)
+    box = _opened(raster_spec)
     assert find_by_role(box, "download", raster_spec.id).disabled is True
     # a click anywhere in a FileDownload, disabled button included, would read the file
     assert not file_downloads(box)
@@ -311,7 +312,7 @@ def test_download_disabled_above_the_size_limit(raster_spec, monkeypatch):
 
 
 def test_download_enabled_below_the_size_limit(raster_spec):
-    box = _expanded(raster_spec)
+    box = _opened(raster_spec)
     tip = find_by_role(box, "download-tip", raster_spec.id)
     assert tip.disabled is True
     assert len(file_downloads(tip)) == 1 and not role_widgets(box, "download")
@@ -322,5 +323,164 @@ def test_missing_file_is_not_downloadable(tmp_path, byte):
     shutil.copy(byte, path)
     spec = LayerSpec.from_raster(path)
     path.unlink()
-    box = _expanded(spec)
+    box = _opened(spec)
     assert role_widgets(box, "remove") and not role_widgets(box, "download-tip")
+
+
+def test_row_is_one_line_in_order(raster_spec):
+    m = SepalMap(gee=False)
+    m.layer_store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    assert header_roles(box) == ["visibility", "zoom", "settings", "remove"]
+
+
+def test_no_zoom_button_without_a_map(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert header_roles(box) == ["visibility", "settings", "remove"]
+
+
+def test_settings_menu_holds_opacity_restyle_download(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert not role_widgets(box, "opacity")
+    open_settings(box, raster_spec.id)
+    assert role_widgets(box, "opacity") and role_widgets(box, "field")
+    assert len(file_downloads(box)) == 1
+
+
+def test_settings_menu_stays_open_and_follows_the_store(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    menu = find_by_role(box, "settings-menu", raster_spec.id)
+    assert menu.close_on_content_click is False
+    open_settings(box, raster_spec.id)
+
+    store.set_opacity(raster_spec.id, 0.2)
+
+    assert find_by_role(box, "settings-menu", raster_spec.id).v_model is True
+    assert find_by_role(box, "opacity", raster_spec.id).v_model == 0.2
+
+
+def test_tile_source_row_has_no_restyle_form():
+    store = LayerStore()
+    spec = _tiles("t")
+    store.add(spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    open_settings(box, "t")
+    assert role_widgets(box, "opacity") and not role_widgets(box, "field")
+    assert not role_widgets(box, "apply")
+
+
+class _FakeZoom:
+    """Scripted zoom results and the instance the map says it published."""
+
+    def __init__(self, results, instance=1):
+        self.results = list(results)
+        self.calls = 0
+        self.instance = instance
+
+    async def zoom_layer_async(self, layer_id, zoom_out=1):
+        self.calls += 1
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def _zoom_panel(fake, monkeypatch):
+    m = SepalMap(gee=False)
+    m.zoom_layer_async = fake.zoom_layer_async
+    monkeypatch.setattr(row, "_published_instance", lambda map_, layer_id: fake.instance)
+    m.layer_store.add(_tiles("a"))
+    m.layer_store.set_status("a", "ready")
+    box, rc = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    return m.layer_store, box, rc
+
+
+def _zoom(box):
+    return find_by_role(box, "zoom", "a")
+
+
+@pytest.mark.asyncio
+async def test_zoom_runs_only_on_click(monkeypatch):
+    fake = _FakeZoom(["moved"])
+    store, box, rc = _zoom_panel(fake, monkeypatch)
+    store.set_visible("a", False)
+    store.set_visible("a", True)
+    await wait_until(lambda: True)
+    assert fake.calls == 0
+
+    click(_zoom(box))
+    await wait_until(lambda: fake.calls == 1)
+    assert fake.calls == 1
+    rc.close()
+
+
+@pytest.mark.asyncio
+async def test_zoom_disabled_while_pending(monkeypatch):
+    fake = _FakeZoom([])
+    store, box, rc = _zoom_panel(fake, monkeypatch)
+    store.set_status("a", "pending")
+    assert _zoom(box).disabled is True
+    store.set_status("a", "ready")
+    assert not _zoom(box).disabled
+    rc.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_zoom_stays_enabled(monkeypatch):
+    fake = _FakeZoom(["failed", RuntimeError("boom")])
+    store, box, rc = _zoom_panel(fake, monkeypatch)
+    click(_zoom(box))
+    await wait_until(lambda: "Could not zoom" in all_text(box))
+    assert not _zoom(box).disabled
+
+    click(_zoom(box))
+    await wait_until(lambda: fake.calls == 2)
+    assert not _zoom(box).disabled
+    rc.close()
+
+
+@pytest.mark.asyncio
+async def test_unbounded_layer_zoom_disables_the_button(monkeypatch):
+    fake = _FakeZoom(["no_bounds"])
+    store, box, rc = _zoom_panel(fake, monkeypatch)
+    click(_zoom(box))
+    await wait_until(lambda: _zoom(box).disabled is True)
+    assert "no bounds" in all_text(box)
+    rc.close()
+
+
+@pytest.mark.asyncio
+async def test_no_bounds_clears_when_the_data_changes(monkeypatch):
+    fake = _FakeZoom(["no_bounds"])
+    store, box, rc = _zoom_panel(fake, monkeypatch)
+    click(_zoom(box))
+    await wait_until(lambda: _zoom(box).disabled is True)
+
+    # the same layer rendered again keeps it
+    store.set_visible("a", False)
+    assert _zoom(box).disabled is True
+
+    # data written over the same path publishes a new instance
+    fake.instance = 2
+    store.set_visible("a", True)
+    assert not _zoom(box).disabled
+    rc.close()
+
+
+@pytest.mark.asyncio
+async def test_superseded_zoom_leaves_the_button_enabled(monkeypatch):
+    fake = _FakeZoom(["superseded", "missing"])
+    store, box, rc = _zoom_panel(fake, monkeypatch)
+    for expected in (1, 2):
+        click(_zoom(box))
+        await wait_until(lambda: fake.calls == expected)
+        await wait_until(lambda: True)
+        assert not _zoom(box).disabled
+    assert "Could not zoom" not in all_text(box) and "no bounds" not in all_text(box)
+    rc.close()

@@ -9,8 +9,8 @@ from pysepal.solara.components.layer_panel.restyle import RestyleForm
 from tests.test_solara._layer_panel_helpers import (
     all_text,
     click_apply,
-    expand,
     field_names,
+    open_settings,
     set_field,
 )
 
@@ -27,7 +27,7 @@ def test_invalid_palette_shows_error_and_keeps_store(raster_spec):
     store = LayerStore()
     store.add(raster_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
+    open_settings(box, raster_spec.id)
     set_field(box, "palette", "#zz")
     click_apply(box)
     assert store.get(raster_spec.id).revision == 0 and "palette" in all_text(box).lower()
@@ -44,7 +44,7 @@ def test_fill_only_edit_is_visible(vector_spec):
     store = LayerStore()
     store.add(vector_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, vector_spec.id)
+    open_settings(box, vector_spec.id)
     set_field(box, "fill", "#00ff00")
     click_apply(box)
     assert _paint(store.get(vector_spec.id), is_dark=False).fill_opacity == 1.0
@@ -63,7 +63,7 @@ def test_a_valid_apply_clears_the_error(raster_spec):
     store = LayerStore()
     store.add(raster_spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    expand(box, raster_spec.id)
+    open_settings(box, raster_spec.id)
     set_field(box, "palette", "#zz")
     click_apply(box)
     set_field(box, "palette", "#000000,#ffffff")

@@ -53,7 +53,7 @@ def LayerPanel(
         content = SortableList(
             ids=ids,
             children=[
-                LayerRow(store, layer_id, on_export, is_dark, version).key(layer_id)
+                LayerRow(store, layer_id, map_, on_export, is_dark, version).key(layer_id)
                 for layer_id in ids
             ],
             on_move=on_move,

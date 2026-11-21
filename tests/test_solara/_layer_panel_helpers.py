@@ -53,16 +53,24 @@ def find_visibility_toggle(box: Any, layer_id: str) -> Any:
     return find_by_role(box, "visibility", layer_id)
 
 
-def expand(box: Any, layer_id: str) -> None:
-    """Expand a row."""
-    click(find_by_role(box, "expand", layer_id))
+def open_settings(box: Any, layer_id: str) -> None:
+    """Open the settings pop-up of a row."""
+    find_by_role(box, "settings-menu", layer_id).v_model = True
 
 
 def export_buttons(box: Any) -> List[str]:
-    """Layer ids that show an Export button, after expanding every row."""
-    for w in role_widgets(box, "expand"):
-        click(w)
+    """Layer ids that show an Export button, after opening every settings pop-up."""
+    for w in role_widgets(box, "settings-menu"):
+        w.v_model = True
     return [_attr(w, "data-layer-id") for w in role_widgets(box, "export")]
+
+
+HEADER_ROLES = ("visibility", "zoom", "settings", "remove")
+
+
+def header_roles(box: Any) -> List[str]:
+    """The roles of a row's one line, left to right."""
+    return [_attr(w, "data-role") for w in _tree(box) if _attr(w, "data-role") in HEADER_ROLES]
 
 
 def export_button(box: Any, layer_id: str) -> Any:
@@ -114,11 +122,6 @@ def file_downloads(box: Any) -> List[Any]:
 def of_kind(box: Any, type_name: str) -> List[Any]:
     """Widgets of one class name in the tree, tooltip activators included."""
     return [w for w in _tree(box) if type(w).__name__ == type_name]
-
-
-def inline_legends(box: Any) -> List[Any]:
-    """The legends rendered inline, in a row's body."""
-    return [w for w in _tree(box) if getattr(w, "inline", None) is True]
 
 
 def button_icon(button: Any) -> str:
