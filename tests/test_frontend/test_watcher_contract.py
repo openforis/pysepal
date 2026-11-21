@@ -23,7 +23,18 @@ import pysepal
 PACKAGE = Path(pysepal.__file__).parent
 
 # Not walked: project scaffolding, and the stubs that raise on import.
-SKIPPED = ("pysepal.templates", "pysepal.sepalwidgets", "pysepal.mapping.layers_control")
+SKIPPED = (
+    "pysepal.templates",
+    "pysepal.sepalwidgets",
+    "pysepal.mapping.layers_control",
+    "pysepal.mapping.draw_control",
+    "pysepal.mapping.inspector_control",
+    "pysepal.mapping.zoom_control",
+    "pysepal.mapping.fullscreen_control",
+    "pysepal.mapping.layer_state_control",
+    "pysepal.mapping.menu_control",
+    "pysepal.mapping.legend_control",
+)
 
 WATCH_START = re.compile(r"^  watch: \{$")
 BLOCK_END = re.compile(r"^  \},?$")

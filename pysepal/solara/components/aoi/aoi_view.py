@@ -85,7 +85,7 @@ def resolve_methods(
         methods: 'ALL', 'ADMIN', 'CUSTOM', or a list of names to keep or, when each
             is prefixed with '-', to drop.
         gee: Whether Earth Engine is enabled. ASSET needs it.
-        map_: The linked map. DRAW needs one.
+        map_: The linked map. DRAW needs one with a draw control.
 
     SHAPE and POINTS read the user's files: the local disk, or in a shared app
     the user's SEPAL workspace. A shared app without a session has neither and
@@ -119,7 +119,7 @@ def resolve_methods(
     # Clean the list from things we can't use
     if not gee:
         method_dict.pop("ASSET", None)
-    if map_ is None:
+    if getattr(map_, "dc", None) is None:
         method_dict.pop("DRAW", None)
     if not user_files_available():
         method_dict.pop("SHAPE", None)
@@ -318,8 +318,8 @@ def AoiView(
 
     solara.use_effect(_ensure_ee, [gee])
 
-    # Get DrawControl if map is provided
-    aoi_dc = map_.dc if map_ else None
+    # The map's draw control, if it has one
+    aoi_dc = getattr(map_, "dc", None)
 
     selected_method = solara.use_reactive("")
     form_revision = solara.use_reactive(0)

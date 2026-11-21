@@ -20,7 +20,6 @@ from pysepal.layers import (
     RenderLayer,
     prepare_sync,
 )
-from pysepal.mapping.inspector_control import InspectorControl
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.layer_engine import (
     OVERLAY_PANE,
@@ -123,7 +122,7 @@ def test_geojson_pane_is_a_creation_option(vector_spec):
     assert layer.point_style["pane"] == layer.pane
 
 
-def test_local_raster_is_bound_tile_layer(raster_spec, monkeypatch):
+def test_local_raster_is_bound_tile_layer(raster_spec):
     m = SepalMap(gee=False)
     store = LayerStore()
     engine = LeafletEngine(m, store)
@@ -131,11 +130,6 @@ def test_local_raster_is_bound_tile_layer(raster_spec, monkeypatch):
     layer = engine.leaflet_layer(raster_spec.id)
     assert type(layer).__name__ == "BoundTileLayer"
     assert layer.tile_server is not None and layer.raster
-    seen = []
-    monkeypatch.setattr(InspectorControl, "_from_raster", lambda self, r, c: seen.append(r) or {})
-    m.v_inspector.menu.v_model = True  # read_data returns early on an inactive inspector
-    m.v_inspector.read_data(type="click", coordinates=[0, 0])
-    assert seen == [layer.raster]
 
 
 def test_switching_source_type_replaces_widget(raster_spec, gee_spec):
@@ -473,7 +467,7 @@ def test_close_detaches(raster_spec):
 
 
 def test_layer_changes_are_one_at_a_time(raster_spec, vector_spec, pmtiles_spec):
-    # SepalMap's LayerStateControl reads every change of m.layers as one added or removed layer
+    # a listener on m.layers can read every change as one added or removed layer
     m, store = ipl.Map(), LayerStore()
     LeafletEngine(m, store)
     sizes = []
@@ -486,19 +480,3 @@ def test_layer_changes_are_one_at_a_time(raster_spec, vector_spec, pmtiles_spec)
     store.set_visible(vector_spec.id, False)
     store.remove(raster_spec.id)
     assert sizes and set(sizes) == {1}
-
-
-def test_state_bar_settles_after_reattaching_a_loading_layer(raster_spec, raster_spec_b):
-    m, store = SepalMap(gee=False), LayerStore()
-    engine = LeafletEngine(m, store)
-    store.add(raster_spec)
-    a = engine.leaflet_layer(raster_spec.id)
-    a.set_trait("loading", True)
-    store.add(raster_spec_b)
-    b = engine.leaflet_layer(raster_spec_b.id)
-    b.set_trait("loading", True)
-    store.move(raster_spec.id, 0)  # both are detached and re-attached while still loading
-    a.set_trait("loading", False)
-    b.set_trait("loading", False)
-    assert m.state.nb_loading_layer == 0
-    assert m.state.loading is False

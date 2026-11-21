@@ -15,28 +15,30 @@ Example:
         sm.SepalMap(gee=False)
 """
 
-from .draw_control import *
-from .fullscreen_control import *
 from .geojson_utils import *
 from .handle import LayerGoneError as LayerGoneError
 from .handle import LayerHandle as LayerHandle
 from .handle import ZoomResult as ZoomResult
-from .inspector_control import *
 from .layer import *
-from .layer_state_control import *
-from .legend_control import *
 from .map_btn import *
 from .marker_cluster import *
-from .menu_control import *
 from .sepal_map import *
 from .tiling import *
 from .visualization import *
-from .zoom_control import *
 
 _REMOVED = {
     "AoiControl": "pysepal.solara.components.aoi.AoiView",
     "aoi_control": "pysepal.solara.components.aoi.AoiView",
     "LayersControl": "SepalMap.layer_store with the Solara LayerPanel",
+    "DrawControl": "the draw tools being rebuilt on the MapLibre map",
+    "GeomanDrawControl": "the draw tools being rebuilt on the MapLibre map",
+    "InspectorControl": "the value inspector being rebuilt on the MapLibre map",
+    "ValueInspector": "the value inspector being rebuilt on the MapLibre map",
+    "ZoomControl": "the zoom, scale and fullscreen controls the map draws itself",
+    "FullScreenControl": "the zoom, scale and fullscreen controls the map draws itself",
+    "LayerStateControl": "the layer loading state MapView shows",
+    "MenuControl": "Solara components in MapView(overlays=...)",
+    "LegendControl": "the MapView legend, built from each layer's legend",
 }
 
 

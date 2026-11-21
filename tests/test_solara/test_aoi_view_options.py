@@ -5,9 +5,11 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import ipyleaflet as ipl
 import pytest
 import reacton
 import solara
+import traitlets
 
 import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
@@ -29,6 +31,22 @@ _ITEMS = {
     (0, ""): [{"title": "Algeria", "value": "101"}, {"title": "Paraguay", "value": "206"}],
     (1, "101"): [{"title": "Adrar", "value": "1001"}],
 }
+
+
+class _DrawStub(ipl.Control):
+    """Stands in for the draw control a SepalMap had before the MapLibre map."""
+
+    data = traitlets.List()
+
+    def clear(self):
+        self.data = []
+
+
+def _draw_map() -> sm.SepalMap:
+    sepal_map = sm.SepalMap(gee=False)
+    sepal_map.dc = _DrawStub()
+    return sepal_map
+
 
 _SQUARE = {
     "type": "Feature",
@@ -122,8 +140,18 @@ def test_the_select_button_waits_for_the_last_admin_level():
     _session(_Harness, scenario)
 
 
+def test_a_map_without_a_draw_control_offers_no_draw():
+    offered = aoi_view_mod.resolve_methods("ALL", gee=False, map_=sm.SepalMap(gee=False))
+    assert "DRAW" not in offered
+
+
+def test_a_map_with_a_draw_control_offers_draw():
+    offered = aoi_view_mod.resolve_methods("ALL", gee=False, map_=_draw_map())
+    assert "DRAW" in offered
+
+
 def test_the_select_button_waits_for_a_drawing():
-    sepal_map = sm.SepalMap(gee=False)
+    sepal_map = _draw_map()
 
     @solara.component
     def _Harness():
@@ -253,7 +281,7 @@ def test_no_method_leaves_the_select_empty():
 
 
 def test_the_draw_name_field_is_outlined_and_dense():
-    sepal_map = sm.SepalMap(gee=False)
+    sepal_map = _draw_map()
 
     @solara.component
     def _Harness():

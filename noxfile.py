@@ -106,9 +106,20 @@ def docs(session):
     # build the api doc files
     templates = "docs/source/_templates/apidoc"
     modules = "docs/source/modules"
-    # the sepalwidgets stub only raises an ImportError
-    stub = "pysepal/sepalwidgets"
-    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal", stub)
+    # the stubs only raise an ImportError
+    stubs = ["pysepal/sepalwidgets"] + [
+        f"pysepal/mapping/{name}.py"
+        for name in (
+            "draw_control",
+            "inspector_control",
+            "zoom_control",
+            "fullscreen_control",
+            "layer_state_control",
+            "menu_control",
+            "legend_control",
+        )
+    ]
+    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal", *stubs)
 
     # build the documentation
     source = "docs/source"

@@ -8,7 +8,6 @@ from pysepal.mapping.bounds import (
     compute_zoom_for_bounds,
     viewport_pixels_from_map,
 )
-from pysepal.mapping.fullscreen_control import FullScreenControl
 from pysepal.mapping.gdal_env import GDAL_ENV_VARS, prune_foreign_gdal_env
 from pysepal.mapping.visualization import validate_ee_object
 from pysepal.scripts.gee_interface import GEEInterface
@@ -29,7 +28,6 @@ import ee
 import ipyleaflet as ipl
 import ipyvuetify as v
 import ipywidgets as widgets
-import numpy as np
 from eeclient.client import EESession
 from ipyleaflet import TileLayer  # noqa: F401 - leave it here, it is used in the eval
 from traitlets import Int as _TInt
@@ -43,14 +41,8 @@ from pysepal.layers.preparation import (
 )
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.basemaps import basemap_tiles
-from pysepal.mapping.draw_control import GeomanDrawControl
-from pysepal.mapping.inspector_control import InspectorControl
 from pysepal.mapping.layer import EELayer
 from pysepal.mapping.layer_engine import OVERLAY_PANE, LeafletEngine
-from pysepal.mapping.layer_state_control import LayerStateControl
-from pysepal.mapping.legend_control import LegendControl
-from pysepal.mapping.zoom_control import ZoomControl
-from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 
@@ -116,17 +108,8 @@ class SepalMap(ipl.Map):
     gee: bool = True
     "Either the map will use ee binding or not"
 
-    v_inspector: Optional[InspectorControl] = None
-    "The value inspector of the map"
-
-    dc: Optional[GeomanDrawControl] = None
-    "The drawing control of the map"
-
     _id: str = ""
     "A unique 6 letters str to identify the map in the DOM"
-
-    state: Optional[LayerStateControl] = None
-    "The statebar to inform the user about tile loading"
 
     layer_store: Optional[LayerStore] = None
     "The layers the map draws, top first: what the layer panel lists and edits"
@@ -152,10 +135,7 @@ class SepalMap(ipl.Map):
     def __init__(
         self,
         basemaps: List[str] = [],
-        dc: bool = False,
-        vinspector: bool = False,
         gee: bool = True,
-        statebar: bool = False,
         theme_state: Optional[ThemeState] = None,
         gee_session: Optional[EESession] = None,
         gee_interface: Optional[GEEInterface] = None,
@@ -174,10 +154,7 @@ class SepalMap(ipl.Map):
 
         Args:
             basemaps: the basemaps used as background in the map. If multiple selection, they will be displayed as layers.
-            dc: whether or not the drawing control should be displayed. default to false
-            vinspector: Add value inspector to map, useful to inspect pixel values. default to false
             gee: whether or not to use the ee binding. If False none of the earthengine display functionalities can be used. default to True
-            statebar: whether or not to display the Statebar in the map
             theme_state: shared theme state for Solara apps
             gee_session (optional): a custom EESession object to do gee requests. default to None (deprecated in favor of gee_interface)
             gee_interface: a shared GEEInterface instance. If provided, takes precedence over gee_session
@@ -258,30 +235,15 @@ class SepalMap(ipl.Map):
 
         # add the base controls
         base_controls = [
-            ZoomControl(self),
+            ipl.ZoomControl(position="topleft"),
             ipl.AttributionControl(position="bottomleft", prefix="SEPAL"),
             ipl.ScaleControl(position="bottomleft", imperial=False),
         ]
         if fullscreen_control:
-            base_controls.append(FullScreenControl(self))
+            base_controls.append(ipl.FullScreenControl())
         for control in base_controls:
             self._owned.append(control)
             self.add(control)
-
-        # specific drawing control
-        self.dc = GeomanDrawControl(self)
-        not dc or self.add(self.dc)
-
-        # specific v_inspector
-        self.v_inspector = InspectorControl(self)
-        not vinspector or self.add(self.v_inspector)
-
-        # specific statebar
-        self.state = LayerStateControl(self)
-        not statebar or self.add(self.state)
-
-        # built even when hidden, and each one holds the map
-        self._owned.extend([self.dc, self.v_inspector, self.state])
 
         # create a proxy ID to the element
         # this id should be unique and will be used by mutators to identify this map
@@ -290,7 +252,7 @@ class SepalMap(ipl.Map):
         self._bind_theme_source(theme_source)
 
         # Last: the layers of a given store then go over the basemaps, in the theme just
-        # bound, and the state bar counts them.
+        # bound.
         self.layer_engine = LeafletEngine(
             self, self.layer_store, gee_interface=getattr(self, "gee_interface", None)
         )
@@ -370,6 +332,25 @@ class SepalMap(ipl.Map):
         except (AttributeError, KeyError, ValueError):
             pass
 
+    _REMOVED_MEMBERS = {
+        "dc": "the draw tools being rebuilt on the MapLibre map",
+        "v_inspector": "the value inspector being rebuilt on the MapLibre map",
+        "show_dc": "the draw tools being rebuilt on the MapLibre map",
+        "hide_dc": "the draw tools being rebuilt on the MapLibre map",
+        "add_legend": "the MapView legend, built from each layer's legend",
+        "add_colorbar": "the MapView legend, built from each layer's legend",
+    }
+
+    def __getattr__(self, name: str):
+        """Say what replaced a removed member; only reached when normal lookup fails."""
+        if name in type(self)._REMOVED_MEMBERS:
+            raise AttributeError(
+                f"SepalMap.{name} was removed in pysepal 5.0; use "
+                f'{type(self)._REMOVED_MEMBERS[name]} or pin "pysepal<5". '
+                "See docs/guides/migrating-to-pysepal-5.md"
+            )
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
     def close(self) -> None:
         """Close the map with every widget it built.
 
@@ -416,24 +397,6 @@ class SepalMap(ipl.Map):
     def _theme_is_dark(source) -> bool:
         """Normalize theme sources that expose a `dark` traitlet."""
         return getattr(source, "dark", None) is True
-
-    def show_dc(self) -> Self:
-        """Show the drawing control on the map.
-
-        Returns:
-            Self for method chaining
-        """
-        self.dc.show()
-        return self
-
-    def hide_dc(self) -> Self:
-        """Hide the drawing control of the map.
-
-        Returns:
-            Self for method chaining
-        """
-        self.dc.hide()
-        return self
 
     def set_center(self, lon: float, lat: float, zoom: int = -1) -> None:
         """Centers the map view at a given coordinates with the given zoom level.
@@ -712,100 +675,6 @@ class SepalMap(ipl.Map):
             )
         finally:
             self.layer_store.release(spec.id, generation)
-
-    def add_colorbar(
-        self,
-        colors: list,
-        cmap: str = "viridis",
-        vmin: float = 0.0,
-        vmax: float = 1.0,
-        index: list = [],
-        categorical: bool = False,
-        step: int = 0,
-        transparent_bg: bool = False,
-        position: str = "bottomright",
-        layer_name: str = "",
-        **kwargs,
-    ) -> None:
-        """Add a colorbar to the map.
-
-        Args:
-            colors: The set of colors to be used for interpolation. Colors can be provided in the form: * tuples of RGBA ints between 0 and 255 (e.g: (255, 255, 0) or (255, 255, 0, 255)) * tuples of RGBA floats between 0. and 1. (e.g: (1.,1.,0.) or (1., 1., 0., 1.)) * HTML-like string (e.g: “#ffff00) * a color name or shortcut (e.g: “y” or “yellow”)
-            cmap: a matplotlib colormap default to viridis
-            vmin: The minimal value for the colormap. Values lower than vmin will be bound directly to colors[0].. Defaults to 0.
-            vmax: The maximal value for the colormap. Values higher than vmax will be bound directly to colors[-1]. Defaults to 1.0.
-            index: The values corresponding to each color. It has to be sorted, and have the same length as colors. If None, a regular grid between vmin and vmax is created. Defaults to None.
-            categorical (bool, optional): Whether or not to create a categorical colormap. Defaults to False.
-            step: The step to split the LinearColormap into a StepColormap. Defaults to None.
-            position: The position for the colormap widget. Defaults to "bottomright".
-            layer_name: Layer name of the colorbar to be associated with. Defaults to None.
-            kwargs: any other argument of the colorbar object from matplotlib
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib import colorbar
-        from matplotlib import colors as mpc
-
-        width, height = 6.0, 0.4
-        alpha = 1
-
-        if colors is not None:
-            # transform colors in hex colors
-            hexcodes = [su.to_colors(c) for c in colors]
-
-            if categorical:
-                plot_color = mpc.ListedColormap(hexcodes)
-                vals = np.linspace(vmin, vmax, plot_color.N + 1)
-                norm = mpc.BoundaryNorm(vals, plot_color.N)
-
-            else:
-                plot_color = mpc.LinearSegmentedColormap.from_list("custom", hexcodes, N=256)
-                norm = mpc.Normalize(vmin=vmin, vmax=vmax)
-
-        elif cmap is not None:
-            plot_color = plt.get_cmap(cmap)
-            norm = mpc.Normalize(vmin=vmin, vmax=vmax)
-
-        else:
-            msg = '"cmap" keyword or "colors" key must be provided.'
-            raise ValueError(msg)
-
-        style = (
-            "dark_background" if self._theme_is_dark(self._theme_source or v.theme) else "classic"
-        )
-
-        with plt.style.context(style):
-            fig, ax = plt.subplots(figsize=(width, height))
-            cb = colorbar.ColorbarBase(
-                ax,
-                norm=norm,
-                alpha=alpha,
-                cmap=plot_color,
-                orientation="horizontal",
-                **kwargs,
-            )
-
-            # cosmetic improvement
-            cb.outline.set_visible(False)  # remove border of the color bar
-            ax.tick_params(size=0)  # remove ticks
-            fig.patch.set_alpha(0.0)  # remove bg of the fig
-            ax.patch.set_alpha(0.0)  # remove bg of the ax
-
-        not layer_name or cb.set_label(layer_name)
-
-        output = widgets.Output()
-        colormap_ctrl = ipl.WidgetControl(
-            widget=output,
-            position=position,
-            transparent_bg=True,
-        )
-        with output:
-            output.clear_output()
-            plt.show()
-
-        self._owned.append(colormap_ctrl)
-        self.add(colormap_ctrl)
-
-        return
 
     def add_ee_layer(
         self,
@@ -1205,29 +1074,6 @@ class SepalMap(ipl.Map):
         lon_shift = px_offset_x * deg_per_px_x
         lat_shift = px_offset_y * deg_per_px_y
         self.center = (lat_c - lat_shift, lon_c - lon_shift)
-
-    def add_legend(
-        self,
-        title: Optional[str] = None,
-        legend_dict: dict = {},
-        position: str = "bottomright",
-        vertical: bool = True,
-    ) -> None:
-        """Creates and adds a custom legend as widget control to the map.
-
-        Args:
-            title: Title of the legend. Defaults to 'Legend'.
-            legend_dict: dictionary with key as label name and value as color
-            position: the position (corners) of the legend on the map
-            vertical: vertical or horizoal position of the legend
-        """
-        title = msg("mapping.legend") if title is None else title
-
-        # Define as class member so it can be accessed from outside.
-        self.legend = LegendControl(legend_dict, title=title, vertical=vertical, position=position)
-        self._owned.append(self.legend)
-
-        return self.add(self.legend)
 
         # ##########################################################################
         # ###                overwrite geemap calls                              ###

@@ -41,7 +41,20 @@ def _run(code: str) -> subprocess.CompletedProcess:
     )
 
 
-@pytest.mark.parametrize("module", ["pysepal.sepalwidgets", "pysepal.mapping.layers_control"])
+@pytest.mark.parametrize(
+    "module",
+    [
+        "pysepal.sepalwidgets",
+        "pysepal.mapping.layers_control",
+        "pysepal.mapping.draw_control",
+        "pysepal.mapping.inspector_control",
+        "pysepal.mapping.zoom_control",
+        "pysepal.mapping.fullscreen_control",
+        "pysepal.mapping.layer_state_control",
+        "pysepal.mapping.menu_control",
+        "pysepal.mapping.legend_control",
+    ],
+)
 def test_removed_module_import_says_what_to_do(module):
     result = _run(f"import {module}")
 
@@ -59,6 +72,15 @@ def test_removed_module_import_says_what_to_do(module):
         ("pysepal.planetapi", "PlanetView"),
         ("pysepal.mapping", "AoiControl"),
         ("pysepal.mapping", "LayersControl"),
+        ("pysepal.mapping", "DrawControl"),
+        ("pysepal.mapping", "GeomanDrawControl"),
+        ("pysepal.mapping", "InspectorControl"),
+        ("pysepal.mapping", "ValueInspector"),
+        ("pysepal.mapping", "ZoomControl"),
+        ("pysepal.mapping", "FullScreenControl"),
+        ("pysepal.mapping", "LayerStateControl"),
+        ("pysepal.mapping", "MenuControl"),
+        ("pysepal.mapping", "LegendControl"),
     ],
 )
 def test_removed_widget_names_say_what_to_do(module, name):
@@ -67,6 +89,15 @@ def test_removed_widget_names_say_what_to_do(module, name):
     package = importlib.import_module(module)
     with pytest.raises(AttributeError, match="removed in pysepal 5.0"):
         getattr(package, name)
+
+
+@pytest.mark.parametrize("member", ["add_legend", "add_colorbar", "show_dc"])
+def test_removed_sepal_map_members_say_what_to_do(member):
+    from pysepal.mapping import SepalMap
+
+    with pytest.raises(AttributeError, match="removed in pysepal 5.0") as error:
+        getattr(SepalMap(gee=False), member)
+    assert "migrating-to-pysepal-5" in str(error.value)
 
 
 def test_unknown_names_still_raise_the_usual_error():

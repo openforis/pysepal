@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import ee
 import geopandas as gpd
+import ipyleaflet as ipl
 import ipyvuetify as v
 import pytest
 from ipyleaflet import GeoJSON
@@ -18,7 +19,6 @@ from pysepal import aoi
 from pysepal import mapping as sm
 from pysepal.frontend import styles as ss
 from pysepal.mapping.basemaps import basemap_tiles, xyz_tiles
-from pysepal.mapping.legend_control import LegendControl
 from pysepal.mapping.visualization import get_viz_params
 from pysepal.scripts.gee_interface import GEEInterface
 from pysepal.solara.theme import ThemeState
@@ -36,7 +36,7 @@ def test_init() -> None:
     assert isinstance(m, sm.SepalMap)
     assert m.center == [0, 0]
     assert m.zoom == 3
-    assert len(m.layers) == 2
+    assert len(m.layers) == 1
 
     default_basemaps = ["SEPAL Dark", "SEPAL Light"]
 
@@ -53,7 +53,7 @@ def test_init() -> None:
     basemaps = ["ROADMAP", "TERRAIN"]
     names = [basemap_tiles[b].name for b in basemaps]
     m = sm.SepalMap(basemaps)
-    assert len(m.layers) == 3
+    assert len(m.layers) == 2
     layers_name = [layer.name for layer in m.layers]
     assert all(n in layers_name for n in names)
 
@@ -66,18 +66,16 @@ def test_init() -> None:
     m = sm.SepalMap([basemaps[1], basemaps[0], basemaps[1]])
     assert [layer.name for layer in m.layers][:2] == [names[1], names[0]]
 
-    # check that the map start with a DC
-    m = sm.SepalMap(dc=True)
+    # check that each map gets its own id
+    m = sm.SepalMap()
     assert m._id != id1
-    assert m.dc in m.controls
 
-    # check that the map starts with a vinspector
-    m = sm.SepalMap(vinspector=True)
-    assert m.v_inspector in m.controls
-
-    # check that the map start with a statebar
-    m = sm.SepalMap(statebar=True)
-    assert m.state in m.controls
+    # check that the base controls are ipyleaflet's own
+    assert any(isinstance(c, ipl.ZoomControl) for c in m.controls)
+    assert not any(isinstance(c, ipl.FullScreenControl) for c in m.controls)
+    assert any(
+        isinstance(c, ipl.FullScreenControl) for c in sm.SepalMap(fullscreen_control=True).controls
+    )
 
     # check that a wrong layer raise an error if it's not part of the leaflet basemap list
     with pytest.raises(Exception):
@@ -179,17 +177,6 @@ def test_add_raster(rgb: Path, byte: Path) -> None:
     return
 
 
-def test_add_colorbar() -> None:
-    """Add a colorbar to the map."""
-    # create a map and add a colorbar
-    m = sm.SepalMap()
-    m.add_colorbar(colors=["#fc8d59", "#ffffbf", "#91bfdb"], vmin=0, vmax=5)
-
-    assert len(m.controls) == 4  # only thing I can check
-
-    return
-
-
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_add_ee_layer_exceptions() -> None:
@@ -236,7 +223,7 @@ def test_add_ee_layer(image_id: str) -> None:
     for viz in get_viz_params(image, m.gee_interface).values():
         m.addLayer(image, {}, viz["name"], viz_name=viz["name"])
 
-    assert len(m.layers) == 6
+    assert len(m.layers) == 5
 
     # display an image without properties
     m = sm.SepalMap()
@@ -245,7 +232,7 @@ def test_add_ee_layer(image_id: str) -> None:
     dataset = ee.Image().addBands(dataset)  # with all bands and 0 properties
     m.addLayer(dataset)
 
-    assert len(m.layers) == 3
+    assert len(m.layers) == 2
 
     # Test with vector
 
@@ -265,7 +252,7 @@ def test_add_ee_layer(image_id: str) -> None:
     map_ = sm.SepalMap()
     map_.addLayer(geometry, {"color": "red", "fillColor": None})
 
-    assert len(m.layers) == 3
+    assert len(m.layers) == 2
 
     return
 
@@ -358,12 +345,12 @@ def test_remove_layer(ee_map_with_layers: sm.SepalMap) -> None:
 
     # remove using a layer without counting the base
     m.remove_layer(0)
-    assert len(m.layers) == 5
+    assert len(m.layers) == 4
     assert m.layers[0].base is True
 
     # remove when authorizing selection of bases
     m.remove_layer(0, base=True)
-    assert len(m.layers) == 4
+    assert len(m.layers) == 3
     assert len([ly for ly in m.layers if ly.base is True]) == 0
     # assert m.layers[0].name == "NDWI harmonics"
 
@@ -452,7 +439,7 @@ def test_add_basemap() -> None:
     m = sm.SepalMap()
     m.add_basemap("HYBRID")
 
-    assert len(m.layers) == 3
+    assert len(m.layers) == 2
     layer = m.find_layer("Google Satellite", base=True)
     assert layer.name == "Google Satellite"
     assert layer.base is True
@@ -540,32 +527,6 @@ def test_zoom_raster(byte: Path) -> None:
 
     # it works but we cannot test pure JS from here
     # assert m.zoom == 15.0
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_add_legend(ee_map_with_layers: sm.SepalMap) -> None:
-    """Add a legend to the map.
-
-    Args:
-        ee_map_with_layers: a map supporting multiple ee assets tile layer
-    """
-    legend_dict = {
-        "forest": "#b3842e",
-        "non forest": "#a1458e",
-        "secondary": "#324a88",
-        "success": "#3f802a",
-        "info": "#79b1c9",
-        "warning": "#b8721d",
-    }
-
-    ee_map_with_layers.add_legend(legend_dict=legend_dict)
-
-    # just test that is a Legend, the rest is tested by Legend
-    assert isinstance(ee_map_with_layers.legend, LegendControl)
-    assert ee_map_with_layers.legend.legend_dict == legend_dict
 
     return
 

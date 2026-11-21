@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -204,7 +205,7 @@ def test_the_gee_aoi_demo_offers_what_a_spec_can_carry():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    # map_ stands in for the demo's SepalMap: resolve_methods only tests it for None.
-    offered = resolve_methods(module.METHODS, gee=True, map_=object())
+    # map_ stands in for a map with a draw control: resolve_methods only tests for one.
+    offered = resolve_methods(module.METHODS, gee=True, map_=SimpleNamespace(dc=object()))
 
     assert set(offered) == {"ADMIN0", "ADMIN1", "ADMIN2", "DRAW", "ASSET"}

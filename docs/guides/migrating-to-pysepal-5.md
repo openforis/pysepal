@@ -27,15 +27,16 @@ widget layer, `pysepal.sepalwidgets`, which worked only on ipyvuetify 1
 
 An old import now fails with a message that points here:
 
-- `import pysepal.sepalwidgets` and `import pysepal.mapping.layers_control`
-  raise an `ImportError`;
+- `import pysepal.sepalwidgets`, `import pysepal.mapping.layers_control` and
+  the modules of the removed map controls (see
+  [Map controls](#map-controls)) raise an `ImportError`;
 - `pysepal.aoi.AoiView` and the other removed names raise an `AttributeError`
   that names the replacement.
 
 These stay:
 
 - `pysepal.solara` and its components, including `MapApp`;
-- `SepalMap` and the map controls;
+- `SepalMap`;
 - `AoiModel` and `PlanetModel`;
 - the `module_deploy`, `module_venv`, `activate_venv` and `entry_point`
   commands.
@@ -114,6 +115,28 @@ other components, build the store yourself and pass it with
 
   solara.display(m, LayerPanel(store=m.layer_store, map_=m))
   ```
+
+### Map controls
+
+The draw, inspector, zoom, fullscreen, state bar, menu and legend controls only
+attach to an ipyleaflet map, so they are removed, and `SepalMap` loses the
+arguments and members that built them. `SepalMap` keeps ipyleaflet's own zoom
+(and fullscreen, with `fullscreen_control=True`) controls for now. Their modules
+raise an `ImportError`, their names in `pysepal.mapping` and the removed
+`SepalMap` members raise an `AttributeError`. `m.state` no longer means the state
+bar.
+
+| Removed                                                                                  | Replacement                                               |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `ZoomControl`, `FullScreenControl`                                                       | the map draws its own zoom, scale and fullscreen controls |
+| `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                 | `MapView` shows layer loading                             |
+| `LegendControl`, `m.add_legend`, `m.add_colorbar`                                        | the `MapView` legend, built from each layer's legend      |
+| `MenuControl`                                                                            | Solara components in `MapView(overlays=...)`              |
+| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc` | being rebuilt on the MapLibre map                         |
+| `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`        | being rebuilt on the MapLibre map                         |
+
+Until drawing is back, `AoiView` offers DRAW only for a map that has a draw
+control, so a `SepalMap` has no DRAW method.
 
 ## Why
 

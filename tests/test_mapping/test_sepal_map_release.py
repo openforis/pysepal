@@ -7,9 +7,7 @@ in a real kernel context and check what a closed map leaves behind.
 
 import gc
 import weakref
-from unittest.mock import MagicMock
 
-import ee
 import ipyleaflet as ipl
 import ipywidgets.widgets.widget as widget_module
 import pytest
@@ -37,7 +35,7 @@ def _handlers(widget) -> list:
 
 def _full_map() -> sm.SepalMap:
     """A map with every control SepalMap can build."""
-    return sm.SepalMap(gee=False, dc=True, vinspector=True, statebar=True, fullscreen_control=True)
+    return sm.SepalMap(gee=False, fullscreen_control=True)
 
 
 @pytest.fixture
@@ -53,7 +51,6 @@ def kernel(kernel_contexts):  # noqa: F811
 def test_a_closed_map_is_collected(kernel) -> None:
     m = _full_map()
     m.add_layer(ipl.GeoJSON(data={"type": "FeatureCollection", "features": []}, name="v"))
-    m.add_legend(legend_dict={"a": "#ff0000"})
     reference = weakref.ref(m)
 
     m.close()
@@ -68,8 +65,6 @@ def test_a_closed_map_closes_the_widgets_it_built(kernel) -> None:
     comms_before = set(kernel.kernel.comm_manager.comms)
 
     m = _full_map()
-    m.add_legend(legend_dict={"a": "#ff0000"})
-    m.dc.hide()  # an owned control that is not in m.controls
     m.close()
     del m
     _collect()
@@ -80,7 +75,7 @@ def test_a_closed_map_closes_the_widgets_it_built(kernel) -> None:
 
 
 def test_a_closed_map_keeps_the_layers_of_its_caller(kernel) -> None:
-    m = sm.SepalMap(gee=False, statebar=True)
+    m = sm.SepalMap(gee=False)
     layer = ipl.TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="caller")
     own_handlers = _handlers(layer)
     m.add_layer(layer)
@@ -97,7 +92,7 @@ def test_a_closed_map_keeps_the_layers_of_its_caller(kernel) -> None:
 
 
 def test_a_removed_layer_is_no_longer_observed(kernel) -> None:
-    m = sm.SepalMap(gee=False, statebar=True)
+    m = sm.SepalMap(gee=False)
     layer = ipl.TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="caller")
     own_handlers = _handlers(layer)
     m.add_layer(layer)
@@ -118,12 +113,7 @@ def test_an_open_map_does_not_accumulate_widgets(kernel) -> None:
         m.remove_layer(vector)
         m.remove_layer(layer)
         m._on_theme_change({"new": not m._is_dark()})
-        m.v_inspector.menu.v_model = True
-        m.v_inspector.read_data(type="click", coordinates=[0, 0])
-        m.v_inspector.menu.v_model = False
-        m.legend.legend_dict = {"b": "#00ff00"} if "a" in m.legend.legend_dict else {"a": "#f00"}
 
-    m.add_legend(legend_dict={"a": "#ff0000"})
     cycle()
     _collect()
     first = len(widget_module._instances)
@@ -133,95 +123,6 @@ def test_an_open_map_does_not_accumulate_widgets(kernel) -> None:
 
     assert len(widget_module._instances) == first
     m.close()
-
-
-def test_a_closed_control_releases_its_map(kernel) -> None:
-    m = sm.SepalMap(gee=False)
-    controls = [
-        sm.ZoomControl(m),
-        sm.LayerStateControl(m),
-        sm.InspectorControl(m),
-        sm.FullScreenControl(m),
-        sm.GeomanDrawControl(m),
-        sm.MenuControl("fa-solid fa-cog", sm.MapBtn("x"), m=m),
-    ]
-    for control in controls:
-        control.close()
-        assert control.m is None
-        assert getattr(control, "map_", None) is None
-    # the map stays usable
-    m.add_layer(ipl.TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="after"))
-    reference = weakref.ref(m)
-
-    m.close()
-    del m
-    _collect()
-
-    # the caller still holds the closed controls, not the map
-    assert reference() is None
-
-
-def test_a_closed_menu_keeps_the_content_of_its_caller(kernel) -> None:
-    m = sm.SepalMap(gee=False)
-    content, title = sm.MapBtn("x"), sm.MapBtn("y")
-    control = sm.MenuControl("fa-solid fa-cog", content, card_title=title, m=m)
-
-    control.close()
-
-    assert control.menu.comm is None
-    assert content.comm is not None
-    assert title.comm is not None
-    m.close()
-
-
-@pytest.mark.parametrize(
-    "control_name",
-    [
-        "ZoomControl",
-        "LayerStateControl",
-        "InspectorControl",
-        "FullScreenControl",
-        "GeomanDrawControl",
-        "MenuControl",
-        "LegendControl",
-    ],
-)
-def test_a_control_that_failed_to_build_can_be_closed(control_name) -> None:
-    """Widget.__del__ closes a control even when its __init__ raised."""
-    control_class = getattr(sm, control_name)
-    control_class.__new__(control_class).close()
-
-
-def _after_close(control_name: str):
-    """Return a control of a closed map."""
-    m = _full_map()
-    controls = {
-        "dc": m.dc,
-        "zoom": next(c for c in m.controls if isinstance(c, sm.ZoomControl)),
-        "fullscreen": next(c for c in m.controls if isinstance(c, sm.FullScreenControl)),
-        "inspector": m.v_inspector,
-    }
-    control = controls[control_name]
-    m.close()
-    return control
-
-
-@pytest.mark.parametrize(
-    "control_name, call",
-    [
-        ("dc", lambda c: c.show()),
-        ("dc", lambda c: c.hide()),
-        ("zoom", lambda c: c.zoom(c.plus)),
-        ("fullscreen", lambda c: c.toggle_fullscreen()),
-        ("inspector", lambda c: c.toggle_cursor()),
-        ("inspector", lambda c: c.read_data(type="click", coordinates=[0, 0])),
-        ("inspector", lambda c: c._from_eelayer.__wrapped__(c, MagicMock(spec=ee.Image), [0, 0])),
-        ("inspector", lambda c: c._from_raster("missing.tif", [0, 0])),
-    ],
-)
-def test_a_control_of_a_closed_map_does_nothing(kernel, control_name, call) -> None:
-    """A task can finish after its map unmounted and still call a control."""
-    call(_after_close(control_name))
 
 
 def _store_with_layers(raster_spec, pmtiles_spec) -> LayerStore:
@@ -265,12 +166,9 @@ def test_a_store_write_after_close_does_nothing(kernel, raster_spec, pmtiles_spe
     assert not any(getattr(layer, "layer_id", None) for layer in m.layers)
 
 
-def test_the_inspector_keeps_the_style_of_its_caller(kernel) -> None:
+def test_a_map_keeps_the_style_of_its_caller(kernel) -> None:
     style = ipl.MapStyle(cursor="grab")
-    m = sm.SepalMap(gee=False, vinspector=True, default_style=style)
-
-    m.v_inspector.menu.v_model = True
-    m.v_inspector.menu.v_model = False
+    m = sm.SepalMap(gee=False, default_style=style)
     assert style.comm is not None
 
     m.close()
@@ -289,13 +187,12 @@ def _unmount(use_first: bool) -> None:
     @solara.component
     def Harness():
         if mounted.value:
-            sm.SepalMap.element(gee=False, vinspector=True, statebar=True, theme_state=theme_state)
+            sm.SepalMap.element(gee=False, theme_state=theme_state)
 
     _box, rc = solara.render(Harness(), handle_error=False)
     try:
         if use_first:
             m = rc.find(sm.SepalMap).widget
-            m.v_inspector.menu.v_model = True  # shows the marker
             m.add_layer(ipl.TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="used"))
         mounted.set(False)
     finally:
