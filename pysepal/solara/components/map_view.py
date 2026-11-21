@@ -90,7 +90,7 @@ def _top_left_offset(map_) -> int:
 
 
 def _legends(map_) -> list[dict]:
-    """The legends of what the map draws: visible layers it accepted, top first."""
+    """The legends of the data layers the map draws: visible layers it accepted, top first."""
     store, engine = map_.layer_store, map_.layer_engine
     if engine is None:
         return []
@@ -104,6 +104,8 @@ def _legends(map_) -> list[dict]:
         if accepted is None:
             continue
         spec, render = accepted
+        if spec.zone == "overlay":
+            continue
         legend = spec.legend or render.legend
         if legend is None:
             legend = derive_legend(spec.style, title=spec.name, default_color=primary)

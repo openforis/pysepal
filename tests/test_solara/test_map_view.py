@@ -244,6 +244,18 @@ def test_map_app_fills_the_window_whatever_the_map_height():
     assert "height: 100% !important" in rule
 
 
+def test_legend_skips_overlay_layers(fake_vector, shown):
+    m = vector_map(fake_vector)
+    aoi = LayerSpec.from_vector(fake_vector, id="aoi", name="AOI").model_copy(
+        update={"zone": "overlay"}
+    )
+    m.layer_store.add(aoi)
+    assert "aoi" in [x["id"] for x in m.state["layers"]]
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert legend_titles(box) == ["Vec"]
+    rc.close()
+
+
 @pytest.mark.parametrize(("fullscreen_control", "offset"), [(False, "78px"), (True, "117px")])
 def test_top_left_stack_clears_the_controls(fullscreen_control, offset):
     m = SepalMap(gee=False, fullscreen_control=fullscreen_control)
