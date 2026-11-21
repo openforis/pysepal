@@ -169,6 +169,15 @@ holds where the camera is once a view reported. A removed member raises an
 | `create_wms_preview_layer` returns a `WMSLayer`                                         | it returns a `LayerSpec` in the overlay zone, for `m.layer_store.add`                                                                                              |
 | `SepalMap(fullscreen=True)` adds a CSS class                                            | it sets `height="100%"`, so the map fills its container                                                                                                            |
 
+**Known limitation: local raster tiles.** MapLibre fetches tiles where ipyleaflet
+loaded them as images, so a local raster's tile URL on another origin than the
+page needs CORS headers, which `localtileserver` does not send. Such tiles reach
+the map only through a same-origin route (the prefix SEPAL sets,
+`jupyter-server-proxy` in JupyterLab, a route you mount) or through
+jupyter-loopback's comm bridge, which pysepal turns on for every local raster.
+With the bridge off (`LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK=1`) and no such
+route, the browser blocks them. See [local-tile-servers.md](./local-tile-servers.md).
+
 ### The map
 
 A map app now has three parts that share one `LayerStore`: the `SepalMap`, the
