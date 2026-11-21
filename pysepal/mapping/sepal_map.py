@@ -293,7 +293,10 @@ class SepalMap(MapWidget):
         def swap(name: str) -> str:
             return variant if name in _SEPAL_BASEMAPS else name
 
-        self._set_basemaps([swap(name) for name in self.basemaps], swap(self.basemap))
+        # With both variants offered, the choices stay; only the one shown follows the theme.
+        both = all(name in self.basemaps for name in _SEPAL_BASEMAPS)
+        choices = self.basemaps if both else [swap(name) for name in self.basemaps]
+        self._set_basemaps(choices, swap(self.basemap))
 
     @staticmethod
     def _theme_is_dark(source) -> bool:

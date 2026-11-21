@@ -178,10 +178,9 @@ def test_basemaps_keep_the_caller_order() -> None:
         SepalMap(["TOTO"], gee=False)
 
 
-def test_theme_switch_swaps_every_sepal_choice_and_keeps_a_third_party_pick() -> None:
+def test_theme_switch_swaps_the_sepal_choice_and_keeps_a_third_party_pick() -> None:
     theme = ThemeState(mode="light")
-    m = SepalMap(["SEPAL_LIGHT", "OpenStreetMap", "SEPAL_DARK"], gee=False, theme_state=theme)
-    assert m.basemaps == ("SEPAL_LIGHT", "OpenStreetMap", "SEPAL_DARK")
+    m = SepalMap(["SEPAL_LIGHT", "OpenStreetMap"], gee=False, theme_state=theme)
 
     theme.set_mode("dark")
     assert (m.basemaps, m.basemap) == (("SEPAL_DARK", "OpenStreetMap"), "SEPAL_DARK")
@@ -191,6 +190,23 @@ def test_theme_switch_swaps_every_sepal_choice_and_keeps_a_third_party_pick() ->
     theme.set_mode("light")
     assert (m.basemaps, m.basemap) == (("SEPAL_LIGHT", "OpenStreetMap"), "OpenStreetMap")
     assert m.state["basemap"]["tiles"] == list(get_basemap("OpenStreetMap").tiles)
+
+
+def test_theme_switch_keeps_both_sepal_choices() -> None:
+    theme = ThemeState(mode="light")
+    choices = ("SEPAL_LIGHT", "OpenStreetMap", "SEPAL_DARK")
+    m = SepalMap(list(choices), gee=False, theme_state=theme)
+
+    theme.set_mode("dark")
+    assert (m.basemaps, m.basemap) == (choices, "SEPAL_DARK")
+    assert m.state["basemap"]["tiles"] == list(get_basemap("SEPAL_DARK").tiles)
+
+    theme.set_mode("light")
+    assert (m.basemaps, m.basemap) == (choices, "SEPAL_LIGHT")
+
+    m.basemap = "OpenStreetMap"
+    theme.set_mode("dark")
+    assert (m.basemaps, m.basemap) == (choices, "OpenStreetMap")
 
 
 def test_basemap_observer_never_sees_an_invalid_pair() -> None:
