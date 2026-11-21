@@ -40,3 +40,8 @@ def admin_source_attribution(gee: bool) -> str:
 
 # WMS preview layer name constant
 WMS_PREVIEW_LAYER_NAME = "aoi_wms_preview"
+
+# The ids of the AOI layers in the map's layer store, both in its overlay zone: the
+# outline (a file, a drawing or Earth Engine) and the admin WMS preview.
+AOI_LAYER_ID = "aoi"
+AOI_PREVIEW_LAYER_ID = "aoi_preview"

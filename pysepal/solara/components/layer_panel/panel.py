@@ -14,13 +14,20 @@ from .row import LayerRow
 from .sortable import SortableList
 
 
+def _data_ids(store: LayerStore) -> list[str]:
+    """The ids of the data zone, top first."""
+    return [layer_id for layer_id in store.ids if store.get(layer_id).zone == "data"]
+
+
 @solara.component
 def LayerPanel(
     store: LayerStore,
     map_=None,
     on_export: Optional[Callable[[LayerSpec], None]] = None,
 ):
-    """List the layers of a store, reorderable, with per-layer controls.
+    """List the data layers of a store, reorderable, with per-layer controls.
+
+    The overlay zone (the AOI and its preview) is not listed.
 
     Use it as a MapApp section, e.g.
     ``{"title": msg("layer_panel.title"), "icon": "mdi-layers", "content": LayerPanel(store)}``.
@@ -33,7 +40,15 @@ def LayerPanel(
     version = use_layer_store(store)
     is_dark = use_theme_dark()
 
-    ids = store.ids
+    ids = _data_ids(store)
+
+    def on_move(layer_id: str, to: int) -> None:
+        # ``to`` counts the rows; the store also counts the overlay ids between them
+        rows = _data_ids(store)
+        if layer_id in rows:
+            target = rows[max(0, min(to, len(rows) - 1))]
+            store.move(layer_id, store.ids.index(target))
+
     if ids:
         content = SortableList(
             ids=ids,
@@ -41,7 +56,7 @@ def LayerPanel(
                 LayerRow(store, layer_id, on_export, is_dark, version).key(layer_id)
                 for layer_id in ids
             ],
-            on_move=store.move,
+            on_move=on_move,
         )
     else:
         content = solara.Text(msg("layer_panel.empty"), classes=["pysepal-layer-panel__empty"])

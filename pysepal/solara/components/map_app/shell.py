@@ -176,8 +176,8 @@ def MapApp(
         app_title: Title at the top of the drawer.
         app_icon: MDI icon beside the title.
         main_map: The map widget, or a one-item list holding it. It gets the
-            panels' insets (``viewport_inset_*``), the window size
-            (``canvas_*_px``) and the theme (``bind_theme_state``) when it has them.
+            panels' insets (``set_insets``) and the theme (``bind_theme_state``)
+            when it has them.
         steps_data: Drawer steps: ``id`` (reported through ``on_current_step``;
             give each step its own), ``name``, ``icon``, ``display``
             (``"step"`` replaces the map, ``"dialog"`` opens a dialog, anything
@@ -352,22 +352,17 @@ def MapApp(
     }
 
     def push_insets():
-        if map_widget is None or not hasattr(map_widget, "viewport_inset_left"):
+        if map_widget is None or not hasattr(map_widget, "set_insets"):
             return
-        map_widget.viewport_inset_left = drawer_px
-        map_widget.viewport_inset_right = right_px
-        if hasattr(map_widget, "viewport_inset_bottom"):
-            docked = narrow and has_panel
-            map_widget.viewport_inset_bottom = (
-                int(height * NARROW_PANEL_HEIGHT_VH / 100) if docked else 0
-            )
-        if width > 0 and hasattr(map_widget, "canvas_width_px"):
-            map_widget.canvas_width_px = width
-        if height > 0 and hasattr(map_widget, "canvas_height_px"):
-            map_widget.canvas_height_px = height - top_px
+        if narrow:
+            # the map already sits below the belt and above the bottom band
+            map_widget.set_insets()
+        else:
+            # the drawer and the right panel overlap the map, which spans the window
+            map_widget.set_insets(left=drawer_px, right=right_px)
 
     solara.use_effect(
-        push_insets, [id(map_widget), drawer_px, right_px, narrow, has_panel, width, height]
+        push_insets, [id(map_widget), drawer_px, right_px, narrow, has_panel, panel_open]
     )
 
     def bind_theme():

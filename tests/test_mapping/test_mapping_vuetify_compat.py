@@ -1,16 +1,13 @@
-"""The map controls build on the Vuetify 3 widgets."""
-
-import ipyleaflet as ipl
+"""The map and its buttons build on the Vuetify 3 widgets."""
 
 from pysepal import mapping as sm
 
 
 def test_sepal_map_builds() -> None:
-    """A map with its base controls builds, with ipyleaflet's own zoom and fullscreen."""
+    """A map shows the zoom, scale and, when asked, fullscreen controls the widget draws."""
     m = sm.SepalMap(gee=False, fullscreen_control=True)
 
-    controls = {type(c) for c in m.controls}
-    assert {ipl.ZoomControl, ipl.FullScreenControl} <= controls
+    assert m.state["controls"] == {"zoom": True, "fullscreen": True, "scale": True}
 
     # the map btn shows an outlined small icon
     btn = sm.MapBtn("fa-solid fa-plus")

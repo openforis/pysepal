@@ -1,6 +1,6 @@
 """UI toolkit for building ipyvuetify and Solara dashboards, with first-class SEPAL integration.
 
-``pysepal`` provides ipyvuetify and Solara components for building geospatial dashboards — mapping (ipyleaflet), AOI selection, GEE session helpers, notifications, exports, i18n, and theme state — usable in any Jupyter / Solara context and tightly integrated with the SEPAL platform.
+``pysepal`` provides ipyvuetify and Solara components for building geospatial dashboards — mapping (MapLibre), AOI selection, GEE session helpers, notifications, exports, i18n, and theme state — usable in any Jupyter / Solara context and tightly integrated with the SEPAL platform.
 """
 
 from pysepal.frontend.styles import SepalColor

@@ -214,7 +214,7 @@ def test_autoselect_false_leaves_the_map_untouched(monkeypatch):
         )
 
     def _has_aoi_layer(*_):
-        return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
+        return "aoi" in sepal_map.layer_store
 
     render_and_drain(_Harness, _has_aoi_layer, timeout=0.5)
 
@@ -224,7 +224,7 @@ def test_autoselect_false_leaves_the_map_untouched(monkeypatch):
 def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
     """Clear must take the geometry off the map, not just the state.
 
-    Vector AOIs are added with ``key="aoi"`` but keep the file stem as their
+    Vector AOIs are added with the id ``aoi`` but keep the file stem as their
     ``name``, so matching cleanup on the name left the polygon behind.
     """
     monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
@@ -243,7 +243,7 @@ def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
         )
 
     def _has_aoi_layer(*_):
-        return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
+        return "aoi" in sepal_map.layer_store
 
     async def run():
         _root, rc = reacton.render(_Harness(), handle_error=False)

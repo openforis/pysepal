@@ -3,7 +3,7 @@
 import solara
 
 from pysepal.layers import LayerStore
-from pysepal.mapping.layer_engine import leaflet_style
+from pysepal.mapping.maplibre_engine import _paint
 from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.layer_panel.restyle import RestyleForm
 from tests.test_solara._layer_panel_helpers import (
@@ -47,8 +47,7 @@ def test_fill_only_edit_is_visible(vector_spec):
     expand(box, vector_spec.id)
     set_field(box, "fill", "#00ff00")
     click_apply(box)
-    style = store.get(vector_spec.id).style
-    assert leaflet_style(style, 1.0, "#000000")["fillOpacity"] == 1.0
+    assert _paint(store.get(vector_spec.id), is_dark=False).fill_opacity == 1.0
 
 
 def test_class_colors_raster_has_no_form(raster_spec):

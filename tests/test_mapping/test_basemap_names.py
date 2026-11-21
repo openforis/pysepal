@@ -2,7 +2,7 @@
 
 Issue #1044. ``get_xyz_dict`` keeps a provider only while ``requires_token()``
 is false, so any provider xyzservices decides needs a key leaves
-``basemap_tiles`` on the next release and every test naming it starts raising
+``BASEMAP_NAMES`` on the next release and every test naming it starts raising
 ``ValueError: Basemap can only be one of the following``. 2026.9.1 did exactly
 that to the whole CARTO family, breaking ``test_SepalMap::test_init`` on all
 three Python versions.
@@ -47,7 +47,7 @@ def test_no_mapping_test_hard_codes_an_upstream_basemap(path: Path) -> None:
 
     assert not named, (
         f"{path.name} names {sorted(named)}, which xyzservices owns. Any of these "
-        f"leaves basemap_tiles the moment upstream marks it as needing a key. "
-        f"Use an xyz_tiles key instead and resolve the layer name through "
-        f"basemap_tiles[key].name."
+        f"leaves BASEMAP_NAMES the moment upstream marks it as needing a key. "
+        f"Use an xyz_tiles key instead and resolve its display name through "
+        f"basemap_label(key)."
     )

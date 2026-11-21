@@ -25,12 +25,18 @@ def kernel_autodetects_a_proxy_prefix(monkeypatch):
     monkeypatch.setattr(configure, "autodetect_prefix", lambda namespace, **kwargs: AUTODETECTED)
 
 
+def _drawn_url(byte: Path, key: str) -> str:
+    """The tile URL the map publishes to the browser for a raster."""
+    m = sm.SepalMap(gee=False)
+    layer = m.add_raster(byte, key=key)
+    drawn = next(x for x in m.state["layers"] if x["id"] == layer.id)
+    return drawn["source"]["tiles"][0]
+
+
 def test_an_unset_variable_leaves_the_autodetected_prefix_in_place(byte: Path, monkeypatch) -> None:
     monkeypatch.delenv(CLIENT_PREFIX_ENV_VAR, raising=False)
 
-    layer = sm.SepalMap().add_raster(byte, key="auto")
-
-    assert "localtileserver-proxy" in layer.url
+    assert "localtileserver-proxy" in _drawn_url(byte, "auto")
 
 
 def test_a_defined_but_empty_variable_addresses_the_tile_server_directly(
@@ -39,16 +45,16 @@ def test_a_defined_but_empty_variable_addresses_the_tile_server_directly(
     # the Voila case: no proxy route exists, so the autodetected one must not win
     monkeypatch.setenv(CLIENT_PREFIX_ENV_VAR, "")
 
-    layer = sm.SepalMap().add_raster(byte, key="direct")
+    url = _drawn_url(byte, "direct")
 
-    assert "localtileserver-proxy" not in layer.url
-    assert layer.url.startswith("http://127.0.0.1:")
+    assert "localtileserver-proxy" not in url
+    assert url.startswith("http://127.0.0.1:")
 
 
 def test_an_explicit_prefix_is_used_verbatim(byte: Path, monkeypatch) -> None:
     monkeypatch.setenv(CLIENT_PREFIX_ENV_VAR, "/api/sandbox/tiles/{port}")
 
-    layer = sm.SepalMap().add_raster(byte, key="explicit")
+    url = _drawn_url(byte, "explicit")
 
-    assert "/api/sandbox/tiles/" in layer.url
-    assert "localtileserver-proxy" not in layer.url
+    assert "/api/sandbox/tiles/" in url
+    assert "localtileserver-proxy" not in url

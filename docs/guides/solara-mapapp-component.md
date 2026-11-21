@@ -109,18 +109,17 @@ the first step that can show.
 ## The map
 
 The map fills the window behind the drawer and the panel. When the map widget
-has these attributes, the shell keeps them up to date:
+has these methods, the shell calls them:
 
-- `viewport_inset_left`, `viewport_inset_right`, `viewport_inset_bottom`: the
-  width of the drawer and of the open panel, and the height of the docked
-  panel. `SepalMap` uses them so that `zoom_bounds` fits the visible part of the
-  map.
-- `canvas_width_px`, `canvas_height_px`: the window size.
+- `set_insets(left=..., right=...)`: in a wide window, the width of the drawer
+  and of the open panel, which overlap the map. In a narrow window all insets
+  are 0: the map already sits below the top bar and above the docked panel.
+  `SepalMap` fits and centers inside what the insets leave, and moves its
+  controls out from under the drawer and the panel.
 - `bind_theme_state(theme_state)`: the map's basemap and its controls follow the
   theme.
 
-`SepalMap` has all of these. The Leaflet controls move out from under the
-drawer and the panel.
+`SepalMap` has both. A replaced map gets the current insets at once.
 
 ## Theme and language
 

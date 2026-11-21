@@ -1,8 +1,8 @@
 """All modules used to create a application ``Map``.
 
-The ``SepalMap`` is inheriting from the **ipyleaflet** ``Map``. It has been customized to support additional widgets as controls based on **ipyvuetify**. It is also fully compatible with the **pysepal** framework thanks to frontend modifications.
+The ``SepalMap`` is a **MapLibre** map, the ``MapWidget`` of ``pysepal_map``. It draws the layers of a ``LayerStore`` (``SepalMap.layer_store``) and follows the **pysepal** theme.
 
-The main object is the ``SepalMap`` that should be used in favor of ``Map`` in **pysepal** framework. The others are pre-designed controls that can be helpful to speed up developments.
+The main object is the ``SepalMap``. Its layer methods return a live ``LayerHandle``.
 ``SepalMap`` is fully compatible with Google Earth Engine layers.
 
 Every module content can be called directly from the package.

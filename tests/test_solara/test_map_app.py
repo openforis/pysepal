@@ -6,7 +6,6 @@ import ipyvuetify as v
 import ipywidgets
 import pytest
 import solara
-import traitlets
 
 from pysepal.solara.components.map_app import MapApp, ThemeToggle
 from pysepal.solara.components.map_app._ui import step_keys
@@ -29,16 +28,25 @@ def walk(widget):
 
 
 class FakeMap(ipywidgets.DOMWidget):
-    """The traits the shell pushes onto a SepalMap."""
+    """What the shell calls on a SepalMap; it records every ``set_insets``."""
 
-    viewport_inset_left = traitlets.Int(0)
-    viewport_inset_right = traitlets.Int(0)
-    viewport_inset_bottom = traitlets.Int(0)
-    canvas_width_px = traitlets.Int(0)
-    canvas_height_px = traitlets.Int(0)
+    def __init__(self, **kwargs):
+        """Start with no call."""
+        super().__init__(**kwargs)
+        self.inset_calls = []
+
+    def set_insets(self, *, left=0, right=0, top=0, bottom=0):
+        self.inset_calls.append({"left": left, "right": right, "top": top, "bottom": bottom})
+
+    @property
+    def insets(self):
+        return self.inset_calls[-1] if self.inset_calls else None
 
     def bind_theme_state(self, theme_state):
         self.bound = theme_state
+
+
+ZERO_INSETS = {"left": 0, "right": 0, "top": 0, "bottom": 0}
 
 
 def _classes(widget) -> str:
@@ -603,9 +611,51 @@ def test_wide_window_publishes_layout_vars_and_insets():
     assert css_vars["--sepal-right-panel-width"] == "380px"
     assert css_vars["--sepal-right-panel-open"] == "1"
     assert css_vars["--sepal-bottom-reserved"] == "0px"
-    assert (fake.viewport_inset_left, fake.viewport_inset_right) == (320, 380)
-    assert (fake.canvas_width_px, fake.canvas_height_px) == (1400, 900)
+    # the drawer and the right panel overlap the map, which spans the window
+    assert fake.insets == {"left": 320, "right": 380, "top": 0, "bottom": 0}
     assert isinstance(fake.bound, ThemeState)
+
+
+def test_closing_the_panel_gives_its_width_back_to_the_map():
+    fake = FakeMap()
+    panel_open = solara.reactive(True)
+
+    @solara.component
+    def Harness():
+        return MapApp(
+            main_map=fake,
+            right_panel_content=SECTIONS,
+            right_panel_config={"width": 380},
+            right_panel_open=panel_open.value,
+        )
+
+    box, _ = solara.render(Harness(), handle_error=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+    assert fake.insets == {"left": 320, "right": 380, "top": 0, "bottom": 0}
+
+    panel_open.set(False)
+    assert fake.insets == {"left": 320, "right": 0, "top": 0, "bottom": 0}
+
+
+def test_a_replaced_map_gets_the_current_insets():
+    first, second = FakeMap(), FakeMap()
+    current = solara.reactive(first)
+
+    @solara.component
+    def Harness():
+        return MapApp(
+            main_map=current.value,
+            right_panel_content=SECTIONS,
+            right_panel_config={"width": 380},
+            right_panel_open=True,
+        )
+
+    box, _ = solara.render(Harness(), handle_error=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+
+    current.set(second)
+
+    assert second.insets == first.insets == {"left": 320, "right": 380, "top": 0, "bottom": 0}
 
 
 def test_narrow_window_docks_panel_at_bottom():
@@ -619,8 +669,8 @@ def test_narrow_window_docks_panel_at_bottom():
     assert "sepal-right-panel--narrow" in _classes(_with_class(box, "sepal-right-panel")[0])
     assert _bridge(box).css_vars["--sepal-bottom-reserved"] == "45vh"
     assert _bridge(box).css_vars["--sepal-right-panel-width"] == "0px"
-    assert (fake.viewport_inset_left, fake.viewport_inset_right) == (0, 0)
-    assert fake.viewport_inset_bottom == 270
+    # the map already sits below the belt and above the bottom band
+    assert fake.insets == ZERO_INSETS
 
 
 def _toggles(root) -> List[Any]:
@@ -659,7 +709,8 @@ def test_narrow_window_turns_the_drawer_into_a_top_belt():
     assert css_vars["--sepal-drawer-width"] == "0px"
     assert css_vars["--sepal-bottom-reserved"] == "48px"
     assert css_vars["--sepal-notification-pill-display"] == "none"
-    assert fake.canvas_height_px == 552
+    # narrow and collapsed: no inset either
+    assert fake.insets == ZERO_INSETS
 
     _item(box, 1).vue_click(None)
     assert calls["current"] == [1]

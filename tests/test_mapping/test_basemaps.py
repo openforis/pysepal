@@ -3,7 +3,6 @@
 import re
 
 import pytest
-from ipyleaflet import TileLayer
 from pysepal_map import Basemap
 from xyzservices import TileProvider
 
@@ -41,19 +40,22 @@ def test_get_xyz_dict() -> None:
     return
 
 
-def test_xyz_to_leaflet() -> None:
-    """Check the maps can be transformed in TileLayer."""
-    basemaps = sm.basemaps.xyz_to_leaflet()
+def test_the_leaflet_tables_are_gone() -> None:
+    """The basemaps are MapLibre sources now; the ipyleaflet tile layers went with the map."""
+    assert not hasattr(basemaps, "basemap_tiles")
+    assert not hasattr(basemaps, "xyz_to_leaflet")
 
+
+def test_basemap_names_cover_the_free_providers() -> None:
     # only pysepal's own entries are guaranteed to be there; the xyzservices
-    # ones come and go with the upstream release.
-    assert all(key in basemaps for key in xyz_tiles)
-    assert set(sm.basemaps.get_xyz_dict()) <= set(basemaps)
-
-    for tile in basemaps.values():
-        assert isinstance(tile, TileLayer)
-
-    return
+    # ones come and go with the upstream release, minus those MapLibre cannot draw.
+    assert all(key in BASEMAP_NAMES for key in xyz_tiles)
+    drawable = {
+        provider.name
+        for provider in sm.basemaps.get_xyz_dict().values()
+        if basemaps._provider_source(provider) is not None
+    }
+    assert drawable <= set(BASEMAP_NAMES)
 
 
 @pytest.mark.parametrize("name", BASEMAP_NAMES)

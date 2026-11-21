@@ -18,14 +18,17 @@ Usage:
             print(f"Selected: {aoi.value.name}")
 """
 
+import json
 from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
+import geopandas as gpd
 import reacton.ipyvuetify as rv
 import solara
 from deprecated.sphinx import versionadded, versionchanged
 
 from pysepal import mapping as sm
-from pysepal.mapping import get_ipygeojson
+from pysepal.frontend import styles as ss
+from pysepal.layers import LayerSpec, VectorStyle
 from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.admin import (
@@ -35,14 +38,15 @@ from pysepal.solara.components.aoi.admin import (
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import ADMIN_METHODS, AoiSpec
 from pysepal.solara.components.aoi.asset import process_asset
-from pysepal.solara.components.aoi.constants import admin_source_attribution
+from pysepal.solara.components.aoi.constants import (
+    AOI_LAYER_ID,
+    AOI_PREVIEW_LAYER_ID,
+    admin_source_attribution,
+)
 from pysepal.solara.components.aoi.draw import process_draw
 from pysepal.solara.components.aoi.points import process_points
 from pysepal.solara.components.aoi.shape import process_shape
-from pysepal.solara.components.aoi.wms_utils import (
-    WMS_PREVIEW_LAYER_NAME,
-    create_wms_preview_layer,
-)
+from pysepal.solara.components.aoi.wms_utils import create_wms_preview_layer
 from pysepal.solara.components.inputs.admin_selector import AdminLevelSelector
 from pysepal.solara.components.inputs.asset_select import AssetSelectComponent
 from pysepal.solara.components.inputs.point_selector import PointsSelectorComponent
@@ -72,6 +76,39 @@ METHODS: Dict[str, Dict[str, str]] = {
     "ASSET": {"label_key": "aoi_sel.asset", "type": CUSTOM},
 }
 TYPE_LABEL_KEYS: Dict[str, str] = {ADMIN: "aoi_sel.administrative", CUSTOM: "aoi_sel.custom"}
+
+# Leaflet path options, and the VectorStyle field each one becomes
+_LEAFLET_STYLE = {
+    "color": "stroke",
+    "fillColor": "fill",
+    "fillOpacity": "fill_opacity",
+    "weight": "width",
+}
+
+
+def _outline_style(map_style: Optional[dict]) -> VectorStyle:
+    """The style of the AOI outline, from a Leaflet style dict or the default ``aoi.json``.
+
+    The default colours follow the theme, so they stay unset and the map draws them in
+    its primary colour. ``fill: False`` and ``stroke: False`` hide the fill and the line;
+    other Leaflet options are dropped.
+    """
+    if map_style is None:
+        style = json.loads((ss.JSON_DIR / "aoi.json").read_text())
+        themed = {"color", "fillColor"}
+    else:
+        style, themed = map_style, set()
+    fields = {
+        field: style[key]
+        for key, field in _LEAFLET_STYLE.items()
+        if key in style and key not in themed
+    }
+    if style.get("fill") is False:
+        fields.pop("fill", None)
+        fields["fill_opacity"] = 0.0
+    if style.get("stroke") is False:
+        fields["width"] = 0.0
+    return VectorStyle(**fields)
 
 
 def resolve_methods(
@@ -225,7 +262,9 @@ def AoiView(
         methods: Methods to enable ('ALL', 'ADMIN', 'CUSTOM', or list of method names)
         map_: Link to a SepalMap instance for drawing and display
         gee: Whether to bind to Earth Engine
-        map_style: Custom style for AOI display on map
+        map_style: Custom style for AOI display on map, as Leaflet path options:
+            ``color``, ``weight``, ``fillColor``, ``fillOpacity``, ``fill`` and
+            ``stroke``. An Earth Engine AOI takes it as its visualization parameters.
         file_initial_folder: Initial folder for file-based method pickers (SHAPE, POINTS)
         clear_ref: Optional ref that receives a clear callback for external reset.
             The clear callback preserves the currently selected method so the
@@ -337,6 +376,9 @@ def AoiView(
     applied_spec = solara.use_ref(None)
     last_method = solara.use_ref("")
     alive = solara.use_ref(True)
+    # Raised by every run and every clear: a run whose number is no longer current
+    # was cleared or replaced, and must not add or zoom.
+    aoi_run = solara.use_ref(0)
 
     # Notification system (replaces embedded alert). When no
     # NotificationProvider is mounted, `notifications` is a NoopNotifier
@@ -346,20 +388,13 @@ def AoiView(
     fallback_level = solara.use_reactive("info")
 
     def _clear_map_layers():
-        if not map_:
+        store = getattr(map_, "layer_store", None) if map_ else None
+        if store is None:
             return
-
-        for layer in list(map_.layers):
-            # Match on `key`, not `name`. add_layer(..., key="aoi") keeps the layer's
-            # own name — the file stem for vector AOIs — so a name-based match left
-            # every SHAPE/POINTS/DRAW geometry on the map after a clear.
-            identity = getattr(layer, "key", None) or getattr(layer, "name", None)
-            if identity in ["aoi", WMS_PREVIEW_LAYER_NAME]:
-                try:
-                    map_.remove_layer(layer)
-                except Exception:
-                    # Layer may already be detached by another cleanup path.
-                    pass
+        # By id, not name: a vector AOI is named after its file. Removing a reserved id
+        # also cancels the Earth Engine add still preparing it.
+        for layer_id in (AOI_LAYER_ID, AOI_PREVIEW_LAYER_ID):
+            store.remove(layer_id, missing_ok=True)
 
     def _sync_draw_control(active_method: str = ""):
         if not (map_ and aoi_dc):
@@ -405,6 +440,7 @@ def AoiView(
                 reactive owned by the host app, which ``use_reactive`` passes straight
                 through. Only user-driven clears may null it; teardown must not.
         """
+        aoi_run.current += 1
         _cancel_pending_run()
         if reset_loading:
             reactive_loading.set(False)
@@ -455,6 +491,12 @@ def AoiView(
     async def process_aoi() -> Optional[AoiResult]:
         """Process the selected AOI."""
         method = selected_method.value
+        aoi_run.current += 1
+        run = aoi_run.current
+
+        def current() -> bool:
+            return alive.current and aoi_run.current == run
+
         tracker = notifications.track(f"Processing AOI ({method})")
         task_tracker_ref.current = tracker
         tracker.__enter__()
@@ -529,17 +571,20 @@ def AoiView(
                 raise ValueError("Please select a method")
 
             # Update the map if available
-            if alive.current and map_ and result:
+            if current() and map_ and result:
                 tracker.step("Updating map...")
 
                 _clear_map_layers()
 
-                # Add new AOI layer
+                # Add the new AOI, in the overlay zone of the map's store
                 if gee and result.feature_collection:
+                    # A clear removes the reserved id, so a late add commits nothing,
+                    # and the map supersedes its zoom.
                     await map_.add_ee_layer_async(
                         result.feature_collection,
                         map_style or {},
                         "aoi",
+                        key=AOI_LAYER_ID,
                         autocenter=True,
                         overlay=True,
                         attribution=(
@@ -550,20 +595,31 @@ def AoiView(
                     )
                 elif result.admin is not None:
                     level = int(method[-1])
-                    wms_layer = create_wms_preview_layer(
+                    preview = create_wms_preview_layer(
                         level=level,
                         admin_code=result.admin,
                         name="aoi",
                         attribution=admin_source_attribution(gee=False),
                     )
-                    map_.add_layer(wms_layer)
+                    map_.layer_store.add(preview, replace=True)
 
+                    # tiles have no bounds
                     bounds = await fetch_admin_bounds_async(level=level, admin_code=result.admin)
-                    map_.zoom_bounds(bounds)
+                    if current():
+                        map_.zoom_bounds(bounds)
                 elif result.gdf is not None:
-                    geojson_layer = get_ipygeojson(result.gdf, result.name, map_style)
-                    map_.add_layer(geojson_layer, key="aoi")
-                    map_.zoom_bounds(result.gdf.total_bounds)
+                    # a plain GeoDataFrame, as get_ipygeojson made: pygadm's subclass
+                    # fails in the frames geopandas builds from it
+                    gdf = gpd.GeoDataFrame(result.gdf).to_crs(4326)
+                    outline = LayerSpec.from_geojson(
+                        gdf,
+                        id=AOI_LAYER_ID,
+                        name=result.name,
+                        zone="overlay",
+                        style=_outline_style(map_style),
+                    )
+                    map_.layer_store.add(outline, replace=True)
+                    map_.zoom_bounds(gdf.total_bounds)
 
             if not alive.current:
                 tracker.complete()

@@ -10,8 +10,11 @@ import solara
 
 from pysepal.layers import LayerSpec, LayerStore
 from pysepal.mapping import SepalMap
+from pysepal.mapping.basemaps import basemap_label
 from pysepal.solara.components.layer_panel import LayerPanel, download
 from pysepal.solara.components.layer_panel.download import download_payload
+from pysepal.solara.theme import ThemeState
+from tests.test_solara._harness import walk
 from tests.test_solara._layer_panel_helpers import (
     all_text,
     button_icon,
@@ -127,11 +130,60 @@ def test_vuetify_3_sizes(raster_spec):
     assert len(icons) == 3 and {icon.size for icon in icons} == {"small"}
 
 
-def test_basemap_picker_is_exclusive():
-    m = SepalMap(gee=False, basemaps=["SEPAL_DARK", "OpenStreetMap"])
+def test_basemap_picker_lists_the_choices_and_switches_the_map():
+    m = SepalMap(["SEPAL_DARK", "OpenStreetMap"], gee=False)
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    picker = role_widgets(box, "basemap")[0]
+    assert picker.items == [
+        {"title": basemap_label(name), "value": name} for name in ("SEPAL_DARK", "OpenStreetMap")
+    ]
+    assert picker.v_model == "SEPAL_DARK"
+
     pick_basemap(box, "OpenStreetMap")
-    assert [lyr.visible for lyr in m.layers if lyr.base] == [False, True]
+    assert m.basemap == "OpenStreetMap"
+
+
+def test_basemap_picker_follows_the_map():
+    m = SepalMap(gee=False, theme_state=ThemeState(mode="light"))
+    box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+
+    m.add_basemap("HYBRID")
+
+    picker = role_widgets(box, "basemap")[0]
+    assert [item["value"] for item in picker.items] == ["SEPAL_LIGHT", "HYBRID"]
+    assert picker.v_model == "HYBRID"
+
+
+def move(box, layer_id: str, to: int) -> None:
+    """Drop a row at index ``to``, as the sortable list reports it."""
+    next(w for w in walk(box) if hasattr(w, "vue_move")).vue_move({"id": layer_id, "to": to})
+
+
+def _tiles(layer_id: str, zone: str = "data") -> LayerSpec:
+    url = f"https://t.test/{layer_id}/{{z}}/{{x}}/{{y}}.png"
+    return LayerSpec.from_tiles(url, name=layer_id, id=layer_id, zone=zone)
+
+
+def test_overlay_layers_are_not_listed():
+    store = LayerStore()
+    store.add(_tiles("a"))
+    store.add(_tiles("o", zone="overlay"))
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert row_ids(box) == ["a"]
+
+
+def test_a_move_skips_the_overlay_ids():
+    store = LayerStore()
+    for layer_id, zone in [("b", "data"), ("a", "data"), ("o", "overlay")]:
+        store.add(_tiles(layer_id, zone))
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert row_ids(box) == ["a", "b"] and store.ids == ["o", "a", "b"]
+
+    move(box, "b", 0)
+    assert store.ids == ["o", "b", "a"] and row_ids(box) == ["b", "a"]
+
+    move(box, "b", 1)
+    assert store.ids == ["o", "a", "b"] and row_ids(box) == ["a", "b"]
 
 
 def test_row_remove_button_drops_the_row(raster_spec, raster_spec_b):

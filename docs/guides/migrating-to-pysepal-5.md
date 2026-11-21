@@ -65,11 +65,11 @@ other components, build the store yourself and pass it with
 `SepalMap(layer_store=...)`.
 
 - **The wrappers write to the store.** `add_raster`, `add_raster_async`,
-  `add_ee_layer` and `add_ee_layer_async` keep their arguments and return
-  values. The layer's id in the store is `key`, or the normalized layer name
-  when `key` is empty. A hidden layer of the store is off `m.layers`, but
-  `find_layer` and `remove_layer` still find it by key or name, and
-  `remove_all` removes it.
+  `add_ee_layer` and `add_ee_layer_async` keep their arguments and return a
+  `LayerHandle` (see [SepalMap on MapLibre](#sepalmap-on-maplibre)). The
+  layer's id in the store is `key`, or the normalized layer name when `key` is
+  empty. `find_layer` and `remove_layer` find a layer by key or name, hidden
+  ones included, and `remove_all` removes them all.
 - **The same key replaces the layer in place.** Adding a layer whose key is
   already in the store replaces it and keeps its position, visibility and
   opacity. Without a `key`, the key is the normalized name, so two calls with
@@ -78,20 +78,17 @@ other components, build the store yourself and pass it with
   new `Layer N` name and its own layer. When an `*_async` call is overtaken by
   a newer action on the same key (another add, a removal, a restyle in the
   panel), the newer one wins. `add_raster_async` then returns `None`.
-- **`add_layer` stays unmanaged.** A layer added with `add_layer` is drawn as
-  before, but it is not in the store, so the panel does not list it. A tile
-  layer added without a `pane` is drawn in the overlay pane, above every layer of
-  the store. `add_ee_layer(..., overlay=True)` does the same for an Earth Engine
-  layer: the AOI is drawn that way.
-- **The store drives visibility and opacity.** Setting `.visible` or
-  `.opacity` on a layer that `find_layer` returns no longer drives a layer of
-  the store. A layer added with `shown=False` is off the map, so
-  `layer.visible = True` shows nothing. Call
-  `m.layer_store.set_visible(key, True)` and
-  `m.layer_store.set_opacity(key, 0.5)` instead.
-- **`layer.ee_object` is rebuilt.** An Earth Engine layer keeps its object as a
-  serialized expression, and `ee_object` is rebuilt from it: it is equivalent
-  to the object you passed, but not the same Python object.
+- **Overlay layers are not listed.** A layer in the overlay zone of the store
+  (`LayerSpec(zone="overlay")`, or `add_ee_layer(..., overlay=True)`) is drawn
+  above every data layer, and the panel does not list it. The AOI and its
+  preview are drawn that way.
+- **The store drives visibility and opacity.** Set them on the handle a
+  wrapper or `find_layer` returns (`handle.visible = True`,
+  `handle.opacity = 0.5`), or call `m.layer_store.set_visible(key, True)` and
+  `m.layer_store.set_opacity(key, 0.5)`.
+- **The Earth Engine object is rebuilt.** An Earth Engine layer keeps its object
+  as a serialized expression, and the object the map draws is rebuilt from it:
+  it is equivalent to the object you passed, but not the same Python object.
 - **Earth Engine colours are normalised** to `#rrggbb`. The alpha of an
   8-digit `fillColor` becomes the fill opacity, but an `RRGGBBAA` `color` (the
   stroke) or palette entry loses its alpha. Use a 6-digit colour, and
@@ -120,11 +117,11 @@ other components, build the store yourself and pass it with
 
 The draw, inspector, zoom, fullscreen, state bar, menu and legend controls only
 attach to an ipyleaflet map, so they are removed, and `SepalMap` loses the
-arguments and members that built them. `SepalMap` keeps ipyleaflet's own zoom
-(and fullscreen, with `fullscreen_control=True`) controls for now. Their modules
-raise an `ImportError`, their names in `pysepal.mapping` and the removed
+arguments and members that built them. The MapLibre map draws its own zoom and
+scale controls, and a fullscreen control with `fullscreen_control=True`. Their
+modules raise an `ImportError`, their names in `pysepal.mapping` and the removed
 `SepalMap` members raise an `AttributeError`. `m.state` no longer means the state
-bar.
+bar: it is the map's declared state.
 
 | Removed                                                                                  | Replacement                                               |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -137,6 +134,37 @@ bar.
 
 Until drawing is back, `AoiView` offers DRAW only for a map that has a draw
 control, so a `SepalMap` has no DRAW method.
+
+### SepalMap on MapLibre
+
+`SepalMap` is a MapLibre map (`pysepal_map.MapWidget`), no longer an ipyleaflet
+`Map`. Everything it shows persistently (layers, basemap, theme, controls,
+insets) is declared in its synced state. The camera belongs to the browser:
+`set_center`, `fit_bounds` and `zoom_bounds` ask the views to move, and `m.view`
+holds where the camera is once a view reported. A removed member raises an
+`AttributeError` that names its replacement.
+
+| Before                                                                                  | Now                                                                                                                                                                |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ipyleaflet keyword arguments (`min_zoom`, `scroll_wheel_zoom`, `layout`, ...), `map_id` | `SepalMap(basemaps, *, gee, theme_state, gee_session, gee_interface, fullscreen, fullscreen_control, layer_store, center, zoom, height, loop)`                     |
+| positional options, `SepalMap([], False)`                                               | everything after `basemaps` is keyword-only; `SepalMap([], False)` raises `TypeError`                                                                              |
+| `center=[lat, lng]`                                                                     | `center=(lng, lat)`                                                                                                                                                |
+| `m.center`, `m.zoom`                                                                    | `m.view` to read the camera, `m.set_center(lng, lat, zoom)` to move it                                                                                             |
+| `m.set_center(lon, lat, zoom=-1)`                                                       | `m.set_center(lng, lat, zoom=None)`: the keyword is `lng`, and no zoom keeps the current one                                                                       |
+| Leaflet zoom levels (a 256 px world at zoom 0)                                          | MapLibre counts a 512 px world at zoom 0: the same number shows the world twice as large. `get_scale()` is 78271.517 m per CSS pixel at zoom 0 on the equator      |
+| `zoom_bounds` on a point zooms to the map maximum                                       | it stops at zoom 18 (`zoom_bounds(bounds, max_zoom=...)`); `zoom_out=1`, the default, is the exact fit                                                             |
+| `m.layers`, `m.add_layer(layer)`, ipyleaflet layers                                     | `m.layer_store.add(LayerSpec.from_tiles(...))`, or another `LayerSpec` factory                                                                                     |
+| `m.add_control`, `m.remove_control`, `m.controls`, `WidgetControl`                      | Solara components in `MapView(overlays=...)`                                                                                                                       |
+| `m.viewport_inset_left`, `_right`, `_bottom`                                            | `m.set_insets(left=..., right=..., top=..., bottom=...)`; `MapApp` sets them                                                                                       |
+| `m.canvas_width_px`, `m.canvas_height_px`                                               | nothing: the browser fits the camera to the map element itself                                                                                                     |
+| the `base` argument of `find_layer`, `remove_layer` and `remove_all`                    | gone: the basemaps are not layers. `m.basemaps` holds the choices and `m.basemap` the one shown; `remove_layer(key, none_ok=True)` takes `none_ok` by keyword only |
+| `add_basemap(name)` adds a base layer                                                   | it adds `name` to `m.basemaps` and shows it                                                                                                                        |
+| `find_layer(key)` raises `ValueError`, or takes an index                                | it returns a `LayerHandle`, or `None`. A string is an id, then a name, overlay layers first; there is no index                                                     |
+| the wrappers return an ipyleaflet layer                                                 | they return a live `LayerHandle` (`visible`, `opacity`, `restyle()`, `zoom()`, `remove()`); an `*_async` one returns `None` when superseded or after `m.close()`   |
+| `zoom_raster(layer)` with an ipyleaflet layer                                           | `zoom_raster` takes a handle, a layer id or a raster path                                                                                                          |
+| `basemap_tiles`, `xyz_to_leaflet` in `pysepal.mapping.basemaps`                         | `BASEMAP_NAMES`, `get_basemap(name)` and `basemap_label(name)`; `get_basemap_list()` leaves out the providers MapLibre cannot draw                                 |
+| `create_wms_preview_layer` returns a `WMSLayer`                                         | it returns a `LayerSpec` in the overlay zone, for `m.layer_store.add`                                                                                              |
+| `SepalMap(fullscreen=True)` adds a CSS class                                            | it sets `height="100%"`, so the map fills its container                                                                                                            |
 
 ## Why
 

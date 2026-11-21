@@ -1,9 +1,7 @@
-"""SepalMap draws its layers through a LayerStore and a LeafletEngine."""
+"""SepalMap draws its layers through a LayerStore and a MapLibreEngine."""
 
 import asyncio
 
-import ee
-import ipyleaflet as ipl
 import ipyvuetify as v
 import pytest
 
@@ -16,17 +14,24 @@ from pysepal.layers import (
     RenderLayer,
     prepare_sync,
 )
-from pysepal.mapping.layer_engine import OVERLAY_PANE
+from pysepal.mapping import LayerHandle
 from pysepal.mapping.sepal_map import SepalMap
 from pysepal.solara.theme import ThemeState
 from tests.test_solara._harness import wait_until
 
 
+def layer_of(m: SepalMap, layer_id: str):
+    return next((x for x in m.state.get("layers", ()) if x["id"] == layer_id), None)
+
+
+def ids_of(m: SepalMap) -> list:
+    return [x["id"] for x in m.state.get("layers", ())]
+
+
 def test_map_owns_a_store():
     m = SepalMap(gee=False)
-    assert isinstance(m.layer_store, LayerStore) and not any(
-        type(c).__name__ == "LayersControl" for c in m.controls
-    )
+    assert isinstance(m.layer_store, LayerStore) and len(m.layer_store) == 0
+    assert m.state["layers"] == []
 
 
 def test_prefilled_store_attaches_with_stored_visibility(raster_spec, raster_spec_b):
@@ -34,11 +39,10 @@ def test_prefilled_store_attaches_with_stored_visibility(raster_spec, raster_spe
     store.add(raster_spec)
     store.add(raster_spec_b, visible=False)
     m = SepalMap(gee=False, layer_store=store)
-    a, b = m.layer_engine.leaflet_layer(raster_spec.id), m.layer_engine.leaflet_layer(
-        raster_spec_b.id
-    )
-    # hidden = built but detached
-    assert m.layer_store is store and a in m.layers and b is not None and b not in m.layers
+    assert m.layer_store is store
+    assert ids_of(m) == [raster_spec_b.id, raster_spec.id]
+    assert layer_of(m, raster_spec.id)["visible"] is True
+    assert layer_of(m, raster_spec_b.id)["visible"] is False
 
 
 def test_prefilled_store_takes_the_bound_theme(fake_vector):
@@ -49,16 +53,15 @@ def test_prefilled_store_takes_the_bound_theme(fake_vector):
     m = SepalMap(
         gee=False, theme_state=ThemeState(mode="dark" if dark else "light"), layer_store=store
     )
-    assert m.layer_engine.leaflet_layer("v").style["color"] == THEMES[dark]["primary"]
+    assert layer_of(m, "v")["paint"]["stroke"] == THEMES[dark]["primary"]
 
 
 def test_map_layers_keep_the_add_order(byte):
-    # each add on top re-panes the layers below it; m.layers, which an index reads, keeps the order
     m = SepalMap(gee=False)
     for key in ("a", "b", "c"):
         m.add_raster(byte, key=key)
-    assert [lyr.key for lyr in m.layers if getattr(lyr, "layer_id", None)] == ["a", "b", "c"]
-    assert m.find_layer(-1) is m.layer_engine.leaflet_layer("c")
+    # top first, in the store and in the published state
+    assert m.layer_store.ids == ids_of(m) == ["c", "b", "a"]
 
 
 def test_async_wrapper_stale_completion(byte, monkeypatch):
@@ -78,7 +81,7 @@ def test_async_wrapper_stale_completion(byte, monkeypatch):
         second = asyncio.create_task(m.add_raster_async(byte, key="k", colormap="magma"))
         await wait_until(lambda: len(gates) == 2)
         gates[1].set()
-        await second
+        assert await second == LayerHandle(m, "k")
         gates[0].set()
         assert await first is None and m.layer_store.get("k").style.colormap == "magma"
 
@@ -94,6 +97,7 @@ def test_async_wrapper_stale_completion(byte, monkeypatch):
         ("sync_replace", "cividis"),
         ("remove_all", None),
         ("remove_layer", None),
+        ("remove_layer_by_name", None),
     ],
 )
 def test_newer_action_beats_pending_wrapper(byte, monkeypatch, existing, newer, expected):
@@ -113,7 +117,9 @@ def test_newer_action_beats_pending_wrapper(byte, monkeypatch, existing, newer, 
         m = SepalMap(gee=False)
         if existing:
             m.add_raster(byte, key="k", colormap="viridis")  # sync path: not gated
-        pending = asyncio.create_task(m.add_raster_async(byte, key="k", colormap="magma"))
+        pending = asyncio.create_task(
+            m.add_raster_async(byte, layer_name="Pending", key="k", colormap="magma")
+        )
         await wait_until(lambda: len(gates) == 1)
         {
             "panel_remove": lambda: m.layer_store.remove("k", missing_ok=True),
@@ -121,6 +127,7 @@ def test_newer_action_beats_pending_wrapper(byte, monkeypatch, existing, newer, 
             "sync_replace": lambda: m.add_raster(byte, key="k", colormap="cividis"),
             "remove_all": lambda: m.remove_all(),
             "remove_layer": lambda: m.remove_layer("k", none_ok=True),
+            "remove_layer_by_name": lambda: m.remove_layer("Pending", none_ok=True),
         }[newer]()
         gates[0].set()
         assert await pending is None
@@ -166,65 +173,26 @@ def test_hidden_layer_found_and_removed_by_name(byte):
     m = SepalMap(gee=False)
     m.add_raster(byte, layer_name="Elevation", key="dem")
     m.layer_store.set_visible("dem", False)
-    assert m.find_layer("Elevation") is m.layer_engine.leaflet_layer("dem")
+    assert m.find_layer("Elevation") == LayerHandle(m, "dem")
     m.remove_layer("Elevation")
     assert "dem" not in m.layer_store
 
 
-def test_key_beats_name_across_raw_and_managed(byte):
+def test_an_id_beats_a_name(byte):
     m = SepalMap(gee=False)
     m.add_raster(byte, layer_name="x", key="managed")
-    raw = ipl.TileLayer(url="https://t/{z}/{x}/{y}", name="raw")
-    raw.key = "x"
-    m.add_layer(raw)
-    assert m.find_layer("x") is raw
-
-
-def test_raw_add_spares_a_managed_layer_named_like_its_key(byte):
-    m = SepalMap(gee=False)
-    m.add_raster(byte, layer_name="x", key="managed")
-    m.add_layer(ipl.TileLayer(url="https://t/{z}/{x}/{y}", name="raw"), key="x")
-    assert "managed" in m.layer_store
-    m.add_layer(ipl.TileLayer(url="https://t/{z}/{x}/{y}", name="raw2"), key="managed")
-    assert "managed" not in m.layer_store  # the same key replaces
-
-
-def test_raw_tile_layer_goes_to_overlay_pane():
-    m = SepalMap(gee=False)
-    layer = ipl.TileLayer(url="https://t/{z}/{x}/{y}", name="raw")
-    m.add_layer(layer)
-    assert layer.pane == OVERLAY_PANE
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_aoi_overlay_stays_above_data(byte):
-    async def run():
-        m = SepalMap()
-        await m.add_ee_layer_async(
-            ee.FeatureCollection([ee.Feature(ee.Geometry.Point([0, 0]).buffer(1000))]),
-            {},
-            "aoi",
-            overlay=True,
-        )
-        m.add_raster(byte, key="data")
-        aoi = m.find_layer("aoi")
-        assert aoi.pane == OVERLAY_PANE and "aoi" not in m.layer_store
-        assert int(m.panes[OVERLAY_PANE]["zIndex"]) > int(
-            m.panes[m.layer_engine.leaflet_layer("data").pane]["zIndex"]
-        )
-
-    asyncio.run(run())
+    m.add_raster(byte, layer_name="other", key="x")
+    assert m.find_layer("x").id == "x"
+    m.remove_layer("x")
+    assert m.layer_store.ids == ["managed"]
 
 
 def test_add_raster_goes_through_store(byte):
     m = SepalMap(gee=False)
     layer = m.add_raster(byte, layer_name="dem", key="dem")
-    assert (
-        m.layer_store.ids == ["dem"]
-        and layer is m.layer_engine.leaflet_layer("dem")
-        and layer.raster == str(byte.resolve())
-    )
+    _, render = m.layer_engine.accepted("dem")
+    assert m.layer_store.ids == ["dem"] and layer == LayerHandle(m, "dem")
+    assert render.raster == str(byte.resolve())
 
 
 def test_same_key_replaces_in_place(byte):
@@ -238,22 +206,22 @@ def test_same_key_replaces_in_place(byte):
 def test_remove_mixed_layers(byte, pmtiles_spec):
     m = SepalMap(gee=False)
     m.add_raster(byte, layer_name="managed", key="managed")
-    m.add_layer(ipl.GeoJSON(data={"type": "FeatureCollection", "features": []}, name="raw"))
+    overlay = LayerSpec.from_tiles("https://t/{z}/{x}/{y}", name="raw", id="raw", zone="overlay")
+    m.layer_store.add(overlay)
     m.layer_store.add(pmtiles_spec)
     m.layer_store.set_visible(pmtiles_spec.id, False)
-    m.remove_layer(pmtiles_spec.id)  # hidden and detached, still removable by key
+    m.remove_layer(pmtiles_spec.id)  # hidden, still removable by key
     m.remove_all(keep_names=["raw"])
-    assert m.layer_store.ids == [] and [lyr.name for lyr in m.layers if not lyr.base] == ["raw"]
+    assert m.layer_store.ids == ["raw"] and ids_of(m) == ["raw"]
 
 
 def test_managed_layers_follow_theme(fake_vector):
     theme = ThemeState(mode="light")
     m = SepalMap(gee=False, theme_state=theme)
     m.layer_store.add(LayerSpec.from_vector(fake_vector, id="v"))
-    layer = m.layer_engine.leaflet_layer("v")
-    before = layer.style["color"]
+    before = layer_of(m, "v")["paint"]["stroke"]
     theme.set_mode("dark")
-    assert layer.style["color"] != before
+    assert layer_of(m, "v")["paint"]["stroke"] != before
 
 
 @pytest.mark.parametrize("kind", ["geojson", "ee"])
@@ -276,18 +244,19 @@ def test_hidden_layer_follows_theme_when_shown(fake_vector, gee_spec, kind):
     m.layer_store.set_visible("v", False)
     theme.set_mode("dark")
     m.layer_store.set_visible("v", True)
-    layer = m.layer_engine.leaflet_layer("v")
+    layer = layer_of(m, "v")
     if kind == "geojson":
-        assert layer.style["color"] == layer.point_style["color"] == THEMES[True]["primary"]
+        assert layer["paint"]["stroke"] == THEMES[True]["primary"]
     else:
-        assert layer.url.startswith("https://dark")
+        assert layer["source"]["tiles"][0].startswith("https://dark")
 
 
 def test_unnamed_rasters_get_their_own_layers(byte, int16_classes):
     m = SepalMap(gee=False)
     first = m.add_raster(byte)
     second = m.add_raster(int16_classes)
-    assert len(m.layer_store) == 2 and first in m.layers and second in m.layers
+    assert len(m.layer_store) == 2 and first != second
+    assert set(ids_of(m)) == {first.id, second.id}
     assert len({spec.name for spec in m.layer_store.specs()}) == 2
 
 
@@ -295,7 +264,8 @@ def test_unnamed_rasters_get_their_own_layers_async(byte, int16_classes):
     async def run():
         m = SepalMap(gee=False)
         layers = await asyncio.gather(m.add_raster_async(byte), m.add_raster_async(int16_classes))
-        assert len(m.layer_store) == 2 and all(layer in m.layers for layer in layers)
+        assert len(m.layer_store) == 2 and all(layer.alive for layer in layers)
+        assert layers[0] != layers[1]
 
     asyncio.run(run())
 
@@ -303,7 +273,7 @@ def test_unnamed_rasters_get_their_own_layers_async(byte, int16_classes):
 def test_a_hidden_unnamed_raster_is_not_replaced(byte, int16_classes):
     m = SepalMap(gee=False)
     first = m.add_raster(byte)
-    m.layer_store.set_visible(first.layer_id, False)
+    m.layer_store.set_visible(first.id, False)
     m.add_raster(int16_classes)
     assert len(m.layer_store) == 2
 
@@ -326,6 +296,6 @@ def test_restyle_keeps_the_prepare_options(byte, monkeypatch, option):
         seen.append(kwargs)
         return prepare_sync(spec, **kwargs)
 
-    monkeypatch.setattr("pysepal.mapping.layer_engine.prepare_sync", spy)
+    monkeypatch.setattr("pysepal.mapping.maplibre_engine.prepare_sync", spy)
     m.layer_store.restyle("w", colormap="magma")
     assert len(seen) == 1 and option.items() <= seen[0].items()

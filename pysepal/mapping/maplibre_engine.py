@@ -1,7 +1,6 @@
 """Draw a :class:`~pysepal.layers.LayerStore` on a :class:`pysepal_map.MapWidget`.
 
-Each spec is prepared into a :class:`~pysepal.layers.RenderLayer` the way
-:class:`~pysepal.mapping.layer_engine.LeafletEngine` prepares it, and the whole
+Each spec is prepared into a :class:`~pysepal.layers.RenderLayer`, and the whole
 map is published as one declarative ``MapState``, at most once per tick of the
 event loop.
 
@@ -160,7 +159,7 @@ class MapLibreEngine:
         # per id: request tokens, which added/updated/removed bump, and Layer.token
         self._tokens: dict[str, int] = {}
         self._incarnations: dict[str, int] = {}
-        # per id: the request token being prepared or that failed, as LeafletEngine
+        # per id: the request token being prepared or that failed
         self._running: dict[str, tuple[int, Optional[asyncio.Task]]] = {}
         self._failed: dict[str, tuple[int, str]] = {}
         self._tasks: set[asyncio.Task] = set()

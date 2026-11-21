@@ -6,8 +6,6 @@ import re
 from collections.abc import Sequence
 from typing import Optional
 
-from box import Box
-from ipyleaflet import TileLayer
 from pysepal_map import Basemap
 from xyzservices import TileProvider
 from xyzservices import providers as xyz
@@ -110,40 +108,6 @@ def get_xyz_dict(
             get_xyz_dict(free_only, v, _output)
 
     return _output
-
-
-def xyz_to_leaflet() -> dict:
-    """Convert all available xyz tile services to ipyleaflet tile layers.
-
-    Adapted from https://github.com/giswqs/geemap.
-
-    Returns:
-        A dictionary of ipyleaflet tile layers.
-    """
-    leaflet_dict = {}
-
-    for key in xyz_tiles:
-        name = xyz_tiles[key]["name"]
-        url = xyz_tiles[key]["url"]
-        attribution = xyz_tiles[key]["attribution"]
-        leaflet_dict[key] = TileLayer(
-            url=url, name=name, attribution=attribution, max_zoom=22, base=True
-        )
-
-    for item in get_xyz_dict().values():
-        leaflet_dict[item.name] = TileLayer(
-            url=item.build_url(),
-            name=item.name,
-            max_zoom=item.get("max_zoom", 22),
-            attribution=item.attribution,
-            base=True,
-        )
-
-    return leaflet_dict
-
-
-basemap_tiles: Box = Box(xyz_to_leaflet(), frozen_box=True)
-"the basemaps list as a box"
 
 
 _PLACEHOLDER = re.compile(r"\{[^}]*\}")
