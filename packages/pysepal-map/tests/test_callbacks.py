@@ -65,6 +65,8 @@ def test_requests_increment_seq():
         "seq": 4,
         "bounds": [10.0, 10.0, 20.0, 20.0],
         "padding": 20,
+        "max_zoom": None,
+        "zoom_out": 0.0,
     }
     # West east of east crosses the antimeridian.
     widget.fit_bounds((170, -10, -170, 10), padding=0)
@@ -72,6 +74,8 @@ def test_requests_increment_seq():
         "seq": 5,
         "bounds": [170.0, -10.0, -170.0, 10.0],
         "padding": 0,
+        "max_zoom": None,
+        "zoom_out": 0.0,
     }
 
 
@@ -440,7 +444,7 @@ def test_without_any_loop_an_async_callback_runs_to_completion():
         widget.on_view(callback)
         open_view(widget)
         report(widget)
-        return widget._loop, seen
+        return widget.loop, seen
 
     assert in_thread(scenario) == (None, [3.0])
 

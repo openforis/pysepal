@@ -236,6 +236,37 @@ def test_a_collapsed_host_fits_its_latest_request_once_shown(harness, page_sessi
     assert contains(view["bounds"], BOX)
 
 
+def test_fit_respects_insets(harness, page_session):
+    widget = MapWidget()
+    display(widget)
+    wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    widget.set_insets(left=300)
+    widget.fit_bounds(BOX)
+    view = wait_view(page_session, widget, lambda v: v["request_seq"] == 2)
+    shown = el.evaluate(
+        """(el, box) => {
+            const map = el.psmMap;
+            const [w, h] = [el.clientWidth, el.clientHeight];
+            const xs = [[box[0], box[1]], [box[2], box[3]]].map((c) => map.project(c).x);
+            const corners = [[300, 0], [w, 0], [w, h], [300, h]].map((p) => map.unproject(p));
+            const lngs = corners.map((c) => c.lng);
+            const lats = corners.map((c) => c.lat);
+            const corner = el.querySelector('.maplibregl-ctrl-top-left');
+            return {
+                width: w,
+                xs,
+                inside: [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)],
+                corner: corner.getBoundingClientRect().left - el.getBoundingClientRect().left,
+            };
+        }""",
+        list(BOX),
+    )
+    assert all(300 <= x <= shown["width"] for x in shown["xs"])
+    assert near(view["bounds"], shown["inside"])
+    assert shown["corner"] == pytest.approx(300, abs=0.5)
+
+
 def test_the_camera_stays_north_up_and_flat(harness, page_session):
     widget = MapWidget(center=(0, 0), zoom=3)
     box = widgets.VBox([widget])

@@ -2,7 +2,8 @@
   "theme": "light",
   "controls": {
     "zoom": true,
-    "fullscreen": true
+    "fullscreen": true,
+    "scale": true
   },
   "basemap": {
     "tiles": ["https://t/{z}/{x}/{y}.png"],

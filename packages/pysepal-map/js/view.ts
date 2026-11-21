@@ -27,6 +27,16 @@ export function lockRotation(map: {
 type LngLat = [number, number];
 type Bounds = [number, number, number, number];
 
+/** The CSS pixels other UI covers on each side of the map element. */
+export interface Insets {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export const NO_INSETS: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
+
 /** A camera change Python asks for; `seq` only ever grows. */
 export interface ViewRequest {
   seq: number;
@@ -34,6 +44,10 @@ export interface ViewRequest {
   zoom?: number | null;
   bounds?: Bounds;
   padding?: number;
+  /** Null fits up to the map's maximum zoom. */
+  max_zoom?: number | null;
+  /** How far to zoom out from the fit, down to zoom 0. */
+  zoom_out?: number;
 }
 
 /**
@@ -69,18 +83,15 @@ interface MoveEvent {
 export interface CameraMap {
   getCenter(): { lng: number; lat: number };
   getZoom(): number;
-  getBounds(): {
-    getWest(): number;
-    getSouth(): number;
-    getEast(): number;
-    getNorth(): number;
-  };
+  unproject(point: [number, number]): { lng: number; lat: number };
+  setPadding(padding: Insets): unknown;
   jumpTo(options: object, eventData?: object): unknown;
   resize(eventData?: object): unknown;
+  /** MapLibre caps the zoom at NaN for a `maxZoom` key that holds undefined. */
   cameraForBounds(
     bounds: Bounds,
-    options?: { padding?: number }
-  ): object | undefined;
+    options?: { padding?: number; maxZoom?: number }
+  ): { zoom?: number } | undefined;
   on(type: "moveend" | "resize", listener: (event: MoveEvent) => void): unknown;
   off(
     type: "moveend" | "resize",
@@ -99,7 +110,10 @@ export interface ViewCameraOptions {
   map: CameraMap;
   model: CameraModel;
   viewId: string;
-  /** The element the map fills: fits and reports wait while it has no size. */
+  /**
+   * The element the map fills. Fits and reports wait while the insets leave
+   * none of it.
+   */
   host: { readonly clientWidth: number; readonly clientHeight: number };
   /** Send a report; false if the comm refused it. */
   send(report: ViewReport): boolean;
@@ -114,16 +128,43 @@ const isSeq = (value: unknown): value is number =>
 const numbers = (value: unknown, count: number): boolean =>
   Array.isArray(value) && value.length === count && value.every(isNumber);
 
-function requestOf(value: unknown): ViewRequest | null {
-  if (!value || typeof value !== "object") return null;
-  const { seq, center, zoom, bounds, padding } = value as Record<
+/** The `insets` trait; a side that is not a positive number is 0. */
+export function insetsOf(value: unknown): Insets {
+  const sides = (value && typeof value === "object" ? value : {}) as Record<
     string,
     unknown
   >;
+  const side = (name: keyof Insets) => {
+    const px = sides[name];
+    return isNumber(px) && px > 0 ? px : 0;
+  };
+  return {
+    left: side("left"),
+    right: side("right"),
+    top: side("top"),
+    bottom: side("bottom"),
+  };
+}
+
+const sameInsets = (a: Insets, b: Insets): boolean =>
+  a.left === b.left &&
+  a.right === b.right &&
+  a.top === b.top &&
+  a.bottom === b.bottom;
+
+function requestOf(value: unknown): ViewRequest | null {
+  if (!value || typeof value !== "object") return null;
+  const { seq, center, zoom, bounds, padding, max_zoom, zoom_out } =
+    value as Record<string, unknown>;
   if (!isSeq(seq)) return null;
   if (numbers(bounds, 4)) {
-    const pad = isNumber(padding) ? padding : 0;
-    return { seq, bounds: bounds as Bounds, padding: pad };
+    return {
+      seq,
+      bounds: bounds as Bounds,
+      padding: isNumber(padding) ? padding : 0,
+      max_zoom: isNumber(max_zoom) ? max_zoom : null,
+      zoom_out: isNumber(zoom_out) && zoom_out > 0 ? zoom_out : 0,
+    };
   }
   if (numbers(center, 2) && (zoom == null || isNumber(zoom))) {
     return { seq, center: center as LngLat, zoom: zoom ?? null };
@@ -157,11 +198,16 @@ function savedOf(
  * still owed, so Python never gets a camera under a sequence it did not
  * come from. Each report says what moved the camera, so that Python can
  * keep the last user move over a later acknowledgement or resize.
+ *
+ * The insets are the map's padding: the camera centers, fits and reports
+ * inside the area they leave.
  */
 export class ViewCamera {
   /** The sequence of the last request this view applied. */
   private applied = 0;
-  /** A fit waiting for the host to have a size; only the latest is kept. */
+  private insets: Insets = NO_INSETS;
+  private started = false;
+  /** A fit waiting for a usable area; only the latest is kept. */
   private pending: ViewRequest | null = null;
   /** The sequence a report is owed for, and what moved the camera. */
   private owed: number | null = null;
@@ -175,6 +221,9 @@ export class ViewCamera {
 
   start(): void {
     const { map, model } = this.options;
+    this.started = true;
+    // The saved center is the middle of the area inside the insets.
+    map.setPadding(this.insets);
     const saved = savedOf(model.get("view"));
     if (saved) {
       map.jumpTo({
@@ -190,6 +239,15 @@ export class ViewCamera {
     map.on("resize", this.onResize);
     model.on("change:view_request", this.onRequest);
     this.onRequest();
+  }
+
+  /** Use `insets` from now on; before `start`, they wait for it. */
+  setInsets(insets: Insets): void {
+    if (this.disposed || sameInsets(insets, this.insets)) return;
+    this.insets = { ...insets };
+    if (!this.started) return;
+    this.options.map.setPadding(this.insets);
+    this.resume();
   }
 
   /** The comm came back: send again a report it refused meanwhile. */
@@ -245,9 +303,14 @@ export class ViewCamera {
       // just got its size may not have told the map yet, so measure it now.
       if (this.hasSize()) {
         map.resize({ [REQUEST]: request.seq });
-        camera = map.cameraForBounds(request.bounds, {
+        const { max_zoom, zoom_out = 0 } = request;
+        const fit = map.cameraForBounds(request.bounds, {
           padding: request.padding,
+          ...(max_zoom == null ? {} : { maxZoom: max_zoom }),
         });
+        if (fit?.zoom !== undefined) {
+          camera = { ...fit, zoom: Math.max(0, fit.zoom - zoom_out) };
+        }
       }
       if (!camera) {
         this.pending = request;
@@ -281,13 +344,17 @@ export class ViewCamera {
   private readonly onResize = (event: MoveEvent) => {
     // apply() measuring the host itself.
     if (event[REQUEST] !== undefined) return;
+    this.resume();
+  };
+
+  /** The usable area changed: run the fit and send the report it held. */
+  private resume(): void {
     if (this.disposed || !this.hasSize()) return;
     const pending = this.pending;
     this.pending = null;
     if (pending) this.apply(pending);
-    // A report held while the host had no size goes out now.
     if (this.owed !== null) this.owe(this.owed, this.cause);
-  };
+  }
 
   /** Owe a report on `seq`; moves within one delay share a trailing one. */
   private owe(seq: number, cause: Cause): void {
@@ -314,25 +381,39 @@ export class ViewCamera {
     this.owed = null;
   }
 
+  /** Whether the insets leave some of the host. */
   private hasSize(): boolean {
-    const { host } = this.options;
-    return host.clientWidth > 0 && host.clientHeight > 0;
+    const { clientWidth, clientHeight } = this.options.host;
+    const { left, right, top, bottom } = this.insets;
+    return clientWidth - left - right > 0 && clientHeight - top - bottom > 0;
   }
 
   private report(seq: number, cause: Cause): ViewReport {
-    const { map, viewId } = this.options;
+    const { map, viewId, host } = this.options;
     const center = map.getCenter();
-    const bounds = map.getBounds();
+    // What map.getBounds() does for the whole map, inside the insets.
+    const { left, right, top, bottom } = this.insets;
+    const [x0, x1] = [left, host.clientWidth - right];
+    const [y0, y1] = [top, host.clientHeight - bottom];
+    const corners: [number, number][] = [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+    ];
+    const points = corners.map((corner) => map.unproject(corner));
+    const lngs = points.map((p) => p.lng);
+    const lats = points.map((p) => p.lat);
     return {
       type: "view_report",
       view_id: viewId,
       center: [center.lng, center.lat],
       zoom: map.getZoom(),
       bounds: [
-        bounds.getWest(),
-        bounds.getSouth(),
-        bounds.getEast(),
-        bounds.getNorth(),
+        Math.min(...lngs),
+        Math.min(...lats),
+        Math.max(...lngs),
+        Math.max(...lats),
       ],
       request_seq: seq,
       cause,

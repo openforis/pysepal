@@ -177,6 +177,39 @@ def test_malformed_messages_are_ignored(monkeypatch, content):
     assert sent == []
 
 
+GEOJSON_A = b'{"type": "FeatureCollection", "features": []}'
+GEOJSON_B = b'{"type": "Point", "coordinates": [1, 2]}'
+
+
+def pulled(widget, digest):
+    """Send a pull for ``digest``: the bytes of the data reply, or None if missing."""
+    replies = []
+    widget.send = lambda content, buffers=None: replies.append((content, buffers))
+    try:
+        widget._handle_custom_msg({"type": "pull", "digests": [digest]}, [])
+    finally:
+        del widget.send
+    [(content, buffers)] = replies
+    return None if content.get("missing") else buffers[0]
+
+
+def test_nested_draw_keeps_its_payloads():
+    """A draw made by a `state` observer during an outer draw keeps the payloads it references."""
+    w = MapWidget()
+    outer = w.add_payload(GEOJSON_A)
+    inner = {}
+
+    def nested(_change):
+        if not inner:
+            inner["d"] = w.add_payload(GEOJSON_B)
+            w.draw(MapState(layers=(Layer("b", GeoJSONSource(inner["d"])),)))
+
+    w.observe(nested, "state")
+    w.draw(MapState(layers=(Layer("a", GeoJSONSource(outer)),)))
+    assert [layer["id"] for layer in w.state["layers"]] == ["b"]
+    assert pulled(w, inner["d"]) == GEOJSON_B
+
+
 def test_instances_follow_input_order_and_keep_across_reorder():
     widget = MapWidget()
     a = Layer("a", RasterSource(("t",)))
@@ -625,7 +658,7 @@ def test_a_failing_status_callback_is_logged(board, caplog):
 
 def test_the_supplied_loop_runs_the_expiry(loop):
     widget = MapWidget(loop=loop)
-    assert widget._loop is loop
+    assert widget.loop is loop
     open_view(widget, "a")
     assert [h.when for h in loop.pending()] == [150]
 
@@ -655,7 +688,7 @@ def in_fresh_thread(scenario):
 def test_without_a_loop_expiry_binds_the_first_message_loop():
     def scenario():
         widget = MapWidget()
-        before = widget._loop
+        before = widget.loop
 
         async def receive():
             open_view(widget, "a")
@@ -664,7 +697,7 @@ def test_without_a_loop_expiry_binds_the_first_message_loop():
             return asyncio.get_running_loop(), when
 
         running, when = asyncio.run(receive())
-        return before, widget._loop is running, when
+        return before, widget.loop is running, when
 
     before, bound, when = in_fresh_thread(scenario)
     assert before is None
@@ -679,9 +712,27 @@ def test_the_loop_running_at_construction_runs_the_expiry():
         open_view(widget, "a")
         when = widget._expiry.when() - loop.time()
         widget.close()
-        return widget._loop is loop, when, widget._expiry
+        return widget.loop is loop, when, widget._expiry
 
     captured, when, expiry = in_fresh_thread(lambda: asyncio.run(construct()))
     assert captured
     assert when == pytest.approx(150, abs=1)
     assert expiry is None
+
+
+def test_loop_follows_a_replacement_after_the_old_loop_closed():
+    def scenario():
+        widget = MapWidget()
+
+        async def receive():
+            open_view(widget, "a")
+            return asyncio.get_running_loop()
+
+        first = asyncio.run(receive())
+        adopted = widget.loop
+        second = asyncio.run(receive())
+        replaced = widget.loop
+        widget.close()
+        return adopted is first, replaced is second
+
+    assert in_fresh_thread(scenario) == (True, True)

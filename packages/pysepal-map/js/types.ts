@@ -64,7 +64,7 @@ export interface BasemapState {
 export interface MapState {
   revision: number;
   theme: "light" | "dark";
-  controls: { zoom: boolean; fullscreen: boolean };
+  controls: { zoom: boolean; fullscreen: boolean; scale: boolean };
   basemap: BasemapState | null;
   layers: LayerState[];
 }

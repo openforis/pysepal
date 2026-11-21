@@ -5,11 +5,11 @@ import { Protocol } from "pmtiles";
 import workerSource from "psm:maplibre-worker";
 import type { RenderProps } from "@anywidget/types";
 
-import { syncControls } from "./controls";
+import { ViewControls } from "./controls";
 import { MapSync } from "./maplive";
 import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
 import type { MapState } from "./types";
-import { CAMERA_OPTIONS, ViewCamera, lockRotation } from "./view";
+import { CAMERA_OPTIONS, ViewCamera, insetsOf, lockRotation } from "./view";
 
 // MapLibre 6 loads its worker from a file next to the module; the bundle has
 // no such file, so ship the worker inline.
@@ -25,6 +25,7 @@ interface Model {
   state: unknown;
   view: unknown;
   view_request: unknown;
+  insets: unknown;
 }
 
 type PsmElement = HTMLElement & {
@@ -78,6 +79,15 @@ function render({ model, el }: RenderProps<Model>) {
   root.psmInspect = () => sync.inspect();
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
   root.psmCamera = camera;
+  const controls = new ViewControls({
+    map,
+    root,
+    onInsets: (insets) => camera.setInsets(insets),
+  });
+  const applyInsets = () => controls.setInsets(insetsOf(model.get("insets")));
+  // Before the camera starts, which restores its center inside them.
+  applyInsets();
+  model.on("change:insets", applyInsets);
   camera.start();
   // Python may have expired the view, and reports sent meanwhile be lost.
   const stopLive = onLiveAgain(model, () => {
@@ -88,7 +98,7 @@ function render({ model, el }: RenderProps<Model>) {
   });
 
   const applyControls = () =>
-    syncControls(map, root, model.get("state") as Partial<MapState>);
+    controls.sync(model.get("state") as Partial<MapState>);
   applyControls();
   model.on("change:state", applyControls);
 
@@ -101,6 +111,7 @@ function render({ model, el }: RenderProps<Model>) {
     sync.dispose();
     presence.dispose();
     model.off("change:height", applyHeight);
+    model.off("change:insets", applyInsets);
     model.off("change:state", applyControls);
     resizer.disconnect();
     delete root.psmMap;

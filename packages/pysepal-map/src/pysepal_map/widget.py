@@ -4,6 +4,10 @@
 keeps the rest of the contract, summed up here for whoever drives a widget or
 writes a front end for it.
 
+Traits. ``state``, ``view``, ``view_request`` and ``insets`` are read-only:
+assigning one raises ``traitlets.TraitError``, and only the widget writes
+them. The comm opens with the first request, sequence 1, in ``view_request``.
+
 Draws. ``MapWidget.draw`` publishes a whole ``MapState`` in the ``state``
 trait, with a ``revision`` one above the last. Each layer gets an
 ``instance``, an integer that grows over the widget's life, given in input
@@ -42,8 +46,24 @@ from views not mounted, or on an older request, are dropped, and on the same
 request a user's camera is kept over an acknowledgement or another view's
 resize.
 
+A center request carries ``center`` and ``zoom``, null to keep the zoom. A fit
+carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
+``zoom_out``: the view fits the bounds no further in than ``max_zoom``, zooms
+out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
+usable area has no size, and runs once it has one.
+
+Insets. ``insets`` holds the CSS pixels other UI covers on each side of the
+map element, as ``left``, ``right``, ``top`` and ``bottom``, all 0 at first. A
+view applies them as the map's padding before it restores the camera, and
+moves its control corners in by as much. Its usable area is what they leave:
+the reported center is its middle, the reported ``bounds`` its corners, and a
+fit stays inside it. While its map is fullscreen, a view uses no insets.
+
 A view marks its root element with ``data-psm-revision`` once its owned style
-matches that revision and every GeoJSON source has loaded its data.
+matches that revision and every GeoJSON source has loaded its data. Its
+fullscreen control fills the closest ancestor marked
+``data-psm-fullscreen-root``, else the root element, and marks that element
+with ``data-psm-fullscreen`` while it is fullscreen.
 """
 
 from __future__ import annotations
@@ -63,6 +83,7 @@ import anywidget
 import traitlets
 
 from ._callbacks import CallbackQueue, running_loop
+from ._camera import INSET_SIDES, _bounds_request, _center_request, _insets
 from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
 _STATIC = Path(__file__).parent / "static"
@@ -80,8 +101,6 @@ VIEW_EXPIRY_S = 150.0
 #: deadline makes them all late at once; the messages queued behind it then
 #: renew them within this grace.
 VIEW_GRACE_S = 10.0
-#: The map's maximum zoom.
-MAX_ZOOM = 24
 
 StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
 ViewCallback = Callable[[dict], Any]
@@ -101,37 +120,6 @@ def _numbers(value, count: int) -> list[float] | None:
     ):
         return None
     return [float(x) for x in value]
-
-
-def _latitude(name: str, value) -> float:
-    if not -90 <= _finite(name, value) <= 90:
-        raise ValueError(f"{name} must be in [-90, 90], got {value!r}")
-    return float(value)
-
-
-def _center_request(lng, lat, zoom) -> dict:
-    center = [float(_finite("lng", lng)), _latitude("lat", lat)]
-    if zoom is not None and not 0 <= _finite("zoom", zoom) <= MAX_ZOOM:
-        raise ValueError(f"zoom must be in [0, {MAX_ZOOM}], got {zoom!r}")
-    return {"center": center, "zoom": None if zoom is None else float(zoom)}
-
-
-def _bounds_request(bounds, padding) -> dict:
-    corners = tuple(bounds)
-    if len(corners) != 4:
-        raise ValueError(f"bounds must be (west, south, east, north), got {bounds!r}")
-    west, south, east, north = corners
-    box = [
-        float(_finite("west", west)),
-        _latitude("south", south),
-        float(_finite("east", east)),
-        _latitude("north", north),
-    ]
-    if box[1] > box[3]:
-        raise ValueError(f"south must not be above north, got {bounds!r}")
-    if not _is_int(padding) or padding < 0:
-        raise ValueError(f"padding must be a whole number of pixels, got {padding!r}")
-    return {"bounds": box, "padding": padding}
 
 
 def _reduce_status(
@@ -179,9 +167,10 @@ class MapWidget(anywidget.AnyWidget):
     _esm = _STATIC / "widget.js"
     _css = _STATIC / "widget.css"
 
-    state = traitlets.Dict().tag(sync=True)
-    view = traitlets.Dict().tag(sync=True)
-    view_request = traitlets.Dict().tag(sync=True)
+    state = traitlets.Dict(read_only=True).tag(sync=True)
+    view = traitlets.Dict(read_only=True).tag(sync=True)
+    view_request = traitlets.Dict(read_only=True).tag(sync=True)
+    insets = traitlets.Dict(dict.fromkeys(INSET_SIDES, 0), read_only=True).tag(sync=True)
     height = traitlets.Unicode("400px").tag(sync=True)
 
     def __init__(
@@ -222,10 +211,11 @@ class MapWidget(anywidget.AnyWidget):
         # The view whose user move on that request gave the camera in ``view``.
         self._user_view: str | None = None
         lng, lat = center
-        first = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
+        # Set before super().__init__(), which opens the comm with this request.
+        self._first_request = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
         # The last zoom asked for, until a report says what the views show.
-        self._zoom: float | None = first["zoom"]
-        super().__init__(height=height, view_request=first, **kwargs)
+        self._zoom: float | None = self._first_request["zoom"]
+        super().__init__(height=height, **kwargs)
         self._payloads: dict[str, bytes] = {}
         self._revision = 0
         self._next_instance = 1
@@ -234,6 +224,21 @@ class MapWidget(anywidget.AnyWidget):
         # id -> (token, instance) of the last published snapshot
         self._current: dict[str, tuple[int, int]] = {}
         self.on_msg(self._on_message)
+
+    @traitlets.default("view_request")
+    def _default_view_request(self) -> dict:
+        return self._first_request
+
+    @property
+    def loop(self) -> asyncio.AbstractEventLoop | None:
+        """The loop the widget runs its callbacks and expiry timer on now.
+
+        It is the constructor's ``loop``, else the loop running at
+        construction, else the one running when the first message from a
+        view arrives. A message that finds that loop closed adopts the loop
+        running then. None until there is one.
+        """
+        return self._loop
 
     @property
     def layer_status(self) -> Mapping[str, LayerStatus]:
@@ -281,13 +286,31 @@ class MapWidget(anywidget.AnyWidget):
                 self._zoom = request["zoom"]
             self._request(request)
 
-    def fit_bounds(self, bounds: tuple[float, float, float, float], padding: int = 20) -> None:
+    def fit_bounds(
+        self,
+        bounds: tuple[float, float, float, float],
+        padding: int = 20,
+        max_zoom: float | None = None,
+        zoom_out: float = 0.0,
+    ) -> None:
         """Ask every view to fit ``(west, south, east, north)``, ``padding`` px in.
 
-        A west east of east crosses the antimeridian. A view without a size
-        fits once it has one.
+        The fit stays inside the insets, zooms in no further than
+        ``max_zoom`` (in [0, 24]; None is the map's maximum), then zooms out
+        by ``zoom_out`` (finite, at least 0), down to zoom 0. A west east of
+        east crosses the antimeridian. A view without a usable area fits
+        once it has one.
         """
-        self._request(_bounds_request(bounds, padding))
+        self._request(_bounds_request(bounds, padding, max_zoom, zoom_out))
+
+    def set_insets(self, *, left: int = 0, right: int = 0, top: int = 0, bottom: int = 0) -> None:
+        """Declare how many CSS pixels of each side of the map other UI covers.
+
+        The views center, fit and report bounds inside the rest, and move
+        their controls in by as much. A side left out is 0; a value that is
+        not a non-negative int raises ``ValueError`` and changes nothing.
+        """
+        self.set_trait("insets", _insets(left, right, top, bottom))
 
     def close(self) -> None:
         """Close the widget; later messages from its views do nothing."""
@@ -305,7 +328,7 @@ class MapWidget(anywidget.AnyWidget):
         # Under the lock, so requests from several threads go out in seq order.
         with self._lock:
             self._issued += 1
-            self.view_request = {"seq": self._issued, **request}
+            self.set_trait("view_request", {"seq": self._issued, **request})
 
     def _sides_of(self, layer_id: str) -> Sequence[str]:
         """The sides that draw a layer; every Phase 1 layer is on ``main``."""
@@ -474,7 +497,7 @@ class MapWidget(anywidget.AnyWidget):
                 view = {"center": center, "zoom": zoom[0], "bounds": bounds}
                 view["request_seq"] = seq
                 # Under the lock, so reports on other threads cannot reorder it.
-                self.view = view
+                self.set_trait("view", view)
                 for callback in self._view_callbacks:
                     self._callbacks.put(callback, copy.deepcopy(view))
         # Expiring a view can change the status too.
@@ -578,6 +601,11 @@ class MapWidget(anywidget.AnyWidget):
             self._payloads[digest] = bytes(data)
         return digest
 
+    def has_payload(self, digest: str) -> bool:
+        """Whether the widget still holds the bytes of ``digest``."""
+        with self._lock:
+            return digest in self._payloads
+
     def draw(self, state: MapState) -> None:
         """Publish ``state`` as the next snapshot; a failure changes nothing.
 
@@ -585,6 +613,8 @@ class MapWidget(anywidget.AnyWidget):
         draw then drops the payloads ``state`` does not reference, even ones
         added since the last draw: add each payload right before the draw
         that uses it. Draws from several threads publish one at a time.
+        Observers of ``state`` run under the widget lock, so a draw they make
+        publishes after this one.
         """
         if not isinstance(state, MapState):
             raise TypeError("draw expects a MapState")
@@ -626,7 +656,8 @@ class MapWidget(anywidget.AnyWidget):
                 for layer_id, report in list(reports.items()):
                     if current.get(layer_id) != (report.token, report.instance):
                         del reports[layer_id]
-            self.state = data
+            # Pruned first: a draw that a state observer makes prunes last.
             self._payloads = {d: b for d, b in self._payloads.items() if d in referenced}
+            self.set_trait("state", data)
         # The callbacks run outside the lock.
         self._refresh()

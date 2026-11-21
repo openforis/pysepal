@@ -1,20 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { REPORT_DELAY_MS, ViewCamera, type ViewReport } from "../view";
+import {
+  REPORT_DELAY_MS,
+  ViewCamera,
+  type Insets,
+  type ViewReport,
+} from "../view";
 
 type Listener = (event: any) => void;
 
+const NO_INSETS: Insets = { left: 0, right: 0, top: 0, bottom: 0 };
+const LEFT_300: Insets = { ...NO_INSETS, left: 300 };
+
 /**
  * A map camera as ViewCamera drives it. Like MapLibre, a zero-size container
- * leaves the camera at 400 x 300; unlike it, a jump that changes nothing
- * fires no event, so a test sees whether a request is acknowledged anyway.
+ * leaves the camera at 400 x 300, and the center sits in the middle of the
+ * padding; unlike it, a jump or padding that changes nothing fires no event,
+ * so a test sees whether a request is acknowledged anyway.
  */
 class FakeCameraMap {
   center = { lng: 0, lat: 0 };
   zoom = 0;
   width = 400;
   height = 300;
+  padding: Insets = { ...NO_INSETS };
   jumps: any[] = [];
+  /** The options of each fit asked for. */
+  fits: any[] = [];
+  /** The padding and jump calls, in order. */
+  calls: string[] = [];
   private readonly listeners = new Map<string, Set<Listener>>();
 
   getCenter() {
@@ -25,17 +39,26 @@ class FakeCameraMap {
     return this.zoom;
   }
 
-  getBounds() {
-    const { lng, lat } = this.center;
+  /** Two degrees span the width and the height, whatever the zoom. */
+  unproject([x, y]: [number, number]) {
+    const { left, right, top, bottom } = this.padding;
+    const middleX = left + (this.width - left - right) / 2;
+    const middleY = top + (this.height - top - bottom) / 2;
     return {
-      getWest: () => lng - 1,
-      getSouth: () => lat - 1,
-      getEast: () => lng + 1,
-      getNorth: () => lat + 1,
+      lng: this.center.lng + ((x - middleX) * 2) / this.width,
+      lat: this.center.lat - ((y - middleY) * 2) / this.height,
     };
   }
 
+  setPadding(padding: Insets) {
+    this.calls.push("setPadding");
+    const before = JSON.stringify(this.padding);
+    this.padding = { ...padding };
+    if (JSON.stringify(this.padding) !== before) this.fire("moveend");
+  }
+
   jumpTo(options: any, eventData: object = {}) {
+    this.calls.push("jumpTo");
     this.jumps.push(options);
     const before = JSON.stringify([this.center, this.zoom]);
     if (options.center) {
@@ -48,16 +71,30 @@ class FakeCameraMap {
     }
   }
 
-  /** The zoom of a fit tells which width it used. */
-  cameraForBounds(bounds: number[], options: { padding?: number } = {}) {
+  /**
+   * The zoom of a fit is the log2 of the pixels per degree its box gets of
+   * the width left inside the map's padding and its own, so it tells which
+   * width it used. A box with no area zooms in to the cap.
+   */
+  cameraForBounds(
+    bounds: number[],
+    options: { padding?: number; maxZoom?: number } = {}
+  ) {
+    this.fits.push(options);
     const padding = options.padding ?? 0;
-    if (2 * padding >= this.width || 2 * padding >= this.height) {
-      return undefined;
-    }
+    const { left, right, top, bottom } = this.padding;
+    const width = this.width - left - right - 2 * padding;
+    const height = this.height - top - bottom - 2 * padding;
+    if (width <= 0 || height <= 0) return undefined;
     const [west, south, east, north] = bounds;
+    // Like MapLibre, which caps at NaN for a maxZoom key holding undefined.
+    const cap = "maxZoom" in options ? options.maxZoom : 24;
     return {
       center: [(west + east) / 2, (south + north) / 2],
-      zoom: Math.log2(this.width - 2 * padding),
+      zoom: Math.min(
+        Math.log2(width / Math.max(east - west, north - south)),
+        cap as number
+      ),
       bearing: 0,
     };
   }
@@ -368,7 +405,7 @@ describe("ViewCamera", () => {
     map.grow(800, 600);
     expect([map.center, map.zoom]).toEqual([
       { lng: 25, lat: 25 },
-      Math.log2(760),
+      Math.log2(76),
     ]);
     expect(camera.inspect()).toEqual({ applied: 3, pending: null, owed: 3 });
     vi.runAllTimers();
@@ -394,7 +431,7 @@ describe("ViewCamera", () => {
     camera.start();
     map.grow(800, 600, false);
     model.set("view_request", { seq: 2, bounds: [0, 0, 10, 10], padding: 20 });
-    expect(map.zoom).toBe(Math.log2(760));
+    expect(map.zoom).toBe(Math.log2(76));
     expect(camera.inspect()).toEqual({ applied: 2, pending: null, owed: 2 });
     vi.runAllTimers();
     expect(seqs()).toEqual([2]);
@@ -433,6 +470,112 @@ describe("ViewCamera", () => {
     ]);
   });
 
+  it("applies insets as padding before restoring the camera", () => {
+    const { camera, map } = setup({
+      view: SAVED,
+      request: { seq: 3, center: [0, 0], zoom: 2 },
+    });
+    camera.setInsets(LEFT_300);
+    expect(map.calls).toEqual([]);
+    camera.start();
+    expect(map.calls).toEqual(["setPadding", "jumpTo"]);
+    expect(map.padding).toEqual(LEFT_300);
+    expect([map.center, map.zoom]).toEqual([{ lng: 10, lat: 20 }, 5]);
+  });
+
+  it("updates padding when insets change", () => {
+    const { camera, map, causes } = setup();
+    camera.start();
+    vi.runAllTimers();
+    camera.setInsets(LEFT_300);
+    expect(map.padding).toEqual(LEFT_300);
+    const insets = { left: 0, right: 20, top: 50, bottom: 10 };
+    camera.setInsets(insets);
+    expect(map.padding).toEqual(insets);
+    vi.runAllTimers();
+    // The usable area moved, and with it the bounds Python holds.
+    expect(causes()).toEqual([
+      [1, "request"],
+      [1, "resize"],
+    ]);
+  });
+
+  it("reports the bounds inside the insets", () => {
+    const { camera, map, sent } = setup();
+    camera.setInsets(LEFT_300);
+    camera.start();
+    vi.runAllTimers();
+    const [w, h] = [400, 300];
+    expect(sent.map((r) => r.bounds)).toEqual([
+      [
+        map.unproject([300, h / 2]).lng,
+        map.unproject([350, h]).lat,
+        map.unproject([w, h / 2]).lng,
+        map.unproject([350, 0]).lat,
+      ],
+    ]);
+    expect(sent[0].bounds[0]).toBeGreaterThan(map.unproject([0, h / 2]).lng);
+  });
+
+  const fit = (seq: number, more: object = {}) => ({
+    seq,
+    bounds: [0, 0, 10, 10],
+    padding: 20,
+    max_zoom: null,
+    zoom_out: 0,
+    ...more,
+  });
+
+  it("fit omits maxZoom when max_zoom is null", () => {
+    const { camera, map, model } = setup();
+    camera.start();
+    model.set("view_request", fit(2));
+    expect(map.fits.map(Object.keys)).toEqual([["padding"]]);
+    expect(map.zoom).toBe(Math.log2(36));
+  });
+
+  it("fit caps at max_zoom", () => {
+    const { camera, map, model } = setup();
+    camera.start();
+    model.set("view_request", fit(2, { bounds: [5, 5, 5, 5], max_zoom: 12 }));
+    expect(map.fits).toEqual([{ padding: 20, maxZoom: 12 }]);
+    expect([map.center, map.zoom]).toEqual([{ lng: 5, lat: 5 }, 12]);
+  });
+
+  it("fit subtracts zoom_out, down to zoom 0", () => {
+    const { camera, map, model, sent } = setup();
+    camera.start();
+    model.set("view_request", fit(2, { zoom_out: 1.5 }));
+    expect(map.zoom).toBe(Math.log2(36) - 1.5);
+    vi.runAllTimers();
+    expect(sent.map((r) => [r.request_seq, r.zoom])).toEqual([
+      [2, Math.log2(36) - 1.5],
+    ]);
+    model.set("view_request", fit(3, { zoom_out: 9 }));
+    expect(map.zoom).toBe(0);
+  });
+
+  it("a deferred fit runs when insets shrink", () => {
+    const { camera, model, map, seqs } = setup();
+    camera.start();
+    vi.runAllTimers();
+    // The insets cover the whole width: no usable area.
+    camera.setInsets({ ...NO_INSETS, left: 400 });
+    model.set("view_request", fit(2));
+    expect(camera.inspect()).toMatchObject({ applied: 1, pending: 2 });
+    vi.runAllTimers();
+    expect(seqs()).toEqual([1]);
+
+    const resizes = map.resizes;
+    camera.setInsets({ ...NO_INSETS, left: 100 });
+    expect(camera.inspect()).toMatchObject({ applied: 2, pending: null });
+    expect(map.zoom).toBe(Math.log2(26));
+    vi.runAllTimers();
+    expect(seqs()).toEqual([1, 2]);
+    // Only the fit measured the host; it never changed size.
+    expect(map.resizes).toBe(resizes + 1);
+  });
+
   it("stops on dispose", () => {
     const { camera, map, model, seqs } = setup();
     camera.start();
@@ -440,8 +583,10 @@ describe("ViewCamera", () => {
     vi.runAllTimers();
     map.userMove(1, 1);
     model.set("view_request", { seq: 2, center: [3, 3], zoom: 4 });
+    camera.setInsets(LEFT_300);
     vi.runAllTimers();
     expect(seqs()).toEqual([]);
+    expect(map.padding).toEqual(NO_INSETS);
     expect(map.count()).toBe(0);
     expect(model.count()).toBe(0);
     expect(vi.getTimerCount()).toBe(0);

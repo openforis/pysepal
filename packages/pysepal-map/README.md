@@ -14,13 +14,15 @@ display(widget)
 
 ## What it owns
 
-- **Python owns the persistent map state**: layers and their order, basemap, theme, controls. `MapWidget.draw(MapState)` publishes a whole snapshot, and every mounted view reconciles its map to it. Python never sends a one-off command that changes the map.
-- **The browser owns the camera** and reports it back (`on_view`); Python can ask for a move with `set_center` and `fit_bounds`.
+- **Python owns the persistent map state**: layers and their order, basemap, theme, controls (zoom, fullscreen, a metric scale). `MapWidget.draw(MapState)` publishes a whole snapshot, and every mounted view reconciles its map to it. Python never sends a one-off command that changes the map.
+- **The browser owns the camera** and reports it back (`on_view`); Python can ask for a move with `set_center` and `fit_bounds`, which takes a `max_zoom` cap and a `zoom_out` step.
+- **Insets** name the parts of the map that other UI covers: after `set_insets(left=300)`, views center and fit inside the rest, report its bounds, and move their controls in by as much. A fullscreen map uses none.
+- The traits that carry the contract (`state`, `view`, `view_request`, `insets`) are read-only; only the widget's methods write them.
 - **Layer status** (`loading`, `ready`, `error`) flows back per layer (`layer_status`, `on_status`).
 - GeoJSON bytes never travel inside the state: `add_payload` returns a sha256 digest, and the browser pulls the bytes it lacks.
 - Everything the widget adds to the MapLibre style has an id starting with `psm:`; it never touches other layers, such as those of a drawing plugin.
 
-[`src/pysepal_map/state.py`](src/pysepal_map/state.py) declares and validates the state. The module docstring of [`widget.py`](src/pysepal_map/widget.py) describes the rest of the contract: how draws give out instances, the owned style ids, the messages between Python and the views, and the camera request and report rules.
+[`src/pysepal_map/state.py`](src/pysepal_map/state.py) declares and validates the state. The module docstring of [`widget.py`](src/pysepal_map/widget.py) describes the rest of the contract: how draws give out instances, the owned style ids, the messages between Python and the views, the camera request and report rules, and the insets.
 
 ## Build
 
