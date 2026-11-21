@@ -11,6 +11,7 @@ import pysepal.layers.preparation as preparation
 from pysepal.layers import (
     LayerPrepareError,
     LayerSpec,
+    TileSource,
     local_fingerprint,
     prepare,
     prepare_sync,
@@ -94,3 +95,17 @@ def test_large_geojson_warns(fake_vector, monkeypatch, caplog):
     monkeypatch.setattr(preparation, "GEOJSON_WARN_BYTES", 10)
     prepare_sync(LayerSpec.from_vector(fake_vector))
     assert "GeoJSON" in caplog.text
+
+
+@pytest.mark.parametrize("run", [prepare_sync, lambda s: asyncio.run(prepare(s))])
+def test_tile_spec_prepares_with_size_and_zoom(run):
+    source = TileSource(url="https://h/{z}/{x}/{y}.png", tile_size=512)
+    spec = LayerSpec.from_tiles(source, name="t")
+    render = run(spec)
+    assert (render.kind, render.tile_size, render.max_zoom, render.bounds) == (
+        "raster-xyz",
+        512,
+        24,
+        None,
+    )
+    assert render.url == source.url and render.render_hash == spec.render_hash

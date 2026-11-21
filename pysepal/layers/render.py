@@ -25,6 +25,7 @@ class RenderLayer:
         source_layer: vector layer name inside a PMTiles archive.
         legend: legend computed while preparing, if any.
         max_zoom: highest zoom the layer is drawn at.
+        tile_size: pixel size of a raster tile.
         ee_object: the Earth Engine object behind the tiles, if any.
         raster: path of the source raster, for the inspector.
         keepalive: object that must outlive the layer (the ``TileClient`` of a local raster).
@@ -44,6 +45,7 @@ class RenderLayer:
     source_layer: str | None = None
     legend: Legend | None = None
     max_zoom: int = 24
+    tile_size: int = 256
     ee_object: Any = None
     raster: str = ""
     keepalive: Any = None

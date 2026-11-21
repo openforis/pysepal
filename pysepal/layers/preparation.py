@@ -26,6 +26,7 @@ from .spec import (
     Legend,
     RasterSource,
     RasterStyle,
+    TileSource,
     VectorSource,
     uri_to_path,
 )
@@ -105,6 +106,17 @@ def local_fingerprint(spec: LayerSpec) -> tuple[tuple[str, int, int], ...] | Non
         return None
     stats = [(p, os.stat(p)) for p in files]
     return tuple((str(p), st.st_size, st.st_mtime_ns) for p, st in stats)
+
+
+def _tile_render(spec: LayerSpec) -> RenderLayer:
+    source = spec.source
+    return RenderLayer(
+        render_hash=spec.render_hash,
+        kind="raster-xyz",
+        url=source.url,
+        tile_size=source.tile_size,
+        max_zoom=source.max_zoom,
+    )
 
 
 def _check_supported(spec: LayerSpec) -> None:
@@ -343,6 +355,8 @@ async def prepare(
     from pysepal.mapping.tiling import prepare_raster_file
 
     try:
+        if isinstance(spec.source, TileSource):
+            return _tile_render(spec)
         _check_supported(spec)
         if isinstance(spec.source, GeeSource):
             return await _prepare_gee(spec, gee_interface)
@@ -390,6 +404,8 @@ def prepare_sync(
     from pysepal.mapping.tiling import prepare_raster_file
 
     try:
+        if isinstance(spec.source, TileSource):
+            return _tile_render(spec)
         _check_supported(spec)
         if isinstance(spec.source, GeeSource):
             return _prepare_gee_sync(spec, gee_interface)

@@ -1,8 +1,13 @@
 """Serializable description of a map layer: where the data lives, how it is styled."""
 
+import atexit
 import hashlib
 import json
+import os
 import re
+import shutil
+import tempfile
+import threading
 import uuid
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -10,10 +15,13 @@ from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 
 import ee
+import geopandas as gpd
 import matplotlib
 import numpy as np
 from matplotlib.colors import Colormap, is_color_like, to_hex
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from pysepal.scripts.scratch import scratch_root
 
 _CONFIG = ConfigDict(frozen=True, extra="forbid")
 _BARE_HEX = re.compile(r"^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
@@ -125,7 +133,72 @@ class VectorSource(BaseModel):
     size: int | None = None
 
 
-Source = Annotated[GeeSource | RasterSource | VectorSource, Field(discriminator="type")]
+class TileSource(BaseModel):
+    """A remote XYZ or WMS tile service, given as a URL template."""
+
+    model_config = _CONFIG
+
+    type: Literal["tile"] = "tile"
+    url: str
+    tile_size: int = 256
+    max_zoom: int = 24
+
+    @field_validator("url")
+    @classmethod
+    def _placeholders(cls, value: str) -> str:
+        xyz = all(token in value for token in ("{z}", "{x}", "{y}"))
+        if not xyz and "{bbox-epsg-3857}" not in value:
+            raise ValueError("a tile url needs {z}, {x} and {y}, or {bbox-epsg-3857}")
+        return value
+
+    @field_validator("tile_size")
+    @classmethod
+    def _positive_size(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("tile_size must be positive")
+        return value
+
+    @field_validator("max_zoom")
+    @classmethod
+    def _zoom_range(cls, value: int) -> int:
+        if not 0 <= value <= 24:
+            raise ValueError("max_zoom must be between 0 and 24")
+        return value
+
+    @classmethod
+    def wms(
+        cls,
+        url: str,
+        layers: str,
+        *,
+        styles: str = "",
+        format: str = "image/png",
+        transparent: bool = True,
+        version: str = "1.3.0",
+    ) -> "TileSource":
+        """Build a WMS GetMap template in Web Mercator, keeping any query already in ``url``.
+
+        Args:
+            url: the WMS endpoint, with an optional query string.
+            layers: comma-separated layer names.
+            styles: comma-separated style names.
+            format: image format.
+            transparent: ask for a transparent background.
+            version: WMS version; 1.3.0 sends ``CRS``, older ones ``SRS``.
+        """
+        crs = "CRS" if version == "1.3.0" else "SRS"
+        params = (
+            f"SERVICE=WMS&REQUEST=GetMap&VERSION={version}&LAYERS={layers}&STYLES={styles}"
+            f"&FORMAT={format}&TRANSPARENT={str(transparent).upper()}&{crs}=EPSG:3857"
+            "&WIDTH=256&HEIGHT=256&BBOX={bbox-epsg-3857}"
+        )
+        joiner = "" if url.endswith(("?", "&")) else ("&" if "?" in url else "?")
+        return cls(url=f"{url}{joiner}{params}")
+
+
+Source = Annotated[
+    GeeSource | RasterSource | VectorSource | TileSource, Field(discriminator="type")
+]
 
 
 class RasterStyle(BaseModel):
@@ -274,6 +347,7 @@ class LayerSpec(BaseModel):
     name: str
     description: str = ""
     attribution: str = ""
+    zone: Literal["data", "overlay"] = "data"
     source: Source
     ops: list[Any] = Field(default_factory=list)
     style: Style
@@ -396,6 +470,111 @@ class LayerSpec(BaseModel):
             source=source,
             style=VectorStyle(stroke=stroke, fill=fill, width=width),
         )
+
+    @classmethod
+    def from_tiles(
+        cls,
+        source: "TileSource | str",
+        *,
+        name: str,
+        id: str | None = None,
+        attribution: str = "",
+        zone: Literal["data", "overlay"] = "data",
+    ) -> "LayerSpec":
+        """Build a spec from a tile source, or from a tile URL template."""
+        if isinstance(source, str):
+            source = TileSource(url=source)
+        return cls(
+            id=id or uuid.uuid4().hex,
+            name=name,
+            attribution=attribution,
+            zone=zone,
+            source=source,
+            style=RasterStyle(),
+        )
+
+    @classmethod
+    def from_geojson(
+        cls,
+        data: "dict | gpd.GeoDataFrame",
+        *,
+        name: str,
+        id: str | None = None,
+        style: VectorStyle | None = None,
+        zone: Literal["data", "overlay"] = "data",
+        attribution: str = "",
+    ) -> "LayerSpec":
+        """Build a spec from in-memory vector data, stored as a content-addressed GeoParquet.
+
+        Args:
+            data: a GeoJSON FeatureCollection or Feature (EPSG:4326), or a GeoDataFrame with a CRS.
+            name: layer name.
+            id: layer id, a new UUID by default.
+            style: vector style.
+            zone: drawing zone.
+            attribution: attribution text.
+
+        Raises:
+            TypeError: for any other ``data``.
+            ValueError: for a GeoDataFrame without a CRS.
+        """
+        if isinstance(data, gpd.GeoDataFrame):
+            if data.crs is None:
+                raise ValueError("the GeoDataFrame has no CRS")
+            gdf = data
+        elif isinstance(data, dict):
+            features = data["features"] if data.get("type") == "FeatureCollection" else [data]
+            gdf = gpd.GeoDataFrame.from_features(features, crs=4326)
+        else:
+            raise TypeError(f"expected a GeoJSON dict or a GeoDataFrame, got {type(data).__name__}")
+        path = _write_parquet(gdf)
+        source = VectorSource(
+            uri=path.as_uri(),
+            format="Parquet",
+            checksum=path.stem,
+            size=path.stat().st_size,
+        )
+        return cls(
+            id=id or uuid.uuid4().hex,
+            name=name,
+            attribution=attribution,
+            zone=zone,
+            source=source,
+            style=style or VectorStyle(),
+        )
+
+
+_scratch_folder: Path | None = None
+_scratch_lock = threading.Lock()
+
+
+def _geojson_folder() -> Path:
+    """The per-process folder of in-memory vectors, made on first use and removed at exit."""
+    global _scratch_folder
+    with _scratch_lock:
+        if _scratch_folder is None:
+            _scratch_folder = Path(tempfile.mkdtemp(prefix="pysepal_geojson_", dir=scratch_root()))
+            atexit.register(shutil.rmtree, _scratch_folder, ignore_errors=True)
+        return _scratch_folder
+
+
+def _write_parquet(gdf: "gpd.GeoDataFrame") -> Path:
+    """Write ``gdf`` as ``<sha256>.parquet`` once; an existing file is never touched."""
+    folder = _geojson_folder()
+    fd, temp = tempfile.mkstemp(suffix=".tmp", dir=folder)
+    os.close(fd)
+    try:
+        gdf.to_parquet(temp)
+        digest = hashlib.sha256(Path(temp).read_bytes()).hexdigest()
+        final = folder / f"{digest}.parquet"
+        if not final.exists():
+            try:
+                os.link(temp, final)
+            except FileExistsError:
+                pass
+        return final
+    finally:
+        Path(temp).unlink(missing_ok=True)
 
 
 def _as_list(value: Any) -> Any:

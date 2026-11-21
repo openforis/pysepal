@@ -122,3 +122,21 @@ def test_unsubscribe_and_failing_subscriber(raster_spec, caplog):
     store.remove(raster_spec.id)
     assert events == [StoreEvent("added", raster_spec.id)]
     assert "ZeroDivisionError" in caplog.text
+
+
+@pytest.mark.parametrize("change", [{"zone": "overlay"}, {"attribution": "(c) someone"}])
+def test_zone_or_attribution_change_is_an_update(vector_spec, change):
+    store, events = LayerStore(), []
+    store.add(vector_spec)
+    store.subscribe(events.append)
+    store.update(vector_spec.id, vector_spec.model_copy(update=change))
+    assert events == [StoreEvent("updated", vector_spec.id)]
+
+
+def test_drawing_order_puts_overlays_first(vector_spec):
+    store = LayerStore()
+    for name in ("d2", "o1", "d1"):
+        zone = "overlay" if name == "o1" else "data"
+        store.add(vector_spec.model_copy(update={"id": name, "zone": zone}))
+    assert store.ids == ["d1", "o1", "d2"]
+    assert store.drawing_order() == ["o1", "d1", "d2"]

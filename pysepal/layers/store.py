@@ -176,6 +176,8 @@ class LayerStore:
             snapshot.render_hash != old.render_hash
             or snapshot.legend != old.legend
             or snapshot.name != old.name
+            or snapshot.zone != old.zone
+            or snapshot.attribution != old.attribution
         )
         self._bump(layer_id)
         if changed:
@@ -260,6 +262,12 @@ class LayerStore:
     def ids(self) -> list[str]:
         """Layer ids, top first."""
         return list(self._ids)
+
+    def drawing_order(self) -> list[str]:
+        """Overlay ids, then data ids, each in store order (top first)."""
+        overlay = [i for i in self._ids if self._history[i][-1].zone == "overlay"]
+        data = [i for i in self._ids if self._history[i][-1].zone != "overlay"]
+        return overlay + data
 
     def specs(self) -> list[LayerSpec]:
         """Return copies of the current specs, top first."""
