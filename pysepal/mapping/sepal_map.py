@@ -62,8 +62,6 @@ log = logging.getLogger("sepalui.mapping")
 
 DEFAULT_MAP_WIDTH_PX = 1024
 
-CLIENT_PREFIX_ENV_VAR = "LOCALTILESERVER_CLIENT_PREFIX"
-
 # the add_raster default, which stands for "no name given"
 _DEFAULT_RASTER_NAME = "Layer_" + su.random_string()
 

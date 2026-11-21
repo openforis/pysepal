@@ -47,6 +47,7 @@ SHAPEFILE_SIDECARS = (
     ".shp.xml",
 )
 _RASTER_SIDECARS = (".ovr", ".aux.xml")
+CLIENT_PREFIX_ENV_VAR = "LOCALTILESERVER_CLIENT_PREFIX"
 
 
 class LayerPrepareError(Exception):
@@ -185,14 +186,13 @@ def _scalar(value):
 
 def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> RenderLayer:
     """Build the tile URL on the calling thread, the way ``SepalMap`` attaches rasters."""
-    from localtileserver import TileClient, get_leaflet_tile_layer
+    from localtileserver import TileClient
     from matplotlib.colors import LinearSegmentedColormap
 
     from pysepal.mapping.raster_style import (
         _class_color_kwargs,
         _continuous_color_kwargs,
     )
-    from pysepal.mapping.sepal_map import CLIENT_PREFIX_ENV_VAR
 
     style = spec.style
     image = uri_to_path(spec.source.uri)
@@ -213,12 +213,17 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
         log.warning("vmin/vmax are ignored when class_colors is set.")
 
     tile_kwargs = dict(max_zoom=20, max_native_zoom=20, nodata=style.nodata, **color_kwargs)
-    widget = get_leaflet_tile_layer(client, **tile_kwargs)
-    try:
-        url = widget.url
-        (south, west), (north, east) = widget.bounds
-    finally:
-        widget.close()
+    url = client.get_tile_url(
+        indexes=tile_kwargs.get("indexes"),
+        colormap=tile_kwargs.get("colormap"),
+        vmin=tile_kwargs.get("vmin"),
+        vmax=tile_kwargs.get("vmax"),
+        nodata=tile_kwargs.get("nodata"),
+        client=True,
+    )
+    south, north, west, east = client.bounds()
+    # webview frontends cannot reach the server by a root-relative path
+    client.enable_jupyter_loopback()
     return RenderLayer(
         render_hash=spec.render_hash,
         kind="raster-xyz",
