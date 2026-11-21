@@ -72,6 +72,7 @@ import asyncio
 import copy
 import hashlib
 import math
+import os
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -87,6 +88,20 @@ from ._camera import INSET_SIDES, _bounds_request, _center_request, _insets
 from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
 _STATIC = Path(__file__).parent / "static"
+
+
+def _asset(name: str) -> str | Path:
+    """A bundled asset for anywidget: its text, or its path while hot reload is on.
+
+    anywidget turns a path into a class-level ``FileContents`` and connects every
+    instance to its change signal with a strong reference, so no widget would ever
+    be collected. ``ANYWIDGET_HMR=1`` is anywidget's own switch for watching files.
+    """
+    path = _STATIC / name
+    if os.getenv("ANYWIDGET_HMR") == "1":
+        return path
+    return path.read_text(encoding="utf-8")
+
 
 #: The sides a view can render: ``main``, or one half of a compare view.
 SIDES = ("main", "left", "right")
@@ -164,8 +179,8 @@ def _reduce_status(
 class MapWidget(anywidget.AnyWidget):
     """A MapLibre map whose persistent configuration lives in ``state``."""
 
-    _esm = _STATIC / "widget.js"
-    _css = _STATIC / "widget.css"
+    _esm = _asset("widget.js")
+    _css = _asset("widget.css")
 
     state = traitlets.Dict(read_only=True).tag(sync=True)
     view = traitlets.Dict(read_only=True).tag(sync=True)
@@ -195,6 +210,8 @@ class MapWidget(anywidget.AnyWidget):
         self._closed = False
         self._loop = loop if loop is not None else running_loop()
         self._callbacks = CallbackQueue()
+        # The Layout ipywidgets builds is the widget's own; a given one is the caller's.
+        self._owns_layout = "layout" not in kwargs
         self._expiry: asyncio.TimerHandle | None = None
         # (view_id, side) -> monotonic deadline of each mounted view
         self._views: dict[View, float] = {}
@@ -313,7 +330,7 @@ class MapWidget(anywidget.AnyWidget):
         self.set_trait("insets", _insets(left, right, top, bottom))
 
     def close(self) -> None:
-        """Close the widget; later messages from its views do nothing."""
+        """Close the widget and the layout it built; later messages from its views do nothing."""
         with self._lock:
             self._closed = True
             self._cancel_expiry()
@@ -322,7 +339,11 @@ class MapWidget(anywidget.AnyWidget):
             self._reports.clear()
             self._status = {}
         self._callbacks.close()
+        # _trait_values, not self.layout: reading an unset trait would build one
+        layout = self._trait_values.get("layout") if self._owns_layout else None
         super().close()
+        if layout is not None:
+            layout.close()
 
     def _request(self, request: dict) -> None:
         # Under the lock, so requests from several threads go out in seq order.

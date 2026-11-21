@@ -90,22 +90,24 @@ def _outline_style(map_style: Optional[dict]) -> VectorStyle:
     """The style of the AOI outline, from a Leaflet style dict or the default ``aoi.json``.
 
     The default colours follow the theme, so they stay unset and the map draws them in
-    its primary colour. ``fill: False`` and ``stroke: False`` hide the fill and the line;
-    other Leaflet options are dropped.
+    its primary colour. As in Leaflet, a fill is drawn unless ``fill`` is False, in
+    ``color`` at an opacity of 0.2 unless ``fillColor`` and ``fillOpacity`` say
+    otherwise; ``stroke: False`` hides the line. Other Leaflet options are dropped.
     """
     if map_style is None:
         style = json.loads((ss.JSON_DIR / "aoi.json").read_text())
         themed = {"color", "fillColor"}
     else:
         style, themed = map_style, set()
-    fields = {
-        field: style[key]
-        for key, field in _LEAFLET_STYLE.items()
-        if key in style and key not in themed
-    }
+    given = {key: value for key, value in style.items() if key not in themed}
+    fields = {field: given[key] for key, field in _LEAFLET_STYLE.items() if key in given}
     if style.get("fill") is False:
         fields.pop("fill", None)
         fields["fill_opacity"] = 0.0
+    else:
+        fields.setdefault("fill_opacity", 0.2)
+        if "color" in given:
+            fields.setdefault("fill", given["color"])
     if style.get("stroke") is False:
         fields["width"] = 0.0
     return VectorStyle(**fields)

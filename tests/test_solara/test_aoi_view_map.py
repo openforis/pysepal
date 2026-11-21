@@ -116,13 +116,36 @@ def test_a_vector_aoi_is_an_overlay_layer_of_the_store():
 
 
 def test_a_caller_style_is_mapped_onto_the_vector_style():
+    red = VectorStyle(stroke="red").stroke
+
     async def scenario(m, clear):
         await wait_until(lambda: "aoi" in m.layer_store)
         style = m.layer_store.get("aoi").style
-        assert style.width == 4 and style.stroke == VectorStyle(stroke="red").stroke
-        assert style.fill is None and style.fill_opacity is None
+        assert style.width == 4 and style.stroke == red
+        # Leaflet's fill: the stroke colour at 0.2
+        assert (style.fill, style.fill_opacity) == (red, 0.2)
 
     _run(scenario, spec=SHAPE, map_style={"color": "red", "weight": 4, "dashArray": "3"})
+
+
+@pytest.mark.parametrize(
+    "map_style, fill, fill_opacity",
+    [
+        ({"color": "blue"}, "blue", 0.2),
+        ({"color": "blue", "fillColor": "red", "fillOpacity": 0.5}, "red", 0.5),
+        ({"weight": 1}, None, 0.2),
+    ],
+)
+def test_a_caller_style_gets_leaflets_default_fill(map_style, fill, fill_opacity):
+    expected = VectorStyle(fill=fill).fill
+
+    async def scenario(m, clear):
+        await wait_until(lambda: "aoi" in m.layer_store)
+        style = m.layer_store.get("aoi").style
+        assert (style.fill, style.fill_opacity) == (expected, fill_opacity)
+        assert (await _drawn(m, "aoi"))["paint"]["fill_opacity"] == fill_opacity
+
+    _run(scenario, spec=SHAPE, map_style=map_style)
 
 
 def test_an_outline_only_style_draws_no_fill():

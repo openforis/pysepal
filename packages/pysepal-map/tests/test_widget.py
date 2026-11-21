@@ -2,11 +2,16 @@
 
 import asyncio
 import dataclasses
+import gc
 import hashlib
 import json
+import os
 import sys
 import threading
+import weakref
 
+import ipywidgets
+import ipywidgets.widgets.widget as widget_registry
 import pytest
 from pysepal_map import (
     GeoJSONSource,
@@ -732,3 +737,61 @@ def test_loop_follows_a_replacement_after_the_old_loop_closed():
         return adopted is first, replaced is second
 
     assert in_fresh_thread(scenario) == (True, True)
+
+
+# ---------------------------------------------------------------------------
+# Release: a closed widget leaves nothing behind
+# ---------------------------------------------------------------------------
+
+hot_reload = pytest.mark.skipif(
+    os.getenv("ANYWIDGET_HMR") == "1", reason="anywidget watches the asset files"
+)
+
+
+@hot_reload
+def test_the_assets_are_text_so_anywidget_does_not_watch_them():
+    from pysepal_map import widget as widget_module
+
+    for name, value in [("widget.js", MapWidget._esm), ("widget.css", MapWidget._css)]:
+        assert value == (widget_module._STATIC / name).read_text(encoding="utf-8")
+
+
+def test_hot_reload_keeps_the_asset_paths(monkeypatch):
+    from pysepal_map import widget as widget_module
+
+    monkeypatch.setenv("ANYWIDGET_HMR", "1")
+    assert widget_module._asset("widget.js") == widget_module._STATIC / "widget.js"
+
+
+@hot_reload
+def test_a_closed_widget_is_collected():
+    widget = MapWidget()
+    widget.draw(MapState(layers=(geo(widget),)))
+    reference = weakref.ref(widget)
+
+    widget.close()
+    del widget
+    gc.collect()
+
+    assert reference() is None
+
+
+def test_a_closed_widget_closes_the_layout_it_built():
+    before = set(widget_registry._instances)
+    widget = MapWidget()
+    layout = widget._trait_values["layout"]
+
+    widget.close()
+
+    assert layout.comm is None
+    assert set(widget_registry._instances) - before == set()
+
+
+def test_a_closed_widget_leaves_a_given_layout_open():
+    layout = ipywidgets.Layout(width="50%")
+    widget = MapWidget(layout=layout)
+
+    widget.close()
+
+    assert layout.comm is not None
+    layout.close()

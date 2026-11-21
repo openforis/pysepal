@@ -28,7 +28,6 @@ from pysepal.layers import LayerSpec, LayerStore, RenderLayer, prepare, prepare_
 from pysepal.layers.preparation import (
     CLIENT_PREFIX_ENV_VAR,  # noqa: F401  (public re-export)
 )
-from pysepal.mapping._widget_tree import close_parts
 from pysepal.mapping.basemaps import BASEMAP_NAMES, get_basemap
 from pysepal.mapping.handle import LayerHandle, ZoomResult
 from pysepal.mapping.maplibre_engine import MapLibreEngine
@@ -115,12 +114,6 @@ class SepalMap(MapWidget):
 
     layer_engine: Optional[MapLibreEngine] = None
     "Draws :attr:`layer_store` on the map."
-
-    # anywidget connects every instance, strongly, to the change signal of a file asset,
-    # so a map on MapWidget's file assets is never collected (#1058). Same text; only
-    # anywidget's reload of an edited file is lost.
-    _esm = str(MapWidget._esm)
-    _css = str(MapWidget._css)
 
     # Class defaults, for close(): ipywidgets' __del__ calls it on an instance whose
     # constructor arguments were refused, and a failed construction calls it too.
@@ -254,8 +247,6 @@ class SepalMap(MapWidget):
             self.layer_engine.close()
         if self._widget_ready:
             super().close()
-            # the Layout DOMWidget built for it, which nothing else closes
-            close_parts(self)
 
     # -- theme ------------------------------------------------------------------------------
 
