@@ -26,27 +26,33 @@ from .sepal_map import *
 from .tiling import *
 from .visualization import *
 
+# What replaced each removed name, by the change that removed it.
 _REMOVED = {
-    "AoiControl": "pysepal.solara.components.aoi.AoiView",
-    "aoi_control": "pysepal.solara.components.aoi.AoiView",
-    "LayersControl": "SepalMap.layer_store with the Solara LayerPanel",
-    "DrawControl": "the draw tools being rebuilt on the MapLibre map",
-    "GeomanDrawControl": "the draw tools being rebuilt on the MapLibre map",
-    "InspectorControl": "the value inspector being rebuilt on the MapLibre map",
-    "ValueInspector": "the value inspector being rebuilt on the MapLibre map",
-    "ZoomControl": "the zoom, scale and fullscreen controls the map draws itself",
-    "FullScreenControl": "the zoom, scale and fullscreen controls the map draws itself",
-    "LayerStateControl": "the layer loading state MapView shows",
-    "MenuControl": "Solara components in MapView(overlays=...)",
-    "LegendControl": "the MapView legend, built from each layer's legend",
+    "the ipyvuetify 1 widget layer": {
+        "AoiControl": "pysepal.solara.components.aoi.AoiView",
+        "aoi_control": "pysepal.solara.components.aoi.AoiView",
+        "LayersControl": "SepalMap.layer_store with the Solara LayerPanel",
+    },
+    "the move to MapLibre": {
+        "DrawControl": "the draw tools being rebuilt on the MapLibre map",
+        "GeomanDrawControl": "the draw tools being rebuilt on the MapLibre map",
+        "InspectorControl": "the value inspector being rebuilt on the MapLibre map",
+        "ValueInspector": "the value inspector being rebuilt on the MapLibre map",
+        "ZoomControl": "the zoom, scale and fullscreen controls the map draws itself",
+        "FullScreenControl": "the zoom, scale and fullscreen controls the map draws itself",
+        "LayerStateControl": "the layer loading state MapView shows",
+        "MenuControl": "Solara components in MapView(overlays=...)",
+        "LegendControl": "the MapView legend, built from each layer's legend",
+    },
 }
 
 
 def __getattr__(name: str):
-    if name in _REMOVED:
-        raise AttributeError(
-            f"{__name__}.{name} was removed in pysepal 5.0 with the ipyvuetify 1 widget layer; "
-            f'use {_REMOVED[name]} or pin "pysepal<5". '
-            "See docs/guides/migrating-to-pysepal-5.md"
-        )
+    for cause, replacements in _REMOVED.items():
+        if name in replacements:
+            raise AttributeError(
+                f"{__name__}.{name} was removed in pysepal 5.0 with {cause}; "
+                f'use {replacements[name]} or pin "pysepal<5". '
+                "See docs/guides/migrating-to-pysepal-5.md"
+            )
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

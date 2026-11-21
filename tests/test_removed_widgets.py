@@ -91,6 +91,21 @@ def test_removed_widget_names_say_what_to_do(module, name):
         getattr(package, name)
 
 
+@pytest.mark.parametrize(
+    "name,cause",
+    [
+        ("LayersControl", "with the ipyvuetify 1 widget layer"),
+        ("LegendControl", "with the move to MapLibre"),
+        ("DrawControl", "with the move to MapLibre"),
+    ],
+)
+def test_removed_mapping_names_say_what_removed_them(name, cause):
+    import pysepal.mapping
+
+    with pytest.raises(AttributeError, match=cause):
+        getattr(pysepal.mapping, name)
+
+
 @pytest.mark.parametrize("member", ["add_legend", "add_colorbar", "show_dc"])
 def test_removed_sepal_map_members_say_what_to_do(member):
     from pysepal.mapping import SepalMap
