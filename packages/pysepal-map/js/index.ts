@@ -108,6 +108,7 @@ function render({ model, el }: RenderProps<Model>) {
   return () => {
     stopLive();
     camera.dispose();
+    controls.dispose();
     sync.dispose();
     presence.dispose();
     model.off("change:height", applyHeight);

@@ -385,6 +385,41 @@ describe("ViewControls", () => {
     }
   );
 
+  it.each(MODES)(
+    "leaves fullscreen when its control is removed while fullscreen, with %s",
+    (_, api) => {
+      const { root, map, controls, told, button } = setup({ api });
+      controls.setInsets(INSETS);
+      controls.sync(state());
+      button().click();
+      expect(root.hasAttribute("data-psm-fullscreen")).toBe(true);
+
+      // MapLibre drops its listener on removal: no fullscreenend follows.
+      controls.sync(state({ fullscreen: false }));
+      expect(root.hasAttribute("data-psm-fullscreen")).toBe(false);
+      expect(told.at(-1)).toEqual(INSETS);
+      expect(corners(map)).toEqual(placedAt(INSETS));
+    }
+  );
+
+  it.each(MODES)(
+    "leaves fullscreen when the view is disposed while fullscreen, with %s",
+    (_, api) => {
+      const { doc, root, controls, told, button } = setup({ api });
+      const ancestor: FakeElement = doc.element();
+      ancestor.setAttribute("data-psm-fullscreen-root", "");
+      ancestor.appendChild(root);
+      controls.setInsets(INSETS);
+      controls.sync(state());
+      button().click();
+      expect(ancestor.hasAttribute("data-psm-fullscreen")).toBe(true);
+
+      controls.dispose();
+      expect(ancestor.hasAttribute("data-psm-fullscreen")).toBe(false);
+      expect(told.at(-1)).toEqual(INSETS);
+    }
+  );
+
   it("toggles the dark theme class", () => {
     const { root, controls } = setup();
     controls.sync({ ...state(), theme: "dark" });

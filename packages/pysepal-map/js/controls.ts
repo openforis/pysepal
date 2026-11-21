@@ -105,6 +105,11 @@ export class ViewControls {
     this.apply();
   }
 
+  /** Takes `data-psm-fullscreen` back off the element it marked. */
+  dispose(): void {
+    this.leaveFullscreen();
+  }
+
   private toggle(
     name: Name,
     wanted: boolean,
@@ -119,6 +124,8 @@ export class ViewControls {
     } else if (!wanted && current) {
       this.options.map.removeControl(current);
       delete this.held[name];
+      // Its onRemove drops the document listener: no fullscreenend follows.
+      if (name === "fullscreen") this.leaveFullscreen();
     }
   }
 
@@ -131,12 +138,15 @@ export class ViewControls {
       this.fullscreen.setAttribute(FULLSCREEN, "");
       this.apply();
     });
-    control.on("fullscreenend", () => {
-      this.fullscreen?.removeAttribute(FULLSCREEN);
-      this.fullscreen = null;
-      this.apply();
-    });
+    control.on("fullscreenend", () => this.leaveFullscreen());
     return control;
+  }
+
+  private leaveFullscreen(): void {
+    if (!this.fullscreen) return;
+    this.fullscreen.removeAttribute(FULLSCREEN);
+    this.fullscreen = null;
+    this.apply();
   }
 
   private apply(): void {

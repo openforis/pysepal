@@ -181,19 +181,15 @@ GEOJSON_A = b'{"type": "FeatureCollection", "features": []}'
 GEOJSON_B = b'{"type": "Point", "coordinates": [1, 2]}'
 
 
-def pulled(widget, digest):
+def pulled(monkeypatch, widget, digest):
     """Send a pull for ``digest``: the bytes of the data reply, or None if missing."""
-    replies = []
-    widget.send = lambda content, buffers=None: replies.append((content, buffers))
-    try:
-        widget._handle_custom_msg({"type": "pull", "digests": [digest]}, [])
-    finally:
-        del widget.send
-    [(content, buffers)] = replies
+    sent = capture_sends(monkeypatch, widget)
+    widget._handle_custom_msg({"type": "pull", "digests": [digest]}, [])
+    [(content, buffers)] = sent
     return None if content.get("missing") else buffers[0]
 
 
-def test_nested_draw_keeps_its_payloads():
+def test_nested_draw_keeps_its_payloads(monkeypatch):
     """A draw made by a `state` observer during an outer draw keeps the payloads it references."""
     w = MapWidget()
     outer = w.add_payload(GEOJSON_A)
@@ -207,7 +203,7 @@ def test_nested_draw_keeps_its_payloads():
     w.observe(nested, "state")
     w.draw(MapState(layers=(Layer("a", GeoJSONSource(outer)),)))
     assert [layer["id"] for layer in w.state["layers"]] == ["b"]
-    assert pulled(w, inner["d"]) == GEOJSON_B
+    assert pulled(monkeypatch, w, inner["d"]) == GEOJSON_B
 
 
 def test_instances_follow_input_order_and_keep_across_reorder():
