@@ -3,17 +3,20 @@
 Each sequence runs on one loop, with prepares that settle at once or after a few
 turns of the loop, so draws, prepares and later writes interleave. Every burst of
 operations is followed by ``wait_idle``; the published state must then follow the
-store: the drawing order, each layer's visibility and opacity, and every payload a
-view would pull.
+store: the drawing order, each layer's visibility and opacity, the source, paint, zone
+and attribution its current spec gives, and every payload a view would pull.
 """
 
 import asyncio
+import hashlib
+import json
 import random
 
 import pytest
 from pysepal_map import MapWidget
 
 import pysepal.mapping.maplibre_engine as maplibre_engine
+from pysepal.frontend.styles import THEMES
 from pysepal.layers import LayerSpec, LayerStore, RenderLayer
 
 OPS_PER_SEED = 48
@@ -121,6 +124,26 @@ def served(widget: MapWidget, digest: str) -> bool:
     return bool(sent) and not sent[0].get("missing")
 
 
+def drawn_from(spec: LayerSpec, theme: str) -> dict:
+    """What a layer drawn from the store's ``spec`` publishes, besides its view."""
+    render = made_up(spec)
+    expected = {"zone": spec.zone, "attribution": spec.attribution}
+    if render.kind == "raster-xyz":
+        source = {"tiles": [render.url], "tile_size": 256, "max_native_zoom": 24, "bounds": None}
+        return expected | {"kind": "raster", "source": source, "paint": None}
+    data = json.dumps(render.data, separators=(",", ":")).encode()
+    stroke = spec.style.stroke or THEMES[theme == "dark"]["primary"]
+    paint = {
+        "stroke": stroke,
+        "fill": spec.style.fill or stroke,
+        "fill_opacity": spec.style.effective_fill_opacity,
+        "width": spec.style.width,
+        "point_radius": 5.0,
+    }
+    source = {"digest": hashlib.sha256(data).hexdigest()}
+    return expected | {"kind": "geojson", "source": source, "paint": paint}
+
+
 def check(widget: MapWidget, store: LayerStore, engine, theme: str) -> list[str]:
     """Return every way the published state differs from the store."""
     problems = []
@@ -138,6 +161,10 @@ def check(widget: MapWidget, store: LayerStore, engine, theme: str) -> list[str]
         view = store.view(x["id"])
         if (x["visible"], x["opacity"]) != (view.visible, view.opacity):
             problems.append(f"{x['id']}: drawn {x['visible']}/{x['opacity']}, store {view}")
+        wanted = drawn_from(store.get(x["id"]), theme)
+        published = {key: x[key] for key in wanted}
+        if published != wanted:
+            problems.append(f"{x['id']}: published {published}, the store's spec gives {wanted}")
         if x["kind"] == "geojson" and not served(widget, x["source"]["digest"]):
             problems.append(f"{x['id']}: its payload is not served")
     if widget.state["theme"] != theme:

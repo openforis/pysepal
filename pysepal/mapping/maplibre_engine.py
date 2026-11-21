@@ -24,6 +24,7 @@ import asyncio
 import contextlib
 import dataclasses
 import hashlib
+import inspect
 import json
 import logging
 import threading
@@ -90,6 +91,10 @@ def _transient(error: Exception) -> bool:
     if not isinstance(error, EERestException) or not isinstance(code, int):
         return False
     return code in _TRANSIENT_CODES or code >= 500
+
+
+def _geojson_bytes(data: Optional[dict]) -> bytes:
+    return json.dumps(data, separators=(",", ":")).encode()
 
 
 def _paint(spec: LayerSpec, is_dark: bool) -> VectorPaint:
@@ -368,6 +373,11 @@ class MapLibreEngine:
     def _rehome(self) -> None:
         """Move the work left on a closed loop to the current one."""
         with self._batch():
+            for task in self._tasks:
+                coro = task.get_coro()
+                stranded = task.get_loop().is_closed() and inspect.iscoroutine(coro)
+                if stranded and inspect.getcoroutinestate(coro) == inspect.CORO_CREATED:
+                    coro.close()  # it never ran: closed, it does not warn when collected
             self._tasks = {task for task in self._tasks if not task.get_loop().is_closed()}
             if self._handle is not None and self._handle_loop.is_closed():
                 self._handle = self._handle_loop = None
@@ -469,14 +479,11 @@ class MapLibreEngine:
     def _request(self, layer_id: str) -> None:
         token = self._tokens[layer_id]
         spec = self.store.get(layer_id)
-        render, carry = self._cached(spec), None
-        if render is None:
-            render = self._restyled(layer_id, spec)
-            carry = self._accepted.get(layer_id)
+        render = self._cached(spec) or self._restyled(layer_id, spec)
         if render is not None:
             self._running.pop(layer_id, None)
             self.put(render)
-            self._offer(layer_id, token, spec, render, fresh=False, carry=carry)
+            self._offer(layer_id, token, spec, render, fresh=False)
             return
 
         entry = self._accepted.get(layer_id)
@@ -574,17 +581,18 @@ class MapLibreEngine:
         render: RenderLayer,
         *,
         fresh: bool,
-        carry: Optional[_Entry] = None,
     ) -> None:
         """Accept a settled render once its layer builds under both themes, else reject it.
+
+        A render that shares the accepted entry's data, from the cache or a restyle, takes
+        over its GeoJSON bytes and digest.
 
         Args:
             layer_id: the layer id.
             token: the request token it settles.
             spec: the spec it was prepared from.
             render: the render.
-            fresh: whether a prepare just made it, rather than the cache.
-            carry: the accepted entry whose data a restyle shares.
+            fresh: whether a prepare just made it, rather than the cache or a restyle.
         """
         previous = self._accepted.get(layer_id)
         incarnation = self._incarnations.get(layer_id, 0)
@@ -597,10 +605,11 @@ class MapLibreEngine:
             incarnation += 1
         candidate = _Entry(spec, render, incarnation)
         if render.kind == "geojson":
-            if carry is not None and carry.digest is not None:
-                candidate.payload, candidate.digest = carry.payload, carry.digest
+            shared = previous is not None and previous.render.data is render.data
+            if shared and previous.digest is not None:
+                candidate.payload, candidate.digest = previous.payload, previous.digest
             else:
-                candidate.payload = json.dumps(render.data, separators=(",", ":")).encode()
+                candidate.payload = _geojson_bytes(render.data)
                 candidate.digest = hashlib.sha256(candidate.payload).hexdigest()
         try:
             for is_dark in (False, True):

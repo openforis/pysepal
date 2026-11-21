@@ -1,6 +1,7 @@
 """Tests of the engine drawing a LayerStore on a MapLibre widget."""
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -507,6 +508,27 @@ def test_geojson_payload_added_once(fake, monkeypatch):
     assert added == [payload(collection(0))]
 
 
+def test_geojson_bytes_are_serialized_once_per_prepare(fake, monkeypatch):
+    widget, store, _ = headless()
+    serialized = []
+    real = maplibre_engine._geojson_bytes
+    monkeypatch.setattr(
+        maplibre_engine, "_geojson_bytes", lambda data: serialized.append(data) or real(data)
+    )
+    store.add(vector_spec("v"))
+    before = layer_of(widget, "v")
+    store.update("v", store.get("v").revise(zone="overlay"))  # served from the cache
+    store.update("v", store.get("v").revise(attribution="edited"))
+    store.add(store.get("v"), replace=True)
+    store.restyle("v", stroke="#ff0000")  # restyled: shares the data
+    store.restyle("v", stroke=None)  # back to the cached style
+    assert len(fake.calls) == 1
+    assert len(serialized) == 1
+    after = layer_of(widget, "v")
+    assert after["source"] == before["source"]
+    assert pulled(widget, after["source"]["digest"]) == payload(collection(0))
+
+
 def test_pmtiles_without_source_layer_is_an_error(fake):
     widget, store, _ = headless()
     store.add(LayerSpec.from_vector("https://x.org/a.pmtiles", id="bare", name="bare"))
@@ -628,18 +650,42 @@ async def test_loop_replaced_with_dirty_work(fake):
     assert layer_of(widget, "a")["opacity"] == 0.5
 
 
-@pytest.mark.asyncio
-async def test_closed_loop_prepare_is_requested_again(fake):
-    loop, old = asyncio.get_running_loop(), asyncio.new_event_loop()
-    widget, store = MapWidget(loop=loop), LayerStore()
+def test_closed_loop_prepare_is_requested_again(fake):
+    old = asyncio.new_event_loop()
+    widget, store = MapWidget(), LayerStore()
     engine = MapLibreEngine(widget, store, loop=old)
-    store.add(tile_spec("a"))  # a task of the old loop, which never runs
-    assert store.view("a").status == "pending"
+    fake.hold("a")
+    store.add(tile_spec("a"))
+    old.run_until_complete(asyncio.sleep(0))  # the prepare starts and waits
+    assert fake.calls == [("a", old)]
+    # a shutdown, as asyncio.run and a kernel do it: cancel, drain, close
+    tasks = asyncio.all_tasks(old)
+    for task in tasks:
+        task.cancel()
+    old.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
     old.close()
-    await engine.wait_idle()
+    assert store.view("a").status == "pending"
+
+    async def resume():
+        await engine.wait_idle()
+        assert fake.calls[-1] == ("a", asyncio.get_running_loop())
+
+    asyncio.run(resume())
     assert ids_of(widget) == ["a"]
-    assert fake.calls == [("a", loop)]
     assert store.view("a").status == "ready"
+
+
+def test_a_prepare_stranded_on_a_closed_loop_is_closed(fake):
+    old = asyncio.new_event_loop()
+    widget, store = MapWidget(), LayerStore()
+    engine = MapLibreEngine(widget, store, loop=old)
+    store.add(tile_spec("a"))
+    [task] = asyncio.all_tasks(old)
+    old.close()  # without running it: the prepare never started
+    task._log_destroy_pending = False  # asyncio's own log of a pending task
+    asyncio.run(engine.wait_idle())
+    assert inspect.getcoroutinestate(task.get_coro()) == inspect.CORO_CLOSED
+    assert ids_of(widget) == ["a"]
 
 
 def test_engines_adopting_different_loops_do_not_both_write(fake, caplog):
