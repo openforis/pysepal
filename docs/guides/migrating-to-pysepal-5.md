@@ -108,9 +108,12 @@ other components, build the store yourself and pass it with
   In a notebook or a Voila app, display it next to the map:
 
   ```python
-  from pysepal.solara.components.layer_panel import LayerPanel
+  import solara
 
-  solara.display(m, LayerPanel(store=m.layer_store, map_=m))
+  from pysepal.solara.components.layer_panel import LayerPanel
+  from pysepal.solara.components.map_view import MapView
+
+  solara.display(MapView(m), LayerPanel(store=m.layer_store, map_=m))
   ```
 
 ### Map controls
@@ -186,10 +189,15 @@ over the map. `MapApp` builds all three for you.
 
 ```python
 # before
+from ipyleaflet import TileLayer, WidgetControl
+
 m.add_layer(TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="Tiles"))
 m.add_control(WidgetControl(widget=chip, position="topleft"))
 
 # after
+from pysepal.layers import LayerSpec
+from pysepal.solara.components.map_view import MapView
+
 m.layer_store.add(LayerSpec.from_tiles("https://example.org/{z}/{x}/{y}.png", name="Tiles"))
 MapView(m, overlays={"top-left": [chip]})
 ```
