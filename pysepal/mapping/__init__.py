@@ -18,6 +18,9 @@ Example:
 from .draw_control import *
 from .fullscreen_control import *
 from .geojson_utils import *
+from .handle import LayerGoneError as LayerGoneError
+from .handle import LayerHandle as LayerHandle
+from .handle import ZoomResult as ZoomResult
 from .inspector_control import *
 from .layer import *
 from .layer_state_control import *
