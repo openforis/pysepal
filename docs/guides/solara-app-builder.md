@@ -564,7 +564,6 @@ def Page():
         lambda: sm.SepalMap(
             gee=True,
             gee_interface=gee_interface,
-            fullscreen=True,
             theme_state=theme_state,
         ),
         [id(gee_interface)],
@@ -582,11 +581,10 @@ def Page():
     )
 ```
 
-`fullscreen=True` is what makes the map fill the shell. `MapApp` lays its
-drawer and panels over a fixed, viewport-sized container and never sizes the
-widget inside it, so a map built without the flag keeps ipyleaflet's default
-400 px height and renders as a strip across the top. Every demo under
-`demo_apps/` passes it.
+`MapApp` lays its drawer and panels over a fixed, viewport-sized container,
+and its CSS makes the map fill that container whatever the map's `height`, so
+the map needs no `fullscreen=True` there. Outside `MapApp`, `fullscreen=True`
+(`height="100%"`) makes the map fill a parent that has a height of its own.
 
 `MapApp` is a `@solara.component` from `pysepal.solara.components.map_app`. A
 `content` is an element, a widget, or a list of them. To follow the user, pass `on_current_step`, `on_step_open` or

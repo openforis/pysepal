@@ -29,7 +29,9 @@ class RenderLayer:
         ee_object: the Earth Engine object behind the tiles, if any.
         raster: path of the source raster, for the inspector.
         keepalive: object that must outlive the layer (the ``TileClient`` of a local raster).
-        tile_kwargs: keyword arguments for ``get_leaflet_tile_layer`` of a local raster.
+        tile_kwargs: the tile options of a local raster in the form of Leaflet's
+            ``get_leaflet_tile_layer``, kept only to compare with that helper until phase 5
+            removes ipyleaflet.
         fingerprint: ``(path, size, mtime_ns)`` of the local files this was built from.
         prepare_options: the ``optimize`` and ``warp_to_3857`` a local raster was prepared with,
             so that a restyle prepares it the same way.
