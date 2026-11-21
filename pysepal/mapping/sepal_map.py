@@ -38,6 +38,9 @@ from typing_extensions import Self
 from pysepal import color as scolors
 from pysepal.frontend import styles as ss
 from pysepal.layers import LayerSpec, LayerStore, RenderLayer, prepare, prepare_sync
+from pysepal.layers.preparation import (
+    CLIENT_PREFIX_ENV_VAR,  # noqa: F401  (public re-export)
+)
 from pysepal.mapping._widget_tree import close_tree
 from pysepal.mapping.basemaps import basemap_tiles
 from pysepal.mapping.draw_control import GeomanDrawControl
