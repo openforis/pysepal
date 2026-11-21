@@ -167,6 +167,7 @@ holds where the camera is once a view reported. A removed member raises an
 | `zoom_raster(layer)` with an ipyleaflet layer                                           | `zoom_raster` takes a handle, a layer id or a raster path                                                                                                          |
 | `basemap_tiles`, `xyz_to_leaflet` in `pysepal.mapping.basemaps`                         | `BASEMAP_NAMES`, `get_basemap(name)` and `basemap_label(name)`; `get_basemap_list()` leaves out the providers MapLibre cannot draw                                 |
 | `create_wms_preview_layer` returns a `WMSLayer`                                         | it returns a `LayerSpec` in the overlay zone, for `m.layer_store.add`                                                                                              |
+| `remove_wms_preview_layer(map_, name=...)` finds the preview by its name                | `remove_wms_preview_layer(map_, layer_id=...)` removes it from the store by id (default `"aoi_preview"`)                                                           |
 | `SepalMap(fullscreen=True)` adds a CSS class                                            | it sets `height="100%"`, so the map fills its container                                                                                                            |
 
 **Known limitation: local raster tiles.** MapLibre fetches tiles where ipyleaflet
