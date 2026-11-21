@@ -15,11 +15,21 @@ from pysepal.solara.components.legend import LegendComponent
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 CORNERS: tuple[str, ...] = ("top-left", "top-right", "bottom-left", "bottom-right")
 
-_TRAITS = ["state", "theme", "insets"]
+_TRAITS = ["state", "theme", "insets", "height"]
 _SIDES = ("left", "right", "top", "bottom")
 
+# What the widget shows while the map has not declared its controls yet.
+_DEFAULT_CONTROLS = {"zoom": True, "fullscreen": True, "scale": True}
+# MapLibre's control CSS: a group sits 10 px below the one above it and a button is 29 px
+# tall, the 1 px rule between the two zoom buttons included.
+_CONTROL_MARGIN = 10
+_TOP_LEFT_GROUPS = (("zoom", 58), ("fullscreen", 29))
+
+# The root takes the map's height and the map fills it, through the wrapper ipyvue puts
+# around a widget (``height: 100%``): a percentage height then resolves against the
+# root's parent, and in fullscreen the map fills the root.
 CSS = """
-.pysepal-map-view { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.pysepal-map-view { position: relative; width: 100%; overflow: hidden; }
 .pysepal-map-view .psm-map { height: 100% !important; }
 /* The root sets the variables inline; in fullscreen the camera uses no insets, so neither do the stacks. */
 [data-psm-fullscreen-root][data-psm-fullscreen] {
@@ -38,9 +48,10 @@ CSS = """
   max-width: 50%;
 }
 .pysepal-map-corner > * { pointer-events: auto; }
+.pysepal-map-corner > [data-idle] { display: none; }
 /* The offsets clear the controls: zoom and fullscreen, scale, attribution. */
 .pysepal-map-corner[data-corner="top-left"] {
-  top: calc(var(--pysepal-inset-top) + 76px);
+  top: calc(var(--pysepal-inset-top) + var(--pysepal-controls-top-left));
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
 }
@@ -69,6 +80,13 @@ CSS = """
   background: rgba(var(--v-theme-surface, 255, 255, 255), 0.9);
 }
 """
+
+
+def _top_left_offset(map_) -> int:
+    """The offset of the top-left stack below the top inset, clear of the zoom and fullscreen."""
+    controls = map_.state.get("controls") or _DEFAULT_CONTROLS
+    shown = (height for name, height in _TOP_LEFT_GROUPS if controls.get(name))
+    return _CONTROL_MARGIN + sum(height + _CONTROL_MARGIN for height in shown)
 
 
 def _legends(map_) -> list[dict]:
@@ -126,34 +144,24 @@ def MapView(
     solara.use_effect(follow_map, [map_])
 
     insets = map_.insets or {}
-    style = "; ".join(f"--pysepal-inset-{side}: {int(insets.get(side, 0))}px" for side in _SIDES)
+    variables = {f"--pysepal-inset-{side}": f"{int(insets.get(side, 0))}px" for side in _SIDES}
+    variables["--pysepal-controls-top-left"] = f"{_top_left_offset(map_)}px"
+    variables["height"] = map_.height
+    style = "; ".join(f"{name}: {value}" for name, value in variables.items())
     overlays = overlays or {}
 
+    # The built-in slots stay mounted, empty while idle: one coming or going would
+    # otherwise shift the app overlays after it, and reacton would remount them.
     stacks = {corner: [] for corner in CORNERS}
-    if status:
-        pending = sum(store.view(i).status == "pending" for i in store.ids)
-        if pending:
-            stacks["top-right"].append(
-                rv.Html(
-                    tag="div",
-                    class_="pysepal-map-status",
-                    attributes={"data-role": "map-status"},
-                    children=[
-                        rv.ProgressCircular(indeterminate=True, size=16, width=2),
-                        f"{msg('map_view.loading')} ({pending})",
-                    ],
-                ).key("status")
-            )
-    if legend:
-        legends = _legends(map_)
-        if legends:
-            stacks["bottom-right"].append(
-                rv.Html(
-                    tag="div",
-                    attributes={"data-role": "map-legend"},
-                    children=[LegendComponent(legend_data=data, inline=True) for data in legends],
-                ).key("legend")
-            )
+    pending = sum(store.view(i).status == "pending" for i in store.ids) if status else 0
+    loading = []
+    if pending:
+        spinner = rv.ProgressCircular(indeterminate=True, size=16, width=2)
+        loading = [spinner, f"{msg('map_view.loading')} ({pending})"]
+    stacks["top-right"].append(_slot("map-status", loading, "pysepal-map-status").key("status"))
+    legends = _legends(map_) if legend else []
+    legend_elements = [LegendComponent(legend_data=data, inline=True) for data in legends]
+    stacks["bottom-right"].append(_slot("map-legend", legend_elements).key("legend"))
     for corner in CORNERS:
         stacks[corner].extend(overlays.get(corner, ()))
 
@@ -176,3 +184,11 @@ def MapView(
             ],
         ],
     )
+
+
+def _slot(role: str, children: list, class_: str = ""):
+    """A built-in slot of a corner stack, hidden while it has nothing to show."""
+    attributes = {"data-role": role}
+    if not children:
+        attributes["data-idle"] = ""
+    return rv.Html(tag="div", class_=class_, attributes=attributes, children=children)

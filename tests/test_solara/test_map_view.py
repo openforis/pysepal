@@ -1,12 +1,15 @@
 """MapView places the map, the legend of what it draws, a loading status and app overlays."""
 
+from pathlib import Path
+
+import ipyvuetify as v
 import pytest
 import solara
 
 from pysepal.frontend.styles import THEMES
 from pysepal.layers import LayerSpec, Legend, LegendItem, RenderLayer
 from pysepal.mapping import SepalMap
-from pysepal.solara.components import map_view
+from pysepal.solara.components import map_app, map_view
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.map_view import MapView
 from pysepal.solara.theme import ThemeState
@@ -218,6 +221,98 @@ def test_root_is_the_fullscreen_target():
     box, rc = solara.render(MapView(m), handle_error=False)
     assert _attr(box.children[0], "data-psm-fullscreen-root") is not None
     assert m in list(_tree(box))
+    rc.close()
+
+
+def test_root_takes_the_map_height():
+    m = SepalMap(gee=False)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    root = box.children[0]
+    # an auto-height parent (a notebook output) then gets the map's own 400 px, not 0
+    assert "height: 400px" in root.style_
+    m.height = "100%"
+    assert "height: 100%" in root.style_
+    root_rule = map_view.CSS.split(".pysepal-map-view {")[1].split("}")[0]
+    assert "height" not in root_rule
+    rc.close()
+
+
+def test_map_app_fills_the_window_whatever_the_map_height():
+    css = (Path(map_app.__file__).parent / "map_app.css").read_text()
+    rule = css.split(".sepal-mapapp__map .pysepal-map-view,")[1].split("}")[0]
+    assert ".sepal-mapapp__map .psm-map" in rule
+    assert "height: 100% !important" in rule
+
+
+@pytest.mark.parametrize(("fullscreen_control", "offset"), [(False, "78px"), (True, "117px")])
+def test_top_left_stack_clears_the_controls(fullscreen_control, offset):
+    m = SepalMap(gee=False, fullscreen_control=fullscreen_control)
+    m.layer_engine.flush()
+    assert m.state["controls"]["fullscreen"] is fullscreen_control
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert f"--pysepal-controls-top-left: {offset}" in box.children[0].style_
+    assert "var(--pysepal-controls-top-left)" in map_view.CSS
+    rc.close()
+
+
+def counter(mounts: list):
+    """An overlay with its own state; ``mounts`` logs each mount and unmount."""
+
+    @solara.component
+    def Counter():
+        count, set_count = solara.use_state(0)
+
+        def effect():
+            mounts.append("mount")
+            return lambda: mounts.append("unmount")
+
+        solara.use_effect(effect, [])
+        return solara.Button(f"count {count}", on_click=lambda: set_count(count + 1))
+
+    return Counter()
+
+
+def test_app_overlay_keeps_its_state_when_the_legend_comes_and_goes(fake_vector, shown):
+    mounts = []
+    m = SepalMap(gee=False)
+    box, rc = solara.render(
+        MapView(m, overlays={"bottom-right": [counter(mounts)]}), handle_error=False
+    )
+    rc.find(v.Btn, children=["count 0"]).widget.click()
+    assert "count 1" in corner_text(box, "bottom-right")
+    m.layer_store.add(LayerSpec.from_vector(fake_vector, id="v", name="Vec"))
+    assert legend_titles(box) == ["Vec"]
+    m.layer_store.set_visible("v", False)
+    assert legend_titles(box) == []
+    assert "count 1" in corner_text(box, "bottom-right")
+    assert mounts == ["mount"]
+    rc.close()
+
+
+def test_app_overlay_keeps_its_state_when_the_status_comes_and_goes():
+    mounts = []
+    m = SepalMap(gee=False)
+    m.layer_engine.close()
+    m.layer_store.add(tiles("a"))
+    box, rc = solara.render(
+        MapView(m, overlays={"top-right": [counter(mounts)]}), handle_error=False
+    )
+    rc.find(v.Btn, children=["count 0"]).widget.click()
+    m.layer_store.set_status("a", "pending")
+    assert "Loading layers (1)" in corner_text(box, "top-right")
+    m.layer_store.set_status("a", "ready")
+    assert "count 1" in corner_text(box, "top-right")
+    assert mounts == ["mount"]
+    rc.close()
+
+
+def test_idle_slots_are_hidden():
+    m = SepalMap(gee=False)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    for role in ("map-status", "map-legend"):
+        (slot,) = role_widgets(box, role)
+        assert _attr(slot, "data-idle") is not None
+    assert ".pysepal-map-corner > [data-idle] { display: none; }" in map_view.CSS
     rc.close()
 
 
