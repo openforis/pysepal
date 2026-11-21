@@ -394,3 +394,8 @@
   overflow-y: auto;
   flex: 1;
 }
+
+/* The widget root is sized by --psm-height; in the app it fills the window whatever its height. */
+.sepal-mapapp__map .psm-map {
+  height: 100% !important;
+}

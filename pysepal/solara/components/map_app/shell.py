@@ -8,6 +8,7 @@ import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.message import msg
+from pysepal.solara.components.map_view import MapView
 from pysepal.solara.theme import ThemeState, resolve_theme_state
 
 from ._ui import Slot, as_children, step_keys
@@ -110,13 +111,16 @@ def use_prop_change(value, apply: Callable) -> None:
 
 
 @solara.component
-def MapContainer(map_widget, on_click: Callable[[], None]):
-    """Render the map behind the shell."""
+def MapContainer(map_widget, on_click: Callable[[], None], overlays: Optional[Mapping] = None):
+    """Render the map behind the shell, in a ``MapView`` when it has a layer store."""
+    shown = (
+        MapView(map_widget, overlays=overlays) if hasattr(map_widget, "layer_store") else map_widget
+    )
     container = rv.Html(
         tag="div",
         class_="map-background sepal-mapapp__map",
         attributes={"id": "map-container"},
-        children=[map_widget],
+        children=[shown],
     )
     ipyvue.use_event(container, "click", lambda *_: on_click())
     return container
@@ -160,6 +164,7 @@ def MapApp(
     docs_url: str = "",
     dialog_width: Union[int, str] = 800,
     dialog_fullscreen: bool = False,
+    map_overlays: Optional[Mapping] = None,
 ):
     """Render a full-screen map application.
 
@@ -217,6 +222,9 @@ def MapApp(
         dialog_width: Default width of dialog steps, in the forms of a step's
             ``width``; 800 when it does not read.
         dialog_fullscreen: Show dialog steps full screen.
+        map_overlays: Elements to stack over the map, by corner (``"top-left"``,
+            ``"top-right"``, ``"bottom-left"``, ``"bottom-right"``). Used when the map has a
+            ``layer_store``.
     """
     state = resolve_theme_state(theme_state)
     map_widget = _map_widget(main_map)
@@ -403,7 +411,9 @@ def MapApp(
             ).key("viewport-bridge")
 
             if has_map:
-                MapContainer(map_widget, on_click=collapse_if_unpinned).key("map")
+                MapContainer(map_widget, on_click=collapse_if_unpinned, overlays=map_overlays).key(
+                    "map"
+                )
 
             if step_slots:
                 with rv.Sheet(
