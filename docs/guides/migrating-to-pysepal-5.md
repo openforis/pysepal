@@ -166,6 +166,37 @@ holds where the camera is once a view reported. A removed member raises an
 | `create_wms_preview_layer` returns a `WMSLayer`                                         | it returns a `LayerSpec` in the overlay zone, for `m.layer_store.add`                                                                                              |
 | `SepalMap(fullscreen=True)` adds a CSS class                                            | it sets `height="100%"`, so the map fills its container                                                                                                            |
 
+### The map
+
+A map app now has three parts that share one `LayerStore`: the `SepalMap`, the
+`LayerPanel` that edits the store, and a `MapView` that puts Solara components
+over the map. `MapApp` builds all three for you.
+
+- **Panel rows are one line.** Each row has a drag handle, a visibility toggle,
+  the name, a status, zoom-to-layer, a settings button and a remove button.
+  The settings button (the gear) opens a pop-up with the style form, the
+  opacity and the download and export buttons. A row has no expansion panel and
+  no legend. Zoom-to-layer uses the bounds the layer was prepared with; an
+  Earth Engine layer looks them up on the first zoom, and a layer without
+  bounds still draws but disables its zoom button.
+- **Legends and loading status are in the `MapView`.** The legend sits at the
+  bottom right, built from the legend of each visible layer, and a status badge
+  at the top right counts the layers still loading. Overlays you add are placed
+  in the corner you name, inside the map's insets.
+
+```python
+# before
+m.add_layer(TileLayer(url="https://example.org/{z}/{x}/{y}.png", name="Tiles"))
+m.add_control(WidgetControl(widget=chip, position="topleft"))
+
+# after
+m.layer_store.add(LayerSpec.from_tiles("https://example.org/{z}/{x}/{y}.png", name="Tiles"))
+MapView(m, overlays={"top-left": [chip]})
+```
+
+`MapView` takes `"top-left"`, `"top-right"`, `"bottom-left"` and `"bottom-right"`
+as corner names. Outside `MapApp`, display `MapView(m)` instead of `m`.
+
 ## Why
 
 - Vue 2 reached its end of life on 2023-12-31, and Vuetify 2 depends on it.
