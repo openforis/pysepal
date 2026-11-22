@@ -64,7 +64,12 @@ export interface BasemapState {
 export interface MapState {
   revision: number;
   theme: "light" | "dark";
-  controls: { zoom: boolean; fullscreen: boolean; scale: boolean };
+  controls: {
+    zoom: boolean;
+    fullscreen: boolean;
+    scale: boolean;
+    coordinates: boolean;
+  };
   basemap: BasemapState | null;
   layers: LayerState[];
 }

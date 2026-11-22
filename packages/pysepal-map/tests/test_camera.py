@@ -96,8 +96,13 @@ def test_has_payload():
 
 
 def test_version_is_consistent():
-    assert pysepal_map.__version__ == "0.2.0" == importlib.metadata.version("pysepal-map")
+    assert pysepal_map.__version__ == "0.3.0" == importlib.metadata.version("pysepal-map")
 
 
 def test_controls_scale_in_json():
-    assert Controls().to_json() == {"zoom": True, "fullscreen": True, "scale": True}
+    assert Controls().to_json() == {
+        "zoom": True,
+        "fullscreen": True,
+        "scale": True,
+        "coordinates": False,
+    }

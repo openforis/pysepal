@@ -604,7 +604,12 @@ class StateGenerator {
     return {
       revision: ++this.revision,
       theme: "light",
-      controls: { zoom: true, fullscreen: true, scale: true },
+      controls: {
+        zoom: true,
+        fullscreen: true,
+        scale: true,
+        coordinates: false,
+      },
       basemap: clone(this.basemap),
       layers: clone(this.layers),
     };

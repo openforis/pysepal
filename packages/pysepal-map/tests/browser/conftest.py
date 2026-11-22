@@ -97,7 +97,7 @@ def _owned_id(layer):
 def _source_spec(layer):
     source = layer["source"]
     if layer["kind"] == "geojson":
-        spec = {"type": "geojson"}
+        spec = {"type": "geojson", "generateId": True}
     elif layer["kind"] == "pmtiles":
         spec = {"type": "vector", "url": f"pmtiles://{source['url']}"}
     else:

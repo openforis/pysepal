@@ -4,7 +4,7 @@
 keeps the rest of the contract, summed up here for whoever drives a widget or
 writes a front end for it.
 
-Traits. ``state``, ``view``, ``view_request`` and ``insets`` are read-only:
+Traits. ``state``, ``view``, ``view_request``, ``insets`` and ``marker`` are read-only:
 assigning one raises ``traitlets.TraitError``, and only the widget writes
 them. The comm opens with the first request, sequence 1, in ``view_request``.
 
@@ -20,7 +20,8 @@ Style ids. A view owns every source and layer whose id starts with ``psm:``. A
 layer's source is ``psm:<id>:<instance>``, with the id escaped as
 ``encodeURIComponent`` does, and its layers add a part: ``:fill``, ``:line``
 and ``:circle``, or ``:raster``. The basemap's source and layer are
-``psm:basemap``. A new instance is a new source, so nothing reported about the
+``psm:basemap``. A GeoJSON source generates feature ids, unique within it.
+A new instance is a new source, so nothing reported about the
 old one counts for it. Owned layers stay below every other layer, and the view
 never changes those.
 
@@ -28,8 +29,9 @@ Messages. Each mounted view has a unique ``view_id`` and a side (``main``;
 ``left`` and ``right`` are kept for a compare view). It sends JSON messages
 with a ``type``: ``view_open`` on mount and every 20 s, ``view_close``,
 ``pull`` with the GeoJSON digests it lacks, ``status`` on one layer instance,
-and ``view_report`` with its camera. A ``status`` on a rejected style operation
-also carries its ``style_revision``, which counts only for the current publish.
+``click`` and ``view_report`` with its camera. A ``status`` on a rejected
+style operation also carries its ``style_revision``, which counts only for the
+current publish.
 Python answers each pulled digest with a ``data`` message that carries the
 UTF-8 GeoJSON as one buffer, or ``missing: true`` once a publish dropped it, and
 sends ``status_request`` to ask one view and side to send its statuses again.
@@ -51,6 +53,29 @@ carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
 ``zoom_out``: the view fits the bounds no further in than ``max_zoom``, zooms
 out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
 usable area has no size, and runs once it has one.
+
+Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
+[-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true
+when the view has marked the latest state's revision on its root (see the end
+of this docstring). Each feature is ``{"id", "instance", "properties"}``: the
+layer id and instance come from the feature's own source id, so a hit on a
+replaced instance names the old one. The view sends at most 5 features per
+layer and 20 in all, but always the first of each layer, top first, and none
+while drawing is interactive. Python accepts a click only from a mounted view,
+with finite ``lnglat`` (latitude in [-90, 90]), ``zoom`` and a boolean
+``settled``. It drops hits that are not objects or whose ``(id, instance)`` is
+not the current published one, names the layers of the latter in
+``ClickEvent.stale``, and queues the ``ClickEvent`` to every ``on_click``
+callback under the lock, like ``on_view``.
+
+Cursor and marker. ``cursor`` (``""``, ``"crosshair"``, ``"pointer"`` or
+``"wait"``) is a writable trait: ``""`` leaves MapLibre's own cursor. A view
+shows ``pointer`` instead over a feature of a layer with a popup, a tooltip
+or clusters, and leaves the cursor to the drawing tools while they are
+interactive. ``marker`` is read-only: ``{}`` or ``{"lnglat": [lng, lat],
+"color": str}``, set with ``set_marker`` and ``clear_marker``; each view shows
+one marker for it. ``Controls.coordinates`` shows the pointer's ``lat, lng``
+at the bottom left.
 
 Insets. ``insets`` holds the CSS pixels other UI covers on each side of the
 map element, as ``left``, ``right``, ``top`` and ``bottom``, all 0 at first. A
@@ -85,6 +110,7 @@ import traitlets
 
 from ._callbacks import CallbackQueue, running_loop
 from ._camera import INSET_SIDES, _bounds_request, _center_request, _insets
+from ._events import ClickEvent, FeatureHit
 from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
 _STATIC = Path(__file__).parent / "static"
@@ -119,6 +145,8 @@ VIEW_GRACE_S = 10.0
 
 StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
 ViewCallback = Callable[[dict], Any]
+ClickCallback = Callable[[ClickEvent], object]
+CURSORS = ("", "crosshair", "pointer", "wait")
 View = tuple[str, str]
 
 
@@ -186,6 +214,8 @@ class MapWidget(anywidget.AnyWidget):
     view = traitlets.Dict(read_only=True).tag(sync=True)
     view_request = traitlets.Dict(read_only=True).tag(sync=True)
     insets = traitlets.Dict(dict.fromkeys(INSET_SIDES, 0), read_only=True).tag(sync=True)
+    marker = traitlets.Dict(read_only=True).tag(sync=True)
+    cursor = traitlets.Enum(CURSORS, "").tag(sync=True)
     height = traitlets.Unicode("400px").tag(sync=True)
 
     def __init__(
@@ -222,6 +252,7 @@ class MapWidget(anywidget.AnyWidget):
         self._status: dict[str, LayerStatus] = {}
         self._status_callbacks: list[StatusCallback] = []
         self._view_callbacks: list[ViewCallback] = []
+        self._click_callbacks: list[ClickCallback] = []
         # The last request issued, and the one the last accepted report applied.
         self._issued = 1
         self._acknowledged = 0
@@ -288,6 +319,31 @@ class MapWidget(anywidget.AnyWidget):
                     self._view_callbacks.remove(callback)
             elif callback not in self._view_callbacks:
                 self._view_callbacks.append(callback)
+
+    def on_click(self, callback: ClickCallback, remove: bool = False) -> None:
+        """Call ``callback(event)`` with a ``ClickEvent`` on each accepted click.
+
+        ``remove=True`` unregisters it.
+        """
+        with self._lock:
+            if remove:
+                if callback in self._click_callbacks:
+                    self._click_callbacks.remove(callback)
+            elif callback not in self._click_callbacks:
+                self._click_callbacks.append(callback)
+
+    def set_marker(self, lng: float, lat: float, color: str = "#3388ff") -> None:
+        """Show the one highlight marker at ``(lng, lat)`` in ``color``, in every view."""
+        lnglat = _numbers([lng, lat], 2)
+        if lnglat is None or not -90 <= lnglat[1] <= 90:
+            raise ValueError("the marker needs a finite lng and a lat in [-90, 90]")
+        if not isinstance(color, str):
+            raise ValueError("the marker color must be a string")
+        self.set_trait("marker", {"lnglat": lnglat, "color": color})
+
+    def clear_marker(self) -> None:
+        """Remove the highlight marker."""
+        self.set_trait("marker", {})
 
     def set_center(self, lng: float, lat: float, zoom: float | None = None) -> None:
         """Ask every view to center on ``(lng, lat)``; no zoom keeps theirs.
@@ -375,6 +431,8 @@ class MapWidget(anywidget.AnyWidget):
             self._report(content)
         elif kind == "view_report":
             self._view_report(content)
+        elif kind == "click":
+            self._click(content)
 
     def _answer_pull(self, digests) -> None:
         """Send each digest's bytes, or ``missing`` once a publish dropped them."""
@@ -523,6 +581,56 @@ class MapWidget(anywidget.AnyWidget):
                     self._callbacks.put(callback, copy.deepcopy(view))
         # Expiring a view can change the status too.
         self._refresh()
+
+    def _click(self, content: dict) -> None:
+        """Queue a click from a mounted view to the click callbacks.
+
+        Hits that are not objects, or not on the current instance of their
+        layer, are dropped; a layer whose hit was on a retired instance is
+        named in ``stale``.
+        """
+        view = self._view_of(content)
+        lnglat = _numbers(content.get("lnglat"), 2)
+        zoom = _numbers([content.get("zoom")], 1)
+        settled, hits = content.get("settled"), content.get("features")
+        if (
+            view is None
+            or lnglat is None
+            or not -90 <= lnglat[1] <= 90
+            or zoom is None
+            or not isinstance(settled, bool)
+            or not isinstance(hits, list)
+        ):
+            return
+        with self._lock:
+            self._expire_due()
+            if self._closed or view not in self._views:
+                return
+            features: list[FeatureHit] = []
+            stale: set[str] = set()
+            for hit in hits:
+                if not isinstance(hit, dict):
+                    continue
+                layer_id, instance = hit.get("id"), hit.get("instance")
+                properties = hit.get("properties")
+                if (
+                    not isinstance(layer_id, str)
+                    or not _is_int(instance)
+                    or not isinstance(properties, dict)
+                ):
+                    continue
+                if self._current.get(layer_id, (None, None))[1] != instance:
+                    stale.add(layer_id)
+                    continue
+                features.append(
+                    FeatureHit(layer_id, instance, MappingProxyType(copy.deepcopy(properties)))
+                )
+            event = ClickEvent(
+                lnglat[0], lnglat[1], zoom[0], settled, tuple(features), frozenset(stale), view[0]
+            )
+            for callback in self._click_callbacks:
+                self._callbacks.put(callback, event)
+        self._callbacks.flush(self._loop)
 
     def _refresh(self) -> None:
         """Reduce the reports again, tell the callbacks if that changed.

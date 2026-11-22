@@ -156,7 +156,7 @@ function geojson(
 const state = (revision: number, ...layers: GeoJSONLayerState[]): MapState => ({
   revision,
   theme: "light",
-  controls: { zoom: true, fullscreen: true, scale: true },
+  controls: { zoom: true, fullscreen: true, scale: true, coordinates: false },
   basemap: null,
   layers,
 });

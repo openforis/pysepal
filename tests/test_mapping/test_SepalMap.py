@@ -101,7 +101,12 @@ def test_is_a_map_widget() -> None:
 
     assert isinstance(m, MapWidget)
     assert isinstance(m.layer_engine, MapLibreEngine) and isinstance(m.layer_store, LayerStore)
-    assert m.state["controls"] == {"zoom": True, "fullscreen": False, "scale": True}
+    assert m.state["controls"] == {
+        "zoom": True,
+        "fullscreen": False,
+        "scale": True,
+        "coordinates": False,
+    }
     assert m.height == "400px"
     assert (m.view_request["center"], m.view_request["zoom"]) == ([0.0, 0.0], 3.0)
 

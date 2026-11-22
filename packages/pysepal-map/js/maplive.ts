@@ -13,7 +13,7 @@ import {
   type SourceErrorEvent,
   type StatusReporter,
 } from "./status";
-import { BASEMAP_ID, sourceId, toOwnedStyle } from "./translate";
+import { parseSourceId, sourceId, toOwnedStyle } from "./translate";
 import type { MapState, OwnedStyle } from "./types";
 
 type Layout = Parameters<MapLibreMap["setLayoutProperty"]>;
@@ -83,15 +83,7 @@ interface Applied {
 }
 
 /** The logical layer of an owned style id; ids are built in translate.ts. */
-function ownerOf(id: string): string | null {
-  if (!id.startsWith(OWNED_PREFIX) || id === BASEMAP_ID) return null;
-  // encodeURIComponent escapes ":", so the first segment is the whole id.
-  try {
-    return decodeURIComponent(id.slice(OWNED_PREFIX.length).split(":")[0]);
-  } catch {
-    return null;
-  }
-}
+const ownerOf = (id: string): string | null => parseSourceId(id)?.id ?? null;
 
 const opId = (op: Op): string => (op.kind === "addLayer" ? op.layer.id : op.id);
 
@@ -198,6 +190,15 @@ export class MapSync {
       rejections: this.rejected.map((rejection) => ({ ...rejection })),
       statuses: this.reporter.inspect(),
     };
+  }
+
+  /** Whether the root is marked with the revision of the latest state. */
+  settled(): boolean {
+    const { revision } = this.state();
+    return (
+      typeof revision === "number" &&
+      this.root.dataset.psmRevision === String(revision)
+    );
   }
 
   /** The comm came back: pull every payload still lacking now. */

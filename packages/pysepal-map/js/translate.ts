@@ -15,6 +15,22 @@ export const BASEMAP_ID = "psm:basemap";
 export const sourceId = (layer: Pick<LayerState, "id" | "instance">): string =>
   `psm:${encodeURIComponent(layer.id)}:${layer.instance}`;
 
+/**
+ * The layer id and instance in an owned source id, or in the id of a style
+ * layer built on one (`psm:<id>:<instance>[:<part>]`); null for anything else.
+ */
+export function parseSourceId(
+  id: string
+): { id: string; instance: number } | null {
+  const match = /^psm:([^:]+):(\d+)(?::[a-z]+)?$/.exec(id);
+  if (!match) return null;
+  try {
+    return { id: decodeURIComponent(match[1]), instance: Number(match[2]) };
+  } catch {
+    return null;
+  }
+}
+
 // Tile features report numeric types (multi geometries collapse into their
 // single kind) but GeoJSON-typed features keep the Multi* names, so list both.
 const geometryIn = (...types: string[]): FilterSpecification => [
@@ -117,7 +133,7 @@ function translateLayer(layer: LayerState): {
       return {
         source: {
           id,
-          spec: { type: "geojson", ...attribution },
+          spec: { type: "geojson", generateId: true, ...attribution },
           digest: layer.source.digest,
         },
         layers: vectorLayers(layer, id),

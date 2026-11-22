@@ -236,7 +236,13 @@ function state(controls: Partial<MapState["controls"]> = {}): MapState {
   return {
     revision: 1,
     theme: "light",
-    controls: { zoom: true, fullscreen: true, scale: true, ...controls },
+    controls: {
+      zoom: true,
+      fullscreen: true,
+      scale: true,
+      coordinates: false,
+      ...controls,
+    },
     basemap: null,
     layers: [],
   };
@@ -294,7 +300,7 @@ describe("ViewControls", () => {
     controls.sync(state({ scale: false }));
     expect(map.at("bottom-left")).toEqual([]);
     expect(map.corner("bottom-left").children).toHaveLength(0);
-    controls.sync(state({ scale: true }));
+    controls.sync(state({ scale: true, coordinates: false }));
     expect(map.at("bottom-left")).toHaveLength(1);
   });
 

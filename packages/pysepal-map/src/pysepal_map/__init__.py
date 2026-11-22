@@ -1,5 +1,6 @@
 """A generic MapLibre GL JS anywidget."""
 
+from ._events import ClickEvent, FeatureHit
 from .state import (
     Basemap,
     Controls,
@@ -13,10 +14,12 @@ from .state import (
 )
 from .widget import MapWidget
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
+    "ClickEvent",
     "Basemap",
     "Controls",
+    "FeatureHit",
     "GeoJSONSource",
     "Layer",
     "LayerStatus",

@@ -9,15 +9,17 @@ import type {
   Map as MapLibreMap,
 } from "maplibre-gl";
 
+import { wrapLng } from "./pointer";
 import type { MapState } from "./types";
 import { NO_INSETS, type Insets } from "./view";
 
-type Name = "zoom" | "fullscreen" | "scale";
+type Name = "zoom" | "fullscreen" | "scale" | "coordinates";
 
 const DEFAULT_CONTROLS: MapState["controls"] = {
   zoom: true,
   fullscreen: true,
   scale: true,
+  coordinates: false,
 };
 
 /** Marks the element the fullscreen control fills instead of the map's. */
@@ -52,6 +54,41 @@ class ViewFullscreenControl extends FullscreenControl {
     this._container = fullscreenTarget(this._map.getContainer());
     super._requestFullscreen();
   }
+}
+
+/** The pointer's `lat, lng`, empty while the pointer is off the map. */
+class CoordinatesControl implements IControl {
+  private el: HTMLElement | null = null;
+  private map: MapLibreMap | null = null;
+
+  onAdd(map: MapLibreMap): HTMLElement {
+    this.map = map;
+    this.el = document.createElement("div");
+    this.el.className = "maplibregl-ctrl psm-coordinates";
+    map.on("mousemove", this.onMove);
+    map.on("mouseout", this.onOut);
+    return this.el;
+  }
+
+  onRemove(): void {
+    this.map?.off("mousemove", this.onMove);
+    this.map?.off("mouseout", this.onOut);
+    this.el?.remove();
+    this.el = null;
+    this.map = null;
+  }
+
+  private readonly onMove = (event: {
+    lngLat: { lng: number; lat: number };
+  }): void => {
+    if (!this.el) return;
+    const { lng, lat } = event.lngLat;
+    this.el.textContent = `${lat.toFixed(5)}, ${wrapLng(lng).toFixed(5)}`;
+  };
+
+  private readonly onOut = (): void => {
+    if (this.el) this.el.textContent = "";
+  };
 }
 
 export interface ViewControlsOptions {
@@ -95,6 +132,12 @@ export class ViewControls {
       controls.scale,
       "bottom-left",
       () => new ScaleControl({ unit: "metric" })
+    );
+    this.toggle(
+      "coordinates",
+      Boolean(controls.coordinates),
+      "bottom-left",
+      () => new CoordinatesControl()
     );
     this.options.root.classList.toggle("psm-dark", state?.theme === "dark");
   }

@@ -26,3 +26,18 @@
 .psm-dark .maplibregl-ctrl-group .maplibregl-ctrl-icon {
   filter: invert(1);
 }
+
+.psm-coordinates {
+  padding: 0 6px;
+  font: 11px/18px "Helvetica Neue", Arial, Helvetica, sans-serif;
+  background: rgba(255, 255, 255, 0.75);
+  color: #333;
+  pointer-events: none;
+}
+.psm-coordinates:empty {
+  display: none;
+}
+.psm-dark .psm-coordinates {
+  background: rgba(30, 30, 30, 0.75);
+  color: #ffffff;
+}

@@ -226,15 +226,25 @@ class Basemap:
 
 @dataclass(frozen=True)
 class Controls:
-    """The map controls to show; ``scale`` is a metric scale bar."""
+    """The map controls to show.
+
+    ``scale`` is a metric scale bar; ``coordinates`` a readout of the pointer's
+    position at the bottom left.
+    """
 
     zoom: bool = True
     fullscreen: bool = True
     scale: bool = True
+    coordinates: bool = False
 
     def to_json(self) -> dict:
         """The control switches as JSON."""
-        return {"zoom": self.zoom, "fullscreen": self.fullscreen, "scale": self.scale}
+        return {
+            "zoom": self.zoom,
+            "fullscreen": self.fullscreen,
+            "scale": self.scale,
+            "coordinates": self.coordinates,
+        }
 
 
 @dataclass(frozen=True)

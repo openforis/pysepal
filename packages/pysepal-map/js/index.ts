@@ -7,6 +7,7 @@ import type { RenderProps } from "@anywidget/types";
 
 import { ViewControls } from "./controls";
 import { MapSync } from "./maplive";
+import { ViewPointer } from "./pointer";
 import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
 import type { MapState } from "./types";
 import { CAMERA_OPTIONS, ViewCamera, insetsOf, lockRotation } from "./view";
@@ -26,6 +27,8 @@ interface Model {
   view: unknown;
   view_request: unknown;
   insets: unknown;
+  cursor: string;
+  marker: unknown;
 }
 
 type PsmElement = HTMLElement & {
@@ -77,6 +80,14 @@ function render({ model, el }: RenderProps<Model>) {
   presence.start();
   const sync = new MapSync(map, model, root, reporter, { viewId, side: SIDE });
   root.psmInspect = () => sync.inspect();
+  const pointer = new ViewPointer({
+    map,
+    model,
+    viewId,
+    side: SIDE,
+    settled: () => sync.settled(),
+    createMarker: (color) => new maplibregl.Marker({ color }),
+  });
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
   root.psmCamera = camera;
   const controls = new ViewControls({
@@ -108,6 +119,7 @@ function render({ model, el }: RenderProps<Model>) {
   return () => {
     stopLive();
     camera.dispose();
+    pointer.dispose();
     controls.dispose();
     sync.dispose();
     presence.dispose();

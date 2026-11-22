@@ -26,7 +26,7 @@ dependencies = [
     "ipyvuetify>=3.1,<4",
     "markdown",
     "ipyleaflet>=0.20.0",  # Layer.pane, Map.panes and PMTilesLayer
-    "pysepal-map>=0.2.0",
+    "pysepal-map>=0.3.0",
     # earthengine management
     "earthengine-api>1.6.0",
     # to create a module

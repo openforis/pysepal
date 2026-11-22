@@ -3,7 +3,8 @@
   "controls": {
     "zoom": true,
     "fullscreen": true,
-    "scale": true
+    "scale": true,
+    "coordinates": false
   },
   "basemap": {
     "tiles": ["https://t/{z}/{x}/{y}.png"],
