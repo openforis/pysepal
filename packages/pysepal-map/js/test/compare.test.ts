@@ -171,15 +171,20 @@ async function setup(initial: MapState) {
   };
   const main = new FakeViewMap();
   const mark = new RevisionMark(element, model);
+  let compare: CompareView | null = null;
   const sync = new MapSync(
     main as unknown as MapLibreMap,
     model,
     (revision) => mark.set("main", revision),
     rightReporter(main, "main"),
-    { viewId: "view-1", side: "main" }
+    {
+      viewId: "view-1",
+      side: "main",
+      lookup: (digest) => compare?.payload(digest),
+    }
   );
   const maps: FakeViewMap[] = [];
-  const compare = new CompareView({
+  compare = new CompareView({
     root: element,
     main: main as unknown as MapLibreMap,
     model,
@@ -193,8 +198,9 @@ async function setup(initial: MapState) {
       return map as unknown as MapLibreMap;
     },
   });
+  const view = compare;
   disposers.push(() => {
-    compare.dispose();
+    view.dispose();
     sync.dispose();
   });
   main.emit("style.load");
@@ -214,7 +220,7 @@ async function setup(initial: MapState) {
     root,
     main,
     sync,
-    compare,
+    compare: view,
     maps,
     right,
     messages,
@@ -408,13 +414,53 @@ describe("CompareView", () => {
     expect(root.dataset.psmRevision).toBe("2");
     // The payload came from the main map's cache.
     expect(right().fake.payload("psm:b:1")).toEqual(PAYLOADS.x);
-    expect(
-      messages.filter((m) => m.type === "pull" && m.side === "right")
-    ).toEqual([]);
+    expect(model.pulls.filter((m) => m.side === "right")).toEqual([]);
 
     model.set(state(3, geojson("b", 1, "x")));
     expect(settled()).toBe(true);
     expect(root.dataset.psmRevision).toBe("3");
+  });
+
+  describe("payloads shared between the sides", () => {
+    // MapSync pulls through the model, not the view's guarded sender.
+    const pulls = (model: FakeModel, side: string) =>
+      model.pulls.filter((m) => m.side === side).map((m) => m.digests);
+    const shared = geojson("b", 1, "x");
+    const rightOnly = geojson("r", 1, "y", "right");
+
+    it("pulls each digest once per side that lacks it on a first comparing render", async () => {
+      const { root, sync, model } = await setup(
+        compareState(1, shared, rightOnly)
+      );
+      // The main map pulls what it draws; the right map pulls what the main
+      // map did not hold yet, its own layer too.
+      expect(pulls(model, "main")).toEqual([["x"]]);
+      expect(pulls(model, "right")).toEqual([["x", "y"]]);
+      // The right map takes the payload the main map decoded from the reply.
+      const right = (root as any).psmCompare.sync as MapSync;
+      expect(right.payload("x")).toBe(sync.payload("x"));
+    });
+
+    it("pulls nothing new as compare turns off with a right-only layer", async () => {
+      const { model, root, sync } = await setup(compareState(1, rightOnly));
+      const held = ((root as any).psmCompare.sync as MapSync).payload("y");
+      expect(held).toBeDefined();
+      expect(pulls(model, "right")).toEqual([["y"]]);
+      model.set(state(2, rightOnly));
+      await settle();
+      expect(pulls(model, "main")).toEqual([]);
+      expect(sync.payload("y")).toBe(held);
+    });
+
+    it("pulls nothing new as a layer moves from the right to the left", async () => {
+      const { model, root, sync } = await setup(compareState(1, rightOnly));
+      const held = ((root as any).psmCompare.sync as MapSync).payload("y");
+      model.set(compareState(2, geojson("r", 1, "y", "left")));
+      await settle();
+      expect(pulls(model, "main")).toEqual([]);
+      expect(pulls(model, "right")).toEqual([["y"]]);
+      expect(sync.payload("y")).toBe(held);
+    });
   });
 
   it("resizes, reconnects and disposes the right side", async () => {

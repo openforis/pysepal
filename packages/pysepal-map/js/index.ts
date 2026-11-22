@@ -91,12 +91,16 @@ function render({ model, el }: RenderProps<Model>) {
   const presence = new ViewPresence({ viewId, side: SIDE, send, page: window });
   presence.start();
   const mark = new RevisionMark(root, model);
+  // Set once built, after the main sync, whose first state already looks.
+  let shared: CompareView | null = null;
   const sync = new MapSync(
     map,
     model,
     (revision) => mark.set(SIDE, revision),
     reporter,
-    { viewId, side: SIDE }
+    // A state that hands a right layer to the main map reaches the main sync
+    // first, while the right map still holds its payload.
+    { viewId, side: SIDE, lookup: (digest) => shared?.payload(digest) }
   );
   root.psmInspect = () => sync.inspect();
   // Before the tools that read it: the pointer's settled waits for both maps.
@@ -119,6 +123,7 @@ function render({ model, el }: RenderProps<Model>) {
         trackResize: false,
       }),
   });
+  shared = compare;
   // Built after the map sync, so it handles a style load after the sync did.
   let draw: ViewDraw | null = null;
   const drawing = () => draw?.interactive() ?? false;

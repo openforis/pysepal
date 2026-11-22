@@ -82,9 +82,9 @@ change of side keeps the layer's instance. A compare view keeps its own map
 as ``main`` and adds the ``right`` map, under the same ``view_id``, while the
 state compares: it opens with ``view_open`` and closes with ``view_close``
 like a view, follows the main map's camera and sends no camera, click or
-draw report. It pulls only the digests the main map does not hold. It shows
-right of a divider the user moves inside the insets; the browser keeps the
-divider's position and never sends it. The pointer reads the map shown under
+draw report. Each map takes a payload the other holds instead of pulling it.
+The right map shows right of a divider the user moves inside the insets; the
+browser keeps the divider's position and never sends it. The pointer reads the map shown under
 it: right of the divider, a click's ``features`` (sent by ``main``), the
 content of the popup and the tooltip, the ``pointer`` cursor and a cluster's
 zoom come from the ``right`` map, while the popup and tooltip themselves, the
@@ -96,8 +96,8 @@ and layers ``psm-draw-mirror-fill``, ``-line`` and ``-point``, above its
 owned layers.
 
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
-[-180, 180]), its ``zoom``, ``settled``, ``features`` and ``hidden_features``. ``settled`` is true
-when the view has marked the latest state's revision on its root (see the end
+[-180, 180]), its ``zoom``, ``settled``, ``features`` and ``hidden_features``.
+``settled`` is true when the view has marked the latest state's revision on its root (see the end
 of this docstring), or when everything but the layers in error (a rejected style
 operation, a payload that failed to decode) is on the map: such a layer does not
 hold ``settled`` back, though the mark itself waits for it. Each feature is ``{"id", "instance", "properties"}``: the

@@ -52,7 +52,7 @@ function decode(buffer: Buffer): GeoJSON.GeoJSON {
  * most likely just slow, and each one makes Python send the whole payload,
  * so it is repeated only after a long wait or on reconnect. A `missing`
  * reply or a pull that could not be sent is retried soon. A digest the
- * `lookup` holds is taken from it instead of being pulled.
+ * `lookup` holds is taken from it instead of being pulled or decoded.
  */
 export class PayloadCache {
   private wanted = new Set<string>();
@@ -110,6 +110,12 @@ export class PayloadCache {
     const { type, digest, missing } = reply as Record<string, unknown>;
     if (type !== "data" || typeof digest !== "string") return;
     if (!this.wanted.has(digest) || this.payloads.has(digest)) return;
+    // Every cache of a view gets each reply: one may have decoded it already.
+    if (this.adopt(digest)) {
+      this.schedule();
+      this.options.arrived();
+      return;
+    }
     if (missing === true) {
       // Python dropped it, so a newer state is on its way; retry meanwhile.
       this.retryLater(digest);

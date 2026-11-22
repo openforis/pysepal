@@ -115,8 +115,8 @@ interface Right {
  * It only renders: it sits inside the main map's canvas container, right
  * after the canvas, so the main map's markers and popups paint above it,
  * takes no input and follows the main map's camera. It has its own images,
- * status reports, presence and sync, all on side `right`, and takes the
- * payloads the main map holds instead of pulling them.
+ * status reports, presence and sync, all on side `right`. Each side takes
+ * the payloads the other holds instead of pulling them.
  *
  * A divider clips it to the area right of `dividerX`. Its position is a
  * fraction of the area inside the insets, which the user moves with the
@@ -192,6 +192,11 @@ export class CompareView {
     right.presence.reopen();
     right.reporter.replay();
     right.sync.reconnect();
+  }
+
+  /** The decoded payload the right map holds for `digest`. */
+  payload(digest: string): GeoJSON.GeoJSON | undefined {
+    return this.right?.sync.payload(digest);
   }
 
   /** What the right map holds, for tests; null while there is none. */

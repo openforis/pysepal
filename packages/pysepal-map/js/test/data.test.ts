@@ -336,4 +336,21 @@ describe("PayloadCache", () => {
     cache.receive(data("b"), [buffer(B)]);
     expect(cache.get("b")).toEqual(B);
   });
+
+  it("takes a reply's payload from its lookup rather than decoding it", async () => {
+    const held = new Map<string, GeoJSON.GeoJSON>();
+    const { cache, requests, arrived, failed } = setup(undefined, (d) =>
+      held.get(d)
+    );
+    cache.want(["a"]);
+    await settle();
+    expect(requests).toEqual([["a"]]);
+    // Another cache decoded the same reply first.
+    held.set("a", A);
+    cache.receive(data("a"), [new Uint8Array([0x7b])]);
+    expect(cache.get("a")).toBe(A);
+    expect(failed).not.toHaveBeenCalled();
+    expect(arrived).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
