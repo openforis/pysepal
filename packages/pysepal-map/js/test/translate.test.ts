@@ -29,6 +29,7 @@ describe("toOwnedStyle", () => {
       "psm:v1:1:fill",
       "psm:v1:1:line",
       "psm:v1:1:circle",
+      "psm:v1:1:cluster",
     ]);
   });
 
@@ -85,6 +86,84 @@ describe("toOwnedStyle", () => {
     expect(byId(base, "psm:v1:1:line").paint["line-width"]).toBe(2);
     expect(byId(base, "psm:v1:1:circle").paint["circle-radius"]).toBe(5);
     expect(byId(base, "psm:v1:1:circle").paint["circle-stroke-width"]).toBe(2);
+  });
+
+  it("replaces the circle by a pin symbol on the same point filter", () => {
+    const state = withLayers((layers) => {
+      layers[0].paint!.marker = "pin";
+      layers[0].paint!.fill = "#00ff00";
+      layers[0].paint!.point_radius = 10;
+      layers[0].opacity = 0.4;
+      (layers[0] as GeoJSONLayerState).source.cluster = null;
+    });
+    const ids = toOwnedStyle(state).layers.map((l) => l.id);
+    expect(ids).not.toContain("psm:v1:1:circle");
+    const pin = byId(state, "psm:v1:1:pin");
+    expect(pin.type).toBe("symbol");
+    expect(pin.layout).toEqual({
+      visibility: "visible",
+      "icon-image": "psm-pin:%2300ff00",
+      "icon-size": 2,
+      "icon-anchor": "bottom",
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    });
+    expect(pin.paint).toEqual({ "icon-opacity": 0.4 });
+    expect(pin.filter).toEqual(byId(base, "psm:pm:2:circle").filter);
+    expect(ids).not.toContain("psm:v1:1:cluster");
+  });
+
+  it("tints a pin with the stroke when there is no fill", () => {
+    const state = withLayers((layers) => {
+      layers[0].paint!.marker = "pin";
+    });
+    expect(byId(state, "psm:v1:1:pin").layout["icon-image"]).toBe(
+      "psm-pin:%233388ff"
+    );
+  });
+
+  it("clusters the source and adds a count layer above the points", () => {
+    const state = withLayers((layers) => {
+      layers[0].paint!.stroke = "#ff0000";
+      layers[0].opacity = 0.5;
+    });
+    const source = toOwnedStyle(state).sources.find((s) => s.id === "psm:v1:1")!
+      .spec as any;
+    expect(source).toMatchObject({
+      type: "geojson",
+      cluster: true,
+      clusterRadius: 40,
+      clusterMaxZoom: 12,
+    });
+    const cluster = byId(state, "psm:v1:1:cluster");
+    expect(cluster.type).toBe("symbol");
+    expect(cluster.filter).toEqual(["==", ["get", "cluster"], true]);
+    expect(cluster.layout["icon-image"]).toEqual([
+      "concat",
+      "psm-count:%23ff0000:",
+      ["to-string", ["get", "point_count_abbreviated"]],
+    ]);
+    expect(cluster.layout["icon-allow-overlap"]).toBe(true);
+    expect(cluster.paint).toEqual({ "icon-opacity": 0.5 });
+    const order = toOwnedStyle(state).layers.map((l) => l.id);
+    expect(order.indexOf("psm:v1:1:cluster")).toBeGreaterThan(
+      order.indexOf("psm:v1:1:circle")
+    );
+    expect(byId(state, "psm:v1:1:circle").filter).toEqual([
+      "all",
+      byId(base, "psm:pm:2:circle").filter,
+      ["!=", ["get", "cluster"], true],
+    ]);
+    expect(byId(state, "psm:v1:1:fill").filter).toEqual(
+      byId(base, "psm:pm:2:fill").filter
+    );
+  });
+
+  it("leaves an unclustered source alone", () => {
+    const source = toOwnedStyle(base).sources.find((s) => s.id === "psm:pm:2")!
+      .spec as any;
+    expect(source.cluster).toBeUndefined();
+    expect(byId(base, "psm:pm:2:circle").filter[0]).toBe("in");
   });
 
   it("puts native zoom on the source and the cutoff on the layer", () => {

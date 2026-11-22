@@ -1,6 +1,7 @@
 import type { PointLike } from "maplibre-gl";
 
 import {
+  isCluster,
   ownedStyleLayers,
   type PointerMap,
   type RenderedFeature,
@@ -153,10 +154,13 @@ export class ViewPopups {
       layers.some((l) => l.id === id && l.interaction?.[kind]);
     const styleLayers = ownedStyleLayers(map, wants);
     if (!styleLayers.length) return null;
+    // Clusters are queried too, so one on top shows nothing of what lies below.
+    styleLayers.push(...ownedStyleLayers(map, undefined, "only"));
     const features: RenderedFeature[] = map.queryRenderedFeatures(point, {
       layers: styleLayers,
     });
     for (const feature of features) {
+      if (isCluster(feature)) return null;
       const layer = layers.find((l) => sourceId(l) === feature.source);
       const fields = layer?.interaction?.[kind];
       if (layer && fields) {

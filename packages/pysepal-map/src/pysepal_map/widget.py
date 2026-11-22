@@ -19,7 +19,8 @@ raises publishes nothing and changes no counter.
 Style ids. A view owns every source and layer whose id starts with ``psm:``. A
 layer's source is ``psm:<id>:<instance>``, with the id escaped as
 ``encodeURIComponent`` does, and its layers add a part: ``:fill``, ``:line``
-and ``:circle``, or ``:raster``. The basemap's source and layer are
+and ``:circle`` (or ``:pin``, for ``VectorPaint(marker="pin")``, and ``:cluster``
+on a clustered source), or ``:raster``. The basemap's source and layer are
 ``psm:basemap``. A GeoJSON source generates feature ids, unique within it.
 A new instance is a new source, so nothing reported about the
 old one counts for it. Owned layers stay below every other layer, and the view
@@ -76,6 +77,20 @@ interactive. ``marker`` is read-only: ``{}`` or ``{"lnglat": [lng, lat],
 "color": str}``, set with ``set_marker`` and ``clear_marker``; each view shows
 one marker for it. ``Controls.coordinates`` shows the pointer's ``lat, lng``
 at the bottom left.
+
+Pins and clusters. ``VectorPaint.marker`` is ``"circle"`` (default) or ``"pin"``: a
+pin replaces a point's circle by a symbol anchored at its tip, tinted with the
+fill (else the stroke) colour and sized by ``point_radius``. A ``GeoJSONSource`` may
+carry a ``Cluster(radius, max_zoom)``, part of the source, so changing it gives a
+new instance. A clustered source must hold only points: MapLibre's cluster index
+drops lines and polygons, and the property names ``cluster``, ``cluster_id``,
+``point_count`` and ``point_count_abbreviated`` are reserved on it. The view
+draws count bubbles in the stroke colour; a click on one zooms into it and
+sends no click or popup, and clusters are never hits or tooltips. The
+view draws pins and bubbles on a canvas and registers them as images with ids
+``psm-pin:<color>`` and ``psm-count:<color>:<label>`` (colours escaped as
+``encodeURIComponent`` does), so no glyphs are fetched; the label uses the
+browser's sans-serif font. The marker option does nothing on raster layers.
 
 Popups and tooltips. A vector layer may carry an ``Interaction``, which is part
 of the state but not of its instance identity, so changing it keeps the

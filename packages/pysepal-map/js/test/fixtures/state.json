@@ -23,14 +23,16 @@
       "max_zoom": null,
       "attribution": "",
       "source": {
-        "digest": "ed778c73ea51338d6576fb5992b189f2b94d9f3d5e199f46c1af520d6b0b3e6c"
+        "digest": "ed778c73ea51338d6576fb5992b189f2b94d9f3d5e199f46c1af520d6b0b3e6c",
+        "cluster": { "radius": 40, "max_zoom": 12 }
       },
       "paint": {
         "stroke": "#3388ff",
         "fill": null,
         "fill_opacity": 0.0,
         "width": 2.0,
-        "point_radius": 5.0
+        "point_radius": 5.0,
+        "marker": "circle"
       },
       "interaction": null,
       "instance": 1
@@ -54,7 +56,8 @@
         "fill": null,
         "fill_opacity": 0.0,
         "width": 2.0,
-        "point_radius": 5.0
+        "point_radius": 5.0,
+        "marker": "circle"
       },
       "interaction": null,
       "instance": 2

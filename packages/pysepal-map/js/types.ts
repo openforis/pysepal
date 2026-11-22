@@ -13,6 +13,12 @@ export interface VectorPaint {
   fill_opacity: number;
   width: number;
   point_radius: number;
+  marker: "circle" | "pin";
+}
+
+export interface ClusterState {
+  radius: number;
+  max_zoom: number;
 }
 
 /** What a click or the pointer shows: `[]` is every property, null is off. */
@@ -36,7 +42,7 @@ interface LayerBase {
 
 export interface GeoJSONLayerState extends LayerBase {
   kind: "geojson";
-  source: { digest: string };
+  source: { digest: string; cluster: ClusterState | null };
   paint: VectorPaint;
 }
 

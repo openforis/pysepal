@@ -6,6 +6,7 @@ import workerSource from "psm:maplibre-worker";
 import type { RenderProps } from "@anywidget/types";
 
 import { ViewControls } from "./controls";
+import { installImages } from "./images";
 import { MapSync } from "./maplive";
 import { ViewPointer } from "./pointer";
 import { ViewPopups } from "./popups";
@@ -68,6 +69,7 @@ function render({ model, el }: RenderProps<Model>) {
     ...CAMERA_OPTIONS,
   });
   lockRotation(map);
+  const removeImages = installImages(map);
   root.psmMap = map;
   const reporter = new StatusReporter({
     viewId,
@@ -93,6 +95,12 @@ function render({ model, el }: RenderProps<Model>) {
     side: SIDE,
     settled: () => sync.settled(),
     clickable: popups.clickable,
+    clustered: (id) => {
+      const state = model.get("state") as Partial<MapState> | null;
+      return (state?.layers ?? []).some(
+        (l) => l.id === id && l.kind === "geojson" && l.source.cluster !== null
+      );
+    },
     createMarker: (color) => new maplibregl.Marker({ color }),
   });
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
@@ -128,6 +136,7 @@ function render({ model, el }: RenderProps<Model>) {
     camera.dispose();
     pointer.dispose();
     popups.dispose();
+    removeImages();
     controls.dispose();
     sync.dispose();
     presence.dispose();

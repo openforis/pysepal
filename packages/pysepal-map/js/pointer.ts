@@ -1,24 +1,29 @@
 import type { PointLike } from "maplibre-gl";
 
-import { parseSourceId } from "./translate";
+import { parseSourceId, sourceId } from "./translate";
+import type { LayerState, MapState } from "./types";
 
 /** Where the browser reports a click, and what a hit may carry at most. */
 const PER_LAYER = 5;
 const IN_ALL = 20;
 
 /** The parts of an owned vector layer that a click can hit. */
-const HIT_PART = /^psm:[^:]+:\d+:(fill|line|circle|pin)$/;
+const HIT_PART = /^psm:[^:]+:\d+:(fill|line|circle|pin|cluster)$/;
 
 /**
  * The owned vector style layers in the live style, optionally of some logical
  * layers: a query may name only layers MapLibre has, or it rejects it whole.
+ * Cluster layers are left out unless `clusters` asks for them, alone or too.
  */
 export function ownedStyleLayers(
   map: Pick<PointerMap, "getLayersOrder" | "getLayer">,
-  wanted?: (layerId: string) => boolean
+  wanted?: (layerId: string) => boolean,
+  clusters: "exclude" | "include" | "only" = "exclude"
 ): string[] {
   return map.getLayersOrder().filter((id) => {
     if (!HIT_PART.test(id) || !map.getLayer(id)) return false;
+    const cluster = id.endsWith(":cluster");
+    if (cluster ? clusters === "exclude" : clusters === "only") return false;
     const parsed = parseSourceId(id);
     return parsed !== null && (!wanted || wanted(parsed.id));
   });
@@ -35,24 +40,38 @@ export interface RenderedFeature {
   id?: string | number;
   source: string;
   properties?: Record<string, unknown> | null;
+  geometry?: { type?: string; coordinates?: unknown };
 }
+
+/** Whether a rendered feature is a cluster bubble of a clustered source. */
+export const isCluster = (feature: Pick<RenderedFeature, "properties">) =>
+  feature.properties?.cluster === true;
 
 interface PointerEvent {
   point: PointLike;
   lngLat: { lng: number; lat: number };
+  originalEvent?: unknown;
 }
 
 /** The part of a MapLibre map the pointer rules use. */
 export interface PointerMap {
   getLayersOrder(): string[];
   getLayer(id: string): unknown;
-  getSource(id: string): { type?: string } | undefined;
+  getSource(
+    id: string
+  ):
+    | { type?: string; getClusterExpansionZoom?(id: number): Promise<number> }
+    | undefined;
   getZoom(): number;
   getCanvas(): { style: { cursor: string } };
   queryRenderedFeatures(
     geometry: PointLike,
     options: { layers: string[] }
   ): RenderedFeature[];
+  easeTo(
+    options: { center: [number, number]; zoom: number },
+    eventData?: unknown
+  ): unknown;
   on(type: string, listener: (event: any) => void): unknown;
   off(type: string, listener: (event: any) => void): unknown;
 }
@@ -81,6 +100,8 @@ export interface PointerOptions {
   drawing?(): boolean;
   /** Whether a layer shows a popup, a tooltip or clusters: its features take `pointer`. Read on every move and state change. */
   clickable?(layerId: string): boolean;
+  /** Whether a layer shows cluster bubbles: a click on one zooms in, so they take `pointer`. */
+  clustered?(layerId: string): boolean;
   createMarker(color: string): MarkerLike;
 }
 
@@ -101,6 +122,8 @@ export class ViewPointer {
   /** Where the pointer is on the map, null once it left. */
   private at: PointLike | null = null;
   private disposed = false;
+  /** The cluster expansion waiting for MapLibre; a newer click cancels it. */
+  private expansion: { cancel(): void } | null = null;
 
   constructor(private readonly options: PointerOptions) {
     const { map, model } = options;
@@ -117,6 +140,7 @@ export class ViewPointer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.expansion?.cancel();
     const { map, model } = this.options;
     map.off("click", this.onClick);
     map.off("mousemove", this.onMove);
@@ -130,13 +154,23 @@ export class ViewPointer {
 
   /** The hits at a point, top first, capped per layer and in all. */
   hitsAt(point: PointLike): Hit[] {
+    return this.hitsOf(this.rendered(point));
+  }
+
+  /** The rendered features of the owned vector layers, clusters too. */
+  private rendered(point: PointLike): RenderedFeature[] {
     const { map } = this.options;
-    const layers = ownedStyleLayers(map);
-    if (!layers.length) return [];
+    const layers = ownedStyleLayers(map, undefined, "include");
+    return layers.length ? map.queryRenderedFeatures(point, { layers }) : [];
+  }
+
+  private hitsOf(features: RenderedFeature[]): Hit[] {
+    const { map } = this.options;
     const perLayer = new Map<string, number>();
     const seen = new Set<string>();
     const hits: Hit[] = [];
-    for (const feature of map.queryRenderedFeatures(point, { layers })) {
+    for (const feature of features) {
+      if (isCluster(feature)) continue;
       const parsed = parseSourceId(feature.source);
       if (!parsed) continue;
       // MapLibre returns a GeoJSON feature once per tile it crosses; its
@@ -164,6 +198,11 @@ export class ViewPointer {
   private readonly onClick = (event: PointerEvent): void => {
     const { map, model, viewId, side, drawing, settled } = this.options;
     if (drawing?.()) return;
+    const features = this.rendered(event.point);
+    if (features.length && isCluster(features[0])) {
+      this.expand(features[0], event);
+      return;
+    }
     model.send({
       type: "click",
       view_id: viewId,
@@ -171,9 +210,68 @@ export class ViewPointer {
       lnglat: [wrapLng(event.lngLat.lng), event.lngLat.lat],
       zoom: map.getZoom(),
       settled: settled(),
-      features: this.hitsAt(event.point),
+      features: this.hitsOf(features),
     });
   };
+
+  /**
+   * Zoom into a clicked cluster once MapLibre knows how far. The answer is
+   * dropped if anything that matters changed while it was on its way.
+   */
+  private expand(feature: RenderedFeature, event: PointerEvent): void {
+    const { map, model } = this.options;
+    const clusterId = feature.properties?.cluster_id;
+    if (typeof clusterId !== "number" || !Number.isFinite(clusterId)) return;
+    const source = map.getSource(feature.source);
+    if (!source?.getClusterExpansionZoom) return;
+    this.expansion?.cancel();
+    let stale = false;
+    const onMoveStart = (move: { originalEvent?: unknown }) => {
+      if (move.originalEvent) stale = true;
+    };
+    const onRequest = () => {
+      stale = true;
+    };
+    const stop = () => {
+      map.off("movestart", onMoveStart);
+      model.off("change:view_request", onRequest);
+    };
+    const mine = {
+      cancel: () => {
+        stale = true;
+        stop();
+      },
+    };
+    this.expansion = mine;
+    map.on("movestart", onMoveStart);
+    model.on("change:view_request", onRequest);
+    const coordinates = feature.geometry?.coordinates;
+    const center: [number, number] =
+      Array.isArray(coordinates) && coordinates.length >= 2
+        ? [Number(coordinates[0]), Number(coordinates[1])]
+        : [event.lngLat.lng, event.lngLat.lat];
+    source.getClusterExpansionZoom(clusterId).then(
+      (zoom) => {
+        stop();
+        if (this.expansion === mine) this.expansion = null;
+        if (stale || this.disposed || typeof zoom !== "number") return;
+        if (!this.declared(feature.source)) return;
+        // The click's event data makes the camera report a user move.
+        map.easeTo({ center, zoom }, { originalEvent: event.originalEvent });
+      },
+      () => {
+        stop();
+        if (this.expansion === mine) this.expansion = null;
+      }
+    );
+  }
+
+  /** Whether the state still declares the source, and its layer is visible. */
+  private declared(source: string): boolean {
+    const state = this.options.model.get("state") as Partial<MapState> | null;
+    const layers: LayerState[] = state?.layers ?? [];
+    return layers.some((l) => l.visible && sourceId(l) === source);
+  }
 
   private readonly onMove = (event: PointerEvent): void => {
     this.at = event.point;
@@ -191,8 +289,13 @@ export class ViewPointer {
 
   /** Whether a clickable feature is under the pointer, then the cursor. */
   private look(): void {
-    const { map, clickable } = this.options;
-    const layers = this.at && clickable ? ownedStyleLayers(map, clickable) : [];
+    const { map, clickable, clustered } = this.options;
+    const layers = this.at
+      ? [
+          ...(clickable ? ownedStyleLayers(map, clickable) : []),
+          ...(clustered ? ownedStyleLayers(map, clustered, "only") : []),
+        ]
+      : [];
     this.over =
       this.at !== null &&
       layers.length > 0 &&

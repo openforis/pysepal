@@ -54,6 +54,12 @@ function zoomRange(layer: LayerState): { minzoom?: number; maxzoom?: number } {
   return range;
 }
 
+/** Prefixes of the generated image ids; see images.ts. */
+export const PIN_PREFIX = "psm-pin:";
+export const COUNT_PREFIX = "psm-count:";
+
+const NOT_CLUSTER: FilterSpecification = ["!=", ["get", "cluster"], true];
+
 function vectorLayers(
   layer: GeoJSONLayerState | PMTilesLayerState,
   source: string
@@ -70,7 +76,42 @@ function vectorLayers(
   };
   const fillColor = paint.fill ?? paint.stroke;
   const fillOpacity = paint.fill_opacity * opacity;
-  return [
+  const cluster = layer.kind === "geojson" && layer.source.cluster !== null;
+  const pointFilter: FilterSpecification = cluster
+    ? (["all", POINT, NOT_CLUSTER] as FilterSpecification)
+    : POINT;
+  const point: LayerSpecification =
+    paint.marker === "pin"
+      ? {
+          ...common,
+          id: `${source}:pin`,
+          type: "symbol",
+          filter: pointFilter,
+          layout: {
+            ...layout,
+            "icon-image": `${PIN_PREFIX}${encodeURIComponent(fillColor)}`,
+            "icon-size": paint.point_radius / 5,
+            "icon-anchor": "bottom",
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          },
+          paint: { "icon-opacity": opacity },
+        }
+      : {
+          ...common,
+          id: `${source}:circle`,
+          type: "circle",
+          filter: pointFilter,
+          paint: {
+            "circle-radius": paint.point_radius,
+            "circle-color": fillColor,
+            "circle-opacity": fillOpacity,
+            "circle-stroke-color": paint.stroke,
+            "circle-stroke-width": paint.width,
+            "circle-stroke-opacity": opacity,
+          },
+        };
+  const layers = [
     {
       ...common,
       id: `${source}:fill`,
@@ -89,21 +130,28 @@ function vectorLayers(
         "line-opacity": opacity,
       },
     },
-    {
-      ...common,
-      id: `${source}:circle`,
-      type: "circle",
-      filter: POINT,
-      paint: {
-        "circle-radius": paint.point_radius,
-        "circle-color": fillColor,
-        "circle-opacity": fillOpacity,
-        "circle-stroke-color": paint.stroke,
-        "circle-stroke-width": paint.width,
-        "circle-stroke-opacity": opacity,
-      },
-    },
+    point,
   ] as LayerSpecification[];
+  if (cluster) {
+    layers.push({
+      ...common,
+      id: `${source}:cluster`,
+      type: "symbol",
+      filter: ["==", ["get", "cluster"], true],
+      layout: {
+        ...layout,
+        "icon-image": [
+          "concat",
+          `${COUNT_PREFIX}${encodeURIComponent(paint.stroke)}:`,
+          ["to-string", ["get", "point_count_abbreviated"]],
+        ],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+      paint: { "icon-opacity": opacity },
+    } as LayerSpecification);
+  }
+  return layers;
 }
 
 function rasterLayer(
@@ -133,7 +181,18 @@ function translateLayer(layer: LayerState): {
       return {
         source: {
           id,
-          spec: { type: "geojson", generateId: true, ...attribution },
+          spec: {
+            type: "geojson",
+            generateId: true,
+            ...(layer.source.cluster
+              ? {
+                  cluster: true,
+                  clusterRadius: layer.source.cluster.radius,
+                  clusterMaxZoom: layer.source.cluster.max_zoom,
+                }
+              : {}),
+            ...attribution,
+          },
           digest: layer.source.digest,
         },
         layers: vectorLayers(layer, id),

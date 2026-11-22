@@ -270,10 +270,10 @@ describe("reconcile", () => {
       })
     );
     const hide = plan(fake, hidden);
-    expect(hide).toHaveLength(3);
+    expect(hide).toHaveLength(4);
     expect(hide).toEqual(
       expect.arrayContaining(
-        ["fill", "line", "circle"].map((part) => ({
+        ["fill", "line", "circle", "cluster"].map((part) => ({
           kind: "setLayout",
           id: `psm:v1:1:${part}`,
           name: "visibility",
@@ -285,7 +285,7 @@ describe("reconcile", () => {
     expectConverged(fake, hidden, payloadOf);
 
     const show = plan(fake, toOwnedStyle(base));
-    expect(show).toHaveLength(3);
+    expect(show).toHaveLength(4);
     for (const op of show) {
       expect(op).toMatchObject({ kind: "setLayout", value: "visible" });
     }
@@ -681,13 +681,17 @@ class StateGenerator {
       fill_opacity: vary(old?.fill_opacity, [0, 0.3, 1]),
       width: vary(old?.width, [1, 2, 3.5]),
       point_radius: vary(old?.point_radius, [3, 5, 8]),
+      marker: vary(old?.marker, ["circle", "pin"] as const),
     };
   }
 
   private source(kind: LayerState["kind"]): LayerState["source"] {
     switch (kind) {
       case "geojson":
-        return { digest: this.pick(DIGESTS) };
+        return {
+          digest: this.pick(DIGESTS),
+          cluster: this.pick([null, null, { radius: 40, max_zoom: 12 }]),
+        };
       case "pmtiles":
         return {
           url: this.pick(PMTILES),
@@ -760,12 +764,14 @@ const EXTRA_PAINT: Record<string, [string, unknown]> = {
   fill: ["fill-antialias", false],
   line: ["line-blur", 2],
   circle: ["circle-blur", 1],
+  symbol: ["icon-halo-width", 1],
   raster: ["raster-saturation", -1],
 };
 const MAIN_PAINT: Record<string, [string, unknown]> = {
   fill: ["fill-color", "#123456"],
   line: ["line-width", 9],
   circle: ["circle-radius", 1],
+  symbol: ["icon-opacity", 0.25],
   raster: ["raster-opacity", 0.25],
 };
 

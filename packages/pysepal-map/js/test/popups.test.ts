@@ -507,3 +507,25 @@ describe("dispose", () => {
     }
   });
 });
+
+describe("clusters", () => {
+  const bubble = (): RenderedFeature => ({
+    id: 0,
+    source: sid("a", 1),
+    properties: { cluster: true, cluster_id: 1, point_count: 3 },
+  });
+
+  it("opens no popup and no tooltip for a cluster, and queries its layer", () => {
+    const { map, declare, click, move, popup, tooltip } = setup();
+    declare(layer("a", 1, { popup: [], tooltip: [] }));
+    map.layers.push(`${sid("a", 1)}:cluster`);
+    map.features = [bubble(), feature("a", 1, { name: "under" })];
+    click();
+    move();
+    expect(popup()).toEqual([]);
+    expect(tooltip()).toEqual([]);
+    expect(
+      map.queries.every((q) => q.layers.includes(`${sid("a", 1)}:cluster`))
+    ).toBe(true);
+  });
+});

@@ -143,13 +143,14 @@ function geojson(
     max_zoom: null,
     attribution: "",
     interaction: null,
-    source: { digest },
+    source: { digest, cluster: null },
     paint: {
       stroke: "#3388ff",
       fill: null,
       fill_opacity: 0,
       width: 2,
       point_radius: 5,
+      marker: "circle",
     },
   };
 }

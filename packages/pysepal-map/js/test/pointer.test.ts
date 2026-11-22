@@ -23,8 +23,19 @@ class FakePointerMap implements PointerMap {
 
   getLayersOrder = () => this.layers;
   getLayer = (id: string) => (this.layers.includes(id) ? {} : undefined);
+  /** Answers `getClusterExpansionZoom`; tests swap it to hold the promise. */
+  expansionZoom: (id: number) => Promise<number> = async () => 9;
+  eased: { options: unknown; eventData: unknown }[] = [];
   getSource = (id: string) =>
-    this.sources.has(id) ? { type: this.sources.get(id) } : undefined;
+    this.sources.has(id)
+      ? {
+          type: this.sources.get(id),
+          getClusterExpansionZoom: (cluster: number) =>
+            this.expansionZoom(cluster),
+        }
+      : undefined;
+  easeTo = (options: unknown, eventData?: unknown) =>
+    void this.eased.push({ options, eventData });
   getZoom = () => this.zoom;
   getCanvas = () => this.canvas;
   queryRenderedFeatures = (_point: unknown, options: { layers: string[] }) => {
@@ -103,7 +114,11 @@ function feature(
 }
 
 function setup(
-  options: { drawing?: () => boolean; clickable?: (id: string) => boolean } = {}
+  options: {
+    drawing?: () => boolean;
+    clickable?: (id: string) => boolean;
+    clustered?: (id: string) => boolean;
+  } = {}
 ) {
   const map = new FakePointerMap();
   const model = new FakeModel();
@@ -128,9 +143,24 @@ function setup(
       map.layers.push(`${sid(id, instance)}:${part}`);
     }
   };
+  /** Add the cluster style layer of a declared layer, and declare it in the state. */
+  const cluster = (id: string, instance: number) => {
+    map.layers.push(`${sid(id, instance)}:cluster`);
+    model.values.state = {
+      layers: [
+        {
+          id,
+          instance,
+          kind: "geojson",
+          visible: true,
+          source: { cluster: {} },
+        },
+      ],
+    };
+  };
   const click = (lng = 10, lat = 20) =>
     map.emit("click", { point: [1, 2], lngLat: { lng, lat } });
-  return { map, model, markers, pointer, declare, click };
+  return { map, model, markers, pointer, declare, cluster, click };
 }
 
 describe("parseSourceId", () => {
@@ -419,5 +449,174 @@ describe("marker", () => {
     expect(markers).toHaveLength(3);
     pointer.dispose();
     expect(markers[2].removed).toBe(true);
+  });
+});
+
+describe("clusters", () => {
+  const bubble = (id: string, instance: number, clusterId: unknown = 7) => ({
+    id: 0,
+    source: sid(id, instance),
+    properties: { cluster: true, cluster_id: clusterId, point_count: 5 },
+    geometry: { type: "Point", coordinates: [3, 4] },
+  });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /** A map whose expansion answer waits for `release`. */
+  function held(map: FakePointerMap) {
+    const waiting: ((zoom: number) => void)[] = [];
+    map.expansionZoom = () => new Promise((resolve) => waiting.push(resolve));
+    return (zoom = 11) => waiting.shift()!(zoom);
+  }
+
+  it("zooms into a clicked cluster and sends no click", async () => {
+    const { map, model, declare, cluster } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    map.features = [bubble("a", 1), feature("a", 1, 1)];
+    const original = { type: "click" };
+    map.emit("click", {
+      point: [1, 2],
+      lngLat: { lng: 0, lat: 0 },
+      originalEvent: original,
+    });
+    await settle();
+    expect(model.sent).toEqual([]);
+    expect(map.eased).toEqual([
+      {
+        options: { center: [3, 4], zoom: 9 },
+        eventData: { originalEvent: original },
+      },
+    ]);
+  });
+
+  it("queries the cluster layers with the others", () => {
+    const { map, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    click();
+    expect(map.queries[0].layers).toContain(`${sid("a", 1)}:cluster`);
+  });
+
+  it("leaves clusters out of the hits", () => {
+    const { map, model, declare, click } = setup();
+    declare("a", 1);
+    map.features = [feature("a", 1, 1, { n: 1 })];
+    click();
+    expect(model.sent[0].features).toHaveLength(1);
+  });
+
+  it("does nothing for a cluster id that is not a number", async () => {
+    const { map, model, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const calls: number[] = [];
+    map.expansionZoom = async (id) => (calls.push(id), 9);
+    for (const bad of ["7", NaN, null, {}]) {
+      map.features = [bubble("a", 1, bad)];
+      click();
+    }
+    await settle();
+    expect(calls).toEqual([]);
+    expect(map.eased).toEqual([]);
+    expect(model.sent).toEqual([]);
+  });
+
+  it("does not move when the source was replaced meanwhile", async () => {
+    const { map, model, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const release = held(map);
+    map.features = [bubble("a", 1)];
+    click();
+    cluster("a", 2);
+    release();
+    await settle();
+    expect(map.eased).toEqual([]);
+    model.values.state = {};
+  });
+
+  it("does not move when the layer was hidden meanwhile", async () => {
+    const { map, model, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const release = held(map);
+    map.features = [bubble("a", 1)];
+    click();
+    (model.values.state as any).layers[0].visible = false;
+    release();
+    await settle();
+    expect(map.eased).toEqual([]);
+  });
+
+  it("does not move when the view was disposed meanwhile", async () => {
+    const { map, pointer, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const release = held(map);
+    map.features = [bubble("a", 1)];
+    click();
+    pointer.dispose();
+    release();
+    await settle();
+    expect(map.eased).toEqual([]);
+    expect(map.count("movestart")).toBe(0);
+  });
+
+  it("lets a newer cluster click win", async () => {
+    const { map, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const release = held(map);
+    map.features = [bubble("a", 1, 1)];
+    click();
+    map.features = [bubble("a", 1, 2)];
+    click();
+    release(5);
+    release(12);
+    await settle();
+    expect(map.eased.map((e: any) => e.options.zoom)).toEqual([12]);
+  });
+
+  it("yields to a newer view request", async () => {
+    const { map, model, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const release = held(map);
+    map.features = [bubble("a", 1)];
+    click();
+    model.set("view_request", { seq: 2 });
+    release();
+    await settle();
+    expect(map.eased).toEqual([]);
+  });
+
+  it("yields to a user gesture but not to a programmatic move", async () => {
+    const { map, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    const release = held(map);
+    map.features = [bubble("a", 1)];
+    click();
+    map.emit("movestart", {});
+    release();
+    await settle();
+    expect(map.eased).toHaveLength(1);
+
+    map.features = [bubble("a", 1)];
+    click();
+    map.emit("movestart", { originalEvent: { type: "mousedown" } });
+    release();
+    await settle();
+    expect(map.eased).toHaveLength(1);
+  });
+
+  it("shows the pointer cursor over a cluster of a clustered layer", () => {
+    const { map, declare, cluster } = setup({ clustered: (id) => id === "a" });
+    declare("a", 1);
+    cluster("a", 1);
+    map.features = [bubble("a", 1)];
+    map.emit("mousemove", { point: [1, 1], lngLat: { lng: 0, lat: 0 } });
+    expect(map.canvas.style.cursor).toBe("pointer");
+    expect(map.queries.at(-1)!.layers).toEqual([`${sid("a", 1)}:cluster`]);
   });
 });

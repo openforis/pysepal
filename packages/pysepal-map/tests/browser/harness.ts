@@ -337,7 +337,35 @@ function drawnPolygons(el: Element) {
     .map(({ geometry, properties }) => ({ geometry, properties }));
 }
 
+const expansions = new WeakMap<MapLibreMap, (() => Promise<unknown>)[]>();
+
+/** Hold the answers to `getClusterExpansionZoom` of a source until released. */
+function holdExpansion(el: Element, sourceId: string): void {
+  const map = mapOf(el);
+  const source = map.getSource(sourceId) as unknown as {
+    getClusterExpansionZoom(id: number): Promise<number>;
+  };
+  const original = source.getClusterExpansionZoom.bind(source);
+  const releases: (() => Promise<unknown>)[] = [];
+  expansions.set(map, releases);
+  source.getClusterExpansionZoom = (id) =>
+    new Promise((resolve, reject) => {
+      releases.push(() => original(id).then(resolve, reject));
+    });
+}
+
+/** Let every held expansion answer, and resolve once they did. */
+async function releaseExpansion(el: Element): Promise<void> {
+  const releases = expansions.get(mapOf(el)) ?? [];
+  expansions.delete(mapOf(el));
+  await Promise.allSettled(releases.splice(0).map((release) => release()));
+  // The click's continuation runs in the microtasks after the answer.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 (window as unknown as { psmHarness: unknown }).psmHarness = {
+  holdExpansion,
+  releaseExpansion,
   attach,
   quiet,
   pixel,

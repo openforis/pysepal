@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pysepal_map import (
     Basemap,
+    Cluster,
     GeoJSONSource,
     Interaction,
     Layer,
@@ -30,7 +31,7 @@ def test_to_json_matches_the_contract_fixture():
     widget.publish(
         MapState(
             layers=(
-                Layer("v1", GeoJSONSource(digest), token=3),
+                Layer("v1", GeoJSONSource(digest, Cluster(40, 12)), token=3),
                 Layer("pm", PMTilesSource("https://x.org/a.pmtiles", "roads"), token=1),
                 Layer(
                     "r1",
@@ -234,3 +235,39 @@ def test_interaction_change_keeps_instance():
     widget.publish(MapState(layers=(Layer("v", source, interaction=Interaction(popup=("b",))),)))
     assert widget.state["layers"][0]["instance"] == first
     assert widget.state["layers"][0]["interaction"] == {"popup": ["b"], "tooltip": None}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"radius": 0}, {"radius": True}, {"radius": 1.5}]
+    + [{"max_zoom": 0}, {"max_zoom": 18}, {"max_zoom": True}, {"max_zoom": 2.5}],
+)
+def test_cluster_validation(kwargs):
+    with pytest.raises(ValueError):
+        Cluster(**kwargs)
+
+
+def test_cluster_json_and_defaults():
+    assert GeoJSONSource("abc").to_json() == {"digest": "abc", "cluster": None}
+    source = GeoJSONSource("abc", cluster=Cluster(radius=30, max_zoom=12))
+    assert source.to_json() == {"digest": "abc", "cluster": {"radius": 30, "max_zoom": 12}}
+    assert (Cluster().radius, Cluster().max_zoom) == (50, 14)
+
+
+def test_cluster_changes_instance():
+    widget = MapWidget()
+    digest = widget.add_payload(EMPTY)
+    widget.publish(MapState(layers=(Layer("v", GeoJSONSource(digest)),)))
+    first = widget.state["layers"][0]["instance"]
+    widget.publish(MapState(layers=(Layer("v", GeoJSONSource(digest, cluster=Cluster())),)))
+    second = widget.state["layers"][0]["instance"]
+    assert second != first
+    widget.publish(MapState(layers=(Layer("v", GeoJSONSource(digest, cluster=Cluster())),)))
+    assert widget.state["layers"][0]["instance"] == second
+
+
+def test_marker_json():
+    assert VectorPaint().to_json()["marker"] == "circle"
+    assert VectorPaint(marker="pin").to_json()["marker"] == "pin"
+    with pytest.raises(ValueError, match="marker"):
+        VectorPaint(marker="star")

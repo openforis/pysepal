@@ -95,12 +95,43 @@ class RasterSource:
 
 
 @dataclass(frozen=True)
-class GeoJSONSource:
-    digest: str
+class Cluster:
+    """Group the points of a GeoJSON source into count bubbles below ``max_zoom``.
+
+    ``radius`` is the grouping distance in pixels. MapLibre reads a max zoom of 0
+    as its default and wants it below the source's own max zoom (18).
+    """
+
+    radius: int = 50
+    max_zoom: int = 14
+
+    def __post_init__(self) -> None:
+        """Reject a radius below 1 or a max zoom outside [1, 17]; store plain ints."""
+        radius = _int("Cluster.radius", self.radius)
+        if radius < 1:
+            raise ValueError(f"Cluster.radius must be at least 1, got {self.radius!r}")
+        max_zoom = _int("Cluster.max_zoom", self.max_zoom)
+        if not 1 <= max_zoom <= 17:
+            raise ValueError(f"Cluster.max_zoom must be an int in [1, 17], got {self.max_zoom!r}")
+        object.__setattr__(self, "radius", radius)
+        object.__setattr__(self, "max_zoom", max_zoom)
 
     def to_json(self) -> dict:
-        """The source as JSON: only the digest, since the data travels apart."""
-        return {"digest": self.digest}
+        """The cluster options as JSON."""
+        return {"radius": self.radius, "max_zoom": self.max_zoom}
+
+
+@dataclass(frozen=True)
+class GeoJSONSource:
+    digest: str
+    cluster: Cluster | None = None
+
+    def to_json(self) -> dict:
+        """The source as JSON: the digest, since the data travels apart, and the cluster."""
+        return {
+            "digest": self.digest,
+            "cluster": None if self.cluster is None else self.cluster.to_json(),
+        }
 
 
 @dataclass(frozen=True)
@@ -120,9 +151,12 @@ class VectorPaint:
     fill_opacity: float = 0.0
     width: float = 2.0
     point_radius: float = 5.0
+    marker: Literal["circle", "pin"] = "circle"
 
     def __post_init__(self) -> None:
-        """Reject an opacity outside [0, 1] and a negative or non-finite size."""
+        """Reject an opacity outside [0, 1], a negative or non-finite size and an unknown marker."""
+        if self.marker not in ("circle", "pin"):
+            raise ValueError(f"marker must be 'circle' or 'pin', got {self.marker!r}")
         object.__setattr__(self, "fill_opacity", _unit("fill_opacity", self.fill_opacity))
         for name in ("width", "point_radius"):
             value = _finite(name, getattr(self, name))
@@ -138,6 +172,7 @@ class VectorPaint:
             "fill_opacity": self.fill_opacity,
             "width": self.width,
             "point_radius": self.point_radius,
+            "marker": self.marker,
         }
 
 
