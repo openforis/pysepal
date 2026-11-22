@@ -237,7 +237,8 @@ describe("MapSync", () => {
       }
     );
     expect(sync.inspect().rejections.map((r) => r.layer)).toContain("b");
-    expect(root.dataset.psmRevision).toBe("1");
+    expect(sync.settled()).toBe(true);
+    expect(root.dataset.psmRevision).toBeUndefined();
     sync.dispose();
   });
 
@@ -248,7 +249,8 @@ describe("MapSync", () => {
       { x: PAYLOADS.x } // y encodes as invalid JSON
     );
     expect(sync.inspect().payloads).toEqual(["x"]);
-    expect(root.dataset.psmRevision).toBe("1");
+    expect(sync.settled()).toBe(true);
+    expect(root.dataset.psmRevision).toBeUndefined();
     sync.dispose();
   });
 });

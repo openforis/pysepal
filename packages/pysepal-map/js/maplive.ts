@@ -133,6 +133,8 @@ export class MapSync {
   private readonly cache: PayloadCache;
   private readonly applied = new Map<string, Applied>();
   private rejected: Rejection[] = [];
+  /** The revision whose layers, but those in error, are on the map. */
+  private rest: number | null = null;
   /** The style has loaded; `isStyleLoaded()` also waits for tiles. */
   private ready = false;
   /** Counts style loads, so work done on an earlier style is never trusted. */
@@ -201,7 +203,8 @@ export class MapSync {
     const { revision } = this.state();
     return (
       typeof revision === "number" &&
-      this.root.dataset.psmRevision === String(revision)
+      (this.root.dataset.psmRevision === String(revision) ||
+        this.rest === revision)
     );
   }
 
@@ -555,11 +558,11 @@ export class MapSync {
     const todo = plan(this.live, desired).filter((op) =>
       left("layer" in op ? op.layer.id : op.id)
     );
-    if (revision !== null && loaded && !todo.length) {
-      this.root.dataset.psmRevision = String(revision);
-    } else {
-      this.clearMarker();
-    }
+    this.clearMarker();
+    if (revision === null || !loaded || todo.length) return;
+    // The marker means the whole state is on the map; the rest alone is only `settled`.
+    if (failed.size) this.rest = revision;
+    else this.root.dataset.psmRevision = String(revision);
   }
 
   private reject(
@@ -602,6 +605,7 @@ export class MapSync {
   }
 
   private clearMarker(): void {
+    this.rest = null;
     delete this.root.dataset.psmRevision;
   }
 

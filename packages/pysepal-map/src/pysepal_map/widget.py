@@ -59,8 +59,9 @@ usable area has no size, and runs once it has one.
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
 [-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true
 when the view has marked the latest state's revision on its root (see the end
-of this docstring); a layer in error, by a rejected style operation or a payload
-that failed to decode, does not hold the mark back. Each feature is ``{"id", "instance", "properties"}``: the
+of this docstring), or when everything but the layers in error (a rejected style
+operation, a payload that failed to decode) is on the map: such a layer does not
+hold ``settled`` back, though the mark itself waits for it. Each feature is ``{"id", "instance", "properties"}``: the
 layer id and instance come from the feature's own source id, so a hit on a
 replaced instance names the old one. The view sends at most 5 features per
 layer and 20 in all, but always the first of each layer, top first, and none
