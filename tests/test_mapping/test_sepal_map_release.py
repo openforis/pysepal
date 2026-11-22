@@ -158,3 +158,16 @@ def _unmount(use_first: bool) -> None:
 def test_unmounting_a_map_element_does_not_raise(kernel, use_first) -> None:
     """Reacton closes the map when its element unmounts."""
     _unmount(use_first)
+
+
+def test_closing_a_half_built_map_raises_and_logs_nothing(kernel, caplog) -> None:
+    """A refused construction leaves close() (and __del__) with nothing to read."""
+    with pytest.raises(ValueError):
+        sm.SepalMap(gee=False, gee_session=object(), gee_interface=object())
+    with pytest.raises(TypeError):
+        sm.SepalMap(1, 2, 3)
+    _collect()
+    assert not caplog.records
+
+    half = object.__new__(sm.SepalMap)
+    half.close()

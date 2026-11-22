@@ -119,6 +119,7 @@ class SepalMap(MapWidget):
     # Class defaults, for close(): ipywidgets' __del__ calls it on an instance whose
     # constructor arguments were refused, and a failed construction calls it too.
     _theme_source = None
+    inspector = None
     _map_closed = False
     _widget_ready = False
 

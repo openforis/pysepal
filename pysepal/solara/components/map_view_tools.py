@@ -48,7 +48,7 @@ def draw_toolbar(map_) -> list:
         for mode in draw.modes
     ]
     buttons.append(
-        _tool_button("mdi-delete-outline", msg("map_view.draw.clear"), "draw-clear", draw.clear)
+        _tool_button("mdi-delete-outline", msg("map_view.draw.clear_all"), "draw-clear", draw.clear)
     )
     return [
         rv.Html(

@@ -8,7 +8,7 @@
       "linestring": "Draw a line",
       "point": "Draw a point",
       "select": "Select and edit shapes",
-      "clear": "Remove all shapes"
+      "clear_all": "Remove all shapes"
     },
     "inspector": {
       "toggle": "Inspect values on click",
