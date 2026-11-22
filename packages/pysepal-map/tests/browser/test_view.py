@@ -3,7 +3,7 @@
 import ipywidgets as widgets
 import pytest
 from IPython.display import display
-from pysepal_map import MapWidget
+from pysepal_map import MapWidget, link_views
 
 BOX = (10, 10, 20, 20)
 
@@ -395,3 +395,28 @@ def test_a_view_applies_a_request_another_view_acknowledged(harness, page_sessio
         raise AssertionError("the old report never arrived")
     assert any(m.get("cause") == "request" for m in received)
     assert widget.view == panned
+
+
+def test_linked_widgets_follow_each_other(harness, page_session):
+    one = MapWidget(height="300px")
+    two = MapWidget(height="300px")
+    link_views(one, two)
+    display(widgets.VBox([one, two]))
+    wait_views(page_session, 2)
+    a, b = view_at(page_session, 0), view_at(page_session, 1)
+    wait_view(page_session, one, lambda v: v["request_seq"] == one.view_request["seq"])
+    wait_view(page_session, two, lambda v: v["request_seq"] == two.view_request["seq"])
+
+    drag(page_session, middle(page_session, 0), (-150, 80))
+    panned = wait_view(page_session, one, matches(a))
+    wait_view(
+        page_session,
+        two,
+        lambda v: near(v["center"], panned["center"])
+        and v["zoom"] == pytest.approx(panned["zoom"]),
+    )
+    assert near(camera(b)["center"], panned["center"])
+
+    seqs = (one.view_request["seq"], two.view_request["seq"])
+    page_session.wait_for_timeout(2000)
+    assert (one.view_request["seq"], two.view_request["seq"]) == seqs
