@@ -161,7 +161,7 @@ def test_reports_of_views_that_are_not_mounted_are_ignored(loop):
 
 def test_a_report_past_the_grace_expires_the_last_view_and_clears_the_status(loop):
     widget = MapWidget(loop=loop)
-    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource(("t",))),)))
     open_view(widget)
     loading = {"r": LayerStatus("loading", None, 0, 1)}
     assert widget.layer_status == loading
@@ -339,7 +339,7 @@ async def test_callbacks_from_a_thread_with_its_own_loop_run_on_the_session_loop
     session = asyncio.get_running_loop()
     main = threading.current_thread()
     widget = MapWidget(loop=session)
-    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource(("t",))),)))
     seen = []
     done = asyncio.Event()
 
@@ -389,13 +389,13 @@ async def test_callbacks_arrive_in_order_across_threads():
 def test_a_callback_that_draws_does_not_reorder_the_others(loop):
     widget = MapWidget(loop=loop)
     layer = Layer("r", RasterSource(("t",)))
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     first, second = [], []
 
     def redraw(status):
         first.append(dict(status))
         if len(first) == 1:
-            widget.draw(MapState())
+            widget.publish(MapState())
 
     widget.on_status(redraw)
     widget.on_status(lambda status: second.append(dict(status)))

@@ -8,13 +8,13 @@ from pysepal_map import GeoJSONSource, Layer, MapState, MapWidget, VectorPaint
 
 widget = MapWidget(center=(0, 0), zoom=2)
 digest = widget.add_payload(b'{"type": "FeatureCollection", "features": []}')
-widget.draw(MapState(layers=(Layer("pts", GeoJSONSource(digest), paint=VectorPaint()),)))
+widget.publish(MapState(layers=(Layer("pts", GeoJSONSource(digest), paint=VectorPaint()),)))
 display(widget)
 ```
 
 ## What it owns
 
-- **Python owns the persistent map state**: layers and their order, basemap, theme, controls (zoom, fullscreen, a metric scale). `MapWidget.draw(MapState)` publishes a whole snapshot, and every mounted view reconciles its map to it. Python never sends a one-off command that changes the map.
+- **Python owns the persistent map state**: layers and their order, basemap, theme, controls (zoom, fullscreen, a metric scale). `MapWidget.publish(MapState)` publishes a whole snapshot, and every mounted view reconciles its map to it. Python never sends a one-off command that changes the map.
 - **The browser owns the camera** and reports it back (`on_view`); Python can ask for a move with `set_center` and `fit_bounds`, which takes a `max_zoom` cap and a `zoom_out` step.
 - **Insets** name the parts of the map that other UI covers: after `set_insets(left=300)`, views center and fit inside the rest, report its bounds, and move their controls in by as much. A fullscreen map uses none.
 - The traits that carry the contract (`state`, `view`, `view_request`, `insets`) are read-only; only the widget's methods write them.

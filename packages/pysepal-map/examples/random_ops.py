@@ -124,7 +124,7 @@ class Model:
 
     def draw(self):
         """Publish the wanted state at once."""
-        self.widget.draw(self.state())
+        self.widget.publish(self.state())
 
     def drawn_order(self):
         """The layers top-first as they draw: the overlay zone above the data zone."""

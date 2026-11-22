@@ -41,46 +41,46 @@ def test_add_payload_returns_the_sha256():
     assert widget._payloads == {digest: b"abc"}
 
 
-def test_draw_increments_revision():
+def test_publish_increments_revision():
     widget = MapWidget()
-    widget.draw(MapState())
+    widget.publish(MapState())
     assert widget.state["revision"] == 1
-    widget.draw(MapState())
+    widget.publish(MapState())
     assert widget.state["revision"] == 2
 
 
-def test_draw_with_unknown_digest_raises_keyerror():
+def test_publish_with_unknown_digest_raises_keyerror():
     widget = MapWidget()
     with pytest.raises(KeyError, match="deadbeef"):
-        widget.draw(MapState(layers=(Layer("v", GeoJSONSource("deadbeef")),)))
+        widget.publish(MapState(layers=(Layer("v", GeoJSONSource("deadbeef")),)))
     assert widget.state == {}
 
 
-def test_draw_drops_unreferenced_payloads():
+def test_publish_drops_unreferenced_payloads():
     widget = MapWidget()
     layer = geo(widget, b"keep")
     widget.add_payload(b"orphan")
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     assert list(widget._payloads) == [layer.source.digest]
-    widget.draw(MapState())
+    widget.publish(MapState())
     assert widget._payloads == {}
 
 
-def test_invalid_draw_preserves_previous_snapshot_and_bytes():
+def test_invalid_publish_preserves_previous_snapshot_and_bytes():
     widget = MapWidget()
     layer = geo(widget, b"keep")
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     before = dict(widget.state)
     extra = widget.add_payload(b"new")
     with pytest.raises(ValueError):
         MapState(layers=(dataclasses.replace(layer, opacity=float("nan")),))
     with pytest.raises(KeyError):
-        widget.draw(MapState(layers=(layer, Layer("w", GeoJSONSource("nope")))))
+        widget.publish(MapState(layers=(layer, Layer("w", GeoJSONSource("nope")))))
     with pytest.raises(TypeError):
-        widget.draw({"layers": []})
+        widget.publish({"layers": []})
     assert widget.state == before
     assert set(widget._payloads) == {layer.source.digest, extra}
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     assert widget.state["revision"] == 2
     assert instance(widget) == 1
 
@@ -88,22 +88,22 @@ def test_invalid_draw_preserves_previous_snapshot_and_bytes():
 def test_readd_with_default_token_allocates_new_instance():
     widget = MapWidget()
     layer = geo(widget)
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     assert instance(widget) == 1
-    widget.draw(MapState())
+    widget.publish(MapState())
     widget.add_payload(b"{}")
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     assert instance(widget) == 2
 
 
 def test_paint_only_changes_preserve_the_instance():
     widget = MapWidget()
     layer = geo(widget)
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     changed = dataclasses.replace(
         layer, paint=VectorPaint(stroke="#f00"), opacity=0.5, visible=False
     )
-    widget.draw(MapState(layers=(changed,)))
+    widget.publish(MapState(layers=(changed,)))
     assert instance(widget) == 1
 
 
@@ -120,10 +120,10 @@ def test_source_attribution_and_token_changes_retire_the_instance(change):
             "attribution": dataclasses.replace(layer, attribution="x"),
             "token": dataclasses.replace(layer, token=1),
         }[change]
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     if change == "digest":
         new = geo(widget, b"2")
-    widget.draw(MapState(layers=(new,)))
+    widget.publish(MapState(layers=(new,)))
     assert instance(widget) == 2
 
 
@@ -139,7 +139,7 @@ def test_pull_answers_with_buffers(monkeypatch):
     widget = MapWidget()
     data = b'{"type": "FeatureCollection", "features": []}'
     layer = geo(widget, data)
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     sent = capture_sends(monkeypatch, widget)
     digest = layer.source.digest
     widget._handle_custom_msg({"type": "pull", "digests": [digest]}, [])
@@ -150,8 +150,8 @@ def test_pull_of_a_dropped_digest_answers_missing(monkeypatch):
     widget = MapWidget()
     kept = geo(widget, b"kept")
     dropped = Layer("w", GeoJSONSource(widget.add_payload(b"dropped")))
-    widget.draw(MapState(layers=(kept, dropped)))
-    widget.draw(MapState(layers=(kept,)))
+    widget.publish(MapState(layers=(kept, dropped)))
+    widget.publish(MapState(layers=(kept,)))
     sent = capture_sends(monkeypatch, widget)
     digests = [dropped.source.digest, kept.source.digest]
     widget._handle_custom_msg({"type": "pull", "digests": digests}, [])
@@ -164,7 +164,7 @@ def test_pull_of_a_dropped_digest_answers_missing(monkeypatch):
 def test_pull_after_close_does_not_raise(monkeypatch):
     widget = MapWidget()
     layer = geo(widget)
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     sent = capture_sends(monkeypatch, widget)
     widget.close()
     widget._handle_custom_msg({"type": "pull", "digests": [layer.source.digest]}, [])
@@ -194,7 +194,7 @@ def pulled(monkeypatch, widget, digest):
     return None if content.get("missing") else buffers[0]
 
 
-def test_nested_draw_keeps_its_payloads(monkeypatch):
+def test_nested_publish_keeps_its_payloads(monkeypatch):
     """A draw made by a `state` observer during an outer draw keeps the payloads it references."""
     w = MapWidget()
     outer = w.add_payload(GEOJSON_A)
@@ -203,10 +203,10 @@ def test_nested_draw_keeps_its_payloads(monkeypatch):
     def nested(_change):
         if not inner:
             inner["d"] = w.add_payload(GEOJSON_B)
-            w.draw(MapState(layers=(Layer("b", GeoJSONSource(inner["d"])),)))
+            w.publish(MapState(layers=(Layer("b", GeoJSONSource(inner["d"])),)))
 
     w.observe(nested, "state")
-    w.draw(MapState(layers=(Layer("a", GeoJSONSource(outer)),)))
+    w.publish(MapState(layers=(Layer("a", GeoJSONSource(outer)),)))
     assert [layer["id"] for layer in w.state["layers"]] == ["b"]
     assert pulled(monkeypatch, w, inner["d"]) == GEOJSON_B
 
@@ -215,8 +215,8 @@ def test_instances_follow_input_order_and_keep_across_reorder():
     widget = MapWidget()
     a = Layer("a", RasterSource(("t",)))
     b = Layer("b", RasterSource(("u",)))
-    widget.draw(MapState(layers=(a, b)))
-    widget.draw(MapState(layers=(b, a)))
+    widget.publish(MapState(layers=(a, b)))
+    widget.publish(MapState(layers=(b, a)))
     assert instance(widget, "a") == 1
     assert instance(widget, "b") == 2
 
@@ -243,7 +243,7 @@ def test_concurrent_draws_publish_whole_ordered_snapshots(frequent_switches):
         for i in range(draws):
             raster = Layer("r", RasterSource((f"https://t/{n}/{i}/{{z}}/{{x}}/{{y}}.png",)))
             vector = Layer("g", GeoJSONSource(shared), token=n * draws + i)
-            widget.draw(MapState(layers=(raster, vector)))
+            widget.publish(MapState(layers=(raster, vector)))
 
     workers = [threading.Thread(target=draw_many, args=(n,)) for n in range(threads)]
     for worker in workers:
@@ -271,7 +271,7 @@ def board(monkeypatch, loop):
     sent = capture_sends(monkeypatch, widget)
     calls = []
     widget.on_status(lambda status: calls.append(dict(status)))
-    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource(("t",))),)))
     return widget, sent, calls
 
 
@@ -345,9 +345,9 @@ def test_same_token_remove_and_readd_ignores_the_old_instance(board):
     open_view(widget, "a")
     report(widget, "a", "ready")
     old = {"token": 0, "instance": 1}
-    widget.draw(MapState())
+    widget.publish(MapState())
     assert widget.layer_status == {}
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
     report(widget, "a", "error", error="late", **old)
     report(widget, "a", "ready", **old)
@@ -356,7 +356,7 @@ def test_same_token_remove_and_readd_ignores_the_old_instance(board):
     assert widget.layer_status == {"r": LayerStatus("ready", None, 0, 2)}
 
 
-def test_draw_retires_a_replaced_instance_before_publishing(board):
+def test_publish_retires_a_replaced_instance_before_publishing(board):
     widget, _, _ = board
     open_view(widget, "a")
     report(widget, "a", "ready")
@@ -365,7 +365,7 @@ def test_draw_retires_a_replaced_instance_before_publishing(board):
         lambda _: published.append({k: dict(v) for k, v in widget._reports.items()}),
         "state",
     )
-    widget.draw(MapState(layers=(Layer("r", RasterSource(("u",))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource(("u",))),)))
     assert published == [{("a", "main"): {}}]
     assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
 
@@ -392,7 +392,7 @@ def pair(request, monkeypatch, loop):
     capture_sends(monkeypatch, widget)
     calls = []
     widget.on_status(lambda status: calls.append(dict(status)))
-    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource(("t",))),)))
     return widget, COMPARE[request.param], calls
 
 
@@ -433,7 +433,7 @@ def test_a_left_only_layer_is_not_held_by_the_right_view(monkeypatch, loop):
     widget = CompareWidget(loop=loop)
     capture_sends(monkeypatch, widget)
     left, both = Layer("l", RasterSource(("t",))), Layer("r", RasterSource(("u",)))
-    widget.draw(MapState(layers=(left, both)))
+    widget.publish(MapState(layers=(left, both)))
     open_view(widget, "a", "left")
     open_view(widget, "b", "right")
     report(widget, "a", "ready", layer_id="l", side="left")
@@ -567,7 +567,7 @@ def test_style_errors_count_only_for_the_current_draw(board):
     assert status_of(widget) == ("ready", None)
     report(widget, "a", "error", error="paint", style_revision=1)
     assert status_of(widget) == ("error", "paint")
-    widget.draw(MapState(layers=(Layer("r", RasterSource(("t",)), opacity=0.5),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource(("t",)), opacity=0.5),)))
     assert status_of(widget) == ("error", "paint")
     report(widget, "a", "error", error="late paint", style_revision=1)
     assert status_of(widget) == ("error", "paint")
@@ -766,7 +766,7 @@ def test_hot_reload_keeps_the_asset_paths(monkeypatch):
 @hot_reload
 def test_a_closed_widget_is_collected():
     widget = MapWidget()
-    widget.draw(MapState(layers=(geo(widget),)))
+    widget.publish(MapState(layers=(geo(widget),)))
     reference = weakref.ref(widget)
 
     widget.close()

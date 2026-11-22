@@ -26,7 +26,7 @@ def raster(**kw):
 def test_to_json_matches_the_contract_fixture():
     widget = MapWidget()
     digest = widget.add_payload(EMPTY)
-    widget.draw(
+    widget.publish(
         MapState(
             layers=(
                 Layer("v1", GeoJSONSource(digest), token=3),

@@ -23,13 +23,13 @@ def test_controls_follow_state(solara_test, page_session):
     widget = MapWidget()
     display(widget)
     wait_counts(page_session, [1, 1, 0])
-    widget.draw(MapState(controls=Controls(zoom=False, fullscreen=True)))
+    widget.publish(MapState(controls=Controls(zoom=False, fullscreen=True)))
     wait_counts(page_session, [0, 1, 0])
-    widget.draw(MapState(controls=Controls(zoom=True, fullscreen=False)))
+    widget.publish(MapState(controls=Controls(zoom=True, fullscreen=False)))
     wait_counts(page_session, [1, 0, 0])
-    widget.draw(MapState(controls=Controls(zoom=False, fullscreen=False)))
+    widget.publish(MapState(controls=Controls(zoom=False, fullscreen=False)))
     wait_counts(page_session, [0, 0, 0])
-    widget.draw(MapState())
+    widget.publish(MapState())
     wait_counts(page_session, [1, 1, 0])
 
 
@@ -38,9 +38,9 @@ def test_dark_theme_sets_the_class(solara_test, page_session):
     display(widget)
     page_session.locator(".psm-map canvas").wait_for()
     assert not page_session.locator(".psm-map.psm-dark").count()
-    widget.draw(MapState(theme="dark"))
+    widget.publish(MapState(theme="dark"))
     page_session.locator(".psm-map.psm-dark").wait_for()
-    widget.draw(MapState(theme="light"))
+    widget.publish(MapState(theme="light"))
     page_session.wait_for_function(
         "!document.querySelector('.psm-map').classList.contains('psm-dark')"
     )
@@ -48,7 +48,7 @@ def test_dark_theme_sets_the_class(solara_test, page_session):
 
 def test_dark_controls_use_the_dark_surface(solara_test, page_session):
     widget = MapWidget()
-    widget.draw(MapState(theme="dark"))
+    widget.publish(MapState(theme="dark"))
     display(widget)
     button = page_session.locator(f".psm-dark {ZOOM_IN}")
     button.wait_for()

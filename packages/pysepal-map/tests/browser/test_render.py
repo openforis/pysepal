@@ -116,7 +116,7 @@ def test_geojson_layer_draws_its_features(solara_test, page_session):
     widget = MapWidget()
     payload = points([10, 5])
     source = GeoJSONSource(widget.add_payload(payload))
-    widget.draw(MapState(layers=(Layer("v1", source),)))
+    widget.publish(MapState(layers=(Layer("v1", source),)))
     display(widget)
     wait_revision(page_session, 1)
     features = view(page_session).evaluate(
@@ -139,7 +139,7 @@ def test_bundled_worker_renders_offline(harness, page_session):
     try:
         widget = MapWidget()
         source = GeoJSONSource(widget.add_payload(points([0, 0])))
-        widget.draw(MapState(layers=(Layer("pt", source),)))
+        widget.publish(MapState(layers=(Layer("pt", source),)))
         display(widget)
         wait_revision(page_session, 1)
         wait_feature(page_session, view(page_session), [0, 0], ["psm:pt:1:circle"])
@@ -153,7 +153,7 @@ def test_state_drawn_before_display_shows(solara_test, page_session):
     for x, color in enumerate(("#ff0000", "#00ff00", "#0000ff")):
         source = GeoJSONSource(widget.add_payload(points([x, 0])))
         paint = VectorPaint(stroke=color)
-        widget.draw(MapState(layers=(Layer("pt", source, paint=paint),)))
+        widget.publish(MapState(layers=(Layer("pt", source, paint=paint),)))
     display(widget)
     wait_revision(page_session, 3)
     style = view(page_session).evaluate(
@@ -178,14 +178,14 @@ def test_state_drawn_before_display_shows(solara_test, page_session):
 
 def test_a_held_geojson_completion_holds_only_the_marker(harness, page_session):
     widget = MapWidget()
-    widget.draw(MapState())
+    widget.publish(MapState())
     display(widget)
     wait_revision(page_session, 1)
     el = view(page_session)
     el.evaluate("el => { psmHarness.attach(el).holding = true; }")
 
     point = Layer("pt", GeoJSONSource(widget.add_payload(points([0, 0]))))
-    widget.draw(MapState(layers=(point, Layer("r", RasterSource((RED_TILE,))))))
+    widget.publish(MapState(layers=(point, Layer("r", RasterSource((RED_TILE,))))))
     page_session.wait_for_function("el => psmHarness.attach(el).held", arg=el)
     page_session.wait_for_function(
         "async el => { const [r, g, b] = await psmHarness.pixel(el, 20, 20);"
@@ -205,7 +205,7 @@ def test_a_rejected_paint_change_waits_for_the_next_revision(harness, page_sessi
 
     def draw(color):
         paint = VectorPaint(stroke=color)
-        widget.draw(MapState(layers=(Layer("pt", source, paint=paint),)))
+        widget.publish(MapState(layers=(Layer("pt", source, paint=paint),)))
 
     draw("#ff0000")
     display(widget)
@@ -248,7 +248,7 @@ def test_a_rejected_paint_change_waits_for_the_next_revision(harness, page_sessi
 def test_an_externally_displaced_owned_layer_is_repaired(harness, page_session):
     widget = MapWidget()
     point = Layer("pt", GeoJSONSource(widget.add_payload(points([0, 0]))))
-    widget.draw(MapState(layers=(point, Layer("r", RasterSource((RED_TILE,))))))
+    widget.publish(MapState(layers=(point, Layer("r", RasterSource((RED_TILE,))))))
     display(widget)
     wait_revision(page_session, 1)
     el = view(page_session)
@@ -286,7 +286,7 @@ def test_an_externally_displaced_owned_layer_is_repaired(harness, page_session):
 def test_a_diffed_style_switch_beside_a_custom_layer_is_rebuilt(harness, page_session):
     widget = MapWidget()
     point = Layer("pt", GeoJSONSource(widget.add_payload(points([0, 0]))))
-    widget.draw(MapState(layers=(point,)))
+    widget.publish(MapState(layers=(point,)))
     display(widget)
     wait_revision(page_session, 1)
     el = view(page_session)
@@ -334,17 +334,17 @@ def test_a_diffed_style_switch_beside_a_custom_layer_is_rebuilt(harness, page_se
 
 def test_a_stale_worker_completion_is_ignored(harness, page_session):
     widget = MapWidget()
-    widget.draw(MapState())
+    widget.publish(MapState())
     display(widget)
     wait_revision(page_session, 1)
     el = view(page_session)
     el.evaluate("el => { psmHarness.attach(el).holding = true; }")
 
     a = GeoJSONSource(widget.add_payload(points([-20, 0])))
-    widget.draw(MapState(layers=(Layer("pt", a),)))
+    widget.publish(MapState(layers=(Layer("pt", a),)))
     page_session.wait_for_function("el => psmHarness.attach(el).held", arg=el)
     b = GeoJSONSource(widget.add_payload(points([20, 0])))
-    widget.draw(MapState(layers=(Layer("pt", b),)))
+    widget.publish(MapState(layers=(Layer("pt", b),)))
     wait_revision(page_session, 3)
 
     el.evaluate("async el => { psmHarness.attach(el).release(); }")
@@ -370,7 +370,7 @@ def test_a_view_outlives_late_replies_its_sibling_and_a_style_reset(
             send(content, buffers)
 
     monkeypatch.setattr(widget, "send", withhold_a)
-    widget.draw(MapState(layers=(Layer("pt", GeoJSONSource(a)),)))
+    widget.publish(MapState(layers=(Layer("pt", GeoJSONSource(a)),)))
     first, second = widgets.Box([widget]), widgets.Box([widget])
     display(widgets.VBox([first, second]))
     for _ in range(500):
@@ -380,7 +380,7 @@ def test_a_view_outlives_late_replies_its_sibling_and_a_style_reset(
     assert withheld
 
     b = GeoJSONSource(widget.add_payload(points([20, 0])))
-    widget.draw(MapState(layers=(Layer("pt", b),)))
+    widget.publish(MapState(layers=(Layer("pt", b),)))
     wait_revision(page_session, 2, nth=0)
     wait_revision(page_session, 2, nth=1)
     gone, kept = view(page_session, 0), view(page_session, 1)
@@ -399,7 +399,7 @@ def test_a_view_outlives_late_replies_its_sibling_and_a_style_reset(
 
     # The survivor still pulls what it lacks.
     c = GeoJSONSource(widget.add_payload(points([30, 0])))
-    widget.draw(MapState(layers=(Layer("pt", c),)))
+    widget.publish(MapState(layers=(Layer("pt", c),)))
     wait_revision(page_session, 3)
     assert kept.evaluate("el => psmHarness.inspect(el).payloads") == [c.digest]
 

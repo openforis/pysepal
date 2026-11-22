@@ -705,7 +705,7 @@ class MapLibreEngine:
         for entry, _ in drawn:
             if entry.digest is not None and not self.widget.has_payload(entry.digest):
                 self.widget.add_payload(entry.payload)
-        self.widget.draw(state)
+        self.widget.publish(state)
         published = {x["id"]: x for x in self.widget.state.get("layers", ())}
         for entry, layer in drawn:
             x = published.get(layer.id)

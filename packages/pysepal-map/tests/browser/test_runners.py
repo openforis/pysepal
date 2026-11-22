@@ -36,10 +36,10 @@ def app():
 
     m = MapWidget(center=(0, 0), zoom=3, height="300px")
     initial = point(m, "initial", -10, "#ff0000")
-    m.draw(MapState(layers=(initial,)))
+    m.publish(MapState(layers=(initial,)))
 
     def add(_):
-        m.draw(MapState(layers=(point(m, "added", 10, "#0000ff"), initial)))
+        m.publish(MapState(layers=(point(m, "added", 10, "#0000ff"), initial)))
 
     button = widgets.Button(description="add a point")
     button.add_class("psm-add")

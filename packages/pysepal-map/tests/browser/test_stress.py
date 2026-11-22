@@ -291,7 +291,7 @@ def test_random_operations_converge(
     browser_errors,
 ):
     widget = MapWidget(center=(0, 0), zoom=2)
-    widget.draw(MapState())
+    widget.publish(MapState())
     # Boxes, so a second view can mount without remounting the first.
     first_box = widgets.VBox([widget])
     column = widgets.VBox([first_box])
@@ -345,7 +345,7 @@ def test_random_operations_converge(
         burst = []
         for _ in range(BURST):
             burst.append(scenario.step())
-            widget.draw(scenario.state())
+            widget.publish(scenario.state())
         check(burst)
 
     # A second view of the same widget shows the same state, without the

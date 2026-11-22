@@ -61,7 +61,7 @@ def point():
 
 def test_a_failed_tile_reports_error_until_the_layer_is_replaced(tiles, page_session):
     widget = MapWidget()
-    widget.draw(MapState())
+    widget.publish(MapState())
     box = widgets.Box([widget])
     display(box)
     wait_revision(page_session, 1)
@@ -70,7 +70,7 @@ def test_a_failed_tile_reports_error_until_the_layer_is_replaced(tiles, page_ses
     # Hold the reports at their origin: Python counts the layer as loading.
     el.evaluate("el => { psmHarness.gate(el).holding = true; }")
     tiles.fail_one("a")
-    widget.draw(MapState(layers=(Layer("r", RasterSource((tiles.url("a"),))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource((tiles.url("a"),))),)))
     page_session.wait_for_function(
         "el => psmHarness.gate(el).held.some(r => r.status === 'error')", arg=el
     )
@@ -84,7 +84,7 @@ def test_a_failed_tile_reports_error_until_the_layer_is_replaced(tiles, page_ses
     assert tiles.served
     assert widget.layer_status["r"].status == "error"
 
-    widget.draw(MapState(layers=(Layer("r", RasterSource((tiles.url("b"),))),)))
+    widget.publish(MapState(layers=(Layer("r", RasterSource((tiles.url("b"),))),)))
     wait_status(page_session, widget, is_("r", "ready", 2))
     assert list(tiles.failed) == ["a"]
     assert browser_statuses(el) == [["r", 2, "ready"]]
@@ -100,7 +100,7 @@ def test_a_rejected_paint_reports_its_revision_and_recovers(harness, page_sessio
 
     def draw(color):
         paint = VectorPaint(stroke=color)
-        widget.draw(MapState(layers=(Layer("pt", source, paint=paint),)))
+        widget.publish(MapState(layers=(Layer("pt", source, paint=paint),)))
 
     draw("#ff0000")
     display(widget)
@@ -122,7 +122,7 @@ def test_a_rejected_paint_reports_its_revision_and_recovers(harness, page_sessio
 def test_a_payload_that_is_not_json_reports_error(harness, page_session):
     widget = MapWidget()
     bad = Layer("bad", GeoJSONSource(widget.add_payload(b"\xff not json")))
-    widget.draw(MapState(layers=(bad,)))
+    widget.publish(MapState(layers=(bad,)))
     display(widget)
     wait_status(page_session, widget, is_("bad", "error", 1))
     assert "not GeoJSON" in widget.layer_status["bad"].error

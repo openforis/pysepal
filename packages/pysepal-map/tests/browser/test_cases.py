@@ -124,7 +124,7 @@ def test_reorder_changes_top_pixel(harness, page_session, wait_settled):
     ]
     display(widget)
     for revision, (layers, top) in enumerate(frames, start=1):
-        widget.draw(MapState(layers=layers))
+        widget.publish(MapState(layers=layers))
         wait_settled(page_session, revision)
         el = view(page_session)
         wait_color(page_session, el, overlap, top)
@@ -138,7 +138,7 @@ def test_overwritten_payload_shows_new_coordinates(harness, page_session, wait_s
 
     def publish():
         source = GeoJSONSource(widget.add_payload(path.read_bytes()))
-        widget.draw(MapState(layers=(Layer("pt", source, token=7, paint=solid(RED)),)))
+        widget.publish(MapState(layers=(Layer("pt", source, token=7, paint=solid(RED)),)))
         return source.digest, widget.state["layers"][0]["instance"]
 
     path.write_bytes(collection(point(*a)))
@@ -164,7 +164,7 @@ def test_reorder_while_drawing_polygon(harness, page_session, wait_settled):
     south = GeoJSONSource(widget.add_payload(collection(square(-40, -20, -30, -10))))
     north = GeoJSONSource(widget.add_payload(collection(square(30, 10, 40, 20))))
     south, north = Layer("south", south), Layer("north", north)
-    widget.draw(MapState(layers=(south, north)))
+    widget.publish(MapState(layers=(south, north)))
     display(widget)
     wait_settled(page_session, 1)
     el = view(page_session)
@@ -204,7 +204,7 @@ def test_reorder_while_drawing_polygon(harness, page_session, wait_settled):
     click(clicks[1], 2)
     started = el.evaluate("el => psmHarness.drawnPolygons(el)[0].geometry.coordinates[0]")
 
-    widget.draw(MapState(layers=(north, south)))
+    widget.publish(MapState(layers=(north, south)))
     wait_settled(page_session, 2)
     click(clicks[2], 3)
     # A click on the first vertex closes the polygon.
@@ -247,7 +247,7 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
     widget = SidedWidget()
     received = []
     widget.on_msg(lambda _, content, __: received.append(content))
-    widget.draw(MapState())
+    widget.publish(MapState())
     display(widget)
     wait_settled(page_session, 1)
     el = view(page_session)
@@ -260,16 +260,16 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
         " gate.only = (m) => m.id === 'pt' && m.instance === 1;"
         " gate.holding = true; }"
     )
-    widget.draw(MapState(layers=(pt,)))
+    widget.publish(MapState(layers=(pt,)))
     page_session.wait_for_function(
         "el => psmHarness.gate(el).held.some((m) => m.status === 'ready')", arg=el
     )
     assert widget.layer_status == {"pt": LayerStatus("loading", None, 0, 1)}
 
     # Removed, with its bytes, then added again under the same default token.
-    widget.draw(MapState())
+    widget.publish(MapState())
     widget.add_payload(data)
-    widget.draw(MapState(layers=(pt,)))
+    widget.publish(MapState(layers=(pt,)))
     assert widget.state["layers"][0]["instance"] == 2
     wait_status(page_session, widget, lambda s: s.get("pt") == LayerStatus("ready", None, 0, 2))
 
@@ -286,7 +286,7 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
 
     # cmp draws on a left and a right view, registered as the browser would.
     cmp = Layer("cmp", GeoJSONSource(widget.add_payload(collection(point(5, 5)))))
-    widget.draw(MapState(layers=(pt, cmp)))
+    widget.publish(MapState(layers=(pt, cmp)))
     instance = widget.state["layers"][1]["instance"]
 
     def post(message):
@@ -346,7 +346,7 @@ def test_two_views_converge(tiles, page_session, wait_settled, owned_snapshot, e
     points = geojson("points", collection(point(0, 0), point(10, 5)), RED)
     area = geojson("area", collection(square(-10, -10, 0, 0)), BLUE)
     raster = Layer("raster", RasterSource((tiles.url("r"),)), opacity=0.5)
-    widget.draw(MapState(layers=(points, area, raster), basemap=basemap))
+    widget.publish(MapState(layers=(points, area, raster), basemap=basemap))
     first, second = widgets.VBox([widget]), widgets.VBox([widget])
     display(widgets.VBox([first, second]))
     wait_settled(page_session, 1, expected_views=2)
@@ -355,7 +355,7 @@ def test_two_views_converge(tiles, page_session, wait_settled, owned_snapshot, e
 
     first.children = ()
     moved = geojson("points", collection(point(-5, 5)), RED)
-    widget.draw(MapState(layers=(raster, replace(area, zone="overlay"), moved), theme="dark"))
+    widget.publish(MapState(layers=(raster, replace(area, zone="overlay"), moved), theme="dark"))
     wait_settled(page_session, 2, expected_views=1)
     [survivor] = owned_snapshot(page_session)
     assert survivor == expected_snapshot(widget.state, payloads)
@@ -375,7 +375,7 @@ def test_large_payload_travels_as_a_buffer(harness, page_session, wait_settled, 
         send(content, buffers)
 
     monkeypatch.setattr(widget, "send", record)
-    widget.draw(MapState(layers=(Layer("many", GeoJSONSource(widget.add_payload(payload))),)))
+    widget.publish(MapState(layers=(Layer("many", GeoJSONSource(widget.add_payload(payload))),)))
     assert len(json.dumps(widget.state)) < 10_000
     display(widget)
     wait_settled(page_session, 1)
@@ -396,7 +396,7 @@ def test_raster_overzooms_at_map_limit(tiles, page_session, wait_settled):
     tiles.color("solid", color)
     widget = MapWidget(center=(10, 10), zoom=24)
     source = RasterSource((tiles.url("solid"),), max_native_zoom=20)
-    widget.draw(MapState(layers=(Layer("r", source, attribution="© Solid tiles"),)))
+    widget.publish(MapState(layers=(Layer("r", source, attribution="© Solid tiles"),)))
     display(widget)
     wait_settled(page_session, 1)
     el = view(page_session)
@@ -414,7 +414,7 @@ def test_pmtiles_layer_draws(pmtiles, page_session, wait_settled):
     widget = MapWidget()
     paint = VectorPaint(stroke="#ff00ff", fill="#ff00ff", fill_opacity=1.0, point_radius=6)
     layer = Layer("pm", PMTilesSource(pmtiles.url, "points"), paint=paint)
-    widget.draw(MapState(layers=(layer,)))
+    widget.publish(MapState(layers=(layer,)))
     widget.fit_bounds(pmtiles.bounds, padding=40)
     display(widget)
     wait_settled(page_session, 1)

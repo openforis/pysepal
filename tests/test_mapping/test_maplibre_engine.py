@@ -471,7 +471,7 @@ async def test_payload_survives_a_nested_draw(fake):
     def draw_over(_change):
         if not nested:
             nested.append(True)
-            widget.draw(MapState())  # prunes the engine's payload
+            widget.publish(MapState())  # prunes the engine's payload
 
     widget.observe(draw_over, "state")
     store.set_opacity("v", 0.5)

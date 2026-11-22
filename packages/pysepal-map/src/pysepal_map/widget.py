@@ -8,12 +8,12 @@ Traits. ``state``, ``view``, ``view_request`` and ``insets`` are read-only:
 assigning one raises ``traitlets.TraitError``, and only the widget writes
 them. The comm opens with the first request, sequence 1, in ``view_request``.
 
-Draws. ``MapWidget.draw`` publishes a whole ``MapState`` in the ``state``
+Publishing. ``MapWidget.publish`` sets a whole ``MapState`` in the ``state``
 trait, with a ``revision`` one above the last. Each layer gets an
 ``instance``, an integer that grows over the widget's life, given in input
 order from 1. A layer gets a new one when it first appears, when it comes back
-after a draw without it, and when its source, source attribution or token
-changes; visibility, opacity, paint, zooms, zone and order keep it. A draw that
+after a publish without it, and when its source, source attribution or token
+changes; visibility, opacity, paint, zooms, zone and order keep it. A publish that
 raises publishes nothing and changes no counter.
 
 Style ids. A view owns every source and layer whose id starts with ``psm:``. A
@@ -29,9 +29,9 @@ Messages. Each mounted view has a unique ``view_id`` and a side (``main``;
 with a ``type``: ``view_open`` on mount and every 20 s, ``view_close``,
 ``pull`` with the GeoJSON digests it lacks, ``status`` on one layer instance,
 and ``view_report`` with its camera. A ``status`` on a rejected style operation
-also carries its ``style_revision``, which counts only for the current draw.
+also carries its ``style_revision``, which counts only for the current publish.
 Python answers each pulled digest with a ``data`` message that carries the
-UTF-8 GeoJSON as one buffer, or ``missing: true`` once a draw dropped it, and
+UTF-8 GeoJSON as one buffer, or ``missing: true`` once a publish dropped it, and
 sends ``status_request`` to ask one view and side to send its statuses again.
 Python's messages reach every view, so each ignores what it did not ask for.
 Any message renews its view; one silent for ``VIEW_EXPIRY_S`` and then
@@ -377,7 +377,7 @@ class MapWidget(anywidget.AnyWidget):
             self._view_report(content)
 
     def _answer_pull(self, digests) -> None:
-        """Send each digest's bytes, or ``missing`` once a draw dropped them."""
+        """Send each digest's bytes, or ``missing`` once a publish dropped them."""
         if not isinstance(digests, list):
             return
         for digest in dict.fromkeys(d for d in digests if isinstance(d, str)):
@@ -443,7 +443,7 @@ class MapWidget(anywidget.AnyWidget):
         """Keep one view's report on the current instance of a layer.
 
         Reports from views that are not mounted, about layers or instances
-        no longer drawn, or about a style operation of an earlier draw are
+        no longer drawn, or about a style operation of an earlier publish are
         stale and ignored.
         """
         view = self._view_of(content)
@@ -611,11 +611,11 @@ class MapWidget(anywidget.AnyWidget):
             handle.cancel()
 
     def add_payload(self, data: bytes) -> str:
-        """Keep GeoJSON bytes for the next draw and return their sha256 digest.
+        """Keep GeoJSON bytes for the next publish and return their sha256 digest.
 
-        The next ``draw`` drops every payload its state does not reference,
-        including ones added since the draw before it, so add payloads right
-        before the draw that uses them.
+        The next ``publish`` drops every payload its state does not reference,
+        including ones added since the publish before it, so add payloads right
+        before the publish that uses them.
         """
         digest = hashlib.sha256(data).hexdigest()
         with self._lock:
@@ -627,19 +627,19 @@ class MapWidget(anywidget.AnyWidget):
         with self._lock:
             return digest in self._payloads
 
-    def draw(self, state: MapState) -> None:
+    def publish(self, state: MapState) -> None:
         """Publish ``state`` as the next snapshot; a failure changes nothing.
 
         Every GeoJSON digest in ``state`` must come from ``add_payload``. The
-        draw then drops the payloads ``state`` does not reference, even ones
-        added since the last draw: add each payload right before the draw
-        that uses it. Draws from several threads publish one at a time.
-        Observers of ``state`` run under the widget lock, so a draw they make
+        publish then drops the payloads ``state`` does not reference, even ones
+        added since the last publish: add each payload right before the publish
+        that uses it. Publishes from several threads publish one at a time.
+        Observers of ``state`` run under the widget lock, so a publish they make
         publishes after this one.
         """
         if not isinstance(state, MapState):
-            raise TypeError("draw expects a MapState")
-        # One draw at a time from validation to prune, so concurrent draws
+            raise TypeError("publish expects a MapState")
+        # One publish at a time from validation to prune, so concurrent publishes
         # publish in revision order and never share an instance.
         with self._lock:
             referenced = {
@@ -677,7 +677,7 @@ class MapWidget(anywidget.AnyWidget):
                 for layer_id, report in list(reports.items()):
                     if current.get(layer_id) != (report.token, report.instance):
                         del reports[layer_id]
-            # Pruned first: a draw that a state observer makes prunes last.
+            # Pruned first: a publish that a state observer makes prunes last.
             self._payloads = {d: b for d, b in self._payloads.items() if d in referenced}
             self.set_trait("state", data)
         # The callbacks run outside the lock.
