@@ -5,7 +5,7 @@ do instead of a bare ``ModuleNotFoundError``.
 """
 
 raise ImportError(
-    "pysepal.mapping.draw_control was removed in pysepal 5.0. Drawing is being rebuilt on the MapLibre map; pin "
+    "pysepal.mapping.draw_control was removed in pysepal 5.0. Use m.draw (enable, start, features) and m.on_draw on a SepalMap; pin "
     '"pysepal<5" for an app that still uses it. See https://github.com/openforis/'
     "pysepal/blob/main/docs/guides/migrating-to-pysepal-5.md"
 )

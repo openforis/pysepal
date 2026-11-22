@@ -5,7 +5,7 @@ do instead of a bare ``ModuleNotFoundError``.
 """
 
 raise ImportError(
-    "pysepal.mapping.inspector_control was removed in pysepal 5.0. The value inspector is being rebuilt on the MapLibre map; pin "
+    "pysepal.mapping.inspector_control was removed in pysepal 5.0. Use SepalMap(inspector=True) shown in a MapView; pin "
     '"pysepal<5" for an app that still uses it. See https://github.com/openforis/'
     "pysepal/blob/main/docs/guides/migrating-to-pysepal-5.md"
 )

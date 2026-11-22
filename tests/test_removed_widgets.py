@@ -131,3 +131,14 @@ def test_the_solara_surface_imports():
 def test_models_import_without_widgets():
     result = _run("from pysepal.aoi import AoiModel; from pysepal.planetapi import PlanetModel")
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "module,replacement",
+    [
+        ("pysepal.mapping.draw_control", "m.draw"),
+        ("pysepal.mapping.inspector_control", "SepalMap(inspector=True)"),
+    ],
+)
+def test_removed_stubs_name_their_replacement(module, replacement):
+    assert replacement in _run(f"import {module}").stderr

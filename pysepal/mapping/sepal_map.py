@@ -24,6 +24,7 @@ from eeclient.client import EESession
 from pysepal_map import Controls, MapWidget
 from typing_extensions import Self
 
+from pysepal.frontend.styles import THEMES
 from pysepal.layers import LayerSpec, LayerStore, RenderLayer, prepare, prepare_sync
 from pysepal.layers.preparation import (
     CLIENT_PREFIX_ENV_VAR,  # noqa: F401  (public re-export)
@@ -122,10 +123,11 @@ class SepalMap(MapWidget):
     _widget_ready = False
 
     _REMOVED_MEMBERS = {
-        "dc": "the draw tools being rebuilt on the MapLibre map",
-        "v_inspector": "the value inspector being rebuilt on the MapLibre map",
-        "show_dc": "the draw tools being rebuilt on the MapLibre map",
-        "hide_dc": "the draw tools being rebuilt on the MapLibre map",
+        "dc": "m.draw (enable, start, features) and m.on_draw",
+        "show_dc": "m.draw.enable()",
+        "hide_dc": "m.draw.disable()",
+        "v_inspector": "SepalMap(inspector=True) shown in a MapView",
+        "on_interaction": "m.on_click(callback) for clicks; tooltips (VectorStyle(tooltip=...)) for hover",
         "add_legend": "the MapView legend, built from each layer's legend",
         "add_colorbar": "the MapView legend, built from each layer's legend",
         "add_layer": "m.layer_store.add() with a LayerSpec (LayerSpec.from_tiles, ...)",
@@ -157,6 +159,8 @@ class SepalMap(MapWidget):
         zoom: float = 3.0,
         height: str = "400px",
         loop: Optional[asyncio.AbstractEventLoop] = None,
+        inspector: bool = False,
+        coordinates: bool = False,
     ) -> None:
         """Build a map that draws a layer store.
 
@@ -173,6 +177,8 @@ class SepalMap(MapWidget):
             zoom: the first zoom level. MapLibre counts a 512 px world at zoom 0.
             height: the CSS height of the map.
             loop: the session loop; the widget and the engine run their callbacks there.
+            inspector: build the map's value inspector as ``m.inspector``.
+            coordinates: show the pointer's coordinates.
 
         Raises:
             ValueError: if both gee_session and gee_interface are provided, or a basemap is unknown
@@ -191,6 +197,7 @@ class SepalMap(MapWidget):
         )
 
         self._zooms_started = 0
+        self.inspector = None
         self._home = (tuple(center), zoom)
         # MapWidget sets what its close() reads before anything in it can raise
         self._widget_ready = True
@@ -223,8 +230,14 @@ class SepalMap(MapWidget):
             self.layer_engine.configure(
                 basemap=get_basemap(self.basemap),
                 theme=self.theme,
-                controls=Controls(zoom=True, fullscreen=fullscreen_control, scale=True),
+                controls=Controls(
+                    zoom=True,
+                    fullscreen=fullscreen_control,
+                    scale=True,
+                    coordinates=coordinates,
+                ),
             )
+            self.draw.set_color(THEMES[self.theme == "dark"]["info"])
             self._bind_theme_source(source)
         except BaseException:
             self.close()
@@ -243,6 +256,8 @@ class SepalMap(MapWidget):
         """Close the map: its pending async adds commit nothing, the store keeps its layers."""
         self._unbind_theme_source()
         self._map_closed = True
+        if self.inspector is not None:
+            self.inspector.close()
         if self.layer_engine is not None:
             self.layer_engine.close()
         if self._widget_ready:
@@ -286,6 +301,7 @@ class SepalMap(MapWidget):
         if theme == self.theme:
             return
         self.set_trait("theme", theme)
+        self.draw.set_color(THEMES[is_dark]["info"])
         if self.layer_engine is not None:
             self.layer_engine.configure(theme=theme)
         variant = f"SEPAL_{theme.upper()}"

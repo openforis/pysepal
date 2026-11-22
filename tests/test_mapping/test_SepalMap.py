@@ -258,6 +258,40 @@ def test_get_basemap_list() -> None:
     assert all(key in res for key in xyz_tiles)
 
 
+@pytest.mark.parametrize(
+    "member,replacement",
+    [
+        ("dc", "m.draw (enable, start, features) and m.on_draw"),
+        ("show_dc", "m.draw.enable()"),
+        ("hide_dc", "m.draw.disable()"),
+        ("v_inspector", "SepalMap(inspector=True) shown in a MapView"),
+        ("on_interaction", "m.on_click(callback)"),
+    ],
+)
+def test_removed_member_messages(member, replacement) -> None:
+    with pytest.raises(AttributeError) as error:
+        getattr(SepalMap(gee=False), member)
+    assert replacement in str(error.value)
+
+
+def test_draw_color_follows_theme() -> None:
+    state = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=state)
+    assert m.draw.color == ss.THEMES[False]["info"]
+    state.set_mode("dark")
+    assert m.draw.color == ss.THEMES[True]["info"]
+    assert SepalMap(gee=False, theme_state=state).draw.color == ss.THEMES[True]["info"]
+
+
+def test_coordinates_control() -> None:
+    assert SepalMap(gee=False).state["controls"]["coordinates"] is False
+    assert SepalMap(gee=False, coordinates=True).state["controls"]["coordinates"] is True
+
+
+def test_inspector_is_none_by_default() -> None:
+    assert SepalMap(gee=False).inspector is None
+
+
 # -- theme ------------------------------------------------------------------------------------
 
 
