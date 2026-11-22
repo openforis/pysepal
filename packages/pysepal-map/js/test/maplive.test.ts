@@ -142,6 +142,7 @@ function geojson(
     min_zoom: 0,
     max_zoom: null,
     attribution: "",
+    interaction: null,
     source: { digest },
     paint: {
       stroke: "#3388ff",

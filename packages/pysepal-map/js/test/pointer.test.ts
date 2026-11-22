@@ -360,6 +360,25 @@ describe("cursor", () => {
     expect(map.canvas.style.cursor).toBe("wait");
   });
 
+  it("is recomputed on a state change under a pointer that does not move", () => {
+    let on = true;
+    const { map, model, declare } = setup({ clickable: () => on });
+    declare("a", 1);
+    map.features = [feature("a", 1, 0)];
+    move(map);
+    expect(map.canvas.style.cursor).toBe("pointer");
+    on = false;
+    model.set("state", {});
+    expect(map.canvas.style.cursor).toBe("");
+    on = true;
+    model.set("state", {});
+    expect(map.canvas.style.cursor).toBe("pointer");
+    // The layer is hidden: the live style no longer answers the query.
+    map.layers.length = 0;
+    model.set("state", {});
+    expect(map.canvas.style.cursor).toBe("");
+  });
+
   it("does not query when no layer is clickable", () => {
     const { map, declare } = setup();
     declare("a", 1);

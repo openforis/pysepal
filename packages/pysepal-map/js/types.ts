@@ -15,6 +15,12 @@ export interface VectorPaint {
   point_radius: number;
 }
 
+/** What a click or the pointer shows: `[]` is every property, null is off. */
+export interface InteractionState {
+  popup: string[] | null;
+  tooltip: string[] | null;
+}
+
 interface LayerBase {
   id: string;
   token: number;
@@ -25,6 +31,7 @@ interface LayerBase {
   min_zoom: number;
   max_zoom: number | null;
   attribution: string;
+  interaction: InteractionState | null;
 }
 
 export interface GeoJSONLayerState extends LayerBase {

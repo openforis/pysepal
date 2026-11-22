@@ -77,6 +77,25 @@ interactive. ``marker`` is read-only: ``{}`` or ``{"lnglat": [lng, lat],
 one marker for it. ``Controls.coordinates`` shows the pointer's ``lat, lng``
 at the bottom left.
 
+Popups and tooltips. A vector layer may carry an ``Interaction``, which is part
+of the state but not of its instance identity, so changing it keeps the
+instance. ``popup`` and ``tooltip`` are each ``None`` (off), ``()`` (every
+property, in the feature's order) or a tuple naming the properties to show, in
+that order; entries are non-empty strings, and a raster layer takes no
+interaction. A click opens one popup per view, at the click, for the top
+feature among layers with a popup: a two-column table with a row per named
+property the feature has, and nothing when there is no row. A new popup
+replaces the old one. The pointer shows one tooltip, updated once per
+animation frame, for the top feature among layers with a tooltip: a single
+named property shows only its value, otherwise one ``name: value`` line each. It
+hides when nothing is hit and when the pointer leaves the map. Values are
+strings as they are, numbers with ``str``, ``null`` as empty and objects or
+arrays as JSON, each cut at 200 characters, and are inserted as text, never
+HTML. Both are off while drawing is interactive. Each remembers the source id
+of its feature and closes when that source is no longer declared, its layer is
+hidden, or the layer no longer declares it. The click message is sent
+whether or not a popup opens.
+
 Insets. ``insets`` holds the CSS pixels other UI covers on each side of the
 map element, as ``left``, ``right``, ``top`` and ``bottom``, all 0 at first. A
 view applies them as the map's padding before it restores the camera, and

@@ -7,6 +7,7 @@ import pytest
 from pysepal_map import (
     Basemap,
     GeoJSONSource,
+    Interaction,
     Layer,
     MapState,
     MapWidget,
@@ -202,3 +203,34 @@ def test_numpy_numbers_are_accepted_and_published_as_plain_json():
     assert json.loads(json.dumps(published, allow_nan=False)) == published
     assert published["layers"][0]["source"]["bounds"] == [-10, -5, 10, 5]
     assert published["layers"][0]["opacity"] == 0.5
+
+
+def test_interaction_json():
+    layer = Layer("v", GeoJSONSource("abc"), interaction=Interaction(popup=("a", "b"), tooltip=()))
+    assert layer.to_json()["interaction"] == {"popup": ["a", "b"], "tooltip": []}
+    off = Layer("v", GeoJSONSource("abc"), interaction=Interaction(tooltip=("a",)))
+    assert off.to_json()["interaction"] == {"popup": None, "tooltip": ["a"]}
+    assert Layer("v", GeoJSONSource("abc")).to_json()["interaction"] is None
+
+
+@pytest.mark.parametrize("field", ["popup", "tooltip"])
+@pytest.mark.parametrize("bad", [("",), ("a", ""), (1,), "name"])
+def test_interaction_rejects_empty_field(field, bad):
+    with pytest.raises(ValueError):
+        Interaction(**{field: bad})
+
+
+def test_raster_layer_rejects_interaction():
+    with pytest.raises(ValueError, match="interaction"):
+        raster(interaction=Interaction(popup=()))
+
+
+def test_interaction_change_keeps_instance():
+    widget = MapWidget()
+    digest = widget.add_payload(EMPTY)
+    source = GeoJSONSource(digest)
+    widget.publish(MapState(layers=(Layer("v", source, interaction=Interaction(popup=("a",))),)))
+    first = widget.state["layers"][0]["instance"]
+    widget.publish(MapState(layers=(Layer("v", source, interaction=Interaction(popup=("b",))),)))
+    assert widget.state["layers"][0]["instance"] == first
+    assert widget.state["layers"][0]["interaction"] == {"popup": ["b"], "tooltip": None}

@@ -14,6 +14,7 @@ import {
 import { toOwnedStyle } from "../translate";
 import type {
   BasemapState,
+  InteractionState,
   LayerState,
   MapState,
   OwnedStyle,
@@ -661,6 +662,10 @@ class StateGenerator {
       min_zoom: vary(old?.min_zoom, [0, 0, 0, 2, 5]),
       max_zoom: vary(old?.max_zoom, [null, null, 12, 18]),
       attribution,
+      interaction:
+        kind === "raster"
+          ? null
+          : vary(old ? old.interaction : undefined, INTERACTIONS),
       source,
       paint: kind === "raster" ? null : this.paint(old?.paint ?? undefined),
     };
@@ -740,6 +745,14 @@ class StateGenerator {
     return out;
   }
 }
+
+const INTERACTIONS: (InteractionState | null)[] = [
+  null,
+  null,
+  { popup: [], tooltip: null },
+  { popup: ["name"], tooltip: ["name", "id"] },
+  { popup: null, tooltip: [] },
+];
 
 const KINDS = ["geojson", "pmtiles", "raster"] as const;
 

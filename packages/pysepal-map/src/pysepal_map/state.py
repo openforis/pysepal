@@ -141,6 +141,46 @@ class VectorPaint:
         }
 
 
+def _fields(name: str, value) -> tuple[str, ...] | None:
+    """``value`` as a tuple of non-empty property names, or None."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        raise ValueError(f"{name} must be a tuple of property names, got {value!r}")
+    try:
+        fields = tuple(value)
+    except TypeError:
+        raise ValueError(f"{name} must be a tuple of property names, got {value!r}") from None
+    for field_name in fields:
+        if not isinstance(field_name, str) or not field_name:
+            raise ValueError(f"{name} entries must be non-empty strings, got {field_name!r}")
+    return fields
+
+
+@dataclass(frozen=True)
+class Interaction:
+    """What a click or the pointer shows of a feature's properties.
+
+    ``()`` shows every property, a tuple the named ones in that order, ``None``
+    turns the popup or tooltip off.
+    """
+
+    popup: tuple[str, ...] | None = None
+    tooltip: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a field that is not a tuple of non-empty strings."""
+        for name in ("popup", "tooltip"):
+            object.__setattr__(self, name, _fields(f"Interaction.{name}", getattr(self, name)))
+
+    def to_json(self) -> dict:
+        """The interaction as JSON, with each field a list or null."""
+        return {
+            "popup": None if self.popup is None else list(self.popup),
+            "tooltip": None if self.tooltip is None else list(self.tooltip),
+        }
+
+
 @dataclass(frozen=True)
 class Layer:
     id: str
@@ -153,9 +193,10 @@ class Layer:
     max_zoom: float | None = None
     paint: VectorPaint | None = None
     attribution: str = ""
+    interaction: Interaction | None = None
 
     def __post_init__(self) -> None:
-        """Reject an unknown source or zone, a non-int token, out-of-range opacity or zooms, and a paint on a raster layer; give vector layers the default paint."""
+        """Reject an unknown source or zone, a non-int token, out-of-range opacity or zooms, and a paint or interaction on a raster layer; give vector layers the default paint."""
         if not isinstance(self.source, (RasterSource, GeoJSONSource, PMTilesSource)):
             raise ValueError(f"unsupported source {self.source!r}")
         object.__setattr__(self, "token", _int("token", self.token))
@@ -175,6 +216,8 @@ class Layer:
         if self.kind == "raster":
             if self.paint is not None:
                 raise ValueError("a raster layer takes no paint")
+            if self.interaction is not None:
+                raise ValueError("a raster layer takes no interaction")
         elif self.paint is None:
             object.__setattr__(self, "paint", VectorPaint())
 
@@ -201,6 +244,7 @@ class Layer:
             "attribution": self.attribution,
             "source": self.source.to_json(),
             "paint": None if self.paint is None else self.paint.to_json(),
+            "interaction": None if self.interaction is None else self.interaction.to_json(),
         }
 
 

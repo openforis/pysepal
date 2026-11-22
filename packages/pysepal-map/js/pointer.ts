@@ -9,6 +9,21 @@ const IN_ALL = 20;
 /** The parts of an owned vector layer that a click can hit. */
 const HIT_PART = /^psm:[^:]+:\d+:(fill|line|circle|pin)$/;
 
+/**
+ * The owned vector style layers in the live style, optionally of some logical
+ * layers: a query may name only layers MapLibre has, or it rejects it whole.
+ */
+export function ownedStyleLayers(
+  map: Pick<PointerMap, "getLayersOrder" | "getLayer">,
+  wanted?: (layerId: string) => boolean
+): string[] {
+  return map.getLayersOrder().filter((id) => {
+    if (!HIT_PART.test(id) || !map.getLayer(id)) return false;
+    const parsed = parseSourceId(id);
+    return parsed !== null && (!wanted || wanted(parsed.id));
+  });
+}
+
 /** `lng` brought into [-180, 180]. */
 export function wrapLng(lng: number): number {
   if (lng >= -180 && lng <= 180) return lng;
@@ -49,7 +64,7 @@ export interface MarkerLike {
 }
 
 export interface PointerModel {
-  get(name: "cursor" | "marker"): unknown;
+  get(name: "cursor" | "marker" | "state"): unknown;
   on(name: string, callback: () => void): void;
   off(name: string, callback: () => void): void;
   send(content: unknown): void;
@@ -64,7 +79,7 @@ export interface PointerOptions {
   settled(): boolean;
   /** Whether drawing is interactive: clicks and the cursor are then its own. */
   drawing?(): boolean;
-  /** Whether a layer shows a popup, a tooltip or clusters: its features take `pointer`. */
+  /** Whether a layer shows a popup, a tooltip or clusters: its features take `pointer`. Read on every move and state change. */
   clickable?(layerId: string): boolean;
   createMarker(color: string): MarkerLike;
 }
@@ -83,6 +98,8 @@ export class ViewPointer {
   private marker: MarkerLike | null = null;
   private markerColor = "";
   private over = false;
+  /** Where the pointer is on the map, null once it left. */
+  private at: PointLike | null = null;
   private disposed = false;
 
   constructor(private readonly options: PointerOptions) {
@@ -92,6 +109,7 @@ export class ViewPointer {
     map.on("mouseout", this.onOut);
     model.on("change:cursor", this.applyCursor);
     model.on("change:marker", this.applyMarker);
+    model.on("change:state", this.onState);
     this.applyCursor();
     this.applyMarker();
   }
@@ -105,24 +123,15 @@ export class ViewPointer {
     map.off("mouseout", this.onOut);
     model.off("change:cursor", this.applyCursor);
     model.off("change:marker", this.applyMarker);
+    model.off("change:state", this.onState);
     this.marker?.remove();
     this.marker = null;
-  }
-
-  /** The owned vector style layers in the live style, optionally of some logical layers. */
-  private styleLayers(wanted?: (layerId: string) => boolean): string[] {
-    const { map } = this.options;
-    return map.getLayersOrder().filter((id) => {
-      if (!HIT_PART.test(id) || !map.getLayer(id)) return false;
-      const parsed = parseSourceId(id);
-      return parsed !== null && (!wanted || wanted(parsed.id));
-    });
   }
 
   /** The hits at a point, top first, capped per layer and in all. */
   hitsAt(point: PointLike): Hit[] {
     const { map } = this.options;
-    const layers = this.styleLayers();
+    const layers = ownedStyleLayers(map);
     if (!layers.length) return [];
     const perLayer = new Map<string, number>();
     const seen = new Set<string>();
@@ -167,19 +176,29 @@ export class ViewPointer {
   };
 
   private readonly onMove = (event: PointerEvent): void => {
-    const { clickable } = this.options;
-    const layers = clickable ? this.styleLayers(clickable) : [];
-    this.over =
-      layers.length > 0 &&
-      this.options.map.queryRenderedFeatures(event.point, { layers }).length >
-        0;
-    this.applyCursor();
+    this.at = event.point;
+    this.look();
   };
 
   private readonly onOut = (): void => {
-    this.over = false;
-    this.applyCursor();
+    this.at = null;
+    this.look();
   };
+
+  // A popup or tooltip may be turned off, or its layer hidden or removed,
+  // under a pointer that does not move.
+  private readonly onState = (): void => this.look();
+
+  /** Whether a clickable feature is under the pointer, then the cursor. */
+  private look(): void {
+    const { map, clickable } = this.options;
+    const layers = this.at && clickable ? ownedStyleLayers(map, clickable) : [];
+    this.over =
+      this.at !== null &&
+      layers.length > 0 &&
+      map.queryRenderedFeatures(this.at, { layers }).length > 0;
+    this.applyCursor();
+  }
 
   /** Drawing's own cursor, else `pointer` over a clickable feature, else the trait. */
   private readonly applyCursor = (): void => {
