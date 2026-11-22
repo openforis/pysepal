@@ -206,6 +206,10 @@ def test_the_gee_aoi_demo_offers_what_a_spec_can_carry():
     spec.loader.exec_module(module)
 
     # resolve_methods only tests that the map has drawing tools.
-    offered = resolve_methods(module.METHODS, gee=True, map_=SepalMap(gee=False))
+    map_ = SepalMap(gee=False)
+    try:
+        offered = resolve_methods(module.METHODS, gee=True, map_=map_)
+    finally:
+        map_.close()
 
     assert set(offered) == {"ADMIN0", "ADMIN1", "ADMIN2", "DRAW", "ASSET"}
