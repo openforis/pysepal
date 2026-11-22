@@ -1,18 +1,22 @@
 """Draw geometry processing.
 
-Functions for processing geometries drawn on the map using DrawControl.
+Functions for processing geometries drawn on the map from the map's drawing tools.
 """
 
 from datetime import datetime as dt
 from typing import Any, Dict, Optional
 
 import geopandas as gpd
+from pysepal_map._draw import RESERVED_PROPERTIES
 
 from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.scripts.gee_interface import refuse_ambient_session_per_connection
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
+
+# What Terra Draw puts in a feature's properties, besides the style the old control added.
+_DRAWING_PROPERTIES = RESERVED_PROPERTIES | {"style", "radiusKilometers"}
 
 
 def process_draw(
@@ -23,10 +27,10 @@ def process_draw(
 ) -> AoiResult:
     """Process a drawn geometry from map interaction.
 
-    Converts a GeoJSON dict (from DrawControl) into an AoiResult.
+    Converts a GeoJSON dict (from ``m.draw.features``) into an AoiResult.
 
     Args:
-        geo_json: GeoJSON dict with 'features' key from DrawControl.get_data()
+        geo_json: GeoJSON dict with 'features' key from ``m.draw.features``
         name: Optional name for the AOI. If empty, generates timestamp-based name.
         gee: If True, create Earth Engine FeatureCollection
         gee_interface: The session's interface. Omitting it is only accepted
@@ -42,8 +46,8 @@ def process_draw(
         ```python
         from pysepal.solara.components.aoi import process_draw
 
-        # From DrawControl
-        features = draw_control.get_data()
+        # From the map's drawing tools
+        features = m.draw.features
         result = process_draw(features, name="my_area", gee=False)
         ```
     """
@@ -54,9 +58,9 @@ def process_draw(
     cleaned_features = []
     for feat in geo_json["features"]:
         cleaned_feat = feat.copy()
-        if "properties" in cleaned_feat and "style" in cleaned_feat.get("properties", {}):
+        if cleaned_feat.get("properties"):
             cleaned_feat["properties"] = {
-                k: v for k, v in cleaned_feat["properties"].items() if k != "style"
+                k: v for k, v in cleaned_feat["properties"].items() if k not in _DRAWING_PROPERTIES
             }
         cleaned_features.append(cleaned_feat)
 

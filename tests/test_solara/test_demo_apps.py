@@ -11,7 +11,6 @@ from __future__ import annotations
 import ast
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -199,13 +198,14 @@ def test_the_gee_aoi_demo_offers_what_a_spec_can_carry():
     """
     import importlib.util
 
+    from pysepal.mapping import SepalMap
     from pysepal.solara.components.aoi.aoi_view import resolve_methods
 
     spec = importlib.util.spec_from_file_location("_aoi_gee_demo", AOI_GEE_APP / "app.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    # map_ stands in for a map with a draw control: resolve_methods only tests for one.
-    offered = resolve_methods(module.METHODS, gee=True, map_=SimpleNamespace(dc=object()))
+    # resolve_methods only tests that the map has drawing tools.
+    offered = resolve_methods(module.METHODS, gee=True, map_=SepalMap(gee=False))
 
     assert set(offered) == {"ADMIN0", "ADMIN1", "ADMIN2", "DRAW", "ASSET"}

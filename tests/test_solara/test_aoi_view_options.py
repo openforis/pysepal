@@ -3,13 +3,12 @@
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import ipyleaflet as ipl
 import pytest
 import reacton
 import solara
-import traitlets
 
 import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
@@ -23,6 +22,7 @@ from tests.test_solara.test_notifications.test_notification_ui_template import (
     run_vue_script,
 )
 
+from ._draw_helpers import drawn_feature, mount, report
 from ._harness import find_by_label, of_type, render_and_drain, wait_until, walk
 
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
@@ -33,18 +33,9 @@ _ITEMS = {
 }
 
 
-class _DrawStub(ipl.Control):
-    """Stands in for the draw control a SepalMap had before the MapLibre map."""
-
-    data = traitlets.List()
-
-    def clear(self):
-        self.data = []
-
-
 def _draw_map() -> sm.SepalMap:
     sepal_map = sm.SepalMap(gee=False)
-    sepal_map.dc = _DrawStub()
+    mount(sepal_map)
     return sepal_map
 
 
@@ -140,12 +131,13 @@ def test_the_select_button_waits_for_the_last_admin_level():
     _session(_Harness, scenario)
 
 
-def test_a_map_without_a_draw_control_offers_no_draw():
-    offered = aoi_view_mod.resolve_methods("ALL", gee=False, map_=sm.SepalMap(gee=False))
+def test_a_map_without_drawing_tools_offers_no_draw():
+    offered = aoi_view_mod.resolve_methods("ALL", gee=False, map_=SimpleNamespace(draw=None))
     assert "DRAW" not in offered
+    assert "DRAW" not in aoi_view_mod.resolve_methods("ALL", gee=False, map_=None)
 
 
-def test_a_map_with_a_draw_control_offers_draw():
+def test_a_sepal_map_offers_draw():
     offered = aoi_view_mod.resolve_methods("ALL", gee=False, map_=_draw_map())
     assert "DRAW" in offered
 
@@ -161,8 +153,118 @@ def test_the_select_button_waits_for_a_drawing():
         _pick(root, msg("aoi_sel.method"), "DRAW")
         assert _select_button(root).disabled
 
-        sepal_map.dc.data = [_SQUARE]
+        report(sepal_map)
         assert not _select_button(root).disabled
+
+    _session(_Harness, scenario)
+
+
+def test_selecting_draw_clears_and_enables_the_tools_and_leaving_disables_them():
+    sepal_map = _draw_map()
+    sepal_map.draw.set([drawn_feature()])
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False, map_=sepal_map)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "DRAW")
+        assert sepal_map.draw.modes == ("polygon", "rectangle", "circle", "select")
+        assert sepal_map.draw.features["features"] == []
+
+        _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        assert sepal_map.draw.modes == ()
+
+    _session(_Harness, scenario)
+
+
+def test_clearing_with_draw_selected_keeps_the_tools_for_a_new_drawing():
+    sepal_map = _draw_map()
+    clear_ref = SimpleNamespace(current=None)
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False, map_=sepal_map, clear_ref=clear_ref)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "DRAW")
+        report(sepal_map)
+        assert not _select_button(root).disabled
+
+        clear_ref.current()
+        assert sepal_map.draw.modes == ("polygon", "rectangle", "circle", "select")
+        assert sepal_map.draw.features["features"] == []
+        assert _select_button(root).disabled
+
+        report(sepal_map)
+        assert not _select_button(root).disabled
+
+    _session(_Harness, scenario)
+
+
+def test_a_drawing_submits_without_the_properties_terra_draw_adds():
+    sepal_map = _draw_map()
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False, map_=sepal_map, value=held)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "DRAW")
+        report(sepal_map)
+        _press_enter(root)
+        await wait_until(lambda: held.value is not None)
+
+        features = held.value.spec.geo_json["features"]
+        assert [f["properties"] for f in features] == [{"name": "kept"}]
+        assert list(held.value.gdf.columns) == ["geometry", "name"]
+
+    _session(_Harness, scenario)
+
+
+def test_unmounting_an_admin_only_view_leaves_the_apps_own_drawing():
+    sepal_map = _draw_map()
+    sepal_map.draw.set([drawn_feature()])
+    sepal_map.draw.enable(("point",))
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False, map_=sepal_map, methods="ADMIN")
+
+    async def run():
+        root, rc = reacton.render(_Harness(), handle_error=False)
+        _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        rc.close()
+
+    asyncio.run(run())
+
+    assert sepal_map.draw.modes == ("point", "select")
+    assert len(sepal_map.draw.features["features"]) == 1
+
+
+def test_swapping_the_map_moves_the_tools_and_the_external_clear():
+    map_a, map_b = _draw_map(), _draw_map()
+    current = solara.reactive(map_a)
+    clear_ref = SimpleNamespace(current=None)
+
+    @solara.component
+    def _Harness():
+        AoiView(gee=False, map_=current.value, clear_ref=clear_ref)
+
+    async def scenario(root):
+        _pick(root, msg("aoi_sel.method"), "DRAW")
+        assert map_a.draw.modes and not map_b.draw.modes
+
+        current.set(map_b)
+        assert map_b.draw.modes == ("polygon", "rectangle", "circle", "select")
+        assert map_a.draw.modes == ()
+
+        report(map_b)
+        assert map_b.draw.features["features"]
+        clear_ref.current()
+        assert map_b.draw.features["features"] == []
+        assert map_b.draw.modes
 
     _session(_Harness, scenario)
 

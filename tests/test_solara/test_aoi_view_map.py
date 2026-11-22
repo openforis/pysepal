@@ -14,12 +14,14 @@ import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
 from pysepal import mapping as sm
 from pysepal.layers import RenderLayer, VectorStyle
+from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 from pysepal.solara.components.aoi.constants import admin_source_attribution
 
-from ._harness import wait_until
+from ._draw_helpers import mount, report
+from ._harness import wait_until, walk
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_polygons.geojson"
 SHAPE = AoiSpec(method="SHAPE", pathname=str(DATA))
@@ -313,3 +315,48 @@ def test_the_earth_engine_aoi_fits_once(monkeypatch, gee_spec):
         assert "aoi_preview" not in m.layer_store
 
     _run(scenario, gee=True, spec=ADMIN)
+
+
+def test_a_view_another_took_over_from_neither_submits_nor_clears_its_drawing():
+    m = sm.SepalMap(gee=False)
+    mount(m)
+    held_a, held_b = solara.reactive(None), solara.reactive(None)
+
+    @solara.component
+    def ViewA():
+        AoiView(map_=m, gee=False, value=held_a)
+
+    @solara.component
+    def ViewB():
+        AoiView(map_=m, gee=False, value=held_b)
+
+    def pick_draw(root):
+        next(
+            w for w in walk(root) if getattr(w, "label", None) == msg("aoi_sel.method")
+        ).v_model = "DRAW"
+
+    def press_enter(root):
+        next(w for w in walk(root) if hasattr(w, "vue_submit")).vue_submit(None)
+
+    async def run():
+        root_a, rc_a = reacton.render(ViewA(), handle_error=False)
+        root_b, rc_b = reacton.render(ViewB(), handle_error=False)
+        try:
+            pick_draw(root_a)
+            pick_draw(root_b)
+            report(m)
+            press_enter(root_b)
+            await wait_until(lambda: held_b.value is not None and "aoi" in m.layer_store)
+
+            press_enter(root_a)
+            await asyncio.sleep(0.1)
+            assert held_a.value is None
+
+            rc_a.close()
+            assert m.draw.modes == ("polygon", "rectangle", "circle", "select")
+            assert len(m.draw.features["features"]) == 1
+            assert "aoi" in m.layer_store
+        finally:
+            rc_b.close()
+
+    asyncio.run(run())
