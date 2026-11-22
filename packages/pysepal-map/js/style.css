@@ -18,6 +18,63 @@
   pointer-events: none;
 }
 
+/* The compare divider: above the popups and the tooltip, below the control
+   corners (z-index 2). Only the handle takes input. */
+.psm-compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #ffffff;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 1;
+}
+.psm-compare-handle {
+  position: absolute;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.psm-compare-handle:focus-visible {
+  outline: 2px solid #0096ff;
+  outline-offset: 2px;
+}
+.psm-compare-handle::before,
+.psm-compare-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  margin-top: -5px;
+  border: 5px solid transparent;
+}
+.psm-compare-handle::before {
+  left: 2px;
+  border-right-color: #333333;
+}
+.psm-compare-handle::after {
+  right: 2px;
+  border-left-color: #333333;
+}
+.psm-dark .psm-compare-handle {
+  background: #1e1e1e;
+  box-shadow: 0 0 0 2px #424242, 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.psm-dark .psm-compare-handle::before {
+  border-right-color: #ffffff;
+}
+.psm-dark .psm-compare-handle::after {
+  border-left-color: #ffffff;
+}
+
 /* The control icons are background images, so they are inverted on the dark
    surface. */
 .psm-dark .maplibregl-ctrl-group {

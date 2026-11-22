@@ -69,7 +69,9 @@ change of side keeps the layer's instance. A compare view keeps its own map
 as ``main`` and adds the ``right`` map, under the same ``view_id``, while the
 state compares: it opens with ``view_open`` and closes with ``view_close``
 like a view, follows the main map's camera and sends no camera, click or
-draw report. It pulls only the digests the main map does not hold.
+draw report. It pulls only the digests the main map does not hold. It shows
+right of a divider the user moves inside the insets; the browser keeps the
+divider's position and never sends it.
 
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
 [-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true

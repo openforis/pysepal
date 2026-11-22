@@ -1,14 +1,26 @@
 """Check in a real browser that a compare view draws each side on its own map."""
 
 import json
+import re
 from dataclasses import replace
 
 import ipywidgets as widgets
 import pytest
 from IPython.display import display
-from pysepal_map import GeoJSONSource, Layer, MapState, MapWidget, VectorPaint
+from pysepal_map import (
+    GeoJSONSource,
+    Interaction,
+    Layer,
+    MapState,
+    MapWidget,
+    RasterSource,
+    VectorPaint,
+)
 
 COMPARE_RIGHT = ".psm-map .psm-compare-right"
+HANDLE = ".psm-map .psm-compare-handle"
+ATTRIBUTION = ".psm-map .maplibregl-ctrl-attrib-inner"
+MAPLIBRE_LINK = 'a[href="https://maplibre.org/"]'
 
 
 def collection(lng, lat):
@@ -85,6 +97,54 @@ def middle(page, el):
         arg=[el, x, y],
     )
     return x, y
+
+
+def clip_x(el):
+    """Where the right map's clip starts, in px from the view's left edge."""
+    clip = el.evaluate("el => el.psmCompare.map.getContainer().style.clipPath")
+    match = re.fullmatch(r"inset\(([^)]*)\)", clip)
+    assert match, clip
+    sides = [float(value.removesuffix("px")) for value in match[1].split()]
+    # The browser shortens the four sides as the margin shorthand does.
+    top, right = sides[0], sides[1 % len(sides)]
+    bottom = sides[2] if len(sides) > 2 else top
+    left = sides[3] if len(sides) > 3 else right
+    assert top == right == bottom == 0, clip
+    return left
+
+
+def width_of(el):
+    return el.evaluate("el => el.clientWidth")
+
+
+def center_of(page, locator):
+    """The page position of an element's center, once nothing covers it there."""
+    box = locator.bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.wait_for_function(
+        "([el, x, y]) => el.contains(document.elementFromPoint(x, y))",
+        arg=[locator.element_handle(), x, y],
+    )
+    return x, y
+
+
+def press(page, key, percent):
+    """Press ``key`` on the focused handle, then wait for the divider at ``percent``."""
+    page.keyboard.press(key)
+    page.wait_for_function(
+        f"p => document.querySelector('{HANDLE}').getAttribute('aria-valuenow') === p",
+        arg=str(percent),
+    )
+
+
+def compare_view(page, wait_settled, widget, *layers):
+    """Show ``widget`` comparing ``layers``, its maps settled; its root."""
+    widget.publish(MapState(layers=layers, compare=True))
+    display(widget)
+    wait_settled(page, 1)
+    el = root(page)
+    el.evaluate("el => psmHarness.quiet(el)")
+    return el
 
 
 def test_compare_draws_each_side(
@@ -271,3 +331,191 @@ def test_root_mark_survives_compare_off(harness, page_session, wait_settled):
     page_session.mouse.click(*middle(page_session, el))
     wait_for(page_session, lambda: seen, "no click arrived")
     assert seen[0].settled is True
+
+
+def test_divider_drag_clips_without_panning(harness, page_session, wait_settled):
+    el = compare_view(page_session, wait_settled, MapWidget())
+    width = width_of(el)
+    assert clip_x(el) == pytest.approx(width / 2)
+    # Out of the canvas container, where MapLibre binds its drag handlers.
+    assert el.evaluate(f"el => el.querySelector('{HANDLE}').parentElement === el")
+    before = cameras(el)
+
+    x, y = center_of(page_session, page_session.locator(HANDLE))
+    page_session.mouse.move(x, y)
+    page_session.mouse.down()
+    page_session.mouse.move(x - 100, y + 40, steps=10)
+    page_session.mouse.up()
+    assert clip_x(el) == pytest.approx(width / 2 - 100, abs=1)
+    el.evaluate("el => psmHarness.quiet(el)")
+    assert cameras(el) == before
+    # The handle followed the pointer across, not down.
+    after = page_session.locator(HANDLE).bounding_box()
+    assert after["x"] + after["width"] / 2 == pytest.approx(x - 100, abs=1)
+    assert after["y"] + after["height"] / 2 == pytest.approx(y, abs=1)
+
+
+def test_divider_keyboard(harness, page_session, wait_settled):
+    el = compare_view(page_session, wait_settled, MapWidget())
+    width = width_of(el)
+    before = cameras(el)
+    page_session.locator(HANDLE).focus()
+    assert el.evaluate("() => document.activeElement.matches('.psm-compare-handle')")
+
+    # The arrows are MapLibre's pan keys too.
+    steps = [
+        ("ArrowLeft", 45),
+        ("ArrowLeft", 40),
+        ("ArrowRight", 45),
+        ("Home", 0),
+        ("ArrowLeft", 0),
+        ("End", 100),
+        ("ArrowRight", 100),
+    ]
+    for key, percent in steps:
+        press(page_session, key, percent)
+        assert clip_x(el) == pytest.approx(width * percent / 100, abs=0.5), key
+    el.evaluate("el => psmHarness.quiet(el)")
+    assert cameras(el) == before
+
+
+def test_divider_stays_inside_insets(harness, page_session, wait_settled):
+    widget = MapWidget()
+    widget.set_insets(left=300)
+    el = compare_view(page_session, wait_settled, widget)
+    width = width_of(el)
+    assert clip_x(el) == pytest.approx(300 + (width - 300) / 2)
+    page_session.locator(HANDLE).focus()
+    press(page_session, "Home", 0)
+    assert clip_x(el) == pytest.approx(300)
+    press(page_session, "End", 100)
+    assert clip_x(el) == pytest.approx(width)
+
+    widget.layout.width = "700px"
+    page_session.wait_for_function("el => el.clientWidth === 700", arg=el)
+    wait_for(page_session, lambda: clip_x(el) == pytest.approx(700), "the clip stayed put")
+    page_session.locator(HANDLE).focus()
+    press(page_session, "Home", 0)
+    assert clip_x(el) == pytest.approx(300)
+
+    try:
+        page_session.locator(".psm-map .maplibregl-ctrl-fullscreen").click()
+        page_session.wait_for_function("el => el.hasAttribute('data-psm-fullscreen')", arg=el)
+        # Fullscreen hides the UI the insets describe: the divider uses the whole width.
+        wait_for(page_session, lambda: clip_x(el) == 0, "the divider kept the insets")
+        page_session.locator(HANDLE).focus()
+        press(page_session, "End", 100)
+        full = width_of(el)
+        assert full > 700
+        assert clip_x(el) == pytest.approx(full)
+    finally:
+        page_session.evaluate("() => document.fullscreenElement && document.exitFullscreen()")
+    page_session.wait_for_function("el => !el.hasAttribute('data-psm-fullscreen')", arg=el)
+    wait_for(page_session, lambda: clip_x(el) == pytest.approx(700), "the insets never came back")
+
+
+def test_marker_and_popup_above_right_map(harness, page_session, wait_settled, tiles):
+    tiles.color("red", (200, 0, 0))
+    widget = MapWidget()
+    feature = {
+        "type": "Feature",
+        "properties": {"name": "p"},
+        "geometry": {"type": "Point", "coordinates": [30, -10]},
+    }
+    data = json.dumps({"type": "FeatureCollection", "features": [feature]}).encode()
+    point = Layer(
+        "p",
+        GeoJSONSource(widget.add_payload(data)),
+        paint=VectorPaint(),
+        interaction=Interaction(popup=("name",), tooltip=("name",)),
+    )
+    # An opaque right map, so whatever shows in the right half paints above it.
+    cover = Layer("cover", RasterSource((tiles.url("red"),)), side="right")
+    el = compare_view(page_session, wait_settled, widget, point, cover)
+    el.evaluate("el => psmHarness.quiet(el, 5, 'right')")
+    box = el.bounding_box()
+    divider = box["x"] + clip_x(el)
+
+    def at(lng, lat):
+        x, y = el.evaluate(
+            "(el, c) => { const p = el.psmMap.project(c); return [p.x, p.y]; }", [lng, lat]
+        )
+        return box["x"] + x, box["y"] + y
+
+    over_point = at(30, -10)
+    plain = at(55, -25)
+    away = (box["x"] + box["width"] / 4, box["y"] + box["height"] * 0.8)
+    assert divider + 20 < over_point[0] < plain[0] < box["x"] + box["width"] - 60
+
+    widget.set_marker(75, 20)
+    marker = page_session.locator(".psm-map .maplibregl-marker")
+    marker.wait_for()
+    assert center_of(page_session, marker)[0] > divider + 20
+
+    # The tooltip takes no input: its pixels tell whether it paints above.
+    page_session.mouse.move(*over_point)
+    tooltip = page_session.locator(".psm-tooltip .maplibregl-popup-content")
+    tooltip.wait_for()
+    region = tooltip.bounding_box()
+    assert region["x"] > divider
+    shown = page_session.screenshot(clip=region)
+    page_session.mouse.move(*away)
+    tooltip.wait_for(state="detached")
+    el.evaluate("el => psmHarness.quiet(el, 5, 'right')")
+    assert page_session.screenshot(clip=region) != shown
+
+    page_session.mouse.click(*over_point)
+    popup = page_session.locator(".psm-popup .maplibregl-popup-content")
+    popup.wait_for()
+    page_session.mouse.move(*away)
+    page_session.locator(".psm-tooltip").wait_for(state="detached")
+
+    def hit(x, y):
+        return el.evaluate(
+            """(el, [x, y]) => {
+                const hit = document.elementFromPoint(x, y);
+                if (hit === el.psmCompare.map.getCanvas()) return 'right canvas';
+                if (hit?.closest('.maplibregl-marker')) return 'marker';
+                if (hit?.closest('.psm-popup')) return 'popup';
+                if (hit?.closest('.psm-compare-handle')) return 'handle';
+                return hit?.className ?? null;
+            }""",
+            [x, y],
+        )
+
+    handle = center_of(page_session, page_session.locator(HANDLE))
+    popup_at = center_of(page_session, popup)
+    marker_at = center_of(page_session, marker)
+    # Let hit testing see the right map, which otherwise takes no input.
+    el.evaluate("el => { el.psmCompare.map.getContainer().style.pointerEvents = 'auto'; }")
+    try:
+        assert hit(*plain) == "right canvas"
+        assert hit(*marker_at) == "marker"
+        assert hit(*popup_at) == "popup"
+        assert hit(*handle) == "handle"
+    finally:
+        el.evaluate("el => { el.psmCompare.map.getContainer().style.pointerEvents = ''; }")
+
+
+def test_attribution_lists_right_only_layers(harness, page_session, wait_settled):
+    widget = MapWidget()
+    left, right = sided_layers(widget, {}, sides=(("l", "left"), ("r", "right")))
+    layers = (replace(left, attribution="L-attr"), replace(right, attribution="R-attr"))
+    compare_view(page_session, wait_settled, widget, *layers)
+    shows = "t => (document.querySelector('{}')?.textContent ?? '').includes(t)".format(ATTRIBUTION)
+    attribution = page_session.locator(ATTRIBUTION)
+
+    # The right map's own, and the main map's from its sources.
+    page_session.wait_for_function(shows, arg="R-attr")
+    page_session.wait_for_function(shows, arg="L-attr")
+    # The compact control hides its text until opened.
+    assert attribution.locator(MAPLIBRE_LINK).text_content() == "MapLibre"
+    assert attribution.text_content().count("R-attr") == 1
+
+    widget.publish(MapState(layers=layers))
+    wait_settled(page_session, 2)
+    # The main map draws both now, and lists both from its sources.
+    page_session.wait_for_function(shows, arg="R-attr")
+    assert "L-attr" in attribution.text_content()
+    assert attribution.text_content().count("R-attr") == 1
+    assert attribution.locator(MAPLIBRE_LINK).count() == 1

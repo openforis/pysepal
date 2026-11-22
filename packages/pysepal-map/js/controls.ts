@@ -1,4 +1,5 @@
 import {
+  AttributionControl,
   FullscreenControl,
   NavigationControl,
   ScaleControl,
@@ -10,8 +11,13 @@ import type {
 } from "maplibre-gl";
 
 import { wrapLng } from "./pointer";
+import { forSide } from "./translate";
 import type { MapState } from "./types";
 import { NO_INSETS, type Insets } from "./view";
+
+/** The link MapLibre's default attribution control shows; it is not exported. */
+const MAPLIBRE_ATTRIBUTION =
+  '<a href="https://maplibre.org/" target="_blank">MapLibre</a>';
 
 type Name = "zoom" | "fullscreen" | "scale" | "coordinates";
 
@@ -54,6 +60,25 @@ class ViewFullscreenControl extends FullscreenControl {
     this._container = fullscreenTarget(this._map.getContainer());
     super._requestFullscreen();
   }
+}
+
+/**
+ * The attributions of the visible layers the right map of a compare view
+ * draws and the main map does not, once each and in state order. The main
+ * map's attribution control finds every other one in its own sources.
+ */
+function rightOnlyAttributions(
+  state: Partial<MapState> | null | undefined
+): string[] {
+  if (state?.compare !== true || !Array.isArray(state.layers)) return [];
+  const full = state as MapState;
+  const main = new Set(forSide(full, "main").layers);
+  const found: string[] = [];
+  for (const layer of forSide(full, "right").layers) {
+    if (main.has(layer) || !layer.visible || !layer.attribution) continue;
+    if (!found.includes(layer.attribution)) found.push(layer.attribution);
+  }
+  return found;
 }
 
 /** The pointer's `lat, lng`, empty while the pointer is off the map. */
@@ -105,9 +130,14 @@ export interface ViewControlsOptions {
  * The control corners sit in by the insets. While fullscreen, the UI the
  * insets describe is out of sight, so the view uses none, and the
  * fullscreen element carries `data-psm-fullscreen`.
+ *
+ * The attribution control is MapLibre's default one, which the map is built
+ * without: in compare it also lists what only the right map draws, and its
+ * custom attribution is fixed once added, so a change replaces it.
  */
 export class ViewControls {
   private readonly held: Partial<Record<Name, IControl>> = {};
+  private attribution: { control: IControl; key: string } | null = null;
   private insets: Insets = NO_INSETS;
   /** The element filling the screen, while one does. */
   private fullscreen: HTMLElement | null = null;
@@ -139,6 +169,7 @@ export class ViewControls {
       "bottom-left",
       () => new CoordinatesControl()
     );
+    this.syncAttribution(state);
     this.options.root.classList.toggle("psm-dark", state?.theme === "dark");
   }
 
@@ -170,6 +201,23 @@ export class ViewControls {
       // Its onRemove drops the document listener: no fullscreenend follows.
       if (name === "fullscreen") this.leaveFullscreen();
     }
+  }
+
+  private syncAttribution(state: Partial<MapState> | null | undefined): void {
+    const customAttribution = [
+      MAPLIBRE_ATTRIBUTION,
+      ...rightOnlyAttributions(state),
+    ];
+    const key = JSON.stringify(customAttribution);
+    if (this.attribution?.key === key) return;
+    const { map } = this.options;
+    if (this.attribution) map.removeControl(this.attribution.control);
+    const control = new AttributionControl({
+      compact: true,
+      customAttribution,
+    });
+    map.addControl(control, "bottom-right");
+    this.attribution = { control, key };
   }
 
   // Its events also fire in the pseudo-fullscreen fallback, where the

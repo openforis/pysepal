@@ -5,8 +5,36 @@ import { installImages } from "./images";
 import { MapSync, type ViewModel } from "./maplive";
 import { StatusReporter, ViewPresence } from "./status";
 import type { MapState, ViewSide } from "./types";
+import { NO_INSETS, type Insets } from "./view";
 
 const RIGHT = "right";
+
+/** How far an arrow key moves the divider, as a fraction of the usable width. */
+const STEP = 0.05;
+
+const HANDLE_ATTRIBUTES: Record<string, string> = {
+  role: "separator",
+  "aria-orientation": "vertical",
+  "aria-valuemin": "0",
+  "aria-valuemax": "100",
+  "aria-label": "Compare divider",
+  tabindex: "0",
+};
+
+const clamp = (fraction: number) => Math.min(1, Math.max(0, fraction));
+
+/**
+ * The divider's x in a view `width` px wide: `fraction` of the way across the
+ * area inside the insets, the fraction clamped to [0, 1].
+ */
+export function dividerX(
+  width: number,
+  insets: Insets,
+  fraction: number
+): number {
+  const f = clamp(fraction);
+  return insets.left + f * (width - insets.left - insets.right);
+}
 
 /** What a view root holds while its right map exists, for tests and the harness. */
 export interface CompareRoot {
@@ -66,6 +94,9 @@ export interface CompareViewOptions {
 
 interface Right {
   container: HTMLElement;
+  /** The divider line and the handle that moves it, children of the root. */
+  divider: HTMLElement;
+  handle: HTMLElement;
   map: MapLibreMap;
   /** Its first style loaded: before that a redraw has nothing to paint. */
   styled: boolean;
@@ -83,10 +114,18 @@ interface Right {
  * takes no input and follows the main map's camera. It has its own images,
  * status reports, presence and sync, all on side `right`, and takes the
  * payloads the main map holds instead of pulling them.
+ *
+ * A divider clips it to the area right of `dividerX`. Its position is a
+ * fraction of the area inside the insets, which the user moves with the
+ * handle and which stays here as compare turns off and on.
  */
 export class CompareView {
   private right: Right | null = null;
   private disposed = false;
+  private fraction = 0.5;
+  private insets: Insets = NO_INSETS;
+  /** The pointer dragging the handle, and where it took hold of the divider. */
+  private grab: { pointerId: number; offset: number } | null = null;
 
   constructor(private readonly options: CompareViewOptions) {
     options.model.on("change:state", this.onState);
@@ -110,6 +149,19 @@ export class CompareView {
   /** Measure the right map's container again, as the root resized. */
   resize(): void {
     this.right?.map.resize();
+    this.place();
+  }
+
+  /** The insets the view uses, which the divider stays inside. */
+  setInsets(insets: Insets): void {
+    this.insets = insets;
+    this.place();
+  }
+
+  /** The map shown at `point`, in px from the view's top left. */
+  pick(point: { x: number; y: number }): MapLibreMap {
+    const right = this.right;
+    return right && point.x >= this.x() ? right.map : this.options.main;
   }
 
   /** The comm came back: open the right side again and resend its reports. */
@@ -144,6 +196,22 @@ export class CompareView {
     // Tree order paints the canvas, this map, then the main map's markers.
     main.getCanvas().after(container);
     const map = createMap(container);
+    const divider = document.createElement("div");
+    divider.className = "psm-compare-divider";
+    const handle = document.createElement("div");
+    handle.className = "psm-compare-handle";
+    for (const [name, value] of Object.entries(HANDLE_ATTRIBUTES)) {
+      handle.setAttribute(name, value);
+    }
+    handle.addEventListener("pointerdown", this.onPress);
+    handle.addEventListener("pointermove", this.onDrag);
+    handle.addEventListener("pointerup", this.onRelease);
+    handle.addEventListener("pointercancel", this.onRelease);
+    handle.addEventListener("lostpointercapture", this.onRelease);
+    handle.addEventListener("keydown", this.onKey);
+    // Out of the canvas container, where MapLibre's drag and keyboard
+    // handlers listen: moving the divider never moves the map.
+    root.append(divider, handle);
     const removeImages = installImages(map);
     const reporter = new StatusReporter({
       viewId,
@@ -168,6 +236,8 @@ export class CompareView {
     );
     const right: Right = {
       container,
+      divider,
+      handle,
       map,
       styled: false,
       removeImages,
@@ -181,6 +251,7 @@ export class CompareView {
     });
     this.right = right;
     (root as CompareRoot).psmCompare = { map, status: reporter, sync };
+    this.place();
     main.on("move", this.follow);
     this.follow();
   }
@@ -198,7 +269,79 @@ export class CompareView {
     right.removeImages();
     right.map.remove();
     right.container.remove();
+    this.grab = null;
+    right.divider.remove();
+    right.handle.remove();
   }
+
+  /** The divider's x in the view now. */
+  private x(): number {
+    return dividerX(this.options.root.clientWidth, this.insets, this.fraction);
+  }
+
+  /** Clip the right map at the divider and put the line and handle there. */
+  private place(): void {
+    const right = this.right;
+    if (!right) return;
+    const { root } = this.options;
+    const x = this.x();
+    right.container.style.clipPath = `inset(0 0 0 ${x}px)`;
+    right.divider.style.left = `${x}px`;
+    right.handle.style.left = `${x}px`;
+    const { top, bottom } = this.insets;
+    right.handle.style.top = `${
+      top + (root.clientHeight - top - bottom) / 2
+    }px`;
+    right.handle.setAttribute(
+      "aria-valuenow",
+      String(Math.round(this.fraction * 100))
+    );
+  }
+
+  private moveTo(fraction: number): void {
+    this.fraction = clamp(fraction);
+    this.place();
+  }
+
+  /** The pointer's x in the view. */
+  private pointerX(event: PointerEvent): number {
+    return event.clientX - this.options.root.getBoundingClientRect().left;
+  }
+
+  private readonly onPress = (event: PointerEvent) => {
+    const right = this.right;
+    if (!right || event.button !== 0) return;
+    // No text selection, and no compatibility mouse events.
+    event.preventDefault();
+    right.handle.setPointerCapture(event.pointerId);
+    this.grab = {
+      pointerId: event.pointerId,
+      offset: this.pointerX(event) - this.x(),
+    };
+  };
+
+  private readonly onDrag = (event: PointerEvent) => {
+    const grab = this.grab;
+    if (!grab || event.pointerId !== grab.pointerId) return;
+    const { left, right } = this.insets;
+    const usable = this.options.root.clientWidth - left - right;
+    if (usable <= 0) return;
+    const x = this.pointerX(event) - grab.offset;
+    this.moveTo((x - left) / usable);
+  };
+
+  private readonly onRelease = (event: PointerEvent) => {
+    if (event.pointerId === this.grab?.pointerId) this.grab = null;
+  };
+
+  private readonly onKey = (event: KeyboardEvent) => {
+    const to = keyTarget(event.key, this.fraction);
+    if (to === null) return;
+    event.preventDefault();
+    // The page's own shortcuts would act on the same key.
+    event.stopPropagation();
+    this.moveTo(to);
+  };
 
   private readonly follow = () => {
     const right = this.right;
@@ -213,4 +356,20 @@ export class CompareView {
     // in the same frame, rather than in the next one.
     if (right.styled) right.map.redraw();
   };
+}
+
+/** Where a key moves the divider from `fraction`; null for other keys. */
+function keyTarget(key: string, fraction: number): number | null {
+  switch (key) {
+    case "ArrowLeft":
+      return fraction - STEP;
+    case "ArrowRight":
+      return fraction + STEP;
+    case "Home":
+      return 0;
+    case "End":
+      return 1;
+    default:
+      return null;
+  }
 }

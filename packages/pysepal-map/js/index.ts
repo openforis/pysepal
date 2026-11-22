@@ -74,6 +74,8 @@ function render({ model, el }: RenderProps<Model>) {
     container: root,
     style: { version: 8, sources: {}, layers: [] },
     ...CAMERA_OPTIONS,
+    // ViewControls adds it, with the right map's attributions in compare.
+    attributionControl: false,
   });
   lockRotation(map);
   const removeImages = installImages(map);
@@ -161,7 +163,10 @@ function render({ model, el }: RenderProps<Model>) {
   const controls = new ViewControls({
     map,
     root,
-    onInsets: (insets) => camera.setInsets(insets),
+    onInsets: (insets) => {
+      camera.setInsets(insets);
+      compare.setInsets(insets);
+    },
   });
   const applyInsets = () => controls.setInsets(insetsOf(model.get("insets")));
   // Before the camera starts, which restores its center inside them.

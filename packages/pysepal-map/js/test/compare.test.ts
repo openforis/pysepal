@@ -1,10 +1,11 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CompareView, RevisionMark } from "../compare";
+import { CompareView, RevisionMark, dividerX } from "../compare";
 import { MapSync } from "../maplive";
 import { StatusReporter } from "../status";
 import type { MapState } from "../types";
+import { NO_INSETS, type Insets } from "../view";
 import {
   FakeMapLibre,
   FakeModel,
@@ -14,13 +15,67 @@ import {
   state,
 } from "./fake-maplibre";
 
+type Listener = (event: any) => void;
+
 class FakeElement {
   readonly dataset: Record<string, string> = {};
+  readonly style: Record<string, string> = {};
+  readonly attributes = new Map<string, string>();
+  /** The pointers it holds captured. */
+  readonly captured = new Set<number>();
   className = "";
   removed = false;
+  private readonly listeners = new Map<string, Set<Listener>>();
 
   remove() {
     this.removed = true;
+  }
+
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name: string) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  addEventListener(type: string, listener: Listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)!.add(listener);
+  }
+
+  removeEventListener(type: string, listener: Listener) {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  setPointerCapture(id: number) {
+    this.captured.add(id);
+  }
+
+  releasePointerCapture(id: number) {
+    this.captured.delete(id);
+  }
+
+  hasPointerCapture(id: number) {
+    return this.captured.has(id);
+  }
+
+  /** Dispatch an event to its listeners; true if one prevented its default. */
+  fire(type: string, init: Record<string, unknown> = {}): boolean {
+    let prevented = false;
+    const event = {
+      type,
+      button: 0,
+      preventDefault: () => {
+        prevented = true;
+      },
+      stopPropagation: () => {},
+      ...init,
+    };
+    for (const listener of [...(this.listeners.get(type) ?? [])]) {
+      listener(event);
+    }
+    return prevented;
   }
 }
 
@@ -98,6 +153,14 @@ async function setup(initial: MapState) {
   const root = {
     dataset: {} as Record<string, string>,
     ownerDocument: document,
+    clientWidth: 1000,
+    clientHeight: 400,
+    /** What the view appended to the root, in order. */
+    appended: [] as FakeElement[],
+    append(...elements: FakeElement[]) {
+      root.appended.push(...elements);
+    },
+    getBoundingClientRect: () => ({ left: 50, top: 20 }),
   };
   const element = root as unknown as HTMLElement;
   const messages: any[] = [];
@@ -141,8 +204,28 @@ async function setup(initial: MapState) {
   await settle();
   const right = () => maps.at(-1)!;
   const settled = () => sync.settled() && compare.settled();
-  return { model, root, main, sync, compare, maps, right, messages, settled };
+  const shown = (className: string) =>
+    root.appended.find((e) => e.className === className && !e.removed);
+  const handle = () => shown("psm-compare-handle")!;
+  const divider = () => shown("psm-compare-divider")!;
+  const clip = () => right().container!.style.clipPath;
+  return {
+    model,
+    root,
+    main,
+    sync,
+    compare,
+    maps,
+    right,
+    messages,
+    settled,
+    handle,
+    divider,
+    clip,
+  };
 }
+
+const INSETS: Insets = { left: 300, right: 100, top: 10, bottom: 40 };
 
 const views = (messages: any[], side: string) =>
   messages
@@ -200,6 +283,21 @@ describe("RevisionMark", () => {
     model.set(state(6));
     mark.set("right", null);
     expect(root.dataset.psmRevision).toBeUndefined();
+  });
+});
+
+describe("dividerX", () => {
+  it("places the fraction across the area inside the insets", () => {
+    expect(dividerX(1000, NO_INSETS, 0.5)).toBe(500);
+    expect(dividerX(1000, NO_INSETS, 0.25)).toBe(250);
+    expect(dividerX(1000, INSETS, 0.5)).toBe(600);
+    expect(dividerX(1000, INSETS, 0)).toBe(300);
+    expect(dividerX(1000, INSETS, 1)).toBe(900);
+  });
+
+  it("clamps the fraction to the ends", () => {
+    expect(dividerX(1000, INSETS, -0.5)).toBe(300);
+    expect(dividerX(1000, INSETS, 1.5)).toBe(900);
   });
 });
 
@@ -338,5 +436,149 @@ describe("CompareView", () => {
     model.set(compareState(2));
     compare.sync();
     expect(right()).toBe(map);
+  });
+
+  it("clips the right map at the divider, inside the insets", async () => {
+    const { root, compare, clip, divider, handle } = await setup(
+      compareState(1)
+    );
+    expect(clip()).toBe("inset(0 0 0 500px)");
+    expect(divider().style.left).toBe("500px");
+    expect(handle().style.left).toBe("500px");
+    expect(handle().style.top).toBe("200px");
+
+    compare.setInsets(INSETS);
+    expect(clip()).toBe("inset(0 0 0 600px)");
+    expect(divider().style.left).toBe("600px");
+    expect(handle().style.left).toBe("600px");
+    // Halfway down the area inside the insets.
+    expect(handle().style.top).toBe("185px");
+
+    root.clientWidth = 600;
+    compare.resize();
+    expect(clip()).toBe("inset(0 0 0 400px)");
+    expect(handle().style.left).toBe("400px");
+  });
+
+  it("uses the insets set before compare turned on", async () => {
+    const { model, compare, clip } = await setup(state(1));
+    compare.setInsets(INSETS);
+    model.set(compareState(2));
+    expect(clip()).toBe("inset(0 0 0 600px)");
+  });
+
+  it("picks the map shown at a point", async () => {
+    const { model, main, right, compare } = await setup(state(1));
+    expect(compare.pick({ x: 999, y: 10 })).toBe(main);
+
+    model.set(compareState(2));
+    expect(compare.pick({ x: 499, y: 10 })).toBe(main);
+    expect(compare.pick({ x: 500, y: 10 })).toBe(right());
+    expect(compare.pick({ x: 900, y: 10 })).toBe(right());
+
+    compare.setInsets(INSETS);
+    expect(compare.pick({ x: 599, y: 10 })).toBe(main);
+    expect(compare.pick({ x: 600, y: 10 })).toBe(right());
+
+    model.set(state(3));
+    expect(compare.pick({ x: 900, y: 10 })).toBe(main);
+  });
+
+  it("puts the divider and its handle on the root, outside the canvas container", async () => {
+    const { model, root, main, handle, divider } = await setup(compareState(1));
+    expect(root.appended).toEqual([divider(), handle()]);
+    expect(main.afterCanvas).toHaveLength(1);
+    expect(Object.fromEntries(handle().attributes)).toEqual({
+      role: "separator",
+      "aria-orientation": "vertical",
+      "aria-valuemin": "0",
+      "aria-valuemax": "100",
+      "aria-valuenow": "50",
+      "aria-label": "Compare divider",
+      tabindex: "0",
+    });
+
+    const [line, knob] = root.appended;
+    model.set(state(2));
+    expect(line.removed).toBe(true);
+    expect(knob.removed).toBe(true);
+  });
+
+  it("moves the divider with the arrow keys, Home and End", async () => {
+    const { handle, clip } = await setup(compareState(1));
+    const press = (key: string) => handle().fire("keydown", { key });
+    const now = () => Number(handle().getAttribute("aria-valuenow"));
+
+    expect(press("ArrowLeft")).toBe(true);
+    expect(now()).toBe(45);
+    expect(clip()).toBe("inset(0 0 0 450px)");
+    press("ArrowRight");
+    press("ArrowRight");
+    expect(now()).toBe(55);
+
+    expect(press("Home")).toBe(true);
+    expect(now()).toBe(0);
+    expect(clip()).toBe("inset(0 0 0 0px)");
+    press("ArrowLeft");
+    expect(now()).toBe(0);
+    expect(clip()).toBe("inset(0 0 0 0px)");
+
+    expect(press("End")).toBe(true);
+    expect(now()).toBe(100);
+    expect(clip()).toBe("inset(0 0 0 1000px)");
+    press("ArrowRight");
+    expect(now()).toBe(100);
+
+    // Other keys are left to the page.
+    expect(press("a")).toBe(false);
+    expect(press("ArrowUp")).toBe(false);
+    expect(now()).toBe(100);
+  });
+
+  it("drags the divider with the pointer it captured", async () => {
+    const { compare, handle, clip } = await setup(compareState(1));
+    compare.setInsets(INSETS);
+    // The root starts at 50 px; the press lands 4 px right of the divider.
+    expect(
+      handle().fire("pointerdown", { pointerId: 7, clientX: 50 + 600 + 4 })
+    ).toBe(true);
+    expect(handle().captured).toEqual(new Set([7]));
+
+    handle().fire("pointermove", { pointerId: 7, clientX: 554 });
+    expect(clip()).toBe("inset(0 0 0 500px)");
+    expect(handle().getAttribute("aria-valuenow")).toBe("33");
+    handle().fire("pointermove", { pointerId: 8, clientX: 900 });
+    expect(clip()).toBe("inset(0 0 0 500px)");
+    // Past an end, it stops there.
+    handle().fire("pointermove", { pointerId: 7, clientX: 5000 });
+    expect(clip()).toBe("inset(0 0 0 900px)");
+
+    handle().fire("pointerup", { pointerId: 7 });
+    handle().fire("pointermove", { pointerId: 7, clientX: 554 });
+    expect(clip()).toBe("inset(0 0 0 900px)");
+  });
+
+  it("ignores a press of another button and a move after the capture is lost", async () => {
+    const { handle, clip } = await setup(compareState(1));
+    expect(
+      handle().fire("pointerdown", { pointerId: 1, button: 2, clientX: 550 })
+    ).toBe(false);
+    expect(handle().captured.size).toBe(0);
+    handle().fire("pointermove", { pointerId: 1, clientX: 300 });
+    expect(clip()).toBe("inset(0 0 0 500px)");
+
+    handle().fire("pointerdown", { pointerId: 2, clientX: 550 });
+    handle().fire("lostpointercapture", { pointerId: 2 });
+    handle().fire("pointermove", { pointerId: 2, clientX: 300 });
+    expect(clip()).toBe("inset(0 0 0 500px)");
+  });
+
+  it("keeps the divider where it was as compare turns off and on", async () => {
+    const { model, handle, clip } = await setup(compareState(1));
+    handle().fire("keydown", { key: "ArrowLeft" });
+    model.set(state(2));
+    model.set(compareState(3));
+    expect(handle().getAttribute("aria-valuenow")).toBe("45");
+    expect(clip()).toBe("inset(0 0 0 450px)");
   });
 });

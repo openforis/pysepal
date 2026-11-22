@@ -1,9 +1,9 @@
-import { LngLat, ScaleControl } from "maplibre-gl";
+import { AttributionControl, LngLat, ScaleControl } from "maplibre-gl";
 import type { IControl, Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ViewControls } from "../controls";
-import type { MapState } from "../types";
+import type { LayerSide, LayerState, MapState } from "../types";
 import type { Insets } from "../view";
 
 type Listener = (event: any) => void;
@@ -195,6 +195,10 @@ class FakeControlMap {
     return this.container;
   }
 
+  getCanvasContainer() {
+    return { offsetWidth: 400 };
+  }
+
   resize() {
     this.resizes++;
   }
@@ -281,6 +285,24 @@ const placedAt = ({ left, right, top, bottom }: Insets) => ({
   "bottom-right": { bottom: `${bottom}px`, right: `${right}px` },
 });
 
+/** MapLibre's own attribution link, which its default control shows. */
+const MAPLIBRE = '<a href="https://maplibre.org/" target="_blank">MapLibre</a>';
+
+/** Just what the attribution reads of a layer. */
+const sided = (
+  id: string,
+  side: LayerSide,
+  attribution: string,
+  visible = true
+) => ({ id, side, attribution, visible } as unknown as LayerState);
+
+const attribution = (map: FakeControlMap) => {
+  const [control, ...others] = map.at("bottom-right");
+  expect(others).toEqual([]);
+  expect(control).toBeInstanceOf(AttributionControl);
+  return control as AttributionControl;
+};
+
 const MODES = [
   ["the Fullscreen API", true],
   ["the pseudo-fullscreen fallback", false],
@@ -310,7 +332,10 @@ describe("ViewControls", () => {
     controls.sync(state());
     expect(map.at("top-left")).toHaveLength(2);
     controls.sync(state({ zoom: false, fullscreen: false }));
-    expect(map.placed.map((p) => p.position)).toEqual(["bottom-left"]);
+    expect(map.placed.map((p) => p.position)).toEqual([
+      "bottom-left",
+      "bottom-right",
+    ]);
   });
 
   it("offsets the control corners by the insets", () => {
@@ -426,6 +451,54 @@ describe("ViewControls", () => {
       expect(told.at(-1)).toEqual(INSETS);
     }
   );
+
+  it("adds the attribution control MapLibre's default would be", () => {
+    const { map, controls } = setup();
+    controls.sync(state());
+    expect(attribution(map).options).toEqual({
+      compact: true,
+      customAttribution: [MAPLIBRE],
+    });
+    expect(map.corner("bottom-right").children).toHaveLength(1);
+  });
+
+  it("adds the attributions only the right map shows while compare is on", () => {
+    const layers = [
+      sided("l", "left", "L-attr"),
+      sided("b", "both", "B-attr"),
+      sided("r", "right", "R-attr"),
+      sided("r2", "right", "R-attr"),
+      sided("hidden", "right", "H-attr", false),
+      sided("bare", "right", ""),
+    ];
+    const { map, controls } = setup();
+    controls.sync({ ...state(), layers });
+    const off = attribution(map);
+    expect(off.options.customAttribution).toEqual([MAPLIBRE]);
+
+    controls.sync({ ...state(), compare: true, layers });
+    const on = attribution(map);
+    expect(on).not.toBe(off);
+    expect(on.options).toEqual({
+      compact: true,
+      customAttribution: [MAPLIBRE, "R-attr"],
+    });
+    expect(map.corner("bottom-right").children).toHaveLength(1);
+
+    // The same text keeps the control.
+    controls.sync({
+      ...state(),
+      compare: true,
+      layers: [...layers, sided("l2", "left", "L2-attr")],
+    });
+    expect(attribution(map)).toBe(on);
+
+    controls.sync({ ...state(), layers });
+    const again = attribution(map);
+    expect(again).not.toBe(on);
+    expect(again.options.customAttribution).toEqual([MAPLIBRE]);
+    expect(map.corner("bottom-right").children).toHaveLength(1);
+  });
 
   it("toggles the dark theme class", () => {
     const { root, controls } = setup();
