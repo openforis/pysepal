@@ -277,3 +277,94 @@ def test_from_geojson_keeps_the_fingerprint_on_a_second_add(fake_geojson):
     first = local_fingerprint(LayerSpec.from_geojson(fake_geojson, name="x"))
     second = local_fingerprint(LayerSpec.from_geojson(fake_geojson, name="x"))
     assert first == second
+
+
+POINTS = [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]
+
+
+def _point_inputs():
+    import pandas as pd
+
+    frame = pd.DataFrame({"lng": [p[0] for p in POINTS], "lat": [p[1] for p in POINTS]})
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "properties": {}, "geometry": {"type": "Point", "coordinates": p}}
+            for p in POINTS
+        ],
+    }
+    gdf = gpd.GeoDataFrame(geometry=gpd.points_from_xy(*zip(*POINTS)), crs=4326)
+    return {"gdf": gdf, "geojson": geojson, "frame": frame, "pairs": POINTS}
+
+
+@pytest.mark.parametrize("kind", ["gdf", "geojson", "frame", "pairs"])
+def test_from_points_inputs(kind):
+    spec = LayerSpec.from_points(_point_inputs()[kind], name="p")
+    assert spec.style.marker == "pin"
+    back = gpd.read_parquet(uri_to_path(spec.source.uri))
+    assert [(g.x, g.y) for g in back.geometry] == POINTS
+    assert [c for c in back.columns if c != "geometry"] == []
+
+
+def test_from_points_dataframe_columns_become_properties():
+    import pandas as pd
+
+    frame = pd.DataFrame({"x": [1.0], "y": [2.0], "name": ["a"]})
+    spec = LayerSpec.from_points(frame, name="p", lng="x", lat="y")
+    back = gpd.read_parquet(uri_to_path(spec.source.uri))
+    assert list(back["name"]) == ["a"]
+
+
+def test_from_points_rejects_lines():
+    line = {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {"type": "LineString", "coordinates": [[0, 0], [1, 1]]},
+    }
+    with pytest.raises(ValueError, match="Point"):
+        LayerSpec.from_points(line, name="p")
+
+
+def test_from_points_missing_column():
+    import pandas as pd
+
+    with pytest.raises(ValueError, match="lat"):
+        LayerSpec.from_points(pd.DataFrame({"lng": [1.0]}), name="p")
+
+
+def test_from_points_non_finite():
+    with pytest.raises(ValueError, match="finite"):
+        LayerSpec.from_points([(float("nan"), 1.0)], name="p")
+
+
+@pytest.mark.parametrize("field", ["popup", "tooltip"])
+def test_vector_style_popup_list_must_not_be_empty(field):
+    with pytest.raises(ValidationError):
+        VectorStyle(**{field: []})
+    assert VectorStyle(**{field: ["a"]}).model_dump()[field] == ["a"]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"cluster_radius": 0},
+        {"cluster_max_zoom": 0},
+        {"cluster_max_zoom": 18},
+        {"radius": -1},
+        {"marker": "pin", "radius": 0},
+    ],
+)
+def test_vector_style_point_validation(kwargs):
+    with pytest.raises(ValidationError):
+        VectorStyle(**kwargs)
+    assert VectorStyle(radius=0).radius == 0
+
+
+def test_ee_style_params_ignore_point_fields():
+    plain = VectorStyle(stroke="#ff0000", width=3)
+    rich = VectorStyle(
+        stroke="#ff0000", width=3, radius=9, marker="pin", cluster=True, popup=True, tooltip=["a"]
+    )
+    assert rich.to_ee_style_params() == plain.to_ee_style_params()
+    again = VectorStyle.from_ee_style(rich.to_ee_style_params())
+    assert (again.marker, again.cluster, again.popup) == ("circle", False, False)

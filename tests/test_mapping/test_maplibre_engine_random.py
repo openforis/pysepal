@@ -138,9 +138,10 @@ def drawn_from(spec: LayerSpec, theme: str) -> dict:
         "fill": spec.style.fill or stroke,
         "fill_opacity": spec.style.effective_fill_opacity,
         "width": spec.style.width,
-        "point_radius": 5.0,
+        "point_radius": spec.style.radius,
+        "marker": spec.style.marker,
     }
-    source = {"digest": hashlib.sha256(data).hexdigest()}
+    source = {"digest": hashlib.sha256(data).hexdigest(), "cluster": None}
     return expected | {"kind": "geojson", "source": source, "paint": paint}
 
 

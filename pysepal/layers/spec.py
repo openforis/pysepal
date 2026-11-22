@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import threading
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import unquote, urlparse
@@ -18,6 +19,7 @@ import ee
 import geopandas as gpd
 import matplotlib
 import numpy as np
+import pandas as pd
 from matplotlib.colors import Colormap, is_color_like, to_hex
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -261,12 +263,33 @@ class VectorStyle(BaseModel):
     fill: str | None = None
     fill_opacity: float | None = None
     width: float = 2.0
+    radius: float = Field(default=5.0, ge=0)
+    marker: Literal["circle", "pin"] = "circle"
+    cluster: bool = False
+    cluster_radius: int = Field(default=50, ge=1)
+    cluster_max_zoom: int = Field(default=14, ge=1, le=17)
+    popup: bool | list[str] = False
+    tooltip: bool | list[str] = False
     extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("stroke", "fill")
     @classmethod
     def _color(cls, value: str | None) -> str | None:
         return None if value is None else _normalise_color(value)
+
+    @field_validator("popup", "tooltip")
+    @classmethod
+    def _fields_not_empty(cls, value: bool | list[str]) -> bool | list[str]:
+        if isinstance(value, list) and not value:
+            raise ValueError("name at least one property, or use True for all of them")
+        return value
+
+    @model_validator(mode="after")
+    def _pin_is_visible(self) -> "VectorStyle":
+        # a pin's icon size is radius / 5, so a zero radius makes it vanish
+        if self.marker == "pin" and self.radius <= 0:
+            raise ValueError("a pin needs a radius above 0")
+        return self
 
     @property
     def effective_fill_opacity(self) -> float:
@@ -541,6 +564,75 @@ class LayerSpec(BaseModel):
             zone=zone,
             source=source,
             style=style or VectorStyle(),
+        )
+
+    @classmethod
+    def from_points(
+        cls,
+        data: "gpd.GeoDataFrame | dict | pd.DataFrame | Sequence[tuple[float, float]]",
+        *,
+        name: str,
+        lng: str = "lng",
+        lat: str = "lat",
+        id: str | None = None,
+        style: VectorStyle | None = None,
+        zone: Literal["data", "overlay"] = "data",
+        attribution: str = "",
+    ) -> "LayerSpec":
+        """Build a point layer, stored through :meth:`from_geojson`.
+
+        Args:
+            data: a GeoDataFrame of points, a GeoJSON dict of points, a DataFrame with
+                ``lng`` and ``lat`` columns (the others become properties), or a sequence of
+                ``(lng, lat)`` pairs.
+            name: layer name.
+            lng: longitude column of a DataFrame.
+            lat: latitude column of a DataFrame.
+            id: layer id, a new UUID by default.
+            style: vector style, a pin marker by default.
+            zone: drawing zone.
+            attribution: attribution text.
+
+        Raises:
+            ValueError: for non-point geometries, missing columns or non-finite coordinates.
+            TypeError: for any other ``data``.
+        """
+        if isinstance(data, gpd.GeoDataFrame):
+            gdf = data
+        elif isinstance(data, dict):
+            features = data["features"] if data.get("type") == "FeatureCollection" else [data]
+            gdf = gpd.GeoDataFrame.from_features(features, crs=4326)
+        elif isinstance(data, pd.DataFrame):
+            missing = [c for c in (lng, lat) if c not in data.columns]
+            if missing:
+                raise ValueError(f"the DataFrame has no column {', '.join(missing)}")
+            xs = pd.to_numeric(data[lng], errors="coerce")
+            ys = pd.to_numeric(data[lat], errors="coerce")
+            rest = data.drop(columns=[lng, lat])
+            gdf = gpd.GeoDataFrame(rest, geometry=gpd.points_from_xy(xs, ys), crs=4326)
+        elif isinstance(data, Sequence) and not isinstance(data, (str, bytes)):
+            try:
+                pairs = np.asarray(data, dtype=float).reshape(-1, 2)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("expected (lng, lat) pairs") from exc
+            gdf = gpd.GeoDataFrame(geometry=gpd.points_from_xy(pairs[:, 0], pairs[:, 1]), crs=4326)
+        else:
+            raise TypeError(
+                "expected a GeoDataFrame, a GeoJSON dict, a DataFrame or (lng, lat) pairs, "
+                f"got {type(data).__name__}"
+            )
+        geometry = gdf.geometry
+        if not (geometry.geom_type == "Point").all():
+            raise ValueError("from_points needs Point geometries only")
+        if not (np.isfinite(geometry.x) & np.isfinite(geometry.y)).all():
+            raise ValueError("coordinates must be finite")
+        return cls.from_geojson(
+            gdf,
+            name=name,
+            id=id,
+            style=style or VectorStyle(marker="pin"),
+            zone=zone,
+            attribution=attribution,
         )
 
 

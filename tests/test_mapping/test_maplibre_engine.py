@@ -25,6 +25,7 @@ from pysepal.layers import (
     RasterStyle,
     RenderLayer,
     TileSource,
+    VectorStyle,
     local_fingerprint,
     uri_to_path,
 )
@@ -1000,3 +1001,134 @@ def test_quota_error_is_not_no_bounds(fake, gee_spec, code):
     engine = ee_engine(fake, gee_spec, gee)
     assert engine.bounds("g") == "failed"
     assert engine.bounds("g") == (1.0, 2.0, 3.0, 4.0)
+
+
+# ---------------------------------------------------------------------------
+# Point layers
+# ---------------------------------------------------------------------------
+
+
+def with_style(spec: LayerSpec, **style) -> LayerSpec:
+    return spec.revise(style=VectorStyle(**style))
+
+
+def test_point_style_maps_to_widget_layer(fake):
+    widget, store, _ = headless()
+    style = {"marker": "pin", "radius": 7, "cluster": True, "cluster_radius": 40}
+    store.add(with_style(vector_spec("p"), **style, cluster_max_zoom=12, popup=True, tooltip=["a"]))
+    x = layer_of(widget, "p")
+    assert x["paint"]["marker"] == "pin"
+    assert x["paint"]["point_radius"] == 7
+    assert x["source"]["cluster"] == {"radius": 40, "max_zoom": 12}
+    assert x["interaction"] == {"popup": [], "tooltip": ["a"]}
+
+
+def test_default_point_style_has_no_cluster(fake):
+    widget, store, _ = headless()
+    store.add(vector_spec("p"))
+    x = layer_of(widget, "p")
+    assert x["paint"]["marker"] == "circle"
+    assert not x["source"].get("cluster")
+
+
+def test_pmtiles_cluster_is_layer_error(fake):
+    widget, store, _ = headless()
+    spec = LayerSpec.from_vector("https://x.org/a.pmtiles", id="pm", layer="roads", name="pm")
+    store.add(with_style(spec, cluster=True))
+    view = store.view("pm")
+    assert view.status == "error"
+    assert "PMTiles cannot be clustered" in view.error
+    assert ids_of(widget) == []
+
+
+def test_cluster_with_polygons_is_layer_error(fake):
+    widget, store, _ = headless()
+    polygon = {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]},
+    }
+    fake.data["https://data.test/a.geojson"] = {"type": "FeatureCollection", "features": [polygon]}
+    store.add(with_style(vector_spec("a"), cluster=True))
+    view = store.view("a")
+    assert (view.status, view.error) == ("error", "clustering needs point features only")
+    assert ids_of(widget) == []
+
+
+@pytest.mark.parametrize(
+    "name", ["cluster", "cluster_id", "point_count", "point_count_abbreviated"]
+)
+def test_cluster_reserved_property_is_layer_error(fake, name):
+    widget, store, _ = headless()
+    feature = collection(0)["features"][0] | {"properties": {name: 1}}
+    fake.data["https://data.test/a.geojson"] = {"type": "FeatureCollection", "features": [feature]}
+    store.add(with_style(vector_spec("a"), cluster=True))
+    view = store.view("a")
+    assert (view.status, view.error) == ("error", f"property {name} is reserved for clusters")
+    assert ids_of(widget) == []
+
+
+def test_restyle_cluster_reuses_payload_new_instance(fake):
+    widget, store, _ = headless()
+    store.add(vector_spec("p"))
+    before = layer_of(widget, "p")
+    store.restyle("p", cluster=True)
+    after = layer_of(widget, "p")
+    assert after["source"]["digest"] == before["source"]["digest"]
+    assert after["source"]["cluster"] == {"radius": 50, "max_zoom": 14}
+    assert after["instance"] != before["instance"]
+    assert fake.calls == [("p", None)]
+
+
+def test_popup_restyle_keeps_instance(fake):
+    widget, store, _ = headless()
+    store.add(vector_spec("p"))
+    before = layer_of(widget, "p")
+    store.restyle("p", popup=True, marker="pin")
+    after = layer_of(widget, "p")
+    assert after["instance"] == before["instance"]
+    assert after["interaction"]["popup"] == []
+    assert fake.calls == [("p", None)]
+
+
+class CountingGee:
+    """Counts map id requests."""
+
+    def __init__(self) -> None:
+        """Start with no requests."""
+        self.calls = 0
+
+    def get_map_id(self, image, params):
+        self.calls += 1
+        url = f"https://ee.test/{self.calls}/{{z}}/{{x}}/{{y}}"
+        return {"tile_fetcher": type("F", (), {"url_format": url})()}
+
+
+def test_ee_vector_point_restyle_reuses_render(monkeypatch):
+    import pysepal.layers.preparation as preparation
+    import pysepal.mapping.visualization as visualization
+    from pysepal.layers import GeeSource
+
+    monkeypatch.setattr(GeeSource, "to_ee", lambda self: object())
+    monkeypatch.setattr(
+        visualization, "process_vis_params", lambda obj, vis_params, **kw: (obj, obj, vis_params)
+    )
+    monkeypatch.setattr(preparation, "theme_vis_params", lambda obj, params: None)
+    gee = CountingGee()
+    widget, store, _ = headless(gee_interface=gee)
+    store.add(
+        LayerSpec(
+            id="g",
+            name="g",
+            source=GeeSource(expr={}, kind="FeatureCollection"),
+            style=VectorStyle(stroke="#112233"),
+        )
+    )
+    assert gee.calls == 1
+    before = layer_of(widget, "g")
+    store.restyle("g", popup=True)
+    store.restyle("g", marker="pin", radius=8)
+    assert gee.calls == 1
+    assert layer_of(widget, "g")["instance"] == before["instance"]
+    store.restyle("g", stroke="#ff0000")
+    assert gee.calls == 2

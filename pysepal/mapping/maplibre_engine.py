@@ -34,8 +34,10 @@ import ee
 from eeclient.exceptions import EERestException
 from pysepal_map import (
     Basemap,
+    Cluster,
     Controls,
     GeoJSONSource,
+    Interaction,
     Layer,
     MapState,
     MapWidget,
@@ -96,14 +98,38 @@ def _geojson_bytes(data: Optional[dict]) -> bytes:
     return json.dumps(data, separators=(",", ":")).encode()
 
 
+def _style_of(spec: LayerSpec) -> VectorStyle:
+    return spec.style if isinstance(spec.style, VectorStyle) else VectorStyle()
+
+
+def _fields(value: Union[bool, list]) -> Optional[tuple]:
+    return None if value is False else () if value is True else tuple(value)
+
+
+_CLUSTER_RESERVED = ("cluster", "cluster_id", "point_count", "point_count_abbreviated")
+
+
+def _check_clusterable(data: Optional[dict]) -> None:
+    """Raise ``ValueError`` unless every feature is a point without a reserved property."""
+    for feature in (data or {}).get("features", ()):
+        geometry = feature.get("geometry")
+        if geometry is None or geometry.get("type") != "Point":
+            raise ValueError("clustering needs point features only")
+        for name in _CLUSTER_RESERVED:
+            if name in (feature.get("properties") or {}):
+                raise ValueError(f"property {name} is reserved for clusters")
+
+
 def _paint(spec: LayerSpec, is_dark: bool) -> VectorPaint:
-    style = spec.style if isinstance(spec.style, VectorStyle) else VectorStyle()
+    style = _style_of(spec)
     stroke = style.stroke or THEMES[is_dark]["primary"]
     return VectorPaint(
         stroke=stroke,
         fill=style.fill or stroke,
         fill_opacity=style.effective_fill_opacity,
         width=style.width,
+        point_radius=style.radius,
+        marker=style.marker,
     )
 
 
@@ -558,7 +584,7 @@ class MapLibreEngine:
         It shares the accepted render's data, so neither the file nor the cache holds a copy.
         """
         entry = self._accepted.get(layer_id)
-        if entry is None or entry.render.kind not in ("geojson", "pmtiles"):
+        if entry is None or entry.render.kind not in ("geojson", "pmtiles", "raster-xyz"):
             return None
         if entry.spec.source.type != spec.source.type or entry.spec.data_hash != spec.data_hash:
             return None
@@ -568,6 +594,16 @@ class MapLibreEngine:
             fresh = False
         if not fresh:
             return None
+        if entry.render.kind == "raster-xyz":
+            # an Earth Engine vector: only the parameters sent to Earth Engine change its tiles
+            old, new = entry.spec.style, spec.style
+            if not (
+                isinstance(old, VectorStyle)
+                and isinstance(new, VectorStyle)
+                and old.to_ee_style_params() == new.to_ee_style_params()
+            ):
+                return None
+            return dataclasses.replace(entry.render, render_hash=spec.render_hash)
         return dataclasses.replace(
             entry.render, render_hash=spec.render_hash, vector_style=spec.style
         )
@@ -611,6 +647,8 @@ class MapLibreEngine:
                 candidate.payload = _geojson_bytes(render.data)
                 candidate.digest = hashlib.sha256(candidate.payload).hexdigest()
         try:
+            if render.kind == "geojson" and _style_of(spec).cluster:
+                _check_clusterable(render.data)
             for is_dark in (False, True):
                 self._layer(layer_id, candidate, is_dark)
         except Exception as exc:
@@ -726,13 +764,23 @@ class MapLibreEngine:
                 max_native_zoom=render.max_zoom,
             )
         elif render.kind == "geojson":
-            source = GeoJSONSource(entry.digest)
+            style = _style_of(spec)
+            cluster = (
+                Cluster(style.cluster_radius, style.cluster_max_zoom) if style.cluster else None
+            )
+            source = GeoJSONSource(entry.digest, cluster=cluster)
             paint = _paint(spec, is_dark)
         else:
             if not render.source_layer:
                 raise ValueError("PMTiles layer needs a source layer")
+            if _style_of(spec).cluster:
+                raise ValueError("clustering needs a GeoJSON layer; PMTiles cannot be clustered")
             source = PMTilesSource(render.url, render.source_layer)
             paint = _paint(spec, is_dark)
+        interaction = None
+        if paint is not None:
+            style = _style_of(spec)
+            interaction = Interaction(popup=_fields(style.popup), tooltip=_fields(style.tooltip))
         view = self.store.view(layer_id)
         return Layer(
             layer_id,
@@ -743,6 +791,7 @@ class MapLibreEngine:
             opacity=view.opacity,
             max_zoom=None,
             paint=paint,
+            interaction=interaction,
             attribution=spec.attribution,
         )
 
