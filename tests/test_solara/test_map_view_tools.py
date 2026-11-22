@@ -126,11 +126,21 @@ def test_card_height_is_capped_and_scrolls(height):
     rc.close()
 
 
-def test_error_without_text_shows_a_fallback():
+@pytest.mark.parametrize("error", ["", None])
+def test_error_without_text_shows_a_fallback(error):
     m = SepalMap(gee=False, inspector=True)
-    m.inspector.inspection = inspection(InspectedLayer("a", "A", "error", error=""))
+    m.inspector.inspection = inspection(InspectedLayer("a", "A", "error", error=error))
     box, rc = render(m)
     assert "could not be read" in all_text(role_widgets(box, "inspector-card")[0])
+    rc.close()
+
+
+def test_idle_inspector_slot_is_not_made_visible_by_its_flex_rule():
+    m = SepalMap(gee=False)
+    box, rc = render(m)
+    assert _attr(role_widgets(box, "map-inspector")[0], "data-idle") is not None
+    rules = [r for r in map_view.CSS.split("}") if "display: flex" in r and "map-inspector" in r]
+    assert rules and all(":not([data-idle])" in r for r in rules)
     rc.close()
 
 

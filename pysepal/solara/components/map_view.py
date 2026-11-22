@@ -70,7 +70,7 @@ CSS = """
   );
   overflow-y: auto;
 }
-.pysepal-map-corner[data-corner="top-left"] > [data-role="map-inspector"] {
+.pysepal-map-corner[data-corner="top-left"] > [data-role="map-inspector"]:not([data-idle]) {
   display: flex;
   flex-direction: column;
   gap: 8px;
