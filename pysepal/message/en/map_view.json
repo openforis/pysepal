@@ -13,6 +13,7 @@
     "inspector": {
       "toggle": "Inspect values on click",
       "scale": "Scale",
+      "error": "This layer could not be read",
       "changed": "This layer changed, click again",
       "empty": "No data at this point",
       "unsupported": "This layer cannot be inspected"

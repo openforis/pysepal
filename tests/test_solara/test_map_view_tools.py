@@ -1,9 +1,11 @@
 """The draw toolbar, the inspector toggle and the inspector card of MapView."""
 
+import pytest
 import solara
 
 from pysepal.mapping import SepalMap
 from pysepal.mapping.inspector import InspectedLayer, Inspection
+from pysepal.solara.components import map_view
 from pysepal.solara.components.map_view import MapView
 from tests.test_solara._layer_panel_helpers import _attr, all_text, click, role_widgets
 
@@ -110,15 +112,25 @@ def test_inspector_hidden_without_inspector():
     rc.close()
 
 
-def test_card_height_is_capped_and_scrolls():
-    m = SepalMap(gee=False, inspector=True, height="400px")
+@pytest.mark.parametrize("height", ["400px", "100%"])
+def test_card_height_is_capped_and_scrolls(height):
+    m = SepalMap(gee=False, inspector=True, height=height)
     m.inspector.inspection = inspection(InspectedLayer("a", "A", "ready", (("x", "1"),)))
     box, rc = render(m)
     (card,) = role_widgets(box, "inspector-card")
-    assert "max-height: calc(var(--pysepal-map-height)" in card.style_
-    assert "--pysepal-map-height: 400px" in box.children[0].style_
+    # the cap is the corner's, which resolves against the map root whatever its height
+    assert "max-height" not in card.style_ and "min-height: 0" in card.style_
+    assert "max-height: calc(" in map_view.CSS and "100% - var(--pysepal-inset-top)" in map_view.CSS
     (body,) = role_widgets(box, "inspector-body")
-    assert "overflow-y: auto" in body.style_
+    assert "overflow-y: auto" in body.style_ and "min-height: 0" in body.style_
+    rc.close()
+
+
+def test_error_without_text_shows_a_fallback():
+    m = SepalMap(gee=False, inspector=True)
+    m.inspector.inspection = inspection(InspectedLayer("a", "A", "error", error=""))
+    box, rc = render(m)
+    assert "could not be read" in all_text(role_widgets(box, "inspector-card")[0])
     rc.close()
 
 

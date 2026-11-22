@@ -14,7 +14,6 @@ from pysepal.solara.components.legend import LegendComponent
 from pysepal.solara.components.map_view_tools import (
     draw_toolbar,
     inspector_panel,
-    toolbar_height,
 )
 
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
@@ -63,6 +62,19 @@ CSS = """
   top: calc(var(--pysepal-inset-top) + var(--pysepal-controls-top-left));
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
+  /* The cap is the corner's: the inspector card shrinks first and scrolls its body, and an
+     overlay after it that still overflows scrolls the corner instead of being cut. */
+  max-height: calc(
+    100% - var(--pysepal-inset-top) - var(--pysepal-controls-top-left)
+      - var(--pysepal-inset-bottom) - 10px
+  );
+  overflow-y: auto;
+}
+.pysepal-map-corner[data-corner="top-left"] > [data-role="map-inspector"] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
 }
 .pysepal-map-corner[data-corner="top-right"] {
   top: calc(var(--pysepal-inset-top) + 10px);
@@ -179,7 +191,6 @@ def MapView(
     variables = {f"--pysepal-inset-{side}": f"{int(insets.get(side, 0))}px" for side in _SIDES}
     variables["--pysepal-controls-top-left"] = f"{_top_left_offset(map_)}px"
     variables["--pysepal-controls-bottom-left"] = f"{_bottom_left_offset(map_)}px"
-    variables["--pysepal-map-height"] = map_.height
     variables["height"] = map_.height
     style = "; ".join(f"{name}: {value}" for name, value in variables.items())
     overlays = overlays or {}
@@ -197,11 +208,7 @@ def MapView(
     legend_elements = [LegendComponent(legend_data=data, inline=True) for data in legends]
     stacks["bottom-right"].append(_slot("map-legend", legend_elements).key("legend"))
     stacks["top-left"].append(_slot("map-draw", draw_toolbar(map_)).key("draw"))
-    # what the card leaves: the toolbar above it and 10 px of margin at the bottom
-    reserved = toolbar_height(map_) + _CONTROL_MARGIN
-    stacks["top-left"].append(
-        _slot("map-inspector", inspector_panel(map_, reserved)).key("inspector")
-    )
+    stacks["top-left"].append(_slot("map-inspector", inspector_panel(map_)).key("inspector"))
     for corner in CORNERS:
         stacks[corner].extend(overlays.get(corner, ()))
 

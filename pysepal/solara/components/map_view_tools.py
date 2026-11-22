@@ -13,9 +13,6 @@ _MODE_ICONS = {
     "point": "mdi-map-marker-outline",
     "select": "mdi-cursor-default-click-outline",
 }
-# A button is 36 px tall and the stack gap 8 px.
-BUTTON = 36
-GAP = 8
 
 
 def _tool_button(icon: str, tip: str, role: str, on_click, active: bool = False, **attrs):
@@ -64,16 +61,11 @@ def draw_toolbar(map_) -> list:
     ]
 
 
-def toolbar_height(map_) -> int:
-    """The height the draw toolbar takes in the stack, 0 while it is hidden."""
-    return BUTTON + GAP if map_.draw.modes else 0
-
-
 def _layer_section(layer) -> object:
     if layer.status == "ready":
         rows = [rv.Html(tag="div", children=[f"{label}: {value}"]) for label, value in layer.values]
     elif layer.status == "error":
-        rows = [rv.Html(tag="div", children=[layer.error])]
+        rows = [rv.Html(tag="div", children=[layer.error or msg("map_view.inspector.error")])]
     else:
         rows = [rv.Html(tag="div", children=[msg(f"map_view.inspector.{layer.status}")])]
     return rv.Html(
@@ -84,12 +76,8 @@ def _layer_section(layer) -> object:
     )
 
 
-def inspector_panel(map_, reserved: int) -> list:
-    """The inspector toggle and, while an inspection is set, its card; empty without an inspector.
-
-    ``reserved`` is the height in px the stack leaves to other things, which the card's
-    height cap subtracts from the map's.
-    """
+def inspector_panel(map_) -> list:
+    """The inspector toggle and, while an inspection is set, its card; empty without an inspector."""
     inspector = map_.inspector
     if inspector is None:
         return []
@@ -105,11 +93,11 @@ def inspector_panel(map_, reserved: int) -> list:
     ]
     result = inspector.inspection
     if result is not None:
-        elements.append(_card(result, reserved + BUTTON + GAP))
+        elements.append(_card(result))
     return elements
 
 
-def _card(result, reserved: int):
+def _card(result):
     header = f"{result.lat:.5f}, {result.lng:.5f}"
     head = rv.Html(
         tag="div",
@@ -143,9 +131,7 @@ def _card(result, reserved: int):
         "display: flex; flex-direction: column; min-width: 180px; font-size: 13px;"
         " border-radius: 4px; overflow: hidden;"
         " background: rgba(var(--v-theme-surface, 255, 255, 255), 0.95);"
-        f" max-height: calc(var(--pysepal-map-height) - var(--pysepal-inset-top)"
-        f" - var(--pysepal-inset-bottom) - var(--pysepal-controls-top-left)"
-        f" - var(--pysepal-controls-bottom-left) - {reserved}px)"
+        " flex: 1 1 auto; min-height: 0"
     )
     return rv.Html(
         tag="div",
