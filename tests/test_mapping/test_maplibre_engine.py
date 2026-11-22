@@ -1143,3 +1143,41 @@ def test_accepted_instance_follows_the_published_instance(fake):
     store.add(tile_spec("a"), replace=True)
     assert engine.accepted_instance("a") == layer_of(widget, "a")["instance"]
     assert engine.accepted_instance("a") != before
+
+
+@pytest.mark.asyncio
+async def test_side_reaches_widget_state_and_keeps_instance(fake):
+    widget, store, engine = on_loop()
+    store.add(tile_spec("a"), side="left")
+    await engine.wait_idle()
+    open_view(widget)
+    report(widget, "a", "ready")
+    before = layer_of(widget, "a")
+    assert before["side"] == "left"
+    revision = widget.state["revision"]
+    store.set_side("a", "right")
+    await engine.wait_idle()
+    after = layer_of(widget, "a")
+    assert widget.state["revision"] == revision + 1
+    assert after["side"] == "right"
+    assert after["instance"] == before["instance"]
+
+
+@pytest.mark.asyncio
+async def test_compare_reaches_widget_state(fake):
+    widget, _, engine = on_loop()
+    await engine.wait_idle()
+    assert widget.state["compare"] is False
+    engine.configure(compare=True)
+    await engine.wait_idle()
+    assert widget.state["compare"] is True
+    engine.configure(theme="dark")
+    await engine.wait_idle()
+    assert widget.state["compare"] is True
+
+
+def test_configure_rejects_non_bool_compare(fake):
+    _, _, engine = headless()
+    for value in (1, "yes", None):
+        with pytest.raises(TypeError):
+            engine.configure(compare=value)

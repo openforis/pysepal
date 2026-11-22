@@ -2,6 +2,8 @@
 
 from typing import TYPE_CHECKING, Any, Literal
 
+from pysepal_map import Side
+
 from pysepal.layers import LayerSpec, LayerStore
 
 if TYPE_CHECKING:
@@ -77,6 +79,18 @@ class LayerHandle:
         """Set the layer opacity."""
         self._check()
         self.store.set_opacity(self.id, value)
+
+    @property
+    def side(self) -> Side:
+        """The half of a compare map that draws the layer."""
+        self._check()
+        return self.store.view(self.id).side
+
+    @side.setter
+    def side(self, value: Side) -> None:
+        """Set the half of a compare map that draws the layer."""
+        self._check()
+        self.store.set_side(self.id, value)
 
     @property
     def status(self) -> str:

@@ -21,7 +21,7 @@ import ee
 import ipyvuetify as v
 import traitlets
 from eeclient.client import EESession
-from pysepal_map import Controls, MapWidget
+from pysepal_map import Controls, MapWidget, Side
 from typing_extensions import Self
 
 from pysepal.frontend.styles import THEMES
@@ -247,6 +247,16 @@ class SepalMap(MapWidget):
         except BaseException:
             self.close()
             raise
+
+    @property
+    def compare(self) -> bool:
+        """Whether the map draws a swipe compare: each layer on its :attr:`LayerHandle.side`."""
+        return self.layer_engine.compare if self.layer_engine is not None else False
+
+    @compare.setter
+    def compare(self, value: bool) -> None:
+        """Turn the swipe compare on or off."""
+        self.layer_engine.configure(compare=value)
 
     def __getattr__(self, name: str):
         """Say what replaced a removed member; only reached when normal lookup fails."""
@@ -489,6 +499,7 @@ class SepalMap(MapWidget):
         nodata: Optional[float] = None,
         optimize: bool = True,
         warp_to_3857: bool = False,
+        side: Side = "both",
     ) -> LayerHandle:
         """Adds a local raster dataset to the map.
 
@@ -510,6 +521,7 @@ class SepalMap(MapWidget):
             nodata: value to render transparent. Defaults to the file's declared nodata, which some products tag incorrectly.
             optimize: prepare a tiled COG with overviews before serving. On by default because rio-tiler otherwise reads full-resolution pixels for every tile. Turn it off for a large raster you do not want copied into the tile cache, or one that already has ``.ovr`` sidecars.
             warp_to_3857: reproject to Web Mercator while preparing, so tiles are cut in the CRS they are served in instead of being warped per request. Needs ``optimize=True``. Off by default because it doubles the preparation work for a raster that is already close to 3857.
+            side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
 
         Returns:
             a handle to the layer.
@@ -526,7 +538,7 @@ class SepalMap(MapWidget):
             image, bands, layer_name, colormap, key, class_colors, vmin, vmax, nodata
         )
         render = prepare_sync(spec, optimize=optimize, warp_to_3857=warp_to_3857)
-        return self._commit(spec, render, opacity=opacity, fit=fit_bounds)
+        return self._commit(spec, render, opacity=opacity, side=side, fit=fit_bounds)
 
     async def add_raster_async(
         self,
@@ -543,6 +555,7 @@ class SepalMap(MapWidget):
         nodata: Optional[float] = None,
         optimize: bool = True,
         warp_to_3857: bool = False,
+        side: Side = "both",
     ) -> Optional[LayerHandle]:
         """Add a local raster without blocking the event loop.
 
@@ -562,7 +575,12 @@ class SepalMap(MapWidget):
             image, bands, layer_name, colormap, key, class_colors, vmin, vmax, nodata
         )
         return await self._commit_async(
-            spec, opacity=opacity, fit=fit_bounds, optimize=optimize, warp_to_3857=warp_to_3857
+            spec,
+            opacity=opacity,
+            side=side,
+            fit=fit_bounds,
+            optimize=optimize,
+            warp_to_3857=warp_to_3857,
         )
 
     def _raster_spec(
@@ -599,6 +617,7 @@ class SepalMap(MapWidget):
         *,
         shown: bool = True,
         opacity: float = 1.0,
+        side: Side = "both",
         fit: bool = False,
         generation: Optional[int] = None,
     ) -> Optional[LayerHandle]:
@@ -609,6 +628,7 @@ class SepalMap(MapWidget):
             render: the render prepared from ``spec``; the engine draws it as is.
             shown: whether a new layer is visible.
             opacity: the opacity of a new layer.
+            side: the side of a new layer.
             fit: fit the map to the layer bounds, when the render knows them.
             generation: the token of the reservation made before preparing; the add is
                 dropped, and None returned, when a newer write to the id happened since or
@@ -619,7 +639,12 @@ class SepalMap(MapWidget):
             return None
         self.layer_engine.put(render)
         added = store.add(
-            spec, visible=shown, opacity=opacity, replace=True, expect_generation=generation
+            spec,
+            visible=shown,
+            opacity=opacity,
+            side=side,
+            replace=True,
+            expect_generation=generation,
         )
         if added is None:
             return None
@@ -633,6 +658,7 @@ class SepalMap(MapWidget):
         *,
         shown: bool = True,
         opacity: float = 1.0,
+        side: Side = "both",
         fit: bool = False,
         **options,
     ) -> Optional[LayerHandle]:
@@ -645,6 +671,7 @@ class SepalMap(MapWidget):
             spec: the layer spec, in either zone.
             shown: whether a new layer is visible.
             opacity: the opacity of a new layer.
+            side: the side of a new layer.
             fit: fit the map to the layer bounds, when the render knows them.
             options: the keyword arguments of :func:`~pysepal.layers.prepare`.
         """
@@ -655,7 +682,13 @@ class SepalMap(MapWidget):
         try:
             render = await prepare(spec, **options)
             return self._commit(
-                spec, render, shown=shown, opacity=opacity, fit=fit, generation=generation
+                spec,
+                render,
+                shown=shown,
+                opacity=opacity,
+                side=side,
+                fit=fit,
+                generation=generation,
             )
         finally:
             store.release(spec.id, generation)
@@ -672,6 +705,7 @@ class SepalMap(MapWidget):
         use_map_vis: bool = True,
         autocenter: bool = False,
         overlay: bool = False,
+        side: Side = "both",
     ) -> LayerHandle:
         """Customized add_layer method designed for EE objects.
 
@@ -701,7 +735,7 @@ class SepalMap(MapWidget):
         spec = self._ee_spec(ee_object, vis_params, name, key, viz_name, use_map_vis)
         spec = _in_zone(spec, overlay)
         render = prepare_sync(spec, gee_interface=self.gee_interface)
-        handle = self._commit(spec, render, shown=shown, opacity=opacity)
+        handle = self._commit(spec, render, shown=shown, opacity=opacity, side=side)
         if autocenter and handle is not None:
             self.zoom_layer(spec.id)
         return handle
@@ -719,6 +753,7 @@ class SepalMap(MapWidget):
         autocenter: bool = False,
         attribution: str = "Google Earth Engine",
         overlay: bool = False,
+        side: Side = "both",
     ) -> Optional[LayerHandle]:
         """Customized add_layer method designed for EE objects.
 
@@ -740,6 +775,7 @@ class SepalMap(MapWidget):
             autocenter: whether or not to center the map on the layer. default to False
             attribution: the attribution shown in the map corner while the layer is visible
             overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed by no layer panel. For a reference layer such as the AOI. Default to False.
+            side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
 
         Returns:
             a handle to the layer, or None when a newer action on the same key superseded
@@ -751,7 +787,7 @@ class SepalMap(MapWidget):
         spec = self._ee_spec(ee_object, vis_params, name, key, viz_name, use_map_vis, attribution)
         spec = _in_zone(spec, overlay)
         handle = await self._commit_async(
-            spec, shown=shown, opacity=opacity, gee_interface=self.gee_interface
+            spec, shown=shown, opacity=opacity, side=side, gee_interface=self.gee_interface
         )
         if autocenter and handle is not None:
             await self.zoom_layer_async(spec.id)

@@ -15,6 +15,9 @@ Example:
         sm.SepalMap(gee=False)
 """
 
+from pysepal_map import Side as Side
+from pysepal_map import link_views as link_views
+
 from .geojson_utils import *
 from .handle import LayerGoneError as LayerGoneError
 from .handle import LayerHandle as LayerHandle

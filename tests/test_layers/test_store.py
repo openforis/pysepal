@@ -140,3 +140,32 @@ def test_drawing_order_puts_overlays_first(vector_spec):
         store.add(vector_spec.model_copy(update={"id": name, "zone": zone}))
     assert store.ids == ["d1", "o1", "d2"]
     assert store.drawing_order() == ["o1", "d1", "d2"]
+
+
+def test_set_side_emits_once(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    assert store.view(raster_spec.id).side == "both"
+    events = []
+    store.subscribe(events.append)
+    store.set_side(raster_spec.id, "left")
+    store.set_side(raster_spec.id, "left")
+    assert store.view(raster_spec.id).side == "left"
+    assert events == [StoreEvent("side", raster_spec.id)]
+
+
+def test_set_side_rejects_unknown(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    with pytest.raises(ValueError):
+        store.set_side(raster_spec.id, "top")
+    with pytest.raises(ValueError):
+        store.add(raster_spec.model_copy(update={"id": "other"}), side="top")
+    assert store.view(raster_spec.id).side == "both"
+
+
+def test_replace_keeps_side(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec, side="right")
+    store.add(raster_spec, side="left", replace=True)
+    assert store.view(raster_spec.id).side == "right"

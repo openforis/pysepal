@@ -61,7 +61,7 @@ def test_handle_holds_no_copy(fake_map, vector_spec):
 def test_gone_layer_raises(fake_map, vector_spec):
     h = LayerHandle(fake_map, vector_spec.id)
     assert not h.alive
-    for attr in ("spec", "name", "visible", "opacity", "status", "error"):
+    for attr in ("spec", "name", "visible", "opacity", "side", "status", "error"):
         with pytest.raises(LayerGoneError, match="is no longer on the map"):
             getattr(h, attr)
     with pytest.raises(LayerGoneError):
@@ -113,3 +113,16 @@ def test_equal_by_store_and_id(fake_map):
     assert a != LayerHandle(FakeMap(), "x")
     assert a != "x"
     assert repr(a) == "LayerHandle('x')"
+
+
+def test_handle_side(fake_map, vector_spec):
+    fake_map.layer_store.add(vector_spec)
+    h = LayerHandle(fake_map, vector_spec.id)
+    assert h.side == "both"
+    h.side = "right"
+    assert fake_map.layer_store.view(h.id).side == "right"
+    h.remove()
+    with pytest.raises(LayerGoneError):
+        h.side
+    with pytest.raises(LayerGoneError):
+        h.side = "left"

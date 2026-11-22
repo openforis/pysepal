@@ -3,14 +3,25 @@
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, get_args
+
+from pysepal_map import Side
 
 from .spec import LayerSpec, Legend
 
 log = logging.getLogger(__name__)
 
-EventKind = Literal["added", "removed", "updated", "moved", "visibility", "opacity", "status"]
+_SIDES = get_args(Side)
+
+EventKind = Literal[
+    "added", "removed", "updated", "moved", "visibility", "opacity", "side", "status"
+]
 Status = Literal["pending", "ready", "error"]
+
+
+def _check_side(side: object) -> None:
+    if side not in _SIDES:
+        raise ValueError(f"side must be one of {_SIDES}, got {side!r}")
 
 
 @dataclass(frozen=True)
@@ -27,6 +38,7 @@ class LayerView:
 
     visible: bool = True
     opacity: float = 1.0
+    side: Side = "both"
     status: Status = "pending"
     error: str = ""
     legend: Legend | None = None
@@ -98,6 +110,7 @@ class LayerStore:
         *,
         visible: bool = True,
         opacity: float = 1.0,
+        side: Side = "both",
         index: int = 0,
         replace: bool = False,
         expect_generation: int | None = None,
@@ -108,6 +121,7 @@ class LayerStore:
             The layer id, or None when ``expect_generation`` was stale.
         """
         layer_id = spec.id
+        _check_side(side)
         if expect_generation is not None and expect_generation != self.generation(layer_id):
             return None
         exists = layer_id in self._history
@@ -129,7 +143,9 @@ class LayerStore:
         index = max(0, min(index, len(self._ids)))
         self._ids.insert(index, layer_id)
         self._history[layer_id] = [snapshot]
-        self._views[layer_id] = LayerView(visible=visible, opacity=min(max(opacity, 0.0), 1.0))
+        self._views[layer_id] = LayerView(
+            visible=visible, opacity=min(max(opacity, 0.0), 1.0), side=side
+        )
         self._emit("added", layer_id)
         return layer_id
 
@@ -228,6 +244,15 @@ class LayerStore:
             return
         view.opacity = opacity
         self._emit("opacity", layer_id)
+
+    def set_side(self, layer_id: str, side: Side) -> None:
+        """Set which half of a compare map draws the layer; ignored outside compare."""
+        _check_side(side)
+        view = self.view(layer_id)
+        if view.side == side:
+            return
+        view.side = side
+        self._emit("side", layer_id)
 
     def set_status(
         self,

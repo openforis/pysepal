@@ -63,21 +63,37 @@ class Prepare:
         return made_up(spec)
 
 
-def random_op(rng: random.Random, store: LayerStore, engine, prepare: Prepare, theme: list) -> str:
+def random_op(
+    rng: random.Random, store: LayerStore, engine, prepare: Prepare, theme: list, compare: list
+) -> str:
     """Apply one random operation and describe it."""
     present = store.ids
     absent = [layer_id for layer_id in IDS if layer_id not in store]
-    kinds = ["theme"]
+    kinds = ["theme", "compare"]
     if absent:
         kinds += ["add"] * 3
     if present:
-        kinds += ["replace", "remove", "move", "move", "visible", "opacity", "restyle"]
+        kinds += [
+            "replace",
+            "remove",
+            "move",
+            "move",
+            "visible",
+            "opacity",
+            "side",
+            "side",
+            "restyle",
+        ]
     kind = rng.choice(kinds)
 
     if kind == "theme":
         theme[0] = "light" if theme[0] == "dark" else "dark"
         engine.configure(theme=theme[0])
         return f"theme {theme[0]}"
+    if kind == "compare":
+        compare[0] = not compare[0]
+        engine.configure(compare=compare[0])
+        return f"compare {compare[0]}"
     if kind in ("add", "replace"):
         layer_id = rng.choice(absent if kind == "add" else present)
         spec = make_spec(layer_id, rng.choice(["raster", "geojson"]), rng.randint(0, 2))
@@ -87,8 +103,9 @@ def random_op(rng: random.Random, store: LayerStore, engine, prepare: Prepare, t
             store.add(spec, replace=True)
             return f"replace {layer_id} with {spec.source.type} ({timing})"
         index, visible = rng.randint(0, len(present)), rng.random() < 0.8
-        store.add(spec, index=index, visible=visible, opacity=rng.choice([1.0, 0.5]))
-        return f"add {spec.source.type} {layer_id} at {index} visible={visible} ({timing})"
+        side = rng.choice(["both", "left", "right"])
+        store.add(spec, index=index, visible=visible, opacity=rng.choice([1.0, 0.5]), side=side)
+        return f"add {spec.source.type} {layer_id} at {index} visible={visible} {side} ({timing})"
 
     layer_id = rng.choice(present)
     if kind == "remove":
@@ -105,6 +122,10 @@ def random_op(rng: random.Random, store: LayerStore, engine, prepare: Prepare, t
         opacity = rng.choice([0.2, 0.6, 1.0])
         store.set_opacity(layer_id, opacity)
         return f"opacity {layer_id} {opacity}"
+    elif kind == "side":
+        side = rng.choice(["both", "left", "right"])
+        store.set_side(layer_id, side)
+        return f"side {layer_id} {side}"
     elif kind == "restyle":
         if store.get(layer_id).source.type == "tile":
             change = {"colormap": rng.choice(["viridis", "magma"])}
@@ -145,7 +166,7 @@ def drawn_from(spec: LayerSpec, theme: str) -> dict:
     return expected | {"kind": "geojson", "source": source, "paint": paint}
 
 
-def check(widget: MapWidget, store: LayerStore, engine, theme: str) -> list[str]:
+def check(widget: MapWidget, store: LayerStore, engine, theme: str, compare: bool) -> list[str]:
     """Return every way the published state differs from the store."""
     problems = []
     layers = widget.state["layers"]
@@ -160,14 +181,18 @@ def check(widget: MapWidget, store: LayerStore, engine, theme: str) -> list[str]
             problems.append(f"{layer_id}: status {store.view(layer_id).status}")
     for x in layers:
         view = store.view(x["id"])
-        if (x["visible"], x["opacity"]) != (view.visible, view.opacity):
-            problems.append(f"{x['id']}: drawn {x['visible']}/{x['opacity']}, store {view}")
+        if (x["visible"], x["opacity"], x["side"]) != (view.visible, view.opacity, view.side):
+            problems.append(
+                f"{x['id']}: drawn {x['visible']}/{x['opacity']}/{x['side']}, store {view}"
+            )
         wanted = drawn_from(store.get(x["id"]), theme)
         published = {key: x[key] for key in wanted}
         if published != wanted:
             problems.append(f"{x['id']}: published {published}, the store's spec gives {wanted}")
         if x["kind"] == "geojson" and not served(widget, x["source"]["digest"]):
             problems.append(f"{x['id']}: its payload is not served")
+    if widget.state["compare"] != compare:
+        problems.append(f"compare {widget.state['compare']}, configured {compare}")
     if widget.state["theme"] != theme:
         problems.append(f"theme {widget.state['theme']}, configured {theme}")
     return problems
@@ -185,16 +210,18 @@ async def test_random_ops(seed, monkeypatch):
     rng, loop = random.Random(seed), asyncio.get_running_loop()
     widget, store = MapWidget(loop=loop), LayerStore()
     engine = maplibre_engine.MapLibreEngine(widget, store, loop=loop)
-    theme, log, problems = ["light"], [], []
+    theme, compare, log, problems = ["light"], [False], [], []
     try:
         for step in range(1, OPS_PER_SEED + 1):
-            log.append(random_op(rng, store, engine, prepare, theme))
+            log.append(random_op(rng, store, engine, prepare, theme, compare))
             if rng.random() < 0.3:
                 await asyncio.sleep(0)
             if step % BURST:
                 continue
             await engine.wait_idle()
-            problems += [f"after op {step}: {p}" for p in check(widget, store, engine, theme[0])]
+            problems += [
+                f"after op {step}: {p}" for p in check(widget, store, engine, theme[0], compare[0])
+            ]
     finally:
         engine.close()
     assert not problems, report(seed, log, problems)

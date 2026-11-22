@@ -1112,3 +1112,18 @@ def test_an_ee_overlay_draws_above_the_data_layers(byte) -> None:
     assert m.layer_store.ids == ["data", "aoi"]
     assert ids_of(m) == ["aoi", "data"]
     assert layer_of(m, "aoi")["zone"] == "overlay"
+
+
+def test_compare_property() -> None:
+    m = SepalMap(gee=False)
+    assert m.compare is False
+    m.compare = True
+    assert m.compare is True
+    assert m.state["compare"] is True
+    with pytest.raises(TypeError):
+        m.compare = "yes"
+
+
+def test_half_built_map_reads_compare() -> None:
+    m = SepalMap.__new__(SepalMap)
+    assert m.compare is False

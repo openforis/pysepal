@@ -179,6 +179,7 @@ class MapLibreEngine:
         self._basemap: Optional[Basemap] = None
         self._theme: Literal["light", "dark"] = "light"
         self._controls = Controls()
+        self._compare = False
         self._cache: OrderedDict[str, RenderLayer] = OrderedDict()
         self._bounds: OrderedDict[str, BoundsResult] = OrderedDict()
         self._accepted: dict[str, _Entry] = {}
@@ -226,6 +227,7 @@ class MapLibreEngine:
         basemap: Optional[Basemap] = _KEEP,
         theme: Literal["light", "dark"] = _KEEP,
         controls: Controls = _KEEP,
+        compare: bool = _KEEP,
     ) -> None:
         """Change what the map shows besides the layers; the arguments left out stay.
 
@@ -233,6 +235,7 @@ class MapLibreEngine:
             basemap: the basemap, None for none.
             theme: ``"light"`` or ``"dark"``.
             controls: the controls to show.
+            compare: whether the map draws a swipe compare, each layer on its side.
         """
         if theme is not _KEEP and theme not in ("light", "dark"):
             raise ValueError(f"theme must be 'light' or 'dark', got {theme!r}")
@@ -240,13 +243,22 @@ class MapLibreEngine:
             raise TypeError(f"basemap must be a Basemap or None, got {basemap!r}")
         if controls is not _KEEP and not isinstance(controls, Controls):
             raise TypeError(f"controls must be Controls, got {controls!r}")
+        if compare is not _KEEP and not isinstance(compare, bool):
+            raise TypeError(f"compare must be a bool, got {compare!r}")
         if basemap is not _KEEP:
             self._basemap = basemap
         if theme is not _KEEP:
             self._theme = theme
         if controls is not _KEEP:
             self._controls = controls
+        if compare is not _KEEP:
+            self._compare = compare
         self._touch()
+
+    @property
+    def compare(self) -> bool:
+        """Whether the map draws a swipe compare."""
+        return self._compare
 
     def put(self, render: RenderLayer) -> None:
         """Seed the render cache, keyed by ``render_hash``.
@@ -743,6 +755,7 @@ class MapLibreEngine:
             basemap=self._basemap,
             theme=self._theme,
             controls=self._controls,
+            compare=self._compare,
         )
         # a draw drops the payloads its state does not hold, a nested one's too
         for entry, _ in drawn:
@@ -794,6 +807,7 @@ class MapLibreEngine:
             zone=spec.zone,
             visible=view.visible,
             opacity=view.opacity,
+            side=view.side,
             max_zoom=None,
             paint=paint,
             interaction=interaction,

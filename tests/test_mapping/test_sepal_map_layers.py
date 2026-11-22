@@ -299,3 +299,14 @@ def test_restyle_keeps_the_prepare_options(byte, monkeypatch, option):
     monkeypatch.setattr("pysepal.mapping.maplibre_engine.prepare_sync", spy)
     m.layer_store.restyle("w", colormap="magma")
     assert len(seen) == 1 and option.items() <= seen[0].items()
+
+
+def test_layer_methods_take_side(byte):
+    m = SepalMap(gee=False)
+    handle = m.add_raster(byte, key="r", side="right")
+    assert handle.side == "right"
+    assert layer_of(m, "r")["side"] == "right"
+    again = m.add_raster(byte, key="r", colormap="viridis")
+    assert again.side == "right"
+    replaced = m.add_raster(byte, key="r", side="left")
+    assert replaced.side == "right"
