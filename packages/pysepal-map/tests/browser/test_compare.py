@@ -8,6 +8,7 @@ import ipywidgets as widgets
 import pytest
 from IPython.display import display
 from pysepal_map import (
+    Cluster,
     GeoJSONSource,
     Interaction,
     Layer,
@@ -16,6 +17,22 @@ from pysepal_map import (
     RasterSource,
     VectorPaint,
 )
+from test_drawing import (
+    click,
+    draw_polygon,
+    feature,
+    place,
+    record,
+    select,
+    show,
+    spread,
+    square,
+    wait_drawing,
+    wait_stopped,
+)
+from test_drawing import state as draw_state
+from test_pointer import canvas_point
+from test_points import points
 
 COMPARE_RIGHT = ".psm-map .psm-compare-right"
 HANDLE = ".psm-map .psm-compare-handle"
@@ -135,6 +152,37 @@ def press(page, key, percent):
         f"p => document.querySelector('{HANDLE}').getAttribute('aria-valuenow') === p",
         arg=str(percent),
     )
+
+
+def polygon_layer(widget, layer_id, west, south, east, north, **kwargs):
+    """A GeoJSON layer of one rectangle, whose ``name`` is ``layer_id``."""
+    rectangle = feature(square(west, south, east, north), properties={"name": layer_id})
+    data = json.dumps({"type": "FeatureCollection", "features": [rectangle]}).encode()
+    return Layer(layer_id, GeoJSONSource(widget.add_payload(data)), paint=VectorPaint(), **kwargs)
+
+
+def mirror(el):
+    """The right map's copy of the drawing, as ``[role, geometry]`` pairs; None before it has one."""
+    return el.evaluate(
+        """async el => {
+            const source = el.psmCompare?.map.getSource('psm-draw-mirror');
+            if (!source) return null;
+            const data = await source.getData();
+            return data.features.map((f) => [f.properties.psmRole, f.geometry]);
+        }"""
+    )
+
+
+def rendered(el):
+    """What Terra Draw's store holds, as the mirror should copy it."""
+
+    def role(properties):
+        if properties.get("midPoint"):
+            return "midpoint"
+        vertex = properties.get("selectionPoint") or properties.get("closingPoint")
+        return "vertex" if vertex else "shape"
+
+    return [[role(f["properties"]), f["geometry"]] for f in draw_state(el)["store"]]
 
 
 def compare_view(page, wait_settled, widget, *layers):
@@ -519,3 +567,195 @@ def test_attribution_lists_right_only_layers(harness, page_session, wait_settled
     assert "L-attr" in attribution.text_content()
     assert attribution.text_content().count("R-attr") == 1
     assert attribution.locator(MAPLIBRE_LINK).count() == 1
+
+
+def test_right_half_click_hits_right_layer(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    seen = []
+    widget.on_click(seen.append)
+    right = polygon_layer(
+        widget, "r", 15, -5, 25, 5, side="right", interaction=Interaction(popup=("name",))
+    )
+    left = polygon_layer(widget, "l", 15, 10, 25, 20, side="left")
+    el = compare_view(page_session, wait_settled, widget, right, left)
+    el.evaluate("el => psmHarness.quiet(el, 5, 'right')")
+    on_right = canvas_point(page_session, 20, 0)
+    # The main map draws it there, under the right map.
+    on_left = canvas_point(page_session, 20, 15)
+    divider = el.bounding_box()["x"] + clip_x(el)
+    assert min(on_right[0], on_left[0]) > divider + 20
+
+    page_session.mouse.click(*on_right)
+    wait_for(page_session, lambda: seen, "no click arrived")
+    assert seen[0].hits("r") == ({"name": "r"},)
+    assert seen[0].hits("l") == ()
+    popup = page_session.locator(".psm-popup")
+    popup.wait_for()
+    assert popup.locator("td").inner_text() == "r"
+
+    page_session.mouse.click(*on_left)
+    wait_for(page_session, lambda: len(seen) == 2, "no second click arrived")
+    assert seen[1].features == ()
+
+    # With the divider at the right edge, the main map shows there.
+    page_session.locator(HANDLE).focus()
+    press(page_session, "End", 100)
+    page_session.mouse.click(*on_left)
+    wait_for(page_session, lambda: len(seen) == 3, "no third click arrived")
+    assert seen[2].hits("l") == ({"name": "l"},)
+    assert seen[2].hits("r") == ()
+
+
+def test_right_half_tooltip_and_cluster(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    tipped = polygon_layer(
+        widget, "t", 15, -5, 25, 5, side="right", interaction=Interaction(tooltip=("name",))
+    )
+    # 200 points in a box of about 0.4 degrees: one bubble at this zoom.
+    box = [(20 + 0.02 * i, 15 + 0.02 * j) for i in range(20) for j in range(10)]
+    clustered = Layer(
+        "c",
+        GeoJSONSource(widget.add_payload(points(box)), cluster=Cluster(max_zoom=14)),
+        side="right",
+    )
+    el = compare_view(page_session, wait_settled, widget, tipped, clustered)
+    el.evaluate("el => psmHarness.quiet(el, 5, 'right')")
+    main_layers = el.evaluate("el => el.psmMap.getLayersOrder()")
+    assert not any(layer.endswith(":cluster") for layer in main_layers)
+
+    page_session.mouse.move(*canvas_point(page_session, 20, 0))
+    tooltip = page_session.locator(".psm-tooltip")
+    tooltip.wait_for()
+    assert tooltip.inner_text() == "t"
+
+    bubble = """el => {
+        const map = el.psmCompare.map;
+        const id = map.getLayersOrder().find((layer) => layer.endsWith(':cluster'));
+        const [found] = map.queryRenderedFeatures({ layers: [id] });
+        return found ? found.geometry.coordinates : null;
+    }"""
+    wait_for(page_session, lambda: el.evaluate(bubble), "the right map drew no bubble")
+    lng, lat = el.evaluate(bubble)
+    zoom = el.evaluate("el => el.psmMap.getZoom()")
+    page_session.mouse.click(*canvas_point(page_session, lng, lat))
+    page_session.wait_for_function(
+        "([el, z]) => el.psmMap.getZoom() > z + 0.5 && !el.psmMap.isMoving()", arg=[el, zoom]
+    )
+    main, right = cameras(el)
+    assert right == pytest.approx(main, abs=1e-9)
+
+
+def test_drawing_across_the_divider(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    reports, _ = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "polygon")
+    # Two vertices each side of the divider, away from its handle.
+    clicks = spread(el, (0.3, 0.25), (0.7, 0.25), (0.65, 0.7), (0.35, 0.7))
+    draw_polygon(page_session, el, clicks)
+    wait_for(page_session, lambda: len(reports) == 1, "the polygon never arrived")
+    widget.draw.clear()
+    wait_for(page_session, lambda: len(reports) == 2, "the clear was never acknowledged")
+
+    widget.publish(MapState(compare=True))
+    wait_settled(page_session, widget.state["revision"])
+    wait_for(page_session, lambda: mirror(el) == [], "the mirror never started empty")
+    place(page_session, el, clicks[:3])
+    wait_for(
+        page_session,
+        lambda: mirror(el) == rendered(el),
+        f"the mirror never held the polygon being drawn: {mirror(el)}",
+    )
+    # The polygon in progress, and the closing points at its first and last vertex.
+    in_progress = [[role, g["type"]] for role, g in mirror(el)]
+    assert in_progress == [["shape", "Polygon"], ["vertex", "Point"], ["vertex", "Point"]]
+    place(page_session, el, clicks[3:], first=4)
+    click(page_session, el, *clicks[0])
+    wait_for(page_session, lambda: len(reports) == 3, "the second polygon never arrived")
+    [held] = draw_state(el)["store"]
+    wait_for(
+        page_session,
+        lambda: mirror(el) == [["shape", held["geometry"]]],
+        f"the mirror never held the polygon: {mirror(el)}",
+    )
+
+    def drawn(report):
+        return report["cause"], [(f["geometry"], f["properties"]) for f in report["features"]]
+
+    assert drawn(reports[2]) == drawn(reports[0])
+
+    widget.draw.disable()
+    wait_stopped(page_session, el)
+    wait_for(page_session, lambda: mirror(el) == [], "the mirror kept the drawing")
+
+
+def test_mirror_after_compare_on(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    _, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "polygon")
+    draw_polygon(page_session, el, spread(el, (0.3, 0.3), (0.7, 0.3), (0.6, 0.75)))
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    [held] = draw_state(el)["store"]
+
+    widget.publish(MapState(compare=True))
+    wait_settled(page_session, widget.state["revision"])
+    wait_for(
+        page_session,
+        lambda: mirror(el) == [["shape", held["geometry"]]],
+        f"the mirror never held the polygon: {mirror(el)}",
+    )
+
+
+def test_mirror_follows_draw_set(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    widget.draw.enable(("polygon",))
+    widget.publish(MapState(compare=True))
+    [el] = show(page_session, widget)
+    wait_settled(page_session, 1)
+    wait_drawing(page_session, el, "static")
+
+    widget.draw.set(feature(square(10, -10, 30, 10)))
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    [held] = draw_state(el)["store"]
+    wait_for(
+        page_session,
+        lambda: mirror(el) == [["shape", held["geometry"]]],
+        f"the mirror never followed draw.set: {mirror(el)}",
+    )
+
+
+def test_mirror_shows_handles_in_select_mode(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    widget.draw.enable(("polygon",))
+    widget.draw.set(feature(square(15, -5, 25, 5)))
+    widget.draw.start("select")
+    widget.publish(MapState(compare=True))
+    [el] = show(page_session, widget)
+    wait_settled(page_session, 1)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    wait_drawing(page_session, el, "select")
+
+    select(page_session, el, (20, 0))
+    page_session.wait_for_function(
+        "el => psmHarness.drawState(el).store.some((f) => f.properties.midPoint)", arg=el
+    )
+    held = rendered(el)
+    assert sorted(role for role, _ in held) == ["midpoint"] * 4 + ["shape"] + ["vertex"] * 4
+    wait_for(page_session, lambda: mirror(el) == held, f"the mirror held {mirror(el)}")
+    # The right map draws them where Terra Draw does.
+    for lnglat, role in (((25, 5), "vertex"), ((25, 0), "midpoint")):
+        page_session.wait_for_function(
+            """([el, c, role]) => {
+                const map = el.psmCompare.map;
+                const p = map.project(c);
+                map.triggerRepaint();
+                return map.queryRenderedFeatures([p.x, p.y], { layers: ['psm-draw-mirror-point'] })
+                    .some((f) => f.properties.psmRole === role);
+            }""",
+            arg=[el, list(lnglat), role],
+        )

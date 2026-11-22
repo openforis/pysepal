@@ -6,6 +6,7 @@ import {
   type ElementLike,
   type PopupLike,
   type PopupOptions,
+  type PopupsOptions,
 } from "../popups";
 import type { InteractionState, MapState } from "../types";
 
@@ -32,6 +33,8 @@ class FakePopup implements PopupLike {
   lngLat: [number, number] | null = null;
   content: FakeElement | null = null;
   open = false;
+  /** The map it was added to. */
+  map: unknown = null;
   htmlCalls = 0;
   private listeners = new Map<string, Listener>();
   constructor(readonly options: PopupOptions) {
@@ -49,8 +52,9 @@ class FakePopup implements PopupLike {
     this.htmlCalls += 1;
     return this;
   }
-  addTo() {
+  addTo(map: unknown) {
     this.open = true;
+    this.map = map;
     return this;
   }
   on(type: string, listener: Listener) {
@@ -136,7 +140,7 @@ function feature(
   return { id: 0, source: sid(id, instance), properties };
 }
 
-function setup() {
+function setup(options: Pick<PopupsOptions, "pick"> = {}) {
   FakePopup.all = [];
   const map = new FakeMap();
   const model = new FakeModel();
@@ -149,6 +153,7 @@ function setup() {
     createPopup: (options) => new FakePopup(options),
     doc,
     requestFrame: (callback) => frames.push(callback),
+    ...options,
   });
   const declare = (...layers: ReturnType<typeof layer>[]) => {
     map.layers = layers.map((l) => `${sid(l.id, l.instance)}:circle`);
@@ -541,5 +546,39 @@ describe("clusters", () => {
     expect(
       map.queries.every((q) => q.layers.includes(`${sid("a", 1)}:cluster`))
     ).toBe(true);
+  });
+});
+
+describe("a picked map", () => {
+  it("shows what the map under the pointer shows, on the main map", () => {
+    const other = new FakeMap();
+    const points: unknown[] = [];
+    const { map, declare, flush, popup, tooltip } = setup({
+      pick: (point) => {
+        points.push(point);
+        return other;
+      },
+    });
+    declare(layer("a", 1, { popup: ["name"], tooltip: ["name"] }));
+    other.layers = [...map.layers];
+    map.features = [feature("a", 1, { name: "main" })];
+    other.features = [feature("a", 1, { name: "right" })];
+    const at = { x: 600, y: 40 };
+    map.emit("mousemove", { point: at, lngLat: { lng: 5, lat: 6 } });
+    flush();
+    map.emit("click", { point: at, lngLat: { lng: 7, lat: 8 } });
+
+    const [tip] = tooltip();
+    const [opened] = popup();
+    expect(tip.content!.textContent).toBe("right");
+    expect(rows(opened.content!)).toEqual([["name", "right"]]);
+    expect([tip.lngLat, opened.lngLat]).toEqual([
+      [5, 6],
+      [7, 8],
+    ]);
+    expect(tip.map).toBe(map);
+    expect(opened.map).toBe(map);
+    expect(map.queries).toEqual([]);
+    expect(points).toEqual([at, at]);
   });
 });

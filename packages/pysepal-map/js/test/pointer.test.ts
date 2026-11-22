@@ -116,12 +116,35 @@ function feature(
   return { id, source: sid(layer, instance), properties };
 }
 
+/** Declare a vector layer's source and its style layers on `map`. */
+function declareOn(
+  map: FakePointerMap,
+  id: string,
+  instance: number,
+  type = "geojson"
+) {
+  map.sources.set(sid(id, instance), type);
+  for (const part of ["fill", "line", "circle"]) {
+    map.layers.push(`${sid(id, instance)}:${part}`);
+  }
+}
+
+const bubble = (id: string, instance: number, clusterId: unknown = 7) => ({
+  id: 0,
+  source: sid(id, instance),
+  properties: { cluster: true, cluster_id: clusterId, point_count: 5 },
+  geometry: { type: "Point", coordinates: [3, 4] },
+});
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 function setup(
   options: {
     drawing?: () => boolean;
     send?: (content: unknown) => void;
     clickable?: (id: string) => boolean;
     clustered?: (id: string) => boolean;
+    pick?: (point: { x: number; y: number }) => PointerMap;
   } = {}
 ) {
   const map = new FakePointerMap();
@@ -141,16 +164,11 @@ function setup(
     },
     ...options,
   });
-  /** Declare a vector layer's source and its style layers. */
-  const declare = (id: string, instance: number, type = "geojson") => {
-    map.sources.set(sid(id, instance), type);
-    for (const part of ["fill", "line", "circle"]) {
-      map.layers.push(`${sid(id, instance)}:${part}`);
-    }
-  };
+  const declare = (id: string, instance: number, type = "geojson") =>
+    declareOn(map, id, instance, type);
   /** Add the cluster style layer of a declared layer, and declare it in the state. */
-  const cluster = (id: string, instance: number) => {
-    map.layers.push(`${sid(id, instance)}:cluster`);
+  const cluster = (id: string, instance: number, on = map) => {
+    on.layers.push(`${sid(id, instance)}:cluster`);
     model.values.state = {
       layers: [
         {
@@ -487,14 +505,6 @@ describe("marker", () => {
 });
 
 describe("clusters", () => {
-  const bubble = (id: string, instance: number, clusterId: unknown = 7) => ({
-    id: 0,
-    source: sid(id, instance),
-    properties: { cluster: true, cluster_id: clusterId, point_count: 5 },
-    geometry: { type: "Point", coordinates: [3, 4] },
-  });
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
   /** A map whose expansion answer waits for `release`. */
   function held(map: FakePointerMap) {
     const waiting: ((zoom: number) => void)[] = [];
@@ -687,5 +697,74 @@ describe("clusters", () => {
     map.emit("mousemove", { point: [1, 1], lngLat: { lng: 0, lat: 0 } });
     expect(map.canvas.style.cursor).toBe("pointer");
     expect(map.queries.at(-1)!.layers).toEqual([`${sid("a", 1)}:cluster`]);
+  });
+});
+
+describe("a picked map", () => {
+  /** A second map `pick` returns for every point, as a compare view's right half. */
+  function picked(options: Parameters<typeof setup>[0] = {}) {
+    const other = new FakePointerMap();
+    const points: unknown[] = [];
+    const ctx = setup({
+      ...options,
+      pick: (point) => {
+        points.push(point);
+        return other;
+      },
+    });
+    return { ...ctx, other, points };
+  }
+  const AT = { x: 600, y: 40 };
+
+  it("gives a click its hits, deduplicated through its own sources", () => {
+    const { map, model, other, points } = picked();
+    declareOn(map, "l", 1);
+    map.features = [feature("l", 1, 0)];
+    declareOn(other, "r", 1);
+    other.features = [
+      feature("r", 1, 0, { n: 1 }),
+      feature("r", 1, 0, { n: 1 }),
+    ];
+    map.emit("click", { point: AT, lngLat: { lng: 10, lat: 20 } });
+    expect(model.sent).toHaveLength(1);
+    expect(model.sent[0].features).toEqual([
+      { id: "r", instance: 1, properties: { n: 1 } },
+    ]);
+    expect(map.queries).toEqual([]);
+    expect(points.length).toBeGreaterThan(0);
+    expect(points.every((p) => p === AT)).toBe(true);
+  });
+
+  it("decides the main canvas's cursor", () => {
+    const { map, other } = picked({ clickable: (id) => id === "r" });
+    declareOn(other, "r", 1);
+    other.features = [feature("r", 1, 0)];
+    map.emit("mousemove", { point: AT, lngLat: { lng: 0, lat: 0 } });
+    expect(map.canvas.style.cursor).toBe("pointer");
+    expect(other.canvas.style.cursor).toBe("");
+    expect(map.queries).toEqual([]);
+  });
+
+  it("expands a cluster of its own source, and the main map eases", async () => {
+    const { map, model, other, cluster } = picked();
+    declareOn(other, "a", 1);
+    cluster("a", 1, other);
+    other.expansionZoom = async () => 12;
+    other.features = [bubble("a", 1)];
+    const original = { type: "click" };
+    map.emit("click", {
+      point: AT,
+      lngLat: { lng: 0, lat: 0 },
+      originalEvent: original,
+    });
+    await settle();
+    expect(model.sent).toEqual([]);
+    expect(map.eased).toEqual([
+      {
+        options: { center: [3, 4], zoom: 12 },
+        eventData: { originalEvent: original },
+      },
+    ]);
+    expect(other.eased).toEqual([]);
   });
 });

@@ -1,13 +1,16 @@
 /// <reference types="geojson" />
-import type { Map as MapLibreMap } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 
+import { MIRROR_SOURCE, mirrorLayers } from "./draw";
 import { installImages } from "./images";
 import { MapSync, type ViewModel } from "./maplive";
 import { StatusReporter, ViewPresence } from "./status";
-import type { MapState, ViewSide } from "./types";
+import type { DrawFeature, MapState, ViewSide } from "./types";
 import { NO_INSETS, type Insets } from "./view";
 
 const RIGHT = "right";
+
+type Paint = Parameters<MapLibreMap["setPaintProperty"]>;
 
 /** How far an arrow key moves the divider, as a fraction of the usable width. */
 const STEP = 0.05;
@@ -118,11 +121,16 @@ interface Right {
  * A divider clips it to the area right of `dividerX`. Its position is a
  * fraction of the area inside the insets, which the user moves with the
  * handle and which stays here as compare turns off and on.
+ *
+ * The main map's Terra Draw takes the input in both halves; the right map
+ * draws a copy of what it renders above its owned layers.
  */
 export class CompareView {
   private right: Right | null = null;
   private disposed = false;
   private fraction = 0.5;
+  /** What Terra Draw renders last, kept while compare is off; null before it ever started. */
+  private drawing: { features: DrawFeature[]; color: string } | null = null;
   private insets: Insets = NO_INSETS;
   /** The pointer dragging the handle, and where it took hold of the divider. */
   private grab: { pointerId: number; offset: number } | null = null;
@@ -156,6 +164,12 @@ export class CompareView {
   setInsets(insets: Insets): void {
     this.insets = insets;
     this.place();
+  }
+
+  /** What the main map's Terra Draw renders, in `color`, to copy on the right map. */
+  setDrawing(features: DrawFeature[], color: string): void {
+    this.drawing = { features, color };
+    this.mirror();
   }
 
   /** The map shown at `point`, in px from the view's top left. */
@@ -248,6 +262,8 @@ export class CompareView {
     // MapLibre loads a style a frame later at the earliest.
     map.on("style.load", () => {
       right.styled = true;
+      // A new style holds none of the mirror.
+      this.mirror();
     });
     this.right = right;
     (root as CompareRoot).psmCompare = { map, status: reporter, sync };
@@ -272,6 +288,32 @@ export class CompareView {
     this.grab = null;
     right.divider.remove();
     right.handle.remove();
+  }
+
+  /** Draw the drawing on the right map: in place, or anew on a new style. */
+  private mirror(): void {
+    const right = this.right;
+    const drawing = this.drawing;
+    if (!right?.styled || !drawing) return;
+    const { map } = right;
+    const data: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: drawing.features as GeoJSON.Feature[],
+    };
+    const source = map.getSource(MIRROR_SOURCE) as GeoJSONSource | undefined;
+    if (source) source.setData(data);
+    else map.addSource(MIRROR_SOURCE, { type: "geojson", data });
+    // Foreign layers: the right sync keeps every owned layer below them.
+    for (const layer of mirrorLayers(drawing.color)) {
+      if (!map.getLayer(layer.id)) {
+        map.addLayer(layer);
+        continue;
+      }
+      // MapLibre's style skips a value it already has.
+      for (const [name, value] of Object.entries(layer.paint ?? {})) {
+        map.setPaintProperty(layer.id, name as Paint[1], value as Paint[2]);
+      }
+    }
   }
 
   /** The divider's x in the view now. */

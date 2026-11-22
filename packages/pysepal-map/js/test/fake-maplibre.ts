@@ -49,7 +49,10 @@ export class FakeMapLibre extends Emitter {
   getSource = (id: string) => this.objects.get(id);
   addSource = (id: string, spec: any) => {
     this.fake.addSource(id, spec);
-    this.objects.set(id, { serialize: () => this.fake.source(id) });
+    this.objects.set(id, {
+      serialize: () => this.fake.source(id),
+      setData: (data: unknown) => this.fake.setData(id, data),
+    });
   };
   removeSource = (id: string) => {
     this.fake.removeSource(id);

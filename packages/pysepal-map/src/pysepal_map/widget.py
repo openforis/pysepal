@@ -71,7 +71,14 @@ state compares: it opens with ``view_open`` and closes with ``view_close``
 like a view, follows the main map's camera and sends no camera, click or
 draw report. It pulls only the digests the main map does not hold. It shows
 right of a divider the user moves inside the insets; the browser keeps the
-divider's position and never sends it.
+divider's position and never sends it. The pointer reads the map shown under
+it: right of the divider, a click's ``features`` (sent by ``main``), the
+popup, the tooltip, the ``pointer`` cursor and a cluster's zoom come from the
+``right`` map, while popups, the marker and the camera stay on the main map.
+Drawing takes input in both halves, and the ``right`` map draws a copy of
+what Terra Draw renders, handles included, in source ``psm-draw-mirror``
+and layers ``psm-draw-mirror-fill``, ``-line`` and ``-point``, above its
+owned layers.
 
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
 [-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true

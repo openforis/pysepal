@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from "maplibre-gl";
+import type { LayerSpecification, Map as MapLibreMap } from "maplibre-gl";
 import {
   TerraDraw,
   TerraDrawCircleMode,
@@ -103,6 +103,11 @@ const GEOMETRY_MODES: Record<string, string> = {
 
 const FILL_OPACITY = 0.2;
 const WHITE = "#ffffff";
+/** Outlines, lines and point outlines. */
+const LINE_WIDTH = 2;
+/** Terra Draw 1.39's point radii, which the styles leave as they are. */
+const POINT_WIDTH = 6;
+const MIDPOINT_WIDTH = 4;
 
 /** One mode Terra Draw is built with: its name and its constructor options. */
 export interface ModeSpec {
@@ -128,16 +133,20 @@ function stylesFor(name: string, color: string): Record<string, unknown> {
         fillColor: color,
         fillOpacity: FILL_OPACITY,
         outlineColor: color,
-        outlineWidth: 2,
+        outlineWidth: LINE_WIDTH,
         ...handles,
       };
     case "linestring":
-      return { lineStringColor: color, lineStringWidth: 2, ...handles };
+      return {
+        lineStringColor: color,
+        lineStringWidth: LINE_WIDTH,
+        ...handles,
+      };
     case "point":
       return {
         pointColor: color,
         pointOutlineColor: WHITE,
-        pointOutlineWidth: 2,
+        pointOutlineWidth: LINE_WIDTH,
         snappingPointColor: color,
       };
     default:
@@ -276,6 +285,78 @@ export function snapshotOf(features: DrawFeature[]): DrawFeature[] {
   return out;
 }
 
+/** The point handles Terra Draw draws as vertices; `midPoint` is the other one. */
+const VERTEX_FLAGS = [
+  "selectionPoint",
+  "closingPoint",
+  "snappingPoint",
+  "coordinatePoint",
+  "edited",
+];
+
+function roleOf({ geometry, properties }: DrawFeature): string {
+  if (geometry.type !== "Point") return "shape";
+  const flags = properties ?? {};
+  if (flags.midPoint) return "midpoint";
+  return VERTEX_FLAGS.some((flag) => flags[flag]) ? "vertex" : "shape";
+}
+
+/**
+ * What Terra Draw renders of a snapshot, shapes being drawn and handles
+ * included, as plain features whose only property, `psmRole`, is `shape`,
+ * `vertex` or `midpoint`. The coordinates stay as Terra Draw holds them.
+ */
+export function mirrorFeatures(snapshot: DrawFeature[]): DrawFeature[] {
+  return snapshot.map((feature) => ({
+    type: "Feature",
+    id: feature.id,
+    geometry: feature.geometry,
+    properties: { psmRole: roleOf(feature) },
+  }));
+}
+
+/** The source of a copy of the drawing on another map; not `psm:`, so no sync removes it. */
+export const MIRROR_SOURCE = `${DRAW_PREFIX}-mirror`;
+
+/** The layers that draw `mirrorFeatures` in `color` as `modeSpecs(color)` styles Terra Draw. */
+export function mirrorLayers(color: string): LayerSpecification[] {
+  const source = MIRROR_SOURCE;
+  return [
+    {
+      id: `${source}-fill`,
+      type: "fill",
+      source,
+      filter: ["==", ["geometry-type"], "Polygon"],
+      paint: { "fill-color": color, "fill-opacity": FILL_OPACITY },
+    },
+    {
+      id: `${source}-line`,
+      type: "line",
+      source,
+      filter: ["!=", ["geometry-type"], "Point"],
+      paint: { "line-color": color, "line-width": LINE_WIDTH },
+    },
+    {
+      id: `${source}-point`,
+      type: "circle",
+      source,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-color": color,
+        "circle-radius": [
+          "match",
+          ["get", "psmRole"],
+          "midpoint",
+          MIDPOINT_WIDTH,
+          POINT_WIDTH,
+        ],
+        "circle-stroke-color": WHITE,
+        "circle-stroke-width": LINE_WIDTH,
+      },
+    },
+  ];
+}
+
 /** A key that two snapshots share when they hold the same features. */
 function keyOf(features: DrawFeature[]): string {
   const sorted = [...features].sort((a, b) =>
@@ -361,6 +442,12 @@ export interface ViewDrawOptions {
   createDraw(modes: ModeSpec[]): DrawEngine;
   /** Drawing became interactive, or stopped being so. */
   onInteractiveChange?(): void;
+  /**
+   * What Terra Draw renders changed, or its colour: `mirrorFeatures` of its
+   * snapshot, `[]` once it stopped. Told on each of its changes, the view's
+   * own too, and after the view changed it.
+   */
+  onRendered?(features: DrawFeature[], color: string): void;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -693,6 +780,7 @@ export class ViewDraw {
 
   // Deleting selection handles on deselect is no change of the features.
   private readonly onChange = (ids: unknown, type: unknown) => {
+    this.rendered();
     if (
       this.quiet ||
       !this.engine ||
@@ -727,6 +815,10 @@ export class ViewDraw {
     });
   }
 
+  /**
+   * A change the view makes, such as a mode or a colour, may fire no
+   * `change`: tell what Terra Draw renders after it.
+   */
   private hush(body: () => void): void {
     this.quiet += 1;
     try {
@@ -734,6 +826,14 @@ export class ViewDraw {
     } finally {
       this.quiet -= 1;
     }
+    if (!this.quiet) this.rendered();
+  }
+
+  private rendered(): void {
+    const { onRendered } = this.options;
+    if (!onRendered) return;
+    const engine = this.engine;
+    onRendered(engine ? mirrorFeatures(engine.getSnapshot()) : [], this.color);
   }
 }
 

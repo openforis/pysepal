@@ -1,4 +1,4 @@
-import type { PointLike } from "maplibre-gl";
+import type { Point } from "maplibre-gl";
 
 import {
   isCluster,
@@ -44,21 +44,28 @@ export interface PopupModel {
   off(name: string, callback: () => void): void;
 }
 
+type QueryMap = Pick<
+  PointerMap,
+  "getLayersOrder" | "getLayer" | "queryRenderedFeatures"
+>;
+
 export interface PopupsOptions {
-  map: Pick<
-    PointerMap,
-    "getLayersOrder" | "getLayer" | "queryRenderedFeatures" | "on" | "off"
-  >;
+  map: QueryMap & Pick<PointerMap, "on" | "off">;
   model: PopupModel;
   /** Whether drawing is interactive: popups and tooltips are then off. */
   drawing?(): boolean;
+  /**
+   * The map shown at a point of an event, `map` by default: the feature shown
+   * comes from it, and the popup and tooltip open on `map`.
+   */
+  pick?(point: { x: number; y: number }): QueryMap;
   createPopup(options: PopupOptions): PopupLike;
   doc?: { createElement(tag: string): ElementLike };
   requestFrame?(callback: () => void): unknown;
 }
 
 interface PointerEvent {
-  point: PointLike;
+  point: Point;
   lngLat: { lng: number; lat: number };
 }
 
@@ -151,12 +158,8 @@ export class ViewPopups {
   }
 
   /** The top feature among layers that declare `kind`, if it is a declared instance. */
-  private top(
-    point: PointLike,
-    kind: Kind,
-    layers: LayerState[]
-  ): Target | null {
-    const { map } = this.options;
+  private top(point: Point, kind: Kind, layers: LayerState[]): Target | null {
+    const map = this.options.pick?.(point) ?? this.options.map;
     const wants = (id: string) =>
       layers.some((l) => l.id === id && l.interaction?.[kind]);
     const styleLayers = ownedStyleLayers(map, wants);

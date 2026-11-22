@@ -4,6 +4,7 @@ import {
   ADAPTER_SOURCES,
   DRAW_MODES,
   ViewDraw,
+  mirrorFeatures,
   type DrawEngine,
   type DrawFeature,
   type DrawReport,
@@ -208,6 +209,7 @@ function setup(
   const engines: FakeEngine[] = [];
   const sent: DrawReport[] = [];
   const changes: boolean[] = [];
+  const rendered: { features: DrawFeature[]; color: string }[] = [];
   let refuse = false;
   const view: ViewDraw = new ViewDraw({
     map,
@@ -226,6 +228,8 @@ function setup(
       return engine;
     },
     onInteractiveChange: () => changes.push(view.interactive()),
+    onRendered: (features, color) =>
+      rendered.push(structuredClone({ features, color })),
   });
   return {
     map,
@@ -234,6 +238,7 @@ function setup(
     engines,
     sent,
     changes,
+    rendered,
     engine: () => engines[engines.length - 1],
     load: () => map.emit("style.load"),
     refuse: (value: boolean) => (refuse = value),
@@ -707,6 +712,87 @@ describe("style replacement", () => {
     map.emit("style.load");
     expect(engine().store).toEqual([seed]);
     expect(sent.map((r) => r.cause)).toEqual(["request"]);
+  });
+});
+
+describe("what Terra Draw renders", () => {
+  const plain = (feature: DrawFeature, psmRole: string) => ({
+    type: "Feature",
+    id: feature.id,
+    geometry: feature.geometry,
+    properties: { psmRole },
+  });
+
+  it("keeps shapes being drawn and handles, as plain features tagged by role", () => {
+    const drawing = polygon(5, {
+      currentlyDrawing: true,
+      committedCoordinateCount: 2,
+    });
+    const edited = polygon(7, { edited: true });
+    const drawn = point(3, 4, { name: "p" });
+    const closing = point(1, 1, { closingPoint: true });
+    const vertex = point(0, 0, {
+      selectionPoint: true,
+      selectionPointFeatureId: drawing.id,
+      index: 0,
+    });
+    const midpoint = point(0.5, 0, { midPoint: true });
+    expect(
+      mirrorFeatures([drawing, edited, drawn, closing, vertex, midpoint])
+    ).toEqual([
+      plain(drawing, "shape"),
+      plain(edited, "shape"),
+      plain(drawn, "shape"),
+      plain(closing, "vertex"),
+      plain(vertex, "vertex"),
+      plain(midpoint, "midpoint"),
+    ]);
+  });
+
+  it("is told after a restore, on a user's change, and as Terra Draw stops", () => {
+    const saved = polygon();
+    const { load, model, engine, rendered } = setup({
+      drawn: { request_seq: 0, features: [saved] },
+    });
+    load();
+    model.set("drawing", ON("polygon"));
+    expect(rendered.at(-1)).toEqual({
+      features: mirrorFeatures([saved]),
+      color: "#3388ff",
+    });
+    // Terra Draw changes a polygon in progress on every pointer move.
+    const drawing = polygon(4, { currentlyDrawing: true });
+    engine().store.push(drawing);
+    engine().emit("change", [drawing.id], "create");
+    expect(rendered.at(-1)!.features).toEqual(mirrorFeatures([saved, drawing]));
+    model.set("drawing", OFF);
+    expect(rendered.at(-1)).toEqual({ features: [], color: "#3388ff" });
+  });
+
+  it("is told on the changes the view makes itself, and after it applied a request", () => {
+    const { load, model, engine, rendered } = setup();
+    load();
+    model.set("drawing", ON());
+    engine().draw(polygon());
+    rendered.length = 0;
+    const seed = polygon(2);
+    model.set("draw_request", { seq: 1, features: [seed] });
+    // The clear and the add each fire a change while the view is quiet.
+    expect(rendered.map((r) => r.features.length)).toEqual([0, 1, 1]);
+    expect(rendered.at(-1)!.features).toEqual(mirrorFeatures([seed]));
+  });
+
+  it("is told the new colour", () => {
+    const { load, model, engine, rendered } = setup();
+    load();
+    model.set("drawing", ON("polygon"));
+    const mine = polygon();
+    engine().draw(mine);
+    model.set("drawing", { ...ON("polygon"), color: "#00ff00" });
+    expect(rendered.at(-1)).toEqual({
+      features: mirrorFeatures([mine]),
+      color: "#00ff00",
+    });
   });
 });
 

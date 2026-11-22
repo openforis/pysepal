@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CompareView, RevisionMark, dividerX } from "../compare";
 import { MapSync } from "../maplive";
 import { StatusReporter } from "../status";
-import type { MapState } from "../types";
+import type { DrawFeature, MapState } from "../types";
 import { NO_INSETS, type Insets } from "../view";
 import {
   FakeMapLibre,
@@ -580,5 +580,103 @@ describe("CompareView", () => {
     model.set(compareState(3));
     expect(handle().getAttribute("aria-valuenow")).toBe("45");
     expect(clip()).toBe("inset(0 0 0 450px)");
+  });
+});
+
+describe("the drawing mirror", () => {
+  const SOURCE = "psm-draw-mirror";
+  const LAYERS = ["fill", "line", "point"].map((part) => `${SOURCE}-${part}`);
+  const shape: DrawFeature = {
+    type: "Feature",
+    id: "s",
+    geometry: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 0],
+        ],
+      ],
+    },
+    properties: { psmRole: "shape" },
+  };
+  const vertex: DrawFeature = {
+    type: "Feature",
+    id: "v",
+    geometry: { type: "Point", coordinates: [1, 0] },
+    properties: { psmRole: "vertex" },
+  };
+  const collection = (...features: DrawFeature[]) => ({
+    type: "FeatureCollection",
+    features,
+  });
+
+  it("draws the last drawing once the right map exists and its style loaded", async () => {
+    const { model, compare, right } = await setup(state(1));
+    compare.setDrawing([shape], "#ff0000");
+    compare.setDrawing([shape, vertex], "#00ff00");
+    model.set(compareState(2));
+    expect(right().fake.sourceIds()).not.toContain(SOURCE);
+
+    right().emit("style.load");
+    expect(right().fake.payload(SOURCE)).toEqual(collection(shape, vertex));
+    expect(right().fake.layerOrder()).toEqual(LAYERS);
+    const paint = (part: string) =>
+      right().fake.layer(`${SOURCE}-${part}`)!.paint;
+    expect(paint("fill")).toEqual({
+      "fill-color": "#00ff00",
+      "fill-opacity": 0.2,
+    });
+    expect(paint("line")).toEqual({ "line-color": "#00ff00", "line-width": 2 });
+    expect(paint("point")).toEqual({
+      "circle-color": "#00ff00",
+      "circle-radius": ["match", ["get", "psmRole"], "midpoint", 4, 6],
+      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": 2,
+    });
+  });
+
+  it("stays above every owned layer", async () => {
+    const both = geojson("b", 1, "x");
+    const { model, compare, right } = await setup(compareState(1, both));
+    right().emit("style.load");
+    compare.setDrawing([shape], "#ff0000");
+    await settle();
+    // Another owned layer, on a payload the main map holds.
+    model.set(compareState(2, both, geojson("c", 1, "x")));
+    await settle();
+    const order = right().fake.layerOrder();
+    expect(order.slice(-3)).toEqual(LAYERS);
+    const owned = order.slice(0, -3);
+    expect(owned.some((id) => id.startsWith("psm:c:1:"))).toBe(true);
+    expect(owned.every((id) => id.startsWith("psm:"))).toBe(true);
+  });
+
+  it("updates in place, keeps the drawing while compare is off, and draws again after a style load", async () => {
+    const { model, compare, right } = await setup(compareState(1));
+    right().emit("style.load");
+    compare.setDrawing([shape], "#ff0000");
+    right().fake.calls.length = 0;
+    compare.setDrawing([], "#0000ff");
+    expect(right().fake.payload(SOURCE)).toEqual(collection());
+    expect(right().fake.calls.map((c) => c.method)).not.toContain("addLayer");
+    expect(right().fake.layer(`${SOURCE}-line`)!.paint).toMatchObject({
+      "line-color": "#0000ff",
+    });
+
+    // A new style holds none of it.
+    for (const id of [...LAYERS].reverse()) right().removeLayer(id);
+    right().removeSource(SOURCE);
+    right().emit("style.load");
+    expect(right().fake.payload(SOURCE)).toEqual(collection());
+    expect(right().fake.layerOrder()).toEqual(LAYERS);
+
+    model.set(state(2));
+    compare.setDrawing([vertex], "#00ff00");
+    model.set(compareState(3));
+    right().emit("style.load");
+    expect(right().fake.payload(SOURCE)).toEqual(collection(vertex));
   });
 });

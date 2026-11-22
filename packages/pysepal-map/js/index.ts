@@ -122,10 +122,13 @@ function render({ model, el }: RenderProps<Model>) {
   // Built after the map sync, so it handles a style load after the sync did.
   let draw: ViewDraw | null = null;
   const drawing = () => draw?.interactive() ?? false;
+  // In compare, the pointer reads what the half it is over shows.
+  const pick = (point: { x: number; y: number }) => compare.pick(point);
   const popups = new ViewPopups({
     map,
     model,
     drawing,
+    pick,
     createPopup: (options) => new maplibregl.Popup(options),
   });
   const pointer = new ViewPointer({
@@ -136,6 +139,7 @@ function render({ model, el }: RenderProps<Model>) {
     send,
     settled: () => sync.settled() && compare.settled(),
     drawing,
+    pick,
     clickable: popups.clickable,
     clustered: (id) => {
       const state = model.get("state") as Partial<MapState> | null;
@@ -156,6 +160,7 @@ function render({ model, el }: RenderProps<Model>) {
       popups.drawingChanged();
       pointer.drawingChanged();
     },
+    onRendered: (features, color) => compare.setDrawing(features, color),
   });
   root.psmDraw = draw;
   const camera = new ViewCamera({ map, model, viewId, host: root, send });

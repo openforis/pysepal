@@ -129,6 +129,16 @@ export class FakeMap implements LiveMap {
     this.sources.set(id, stored);
   }
 
+  /** Like GeoJSONSource.setData: new data for a GeoJSON source. */
+  setData(id: string, data: unknown): void {
+    this.log("setData", id);
+    const source = this.sources.get(id);
+    if (source?.type !== "geojson") {
+      throw new Error(`There is no GeoJSON source with this ID=${id}`);
+    }
+    source.data = data;
+  }
+
   removeSource(id: string): void {
     this.log("removeSource", id);
     if (!this.sources.has(id)) {
