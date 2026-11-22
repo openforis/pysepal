@@ -20,6 +20,15 @@ from pysepal_map import (
 LOCAL = ("127.0.0.1", "localhost", "::1")
 
 
+def wait_async(page, script, arg, what, timeout_ms=15_000):
+    """Poll an async ``script``: Playwright's ``wait_for_function`` does not await a promise."""
+    for _ in range(timeout_ms // 50):
+        if page.evaluate(script, arg):
+            return
+        page.wait_for_timeout(50)
+    raise AssertionError(what)
+
+
 def is_external(url):
     parts = urlsplit(url)
     return parts.scheme in ("http", "https") and parts.hostname not in LOCAL
@@ -187,10 +196,12 @@ def test_a_held_geojson_completion_holds_only_the_marker(harness, page_session):
     point = Layer("pt", GeoJSONSource(widget.add_payload(points([0, 0]))))
     widget.publish(MapState(layers=(point, Layer("r", RasterSource((RED_TILE,))))))
     page_session.wait_for_function("el => psmHarness.attach(el).held", arg=el)
-    page_session.wait_for_function(
+    wait_async(
+        page_session,
         "async el => { const [r, g, b] = await psmHarness.pixel(el, 20, 20);"
         " return r > 200 && g < 60 && b < 60; }",
-        arg=el,
+        el,
+        "the raster never showed under the held marker",
     )
     assert revision_of(el) is None
 

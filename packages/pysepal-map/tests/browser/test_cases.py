@@ -73,15 +73,26 @@ def close(rgb, expected, tolerance=8):
     return all(abs(a - b) <= tolerance for a, b in zip(rgb, expected))
 
 
+def wait_async(page, script, arg, what, timeout_ms=15_000):
+    """Poll an async ``script``: Playwright's ``wait_for_function`` does not await a promise."""
+    for _ in range(timeout_ms // 50):
+        if page.evaluate(script, arg):
+            return
+        page.wait_for_timeout(50)
+    raise AssertionError(what)
+
+
 def wait_color(page, el, lng_lat, rgb):
     """Wait for a rendered frame with ``rgb`` at ``lng_lat``."""
-    page.wait_for_function(
+    wait_async(
+        page,
         """async ([el, at, rgb]) => {
             const {x, y} = el.psmMap.project(at);
             const pixel = await psmHarness.pixel(el, x, y);
             return rgb.every((v, i) => Math.abs(pixel[i] - v) <= 8);
         }""",
-        arg=[el, lng_lat, list(rgb)],
+        [el, lng_lat, list(rgb)],
+        f"no frame showed {rgb} at {lng_lat}",
     )
 
 
