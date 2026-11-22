@@ -133,13 +133,14 @@ def test_an_acknowledgement_older_than_the_groups_seq_issues_nothing():
     a, b = mounted(), mounted()
     link_views(a, b)
     ack(b)
+    b.set_center(60, 60, 3)
+    app_seq = seq(b)
     a.set_center(1, 1, 2)
     ack(a, center=(1, 1), zoom=2)
-    b.set_center(60, 60, 3)
-    # The group issued seq on b after b's app request, so b's ack of its own is newer;
-    # an ack on a request below the group's seq is what stays quiet.
+    # The group's request on b is newer than the app's, which b acknowledges late.
+    assert seq(b) > app_seq
     before = seq(a)
-    report(b, seq(b) - 1, "request", center=(1, 1), zoom=2)
+    report(b, app_seq, "request", center=(60, 60), zoom=3)
     assert seq(a) == before
 
 
@@ -170,9 +171,19 @@ def test_nothing_is_forwarded_after_unlinking():
 def test_a_map_joins_one_group_only():
     a, b, c = mounted(), mounted(), mounted()
     link_views(a, b)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="in one call"):
         link_views(b, c)
     assert seq(c) == 1
+
+
+def test_a_stale_unlink_does_not_free_a_relinked_map():
+    a, b, c, d = mounted(), mounted(), mounted(), mounted()
+    first = link_views(a, b)
+    first()
+    link_views(a, c)
+    first()
+    with pytest.raises(ValueError):
+        link_views(a, d)
 
 
 @pytest.mark.parametrize("count", [0, 1])
