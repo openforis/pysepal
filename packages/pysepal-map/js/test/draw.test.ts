@@ -314,6 +314,8 @@ describe("starting", () => {
       selectedPolygonColor: "#ff0000",
       selectedPolygonFillOpacity: 0.2,
       selectedPolygonOutlineColor: "#ff0000",
+      // As wide as the right map's mirror draws it.
+      selectedPolygonOutlineWidth: 2,
       selectedLineStringColor: "#ff0000",
       selectedPointColor: "#ff0000",
     });

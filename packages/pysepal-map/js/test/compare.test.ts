@@ -1,5 +1,5 @@
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CompareView, RevisionMark, dividerX } from "../compare";
 import { MapSync } from "../maplive";
@@ -146,8 +146,11 @@ function rightReporter(map: FakeMapLibre, side: "main" | "right") {
   });
 }
 
-/** A main map and its sync, as index.ts builds them, and a CompareView. */
-async function setup(initial: MapState) {
+/**
+ * A main map and its sync, as index.ts builds them, and a CompareView whose
+ * right map fails to build while `failing` says so.
+ */
+async function setup(initial: MapState, failing = () => false) {
   const model = new FakeModel(initial);
   const document = new FakeDocument();
   const root = {
@@ -193,6 +196,7 @@ async function setup(initial: MapState) {
     mark,
     lookup: (digest) => sync.payload(digest),
     createMap: (container) => {
+      if (failing()) throw new Error("no WebGL context");
       const map = new FakeViewMap(container as unknown as FakeElement);
       maps.push(map);
       return map as unknown as MapLibreMap;
@@ -319,6 +323,8 @@ describe("CompareView", () => {
     expect(maps).toHaveLength(1);
     const container = right().container!;
     expect(container.className).toBe("psm-compare-right");
+    // A screen reader meets one map: the main one.
+    expect(container.getAttribute("aria-hidden")).toBe("true");
     expect(main.afterCanvas).toEqual([container]);
     expect((root as any).psmCompare.map).toBe(right());
     expect((root as any).psmCompare.sync).toBeInstanceOf(MapSync);
@@ -329,6 +335,45 @@ describe("CompareView", () => {
     model.set(compareState(3, geojson("b", 1, "x")));
     expect(maps).toHaveLength(1);
     expect((root as any).psmCompare).toBe(compare);
+  });
+
+  it("drops a right map that fails to build and tries again only as compare turns on anew", async () => {
+    let fail = true;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { model, root, main, maps, compare, settled } = await setup(
+        state(1),
+        () => fail
+      );
+      let later = 0;
+      model.on("change:state", () => later++);
+
+      model.set(compareState(2));
+      expect(later).toBe(1);
+      expect(main.afterCanvas).toHaveLength(1);
+      expect(main.afterCanvas[0].removed).toBe(true);
+      expect(errors).toHaveBeenCalledTimes(1);
+      expect(maps).toHaveLength(0);
+      expect((root as any).psmCompare).toBeUndefined();
+      expect(root.appended).toEqual([]);
+      expect(compare.inspect()).toBeNull();
+      expect(compare.pick({ x: 900, y: 10 })).toBe(main);
+
+      // Not on every state while compare stays on.
+      fail = false;
+      model.set(compareState(3));
+      compare.sync();
+      expect(main.afterCanvas).toHaveLength(1);
+      expect(errors).toHaveBeenCalledTimes(1);
+      expect(settled()).toBe(false);
+
+      model.set(state(4));
+      model.set(compareState(5));
+      expect(maps).toHaveLength(1);
+      expect((root as any).psmCompare.map).toBe(maps[0]);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("builds nothing on a second sync while compare stays on", async () => {
@@ -587,10 +632,22 @@ describe("CompareView", () => {
     press("ArrowRight");
     expect(now()).toBe(100);
 
-    // Other keys are left to the page.
+    // Other keys are left to the page, and so are its shortcuts.
     expect(press("a")).toBe(false);
     expect(press("ArrowUp")).toBe(false);
+    for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+      expect(
+        handle().fire("keydown", { key: "ArrowLeft", [modifier]: true })
+      ).toBe(false);
+      expect(handle().fire("keydown", { key: "Home", [modifier]: true })).toBe(
+        false
+      );
+    }
     expect(now()).toBe(100);
+    expect(handle().fire("keydown", { key: "ArrowLeft", shiftKey: true })).toBe(
+      true
+    );
+    expect(now()).toBe(95);
   });
 
   it("drags the divider with the pointer it captured", async () => {

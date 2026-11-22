@@ -127,6 +127,8 @@ interface Right {
  */
 export class CompareView {
   private right: Right | null = null;
+  /** The right map failed to build: it is tried again once compare turns off and on. */
+  private failed = false;
   private disposed = false;
   private fraction = 0.5;
   /** What Terra Draw renders last, kept while compare is off; null before it ever started. */
@@ -144,7 +146,8 @@ export class CompareView {
   sync(): void {
     if (this.disposed) return;
     const compare = stateOf(this.options.model).compare === true;
-    if (compare && !this.right) this.open();
+    if (!compare) this.failed = false;
+    if (compare && !this.right && !this.failed) this.open();
     else if (!compare && this.right) this.close();
   }
 
@@ -219,9 +222,21 @@ export class CompareView {
     const document = root.ownerDocument;
     const container = document.createElement("div");
     container.className = "psm-compare-right";
+    // A screen reader meets one map, the main one, which takes the input.
+    container.setAttribute("aria-hidden", "true");
     // Tree order paints the canvas, this map, then the main map's markers.
     main.getCanvas().after(container);
-    const map = createMap(container);
+    let map: MapLibreMap;
+    try {
+      map = createMap(container);
+    } catch (error) {
+      // Such as no WebGL context left. Trying on every state would log as
+      // often, and a throw would skip the model's later state listeners.
+      container.remove();
+      this.failed = true;
+      console.error("pysepal-map: the compare map could not be built", error);
+      return;
+    }
     const divider = document.createElement("div");
     divider.className = "psm-compare-divider";
     const handle = document.createElement("div");
@@ -389,7 +404,7 @@ export class CompareView {
   };
 
   private readonly onKey = (event: KeyboardEvent) => {
-    const to = keyTarget(event.key, this.fraction);
+    const to = keyTarget(event, this.fraction);
     if (to === null) return;
     event.preventDefault();
     // The page's own shortcuts would act on the same key.
@@ -412,9 +427,16 @@ export class CompareView {
   };
 }
 
-/** Where a key moves the divider from `fraction`; null for other keys. */
-function keyTarget(key: string, fraction: number): number | null {
-  switch (key) {
+/**
+ * Where a key moves the divider from `fraction`; null for other keys and for
+ * a key pressed with Alt, Ctrl or Meta, which the page's shortcuts take.
+ */
+function keyTarget(
+  event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey">,
+  fraction: number
+): number | null {
+  if (event.altKey || event.ctrlKey || event.metaKey) return null;
+  switch (event.key) {
     case "ArrowLeft":
       return fraction - STEP;
     case "ArrowRight":

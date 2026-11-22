@@ -154,6 +154,7 @@ function stylesFor(name: string, color: string): Record<string, unknown> {
         selectedPolygonColor: color,
         selectedPolygonFillOpacity: FILL_OPACITY,
         selectedPolygonOutlineColor: color,
+        selectedPolygonOutlineWidth: LINE_WIDTH,
         selectedLineStringColor: color,
         selectedPointColor: color,
         selectedPointOutlineColor: WHITE,
