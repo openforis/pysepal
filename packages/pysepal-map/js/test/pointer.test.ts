@@ -145,6 +145,7 @@ function setup(
     clickable?: (id: string) => boolean;
     clustered?: (id: string) => boolean;
     pick?: (point: { x: number; y: number }) => PointerMap;
+    hidden?: (point: { x: number; y: number }) => PointerMap | null;
   } = {}
 ) {
   const map = new FakePointerMap();
@@ -227,6 +228,7 @@ describe("click", () => {
         zoom: 4,
         settled: true,
         features: [{ id: "a", instance: 1, properties: { name: "x" } }],
+        hidden_features: [],
       },
     ]);
   });
@@ -733,6 +735,29 @@ describe("a picked map", () => {
     expect(map.queries).toEqual([]);
     expect(points.length).toBeGreaterThan(0);
     expect(points.every((p) => p === AT)).toBe(true);
+  });
+
+  it("sends the hits of the map hidden at the point apart, deduplicated the same way", () => {
+    const { map, model, other } = picked({ hidden: () => map });
+    declareOn(map, "l", 1);
+    map.features = [feature("l", 1, 0, { n: 2 }), feature("l", 1, 0, { n: 2 })];
+    declareOn(other, "r", 1);
+    other.features = [feature("r", 1, 0, { n: 1 })];
+    map.emit("click", { point: AT, lngLat: { lng: 10, lat: 20 } });
+    expect(model.sent[0].features).toEqual([
+      { id: "r", instance: 1, properties: { n: 1 } },
+    ]);
+    expect(model.sent[0].hidden_features).toEqual([
+      { id: "l", instance: 1, properties: { n: 2 } },
+    ]);
+  });
+
+  it("sends no hidden hits outside compare", () => {
+    const { model, declare, map, click } = setup({ hidden: () => null });
+    declare("a", 1);
+    map.features = [feature("a", 1, 0)];
+    click();
+    expect(model.sent[0].hidden_features).toEqual([]);
   });
 
   it("decides the main canvas's cursor", () => {

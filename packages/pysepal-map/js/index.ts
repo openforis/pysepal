@@ -140,6 +140,7 @@ function render({ model, el }: RenderProps<Model>) {
     settled: () => sync.settled() && compare.settled(),
     drawing,
     pick,
+    hidden: (point) => compare.hidden(point),
     clickable: popups.clickable,
     clustered: (id) => {
       const state = model.get("state") as Partial<MapState> | null;

@@ -109,6 +109,11 @@ export interface PointerOptions {
    * camera stay on `map`.
    */
   pick?(point: { x: number; y: number }): PointerMap;
+  /**
+   * In compare, the map the shown one covers at a point; null outside it. A
+   * click sends its hits apart, so a reader can tell what the other half has.
+   */
+  hidden?(point: { x: number; y: number }): PointerMap | null;
   createMarker(color: string): MarkerLike;
 }
 
@@ -235,6 +240,7 @@ export class ViewPointer {
       return;
     }
     const features = this.rendered(shown, event.point);
+    const hidden = this.options.hidden?.(event.point) ?? null;
     send({
       type: "click",
       view_id: viewId,
@@ -243,6 +249,9 @@ export class ViewPointer {
       zoom: map.getZoom(),
       settled: settled(),
       features: this.hitsOf(shown, features),
+      hidden_features: hidden
+        ? this.hitsOf(hidden, this.rendered(hidden, event.point))
+        : [],
     });
   };
 

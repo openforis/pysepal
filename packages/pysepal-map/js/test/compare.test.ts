@@ -484,6 +484,18 @@ describe("CompareView", () => {
     expect(compare.pick({ x: 900, y: 10 })).toBe(main);
   });
 
+  it("names the map hidden at a point, none outside compare", async () => {
+    const { model, main, right, compare } = await setup(state(1));
+    expect(compare.hidden({ x: 900, y: 10 })).toBeNull();
+
+    model.set(compareState(2));
+    expect(compare.hidden({ x: 499, y: 10 })).toBe(right());
+    expect(compare.hidden({ x: 500, y: 10 })).toBe(main);
+
+    model.set(state(3));
+    expect(compare.hidden({ x: 100, y: 10 })).toBeNull();
+  });
+
   it("puts the divider and its handle on the root, outside the canvas container", async () => {
     const { model, root, main, handle, divider } = await setup(compareState(1));
     expect(root.appended).toEqual([divider(), handle()]);

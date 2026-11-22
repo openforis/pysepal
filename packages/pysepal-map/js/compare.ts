@@ -178,6 +178,13 @@ export class CompareView {
     return right && point.x >= this.x() ? right.map : this.options.main;
   }
 
+  /** The map the shown one covers at `point`; null while there is no right map. */
+  hidden(point: { x: number; y: number }): MapLibreMap | null {
+    const right = this.right;
+    if (!right) return null;
+    return point.x >= this.x() ? this.options.main : right.map;
+  }
+
   /** The comm came back: open the right side again and resend its reports. */
   reconnect(): void {
     const right = this.right;

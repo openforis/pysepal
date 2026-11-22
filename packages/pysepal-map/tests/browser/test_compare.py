@@ -589,6 +589,7 @@ def test_right_half_click_hits_right_layer(harness, page_session, wait_settled):
     wait_for(page_session, lambda: seen, "no click arrived")
     assert seen[0].hits("r") == ({"name": "r"},)
     assert seen[0].hits("l") == ()
+    assert seen[0].hidden_features == ()
     popup = page_session.locator(".psm-popup")
     popup.wait_for()
     assert popup.locator("td").inner_text() == "r"
@@ -596,6 +597,10 @@ def test_right_half_click_hits_right_layer(harness, page_session, wait_settled):
     page_session.mouse.click(*on_left)
     wait_for(page_session, lambda: len(seen) == 2, "no second click arrived")
     assert seen[1].features == ()
+    # The main map draws l under the right half, so the inspector can read it.
+    assert [(h.layer_id, dict(h.properties)) for h in seen[1].hidden_features] == [
+        ("l", {"name": "l"})
+    ]
 
     # With the divider at the right edge, the main map shows there.
     page_session.locator(HANDLE).focus()

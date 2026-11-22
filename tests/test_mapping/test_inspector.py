@@ -132,8 +132,10 @@ class FakeMap:
         self.layer_engine.entries[layer_id] = (spec, render, self._instances)
 
 
-def click(lng=0.5, lat=0.5, zoom=5, settled=True, features=(), stale=()) -> ClickEvent:
-    return ClickEvent(lng, lat, zoom, settled, tuple(features), frozenset(stale), "a")
+def click(lng=0.5, lat=0.5, zoom=5, settled=True, features=(), stale=(), hidden=()) -> ClickEvent:
+    return ClickEvent(
+        lng, lat, zoom, settled, tuple(features), frozenset(stale), "a", tuple(hidden)
+    )
 
 
 def ee_layer(m, layer_id, answer, kind="Image", **kw) -> FakeEE:
@@ -334,6 +336,36 @@ async def test_vector_values_from_hits(amap, kind):
     assert layers["v"].status == "ready"
     assert layers["v"].values == (("a", "1.2346"), ("b", '{"x": 1}'), ("c", "s"))
     assert layers["none"].status == "empty"
+
+
+@pytest.mark.asyncio
+async def test_vector_of_the_other_half_reads_its_hidden_hit(amap):
+    # A left-only layer clicked right of the divider: its hit comes from the hidden map.
+    left = vector_layer(amap, "left")
+    right = vector_layer(amap, "right")
+    hidden = FeatureHit("left", left, {"name": "l"})
+    shown = FeatureHit("right", right, {"name": "r"})
+    layers = by_id(await inspect_point(amap, click(features=[shown], hidden=[hidden])))
+    assert layers["left"].status == "ready"
+    assert layers["left"].values == (("name", "l"),)
+    assert layers["right"].values == (("name", "r"),)
+
+
+@pytest.mark.asyncio
+async def test_a_layer_on_both_halves_reads_the_shown_hit_first(amap):
+    instance = vector_layer(amap, "v")
+    shown = FeatureHit("v", instance, {"side": "shown"})
+    hidden = FeatureHit("v", instance, {"side": "hidden"})
+    [layer] = await inspect_point(amap, click(features=[shown], hidden=[hidden]))
+    assert layer.values == (("side", "shown"),)
+
+
+@pytest.mark.asyncio
+async def test_hidden_hit_on_another_instance_is_changed(amap):
+    instance = vector_layer(amap, "v")
+    hit = FeatureHit("v", instance + 100, {"a": 1})
+    [layer] = await inspect_point(amap, click(hidden=[hit]))
+    assert layer.status == "changed"
 
 
 @pytest.mark.asyncio

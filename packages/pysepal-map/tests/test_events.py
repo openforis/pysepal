@@ -112,6 +112,44 @@ def test_retired_hit_marks_layer_stale():
     assert seen[0].stale == frozenset({"v"})
 
 
+def test_click_carries_the_hidden_half_hits_apart():
+    widget = mounted()
+    payload = widget.add_payload(b"{}")
+    layers = (Layer("v", GeoJSONSource(payload)), Layer("w", GeoJSONSource(payload)))
+    widget.publish(MapState(layers=layers))
+    instances = {x["id"]: x["instance"] for x in widget.state["layers"]}
+    widget.publish(MapState(layers=(layers[0], Layer("w", GeoJSONSource(payload), token=1))))
+    seen = recorded(widget)
+    click(
+        widget,
+        hidden_features=[
+            {"id": "v", "instance": instances["v"], "properties": {"name": "h"}},
+            {"id": "w", "instance": instances["w"], "properties": {}},
+            "junk",
+        ],
+    )
+    event = seen[0]
+    assert event.features == ()
+    assert event.hidden_features == (FeatureHit("v", instances["v"], {"name": "h"}),)
+    assert event.stale == frozenset({"w"})
+    with pytest.raises(TypeError):
+        event.hidden_features[0].properties["name"] = "b"
+
+
+def test_click_without_hidden_hits_has_none():
+    widget = mounted()
+    seen = recorded(widget)
+    click(widget)
+    assert seen[0].hidden_features == ()
+
+
+def test_click_with_bad_hidden_hits_is_dropped():
+    widget = mounted()
+    seen = recorded(widget)
+    click(widget, hidden_features="x")
+    assert seen == []
+
+
 def test_click_carries_view_zoom_and_settled():
     widget = mounted()
     seen = recorded(widget)

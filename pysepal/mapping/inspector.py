@@ -106,7 +106,8 @@ def _pair(map_: "SepalMap", event: ClickEvent) -> list:
 
 
 def _vector_row(event: ClickEvent, spec, instance: int, changed: InspectedLayer):
-    hits = [f for f in event.features if f.layer_id == spec.id]
+    # in compare, a layer of the other half has its hits on the hidden map only
+    hits = [f for f in (*event.features, *event.hidden_features) if f.layer_id == spec.id]
     if spec.id in event.stale or any(f.instance != instance for f in hits):
         return changed
     if not hits:

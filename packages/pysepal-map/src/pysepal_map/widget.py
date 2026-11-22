@@ -81,15 +81,17 @@ draw report. It pulls only the digests the main map does not hold. It shows
 right of a divider the user moves inside the insets; the browser keeps the
 divider's position and never sends it. The pointer reads the map shown under
 it: right of the divider, a click's ``features`` (sent by ``main``), the
-popup, the tooltip, the ``pointer`` cursor and a cluster's zoom come from the
-``right`` map, while popups, the marker and the camera stay on the main map.
+content of the popup and the tooltip, the ``pointer`` cursor and a cluster's
+zoom come from the ``right`` map, while the popup and tooltip themselves, the
+marker and the camera stay on the main map. A click's ``hidden_features`` come
+from the other map, the one the shown half covers there.
 Drawing takes input in both halves, and the ``right`` map draws a copy of
 what Terra Draw renders, handles included, in source ``psm-draw-mirror``
 and layers ``psm-draw-mirror-fill``, ``-line`` and ``-point``, above its
 owned layers.
 
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
-[-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true
+[-180, 180]), its ``zoom``, ``settled``, ``features`` and ``hidden_features``. ``settled`` is true
 when the view has marked the latest state's revision on its root (see the end
 of this docstring), or when everything but the layers in error (a rejected style
 operation, a payload that failed to decode) is on the map: such a layer does not
@@ -97,9 +99,12 @@ hold ``settled`` back, though the mark itself waits for it. Each feature is ``{"
 layer id and instance come from the feature's own source id, so a hit on a
 replaced instance names the old one. The view sends at most 5 features per
 layer and 20 in all, but always the first of each layer, top first, and none
-while drawing is interactive. Python accepts a click only from a mounted view,
-with finite ``lnglat`` (latitude in [-90, 90]), ``zoom`` and a boolean
-``settled``. It drops hits that are not objects or whose ``(id, instance)`` is
+while drawing is interactive. ``hidden_features`` holds, in the same form and
+under the same caps, the hits of the map the shown one covers at the click in
+compare, and is empty outside it. Python accepts a click only from a mounted
+view, with finite ``lnglat`` (latitude in [-90, 90]), ``zoom``, a boolean
+``settled`` and lists of hits (a missing ``hidden_features`` is empty). It
+drops hits, in both lists, that are not objects or whose ``(id, instance)`` is
 not the current published one, names the layers of the latter in
 ``ClickEvent.stale``, and queues the ``ClickEvent`` to every ``on_click``
 callback under the lock, like ``on_view``.
@@ -743,6 +748,7 @@ class MapWidget(anywidget.AnyWidget):
         lnglat = _numbers(content.get("lnglat"), 2)
         zoom = _numbers([content.get("zoom")], 1)
         settled, hits = content.get("settled"), content.get("features")
+        hidden = content.get("hidden_features", [])
         if (
             view is None
             or lnglat is None
@@ -750,37 +756,43 @@ class MapWidget(anywidget.AnyWidget):
             or zoom is None
             or not isinstance(settled, bool)
             or not isinstance(hits, list)
+            or not isinstance(hidden, list)
         ):
             return
         with self._lock:
             self._expire_due()
             if self._closed or view not in self._views:
                 return
-            features: list[FeatureHit] = []
             stale: set[str] = set()
-            for hit in hits:
-                if not isinstance(hit, dict):
-                    continue
-                layer_id, instance = hit.get("id"), hit.get("instance")
-                properties = hit.get("properties")
-                if (
-                    not isinstance(layer_id, str)
-                    or not _is_int(instance)
-                    or not isinstance(properties, dict)
-                ):
-                    continue
-                if self._current.get(layer_id, (None, None))[1] != instance:
-                    stale.add(layer_id)
-                    continue
-                features.append(
-                    FeatureHit(layer_id, instance, MappingProxyType(copy.deepcopy(properties)))
-                )
+            features, under = self._hits(hits, stale), self._hits(hidden, stale)
             event = ClickEvent(
-                lnglat[0], lnglat[1], zoom[0], settled, tuple(features), frozenset(stale), view[0]
+                lnglat[0], lnglat[1], zoom[0], settled, features, frozenset(stale), view[0], under
             )
             for callback in self._click_callbacks:
                 self._callbacks.put(callback, event)
         self._callbacks.flush(self._loop)
+
+    def _hits(self, hits: list, stale: set[str]) -> tuple[FeatureHit, ...]:
+        """The well-formed hits on current instances; the layers of retired ones go in ``stale``."""
+        features: list[FeatureHit] = []
+        for hit in hits:
+            if not isinstance(hit, dict):
+                continue
+            layer_id, instance = hit.get("id"), hit.get("instance")
+            properties = hit.get("properties")
+            if (
+                not isinstance(layer_id, str)
+                or not _is_int(instance)
+                or not isinstance(properties, dict)
+            ):
+                continue
+            if self._current.get(layer_id, (None, None))[1] != instance:
+                stale.add(layer_id)
+                continue
+            features.append(
+                FeatureHit(layer_id, instance, MappingProxyType(copy.deepcopy(properties)))
+            )
+        return tuple(features)
 
     def _draw_report(self, content: dict) -> None:
         """Mirror one view's drawn features in ``drawn`` and tell the callbacks.
