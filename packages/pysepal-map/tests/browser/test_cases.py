@@ -247,15 +247,8 @@ def test_reorder_while_drawing_polygon(harness, page_session, wait_settled):
     ]
 
 
-class SidedWidget(MapWidget):
-    """A widget that draws the layer ``cmp`` on both sides of a compare view."""
-
-    def _sides_of(self, layer_id):
-        return ("left", "right") if layer_id == "cmp" else ("main",)
-
-
 def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
-    widget = SidedWidget()
+    widget = MapWidget()
     received = []
     widget.on_msg(lambda _, content, __: received.append(content))
     widget.publish(MapState())
@@ -295,23 +288,23 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
     )
     assert widget.layer_status == {"pt": LayerStatus("ready", None, 0, 2)}
 
-    # cmp draws on a left and a right view, registered as the browser would.
+    # In compare, cmp draws on the main and the right view, registered as the browser would.
     cmp = Layer("cmp", GeoJSONSource(widget.add_payload(collection(point(5, 5)))))
-    widget.publish(MapState(layers=(pt, cmp)))
+    widget.publish(MapState(layers=(pt, cmp), compare=True))
     instance = widget.state["layers"][1]["instance"]
 
     def post(message):
         el.evaluate("(el, message) => psmHarness.post(el, message)", message)
 
-    def status(view_id, side, value, error=None):
+    def status(view_id, side, value, error=None, layer_id="cmp", layer_instance=None):
         post(
             {
                 "type": "status",
                 "view_id": view_id,
                 "side": side,
-                "id": "cmp",
+                "id": layer_id,
                 "token": 0,
-                "instance": instance,
+                "instance": instance if layer_instance is None else layer_instance,
                 "status": value,
                 "error": error,
             }
@@ -325,18 +318,23 @@ def test_late_status_and_side_aggregation(harness, page_session, wait_settled):
         )
 
     received.clear()
-    for view_id, side in (("test-left", "left"), ("test-right", "right")):
+    for view_id, side in (("test-left", "main"), ("test-right", "right")):
         post({"type": "view_open", "view_id": view_id, "side": side})
     handled("view_open", "test-right")
     assert widget.layer_status["cmp"] == LayerStatus("loading", None, 0, instance)
 
-    status("test-left", "left", "error", "left failed")
+    # pt is on both sides, so the two new views hold it until they report on it too.
+    status("test-left", "main", "ready", layer_id="pt", layer_instance=2)
+    status("test-right", "right", "ready", layer_id="pt", layer_instance=2)
+    handled("status", "test-right")
+    received.clear()
+    status("test-left", "main", "error", "main failed")
     status("test-right", "right", "ready")
     handled("status", "test-right")
-    assert widget.layer_status["cmp"] == LayerStatus("error", "left failed", 0, instance)
+    assert widget.layer_status["cmp"] == LayerStatus("error", "main failed", 0, instance)
     assert widget.layer_status["pt"] == LayerStatus("ready", None, 0, 2)
 
-    post({"type": "view_close", "view_id": "test-left", "side": "left"})
+    post({"type": "view_close", "view_id": "test-left", "side": "main"})
     wait_status(
         page_session,
         widget,

@@ -370,29 +370,19 @@ def test_publish_retires_a_replaced_instance_before_publishing(board):
     assert widget.layer_status == {"r": LayerStatus("loading", None, 0, 2)}
 
 
-COMPARE = {"main": ("main", "main"), "compare": ("left", "right")}
-
-
-class CompareWidget(MapWidget):
-    """The compare contract: ``l`` draws on the left only, the rest on both."""
-
-    compare = True
-
-    def _sides_of(self, layer_id):
-        if layer_id == "l":
-            return ("left",)
-        return ("left", "right") if self.compare else ("main",)
+COMPARE = {"main": ("main", "main"), "compare": ("main", "right")}
 
 
 @pytest.fixture(params=list(COMPARE))
 def pair(request, monkeypatch, loop):
-    """Two views on the same reducer: both ``main``, or ``left`` and ``right``."""
-    widget = CompareWidget(loop=loop)
-    widget.compare = request.param == "compare"
+    """Two views on the same reducer: both ``main``, or ``main`` and ``right``."""
+    widget = MapWidget(loop=loop)
     capture_sends(monkeypatch, widget)
     calls = []
     widget.on_status(lambda status: calls.append(dict(status)))
-    widget.publish(MapState(layers=(Layer("r", RasterSource(("t",))),)))
+    widget.publish(
+        MapState(layers=(Layer("r", RasterSource(("t",))),), compare=request.param == "compare")
+    )
     return widget, COMPARE[request.param], calls
 
 
@@ -429,22 +419,100 @@ def test_closing_the_failed_view_drops_its_reports_for_good(pair):
     assert widget.layer_status == {}
 
 
-def test_a_left_only_layer_is_not_held_by_the_right_view(monkeypatch, loop):
-    widget = CompareWidget(loop=loop)
+def layer_on(side, layer_id="r"):
+    return Layer(layer_id, RasterSource(("t",)), side=side)
+
+
+@pytest.fixture
+def sides(monkeypatch, loop):
+    """A widget with a ``main`` and a ``right`` view of the same ``v`` open."""
+    widget = MapWidget(loop=loop)
     capture_sends(monkeypatch, widget)
-    left, both = Layer("l", RasterSource(("t",))), Layer("r", RasterSource(("u",)))
-    widget.publish(MapState(layers=(left, both)))
+    open_view(widget, "v", "main")
+    open_view(widget, "v", "right")
+    return widget
+
+
+def test_side_change_keeps_instance():
+    widget = MapWidget()
+    widget.publish(MapState(layers=(layer_on("both"),), compare=True))
+    first = instance(widget, "r")
+    for side in ("left", "right", "both"):
+        widget.publish(MapState(layers=(layer_on(side),), compare=True))
+        assert instance(widget, "r") == first
+
+
+def test_view_open_with_left_side_is_ignored(board):
+    widget, sent, _ = board
     open_view(widget, "a", "left")
-    open_view(widget, "b", "right")
-    report(widget, "a", "ready", layer_id="l", side="left")
-    report(widget, "a", "ready", side="left")
-    assert status_of(widget, "l") == ("ready", None)
-    assert status_of(widget, "r") == ("loading", None)
-    # A right view's report about a left-only layer is not its to make.
-    report(widget, "b", "error", layer_id="l", side="right", error="x")
-    assert status_of(widget, "l") == ("ready", None)
-    close_view(widget, "a", "left")
-    assert set(widget.layer_status) == {"r"}
+    assert widget._views == {}
+    assert sent == []
+    assert widget.layer_status == {}
+
+
+def test_status_follows_sides(sides):
+    widget = sides
+    widget.publish(MapState(layers=(layer_on("right"),), compare=True))
+    # The main view does not draw it: its report is ignored.
+    report(widget, "v", "ready", side="main")
+    assert status_of(widget) == ("loading", None)
+    report(widget, "v", "ready", side="right")
+    assert status_of(widget) == ("ready", None)
+
+    widget.publish(MapState(layers=(layer_on("both"),), compare=True))
+    report(widget, "v", "error", side="right", error="x")
+    report(widget, "v", "ready", side="main")
+    assert status_of(widget) == ("error", "x")
+    report(widget, "v", "ready", side="right")
+    assert status_of(widget) == ("ready", None)
+
+    widget.publish(MapState(layers=(layer_on("left"),), compare=True))
+    report(widget, "v", "ready", side="main")
+    assert status_of(widget) == ("ready", None)
+    report(widget, "v", "error", side="right", error="ignored")
+    assert status_of(widget) == ("ready", None)
+
+    # Compare off: everything is on main, and right reports are ignored.
+    widget.publish(MapState(layers=(layer_on("right", "o"),), compare=False))
+    report(widget, "v", "error", layer_id="o", side="right", error="ignored")
+    assert status_of(widget, "o") == ("loading", None)
+    report(widget, "v", "ready", layer_id="o", side="main")
+    assert status_of(widget, "o") == ("ready", None)
+
+
+def test_right_view_closing_drops_its_reports(sides):
+    widget = sides
+    widget.publish(MapState(layers=(layer_on("both"),), compare=True))
+    report(widget, "v", "ready", side="main")
+    report(widget, "v", "error", side="right", error="x")
+    assert status_of(widget) == ("error", "x")
+    close_view(widget, "v", "right")
+    assert status_of(widget) == ("ready", None)
+    report(widget, "v", "error", side="right", error="late")
+    assert status_of(widget) == ("ready", None)
+    assert ("v", "right") not in widget._reports
+
+
+def test_report_of_a_side_that_stopped_drawing_is_dropped(sides):
+    widget = sides
+    widget.publish(MapState(layers=(layer_on("left"),), compare=True))
+    report(widget, "v", "error", side="main", error="old")
+    assert status_of(widget) == ("error", "old")
+    widget.publish(MapState(layers=(layer_on("right"),), compare=True))
+    widget.publish(MapState(layers=(layer_on("left"),), compare=True))
+    assert status_of(widget) == ("loading", None)
+    report(widget, "v", "ready", side="main")
+    assert status_of(widget) == ("ready", None)
+
+
+def test_a_right_report_is_dropped_when_compare_turns_off(sides):
+    widget = sides
+    widget.publish(MapState(layers=(layer_on("right"),), compare=True))
+    report(widget, "v", "error", side="right", error="old")
+    assert status_of(widget) == ("error", "old")
+    widget.publish(MapState(layers=(layer_on("right"),), compare=False))
+    widget.publish(MapState(layers=(layer_on("right"),), compare=True))
+    assert status_of(widget) == ("loading", None)
 
 
 def test_a_silent_failed_view_expires_after_150_s_and_a_grace(board, loop):

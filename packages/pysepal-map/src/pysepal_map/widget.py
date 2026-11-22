@@ -27,8 +27,9 @@ A new instance is a new source, so nothing reported about the
 old one counts for it. Owned layers stay below every other layer, and the view
 never changes those.
 
-Messages. Each mounted view has a unique ``view_id`` and a side (``main``;
-``left`` and ``right`` are kept for a compare view). It sends JSON messages
+Messages. Each mounted view has a unique ``view_id`` and a side
+(``main``, or ``right`` for the second map of a compare view; any other
+side is ignored). It sends JSON messages
 with a ``type``: ``view_open`` on mount and every 20 s, ``view_close``,
 ``pull`` with the GeoJSON digests it lacks, ``status`` on one layer instance,
 ``click``, ``view_report`` with its camera and ``draw_report`` with its drawn
@@ -45,7 +46,8 @@ Camera. The browser owns it. ``set_center`` and ``fit_bounds`` write
 ``view_request`` with a ``seq`` that only grows. A new view first restores the
 camera saved in ``view``, then applies each request newer than the last one it
 applied, and every report names that request and its ``cause``: ``user``,
-``request`` or ``resize``. ``view`` mirrors the last accepted report. Reports
+``request`` or ``resize``. ``view`` mirrors the last accepted report, with its ``cause``, and so does the
+dict each ``on_view`` callback gets. Reports
 from views not mounted, or on an older request, are dropped, and on the same
 request a user's camera is kept over an acknowledgement or another view's
 resize.
@@ -55,6 +57,15 @@ carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
 ``zoom_out``: the view fits the bounds no further in than ``max_zoom``, zooms
 out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
 usable area has no size, and runs once it has one.
+
+Compare. ``MapState.compare`` turns on a swipe compare: each ``Layer.side``
+(``left``, ``right`` or ``both``) says which half draws it. The ``main`` view
+draws the ``left`` and ``both`` layers and the ``right`` view the ``right`` and
+``both`` ones. Outside compare every layer is drawn by ``main`` alone, whatever
+its side, and the ``right`` view's reports count for nothing. A layer's status
+reduces over the views that draw it, and a publish drops the reports of a view
+whose side stops drawing a layer, since the browser sends nothing then. A
+change of side keeps the layer's instance.
 
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
 [-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true
@@ -194,8 +205,8 @@ def _asset(name: str) -> str | Path:
     return path.read_text(encoding="utf-8")
 
 
-#: The sides a view can render: ``main``, or one half of a compare view.
-SIDES = ("main", "left", "right")
+#: The maps a view mounts: ``main``, and the ``right`` one beside it in compare.
+SIDES = ("main", "right")
 STATUSES = ("loading", "ready", "error")
 #: What moved a view's camera: a user, a request, or anything else.
 CAUSES = ("user", "request", "resize")
@@ -231,6 +242,13 @@ def _numbers(value, count: int) -> list[float] | None:
     ):
         return None
     return [float(x) for x in value]
+
+
+def _sides_drawing(side: str, compare: bool) -> tuple[str, ...]:
+    """The views that draw a layer of ``side``; outside compare, all on ``main``."""
+    if not compare:
+        return ("main",)
+    return {"left": ("main",), "right": ("right",), "both": ("main", "right")}[side]
 
 
 def _reduce_status(
@@ -346,6 +364,8 @@ class MapWidget(anywidget.AnyWidget):
         self._instances: dict[str, tuple[tuple, int]] = {}
         # id -> (token, instance) of the last published snapshot
         self._current: dict[str, tuple[int, int]] = {}
+        # id -> the sides drawing it, from the same publish
+        self._drawn_on: dict[str, tuple[str, ...]] = {}
         self.on_msg(self._on_message)
 
     @traitlets.default("view_request")
@@ -513,8 +533,8 @@ class MapWidget(anywidget.AnyWidget):
             self.set_trait("view_request", {"seq": self._issued, **request})
 
     def _sides_of(self, layer_id: str) -> Sequence[str]:
-        """The sides that draw a layer; every Phase 1 layer is on ``main``."""
-        return ("main",)
+        """The sides that draw a layer in the last publish; call with the lock held."""
+        return self._drawn_on.get(layer_id, ())
 
     def _on_message(self, _widget, content, _buffers) -> None:
         if self.comm is None or not isinstance(content, dict):
@@ -682,6 +702,7 @@ class MapWidget(anywidget.AnyWidget):
                 self._zoom = None
                 view = {"center": center, "zoom": zoom[0], "bounds": bounds}
                 view["request_seq"] = seq
+                view["cause"] = cause
                 # Under the lock, so reports on other threads cannot reorder it.
                 self.set_trait("view", view)
                 for callback in self._view_callbacks:
@@ -921,11 +942,18 @@ class MapWidget(anywidget.AnyWidget):
             self._next_instance = next_instance
             self._revision += 1
             self._current = current
-            # Retire reports on replaced and removed instances before any
-            # view sees the new snapshot.
-            for reports in self._reports.values():
+            self._drawn_on = {
+                layer.id: _sides_drawing(layer.side, state.compare) for layer in state.layers
+            }
+            # Retire reports on replaced and removed instances, and those of a
+            # side that no longer draws the layer (the browser sends nothing
+            # when it stops), before any view sees the new snapshot.
+            for (_, side), reports in self._reports.items():
                 for layer_id, report in list(reports.items()):
-                    if current.get(layer_id) != (report.token, report.instance):
+                    if current.get(layer_id) != (
+                        report.token,
+                        report.instance,
+                    ) or side not in self._drawn_on.get(layer_id, ()):
                         del reports[layer_id]
             # Pruned first: a publish that a state observer makes prunes last.
             self._payloads = {d: b for d, b in self._payloads.items() if d in referenced}

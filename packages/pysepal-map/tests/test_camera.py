@@ -106,3 +106,32 @@ def test_controls_scale_in_json():
         "scale": True,
         "coordinates": False,
     }
+
+
+def test_view_callback_gets_cause():
+    widget = MapWidget()
+    seen = []
+    widget.on_view(seen.append)
+    widget._handle_custom_msg({"type": "view_open", "view_id": "a", "side": "main"}, [])
+
+    def send(seq, cause):
+        widget._handle_custom_msg(
+            {
+                "type": "view_report",
+                "view_id": "a",
+                "request_seq": seq,
+                "cause": cause,
+                "center": [0, 0],
+                "zoom": 2,
+                "bounds": [-1, -1, 1, 1],
+            },
+            [],
+        )
+
+    send(1, "user")
+    # An acknowledgement on the user report's own request is dropped.
+    send(1, "request")
+    widget.set_center(5, 5)
+    send(2, "request")
+    assert [v["cause"] for v in seen] == ["user", "request"]
+    assert widget.view["cause"] == "request"

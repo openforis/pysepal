@@ -13,6 +13,7 @@ from .state import (
     MapState,
     PMTilesSource,
     RasterSource,
+    Side,
     VectorPaint,
 )
 from .widget import MapWidget
@@ -35,5 +36,6 @@ __all__ = [
     "PMTilesSource",
     "RESERVED_PROPERTIES",
     "RasterSource",
+    "Side",
     "VectorPaint",
 ]

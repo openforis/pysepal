@@ -9,6 +9,9 @@ from typing import Literal
 
 THEMES = ("light", "dark")
 ZONES = ("data", "overlay")
+SIDES = ("left", "right", "both")
+#: Which half of a compare map draws a layer.
+Side = Literal["left", "right", "both"]
 
 
 def _finite(name: str, value: float) -> float:
@@ -229,14 +232,17 @@ class Layer:
     paint: VectorPaint | None = None
     attribution: str = ""
     interaction: Interaction | None = None
+    side: Side = "both"
 
     def __post_init__(self) -> None:
-        """Reject an unknown source or zone, a non-int token, out-of-range opacity or zooms, and a paint or interaction on a raster layer; give vector layers the default paint."""
+        """Reject an unknown source, zone or side, a non-int token, out-of-range opacity or zooms, and a paint or interaction on a raster layer; give vector layers the default paint."""
         if not isinstance(self.source, (RasterSource, GeoJSONSource, PMTilesSource)):
             raise ValueError(f"unsupported source {self.source!r}")
         object.__setattr__(self, "token", _int("token", self.token))
         if self.zone not in ZONES:
             raise ValueError(f"zone must be one of {ZONES}, got {self.zone!r}")
+        if self.side not in SIDES:
+            raise ValueError(f"side must be one of {SIDES}, got {self.side!r}")
         object.__setattr__(self, "opacity", _unit("opacity", self.opacity))
         for name in ("min_zoom", "max_zoom"):
             value = getattr(self, name)
@@ -280,6 +286,7 @@ class Layer:
             "source": self.source.to_json(),
             "paint": None if self.paint is None else self.paint.to_json(),
             "interaction": None if self.interaction is None else self.interaction.to_json(),
+            "side": self.side,
         }
 
 
@@ -347,9 +354,12 @@ class MapState:
     basemap: Basemap | None = None
     theme: Literal["light", "dark"] = "light"
     controls: Controls = field(default_factory=Controls)
+    compare: bool = False
 
     def __post_init__(self) -> None:
-        """Reject an unknown theme and missing or duplicate layer ids."""
+        """Reject an unknown theme, a non-bool compare, and missing or duplicate layer ids."""
+        if not isinstance(self.compare, bool):
+            raise TypeError(f"compare must be a bool, got {self.compare!r}")
         if self.theme not in THEMES:
             raise ValueError(f"theme must be one of {THEMES}, got {self.theme!r}")
         seen: set[str] = set()
@@ -364,6 +374,7 @@ class MapState:
         """The whole desired state as the JSON published to the views."""
         return {
             "theme": self.theme,
+            "compare": self.compare,
             "controls": self.controls.to_json(),
             "basemap": None if self.basemap is None else self.basemap.to_json(),
             "layers": [layer.to_json() for layer in self.layers],

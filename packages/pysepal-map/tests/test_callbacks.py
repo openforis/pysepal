@@ -132,7 +132,7 @@ def test_sync_callback_gets_the_view(loop):
     widget.on_view(seen.append)
     open_view(widget)
     report(widget)
-    expected = {**VIEW, "request_seq": 1}
+    expected = {**VIEW, "request_seq": 1, "cause": "request"}
     assert widget.view == expected
     assert seen == [expected]
     # Each callback gets its own copy.
@@ -214,7 +214,12 @@ def test_only_a_user_report_replaces_a_user_camera_on_the_same_request(loop):
     report(widget, "a", cause="request", center=[6.0, 6.0])
     report(widget, "b", cause="request", center=[6.0, 6.0])
     report(widget, "b", cause="resize", center=[7.0, 7.0])
-    assert widget.view == {**VIEW, "center": [5.0, 5.0], "request_seq": 1}
+    assert widget.view == {
+        **VIEW,
+        "center": [5.0, 5.0],
+        "request_seq": 1,
+        "cause": "user",
+    }
     assert len(seen) == 1
     report(widget, "b", cause="user", center=[8.0, 8.0])
     assert widget.view["center"] == [8.0, 8.0]
@@ -238,6 +243,7 @@ def test_the_user_views_own_resize_updates_the_user_camera(loop):
         "center": [5.0, 5.0],
         "bounds": wide,
         "request_seq": 1,
+        "cause": "resize",
     }
     report(widget, "b", cause="resize", center=[7.0, 7.0])
     report(widget, "b", cause="request", center=[7.0, 7.0])

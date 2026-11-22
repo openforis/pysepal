@@ -271,3 +271,27 @@ def test_marker_json():
     assert VectorPaint(marker="pin").to_json()["marker"] == "pin"
     with pytest.raises(ValueError, match="marker"):
         VectorPaint(marker="star")
+
+
+def test_layer_side_defaults_to_both_and_serializes():
+    assert raster().side == "both"
+    assert raster().to_json()["side"] == "both"
+    assert raster(side="left").to_json()["side"] == "left"
+
+
+@pytest.mark.parametrize("side", ["main", "top", None])
+def test_layer_rejects_unknown_side(side):
+    with pytest.raises(ValueError, match="side"):
+        raster(side=side)
+
+
+def test_state_compare_serializes():
+    assert MapState().compare is False
+    assert MapState().to_json()["compare"] is False
+    assert MapState(compare=True).to_json()["compare"] is True
+
+
+@pytest.mark.parametrize("bad", [1, 0, None, "yes"])
+def test_compare_rejects_non_bool(bad):
+    with pytest.raises(TypeError, match="compare"):
+        MapState(compare=bad)
