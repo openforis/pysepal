@@ -136,6 +136,10 @@ of the map:
 
 Both follow the map, so every `MapView` of one map shows the same state.
 
+### Compare mode
+
+While the map compares (`m.compare = True`), each row of the `LayerPanel` (built with `map_=m`) shows a side button. It follows the map's state, so it appears by itself, and a click cycles left, both, right and back to left. The panel has no compare switch: an app that wants one adds its own and sets `m.compare`.
+
 ## Theme and language
 
 The drawer footer holds a `ThemeToggle` and a `LocaleSelectComponent`, both
