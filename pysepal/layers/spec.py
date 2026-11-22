@@ -600,7 +600,12 @@ class LayerSpec(BaseModel):
         if isinstance(data, gpd.GeoDataFrame):
             gdf = data
         elif isinstance(data, dict):
-            features = data["features"] if data.get("type") == "FeatureCollection" else [data]
+            if data.get("type") == "FeatureCollection":
+                features = data["features"]
+            elif data.get("type") == "Feature":
+                features = [data]
+            else:  # a bare geometry
+                features = [{"type": "Feature", "properties": {}, "geometry": data}]
             gdf = gpd.GeoDataFrame.from_features(features, crs=4326)
         elif isinstance(data, pd.DataFrame):
             missing = [c for c in (lng, lat) if c not in data.columns]
@@ -612,9 +617,13 @@ class LayerSpec(BaseModel):
             gdf = gpd.GeoDataFrame(rest, geometry=gpd.points_from_xy(xs, ys), crs=4326)
         elif isinstance(data, Sequence) and not isinstance(data, (str, bytes)):
             try:
-                pairs = np.asarray(data, dtype=float).reshape(-1, 2)
+                pairs = np.asarray(data, dtype=float)
             except (TypeError, ValueError) as exc:
                 raise ValueError("expected (lng, lat) pairs") from exc
+            if pairs.size == 0:
+                pairs = pairs.reshape(0, 2)
+            elif pairs.ndim != 2 or pairs.shape[1] != 2:
+                raise ValueError("expected (lng, lat) pairs")
             gdf = gpd.GeoDataFrame(geometry=gpd.points_from_xy(pairs[:, 0], pairs[:, 1]), crs=4326)
         else:
             raise TypeError(

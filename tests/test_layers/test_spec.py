@@ -368,3 +368,31 @@ def test_ee_style_params_ignore_point_fields():
     assert rich.to_ee_style_params() == plain.to_ee_style_params()
     again = VectorStyle.from_ee_style(rich.to_ee_style_params())
     assert (again.marker, again.cluster, again.popup) == ("circle", False, False)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)],
+        [(1.0, 2.0, 3.0)] * 4,
+        [1.0, 2.0, 3.0, 4.0],
+        [(1.0, 2.0), (3.0,)],
+    ],
+    ids=["two-triples", "four-triples", "flat", "ragged"],
+)
+def test_from_points_rejects_malformed_pairs(data):
+    with pytest.raises(ValueError):
+        LayerSpec.from_points(data, name="p")
+
+
+def test_from_points_empty_sequence_gives_an_empty_layer():
+    spec = LayerSpec.from_points([], name="p")
+    assert len(gpd.read_parquet(uri_to_path(spec.source.uri))) == 0
+
+
+def test_from_points_bare_point_geometry():
+    spec = LayerSpec.from_points({"type": "Point", "coordinates": [1.0, 2.0]}, name="p")
+    back = gpd.read_parquet(uri_to_path(spec.source.uri))
+    assert [(g.x, g.y) for g in back.geometry] == [(1.0, 2.0)]
+    with pytest.raises(ValueError, match="Point"):
+        LayerSpec.from_points({"type": "LineString", "coordinates": [[0, 0], [1, 1]]}, name="p")
