@@ -121,6 +121,21 @@ has these methods, the shell calls them:
 
 `SepalMap` has both. A replaced map gets the current insets at once.
 
+### The inspector and the draw toolbar
+
+`MapView`, which `MapApp` builds around the map, shows two tools at the top left
+of the map:
+
+- **The draw toolbar** has one toggle per drawing tool the map offers
+  (`m.draw.enable(...)`) and a button that removes every shape. It is empty
+  while drawing is off. `AoiView` turns the tools on for its DRAW method.
+- **The inspector** has a toggle and, after a click, a card with the values of
+  every visible layer at that point. It exists only for `SepalMap(inspector=True)`.
+  A layer that changed between the click and the read shows "this layer
+  changed, click again".
+
+Both follow the map, so every `MapView` of one map shows the same state.
+
 ## Theme and language
 
 The drawer footer holds a `ThemeToggle` and a `LocaleSelectComponent`, both

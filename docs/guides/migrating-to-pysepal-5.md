@@ -126,17 +126,56 @@ modules raise an `ImportError`, their names in `pysepal.mapping` and the removed
 `SepalMap` members raise an `AttributeError`. `m.state` no longer means the state
 bar: it is the map's declared state.
 
-| Removed                                                                                  | Replacement                                               |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `ZoomControl`, `FullScreenControl`                                                       | the map draws its own zoom, scale and fullscreen controls |
-| `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                 | `MapView` shows layer loading                             |
-| `LegendControl`, `m.add_legend`, `m.add_colorbar`                                        | the `MapView` legend, built from each layer's legend      |
-| `MenuControl`                                                                            | Solara components in `MapView(overlays=...)`              |
-| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc` | being rebuilt on the MapLibre map                         |
-| `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`        | being rebuilt on the MapLibre map                         |
+| Removed                                                                                                                           | Replacement                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `ZoomControl`, `FullScreenControl`                                                                                                | the map draws its own zoom, scale and fullscreen controls                                                                    |
+| `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                                                          | `MapView` shows layer loading                                                                                                |
+| `LegendControl`, `m.add_legend`, `m.add_colorbar`                                                                                 | the `MapView` legend, built from each layer's legend                                                                         |
+| `MenuControl`                                                                                                                     | Solara components in `MapView(overlays=...)`                                                                                 |
+| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.enable(modes)`, `m.draw.disable()`, `m.draw.start(mode)`, `m.on_draw(cb)`, `m.draw.set(features)`, `m.draw.features` |
+| `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`                                                 | `SepalMap(inspector=True)`, shown by `MapView`                                                                               |
+| `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                              |
+| mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                 |
+| `Marker`, `AwesomeIcon`, `MarkerCluster`, `LayerGroup` of clusters                                                                | `LayerSpec.from_points(...)` with `VectorStyle(marker="pin", cluster=True)`, one layer per category                          |
+| `Popup` with HTML, `on_hover` labels                                                                                              | `VectorStyle(popup=[...])`, `VectorStyle(tooltip=[...])`                                                                     |
+| `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                           |
+| `hover_style`, `style_callback`                                                                                                   | no replacement: one layer per class                                                                                          |
 
-Until drawing is back, `AoiView` offers DRAW only for a map that has a draw
-control, so a `SepalMap` has no DRAW method.
+Notes on the interaction replacements:
+
+- **Coordinates are `lng, lat`.** ipyleaflet used `[lat, lon]`; a `ClickEvent`,
+  the drawn features and `LayerSpec.from_points` use longitude first.
+- **Clicks.** `m.on_click(cb)` calls `cb(event)` with the features under the
+  point, top first. `event.hits(layer_id)` gives the properties of one layer.
+  A click on a cluster zooms into it and sends no event.
+- **No hover events, no hover style, no per-feature style.** Use a tooltip for a
+  hover label, and one layer per class instead of a `style_callback`.
+- **Popups and tooltips show a table of properties.** `popup=True` shows every
+  property, a list names the ones to show. A popup that holds widgets (a
+  "Go" button, say) becomes `m.on_click` plus a component in `MapView`.
+  They apply to vector layers drawn by the browser, not to Earth Engine vectors
+  or tile layers.
+- **Clusters hold only points.** The names `cluster`, `cluster_id`,
+  `point_count` and `point_count_abbreviated` are reserved on a clustered layer.
+- **Drawing.** `AoiView` offers DRAW on a `SepalMap` again. A polygon with holes
+  cannot be drawn or given to `m.draw.set` (it raises), and drawings across the
+  antimeridian are not supported.
+- **The inspector is opt-in.** `SepalMap(inspector=True)` builds it, and every
+  `MapView` of the map shows its toggle and card. It reads Earth Engine images
+  at the clicked view's scale.
+
+```python
+from pysepal.layers import LayerSpec, VectorStyle
+
+m = SepalMap(inspector=True, coordinates=True)
+spec = LayerSpec.from_points(
+    [(-74.0, 4.6), (-73.9, 4.7)],
+    name="Sites",
+    style=VectorStyle(marker="pin", cluster=True, tooltip=["name"]),
+)
+m.layer_store.add(spec)
+m.on_click(lambda event: print(event.lng, event.lat, event.hits(spec.id)))
+```
 
 ### SepalMap on MapLibre
 
