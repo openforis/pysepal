@@ -138,8 +138,12 @@ export class MapSync {
   /** Counts style loads, so work done on an earlier style is never trusted. */
   private generation = 0;
   /** A rejected pass, retried only on new input, not on style events. */
-  private blocked: { revision: number | null; generation: number } | null =
-    null;
+  private blocked: {
+    revision: number | null;
+    generation: number;
+    /** The layers in error, when the rest of the state can still settle. */
+    failed: Set<string> | null;
+  } | null = null;
   /** The pass in progress, which error events are attributed to. */
   private context: {
     revision: number | null;
@@ -318,6 +322,8 @@ export class MapSync {
       blocked?.revision === revision &&
       blocked.generation === this.generation
     ) {
+      // The rest may have finished loading since: that alone can settle it.
+      if (blocked.failed) this.settleRest(state, revision, blocked.failed);
       return;
     }
     const wanted = wantedOf(state);
@@ -328,19 +334,29 @@ export class MapSync {
     });
     this.prune();
     this.reporter.sweep(new Set(wanted.keys()));
+    // A layer in error does not hold the revision back: the rest is settled.
+    const failed = new Set<string>();
     for (const [id, { ref, digest }] of wanted) {
       const failure =
         digest === undefined ? undefined : this.cache.failure(digest);
-      if (failure !== undefined) this.reporter.payloadFailed(id, ref, failure);
+      if (failure === undefined) continue;
+      this.reporter.payloadFailed(id, ref, failure);
+      failed.add(ref.id);
     }
     if (errors.length || !desired) {
       this.reject(errors, revision, wanted);
+      // A basemap or whole-state error leaves nothing to call settled.
+      if (desired && errors.every((e) => e.layer !== null)) {
+        for (const { layer } of errors) failed.add(layer!);
+        this.blocked!.failed = failed;
+        this.publish(desired, revision, failed);
+      }
       return;
     }
     this.blocked = null;
     this.rejected = [];
     if (revision !== null) this.reporter.reconciled(revision);
-    this.publish(desired, revision);
+    this.publish(desired, revision, failed);
   }
 
   /** Apply the desired sources whose payloads are at hand, and their layers. */
@@ -510,15 +526,36 @@ export class MapSync {
     }
   }
 
-  private publish(desired: OwnedStyle, revision: number | null): void {
+  private settleRest(
+    state: Partial<MapState>,
+    revision: number | null,
+    failed: Set<string>
+  ): void {
+    try {
+      this.publish(toOwnedStyle(state as MapState), revision, failed);
+    } catch {
+      this.clearMarker();
+    }
+  }
+
+  private publish(
+    desired: OwnedStyle,
+    revision: number | null,
+    failed: Set<string>
+  ): void {
+    const left = (id: string) => !failed.has(ownerOf(id) ?? "");
     const loaded = desired.sources.every(
       (s) =>
+        !left(s.id) ||
         s.digest === undefined ||
         (this.isApplied(s.id) &&
           this.applied.get(s.id)!.digest === s.digest &&
           this.applied.get(s.id)!.done)
     );
-    if (revision !== null && loaded && !plan(this.live, desired).length) {
+    const todo = plan(this.live, desired).filter((op) =>
+      left("layer" in op ? op.layer.id : op.id)
+    );
+    if (revision !== null && loaded && !todo.length) {
       this.root.dataset.psmRevision = String(revision);
     } else {
       this.clearMarker();
@@ -531,7 +568,7 @@ export class MapSync {
     wanted: Map<string, Wanted>
   ): void {
     this.rejected = errors;
-    this.blocked = { revision, generation: this.generation };
+    this.blocked = { revision, generation: this.generation, failed: null };
     this.clearMarker();
     for (const { layer, message } of errors) {
       console.error(

@@ -165,8 +165,13 @@ const state = (revision: number, ...layers: GeoJSONLayerState[]): MapState => ({
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function setup(initial: MapState) {
+async function setup(
+  initial: MapState,
+  prepare: (map: FakeMapLibre) => void = () => {},
+  payloads: Record<string, unknown> = PAYLOADS
+) {
   const map = new FakeMapLibre();
+  prepare(map);
   const model = new FakeModel(initial);
   const root = { dataset: {} as Record<string, string> };
   const reporter = new StatusReporter({
@@ -184,7 +189,7 @@ async function setup(initial: MapState) {
   );
   map.emit("style.load");
   await settle();
-  model.answer(PAYLOADS);
+  model.answer(payloads);
   map.loadAll();
   await settle();
   return { map, model, root, sync };
@@ -217,6 +222,33 @@ describe("MapSync", () => {
     expect(map.fake.sourceIds()).toEqual(["psm:a:1"]);
     expect(root.dataset.psmRevision).toBe("2");
     expect(sync.inspect().rejections).toEqual([]);
+    sync.dispose();
+  });
+
+  it("settles without a layer whose style operation was rejected", async () => {
+    const { root, sync } = await setup(
+      state(1, geojson("a", 1, "x"), geojson("b", 2, "y")),
+      (map) => {
+        const add = map.addLayer;
+        map.addLayer = (spec: any, beforeId?: string) => {
+          if (spec.id.startsWith("psm:b:")) throw new Error("bad layer");
+          add(spec, beforeId);
+        };
+      }
+    );
+    expect(sync.inspect().rejections.map((r) => r.layer)).toContain("b");
+    expect(root.dataset.psmRevision).toBe("1");
+    sync.dispose();
+  });
+
+  it("settles without a layer whose payload failed", async () => {
+    const { root, sync } = await setup(
+      state(1, geojson("a", 1, "x"), geojson("b", 2, "y")),
+      () => {},
+      { x: PAYLOADS.x } // y encodes as invalid JSON
+    );
+    expect(sync.inspect().payloads).toEqual(["x"]);
+    expect(root.dataset.psmRevision).toBe("1");
     sync.dispose();
   });
 });

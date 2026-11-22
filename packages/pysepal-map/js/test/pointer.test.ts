@@ -40,7 +40,10 @@ class FakePointerMap implements PointerMap {
   getCanvas = () => this.canvas;
   queryRenderedFeatures = (_point: unknown, options: { layers: string[] }) => {
     this.queries.push(options);
-    return this.features;
+    // A feature may name its style layer; MapLibre then returns it only when queried.
+    return this.features.filter(
+      (f: any) => !f.layer || options.layers.includes(f.layer)
+    );
   };
   on(type: string, listener: Listener) {
     if (!this.listeners.has(type)) this.listeners.set(type, new Set());
@@ -116,6 +119,7 @@ function feature(
 function setup(
   options: {
     drawing?: () => boolean;
+    send?: (content: unknown) => void;
     clickable?: (id: string) => boolean;
     clustered?: (id: string) => boolean;
   } = {}
@@ -129,6 +133,7 @@ function setup(
     viewId: "v1",
     side: "main",
     settled: () => true,
+    send: (content) => model.send(content),
     createMarker: (color) => {
       const marker = new FakeMarker(color);
       markers.push(marker);
@@ -440,6 +445,22 @@ describe("cursor", () => {
   });
 });
 
+describe("send", () => {
+  it("sends through the guarded sender, never the model", () => {
+    const sent: unknown[] = [];
+    const { map, model, declare } = setup({ send: (c) => void sent.push(c) });
+    model.send = () => {
+      throw new Error("closed comm");
+    };
+    declare("a", 1);
+    map.features = [feature("a", 1, 1)];
+    expect(() =>
+      map.emit("click", { point: [1, 2], lngLat: { lng: 0, lat: 0 } })
+    ).not.toThrow();
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe("marker", () => {
   it("is added, moved in place, recoloured and removed", () => {
     const { model, markers, pointer } = setup();
@@ -500,6 +521,41 @@ describe("clusters", () => {
         eventData: { originalEvent: original },
       },
     ]);
+  });
+
+  it("expands a bubble under a fill of a higher data layer or the overlay zone", async () => {
+    const { map, model, declare, cluster, click } = setup();
+    declare("a", 1);
+    cluster("a", 1);
+    declare("b", 1);
+    declare("overlay", 1);
+    map.features = [
+      Object.assign(feature("b", 1, 1), { layer: `${sid("b", 1)}:fill` }),
+      Object.assign(feature("overlay", 1, 1), {
+        layer: `${sid("overlay", 1)}:fill`,
+      }),
+      Object.assign(bubble("a", 1), { layer: `${sid("a", 1)}:cluster` }),
+    ] as RenderedFeature[];
+    click();
+    await settle();
+    expect(model.sent).toEqual([]);
+    expect(map.eased).toHaveLength(1);
+  });
+
+  it("sends the click when the feature above a bubble is clickable", async () => {
+    const { map, model, declare, cluster, click } = setup({
+      clickable: (id) => id === "b",
+    });
+    declare("a", 1);
+    cluster("a", 1);
+    declare("b", 1);
+    map.features = [
+      Object.assign(feature("b", 1, 1), { layer: `${sid("b", 1)}:fill` }),
+      Object.assign(bubble("a", 1), { layer: `${sid("a", 1)}:cluster` }),
+    ] as RenderedFeature[];
+    click();
+    await settle();
+    expect(model.sent).toHaveLength(1);
   });
 
   it("queries the cluster layers with the others", () => {

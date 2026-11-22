@@ -102,6 +102,7 @@ function render({ model, el }: RenderProps<Model>) {
     model,
     viewId,
     side: SIDE,
+    send,
     settled: () => sync.settled(),
     drawing,
     clickable: popups.clickable,

@@ -86,12 +86,13 @@ export interface PointerModel {
   get(name: "cursor" | "marker" | "state"): unknown;
   on(name: string, callback: () => void): void;
   off(name: string, callback: () => void): void;
-  send(content: unknown): void;
 }
 
 export interface PointerOptions {
   map: PointerMap;
   model: PointerModel;
+  /** The guarded sender: a closed comm must not abort MapLibre's click dispatch. */
+  send(content: unknown): boolean | void;
   viewId: string;
   side: string;
   /** Whether the latest state is on the map, every GeoJSON payload loaded. */
@@ -203,15 +204,28 @@ export class ViewPointer {
     return hits;
   }
 
+  /** The popup, tooltip and cluster features at a point, top first. */
+  private queryClickable(point: PointLike): RenderedFeature[] {
+    const { map, clickable, clustered } = this.options;
+    const layers = [
+      ...(clickable ? ownedStyleLayers(map, clickable) : []),
+      ...ownedStyleLayers(map, clustered, "only"),
+    ];
+    return layers.length ? map.queryRenderedFeatures(point, { layers }) : [];
+  }
+
   private readonly onClick = (event: PointerEvent): void => {
-    const { map, model, viewId, side, drawing, settled } = this.options;
+    const { map, send, viewId, side, drawing, settled } = this.options;
     if (drawing?.()) return;
-    const features = this.rendered(event.point);
-    if (features.length && isCluster(features[0])) {
-      this.expand(features[0], event);
+    // The layers the cursor rule offers `pointer` on decide whether a bubble is hit:
+    // a feature of another layer above it does not take the click from it.
+    const top = this.queryClickable(event.point)[0];
+    if (top && isCluster(top)) {
+      this.expand(top, event);
       return;
     }
-    model.send({
+    const features = this.rendered(event.point);
+    send({
       type: "click",
       view_id: viewId,
       side,
@@ -297,17 +311,7 @@ export class ViewPointer {
 
   /** Whether a clickable feature is under the pointer, then the cursor. */
   private look(): void {
-    const { map, clickable, clustered } = this.options;
-    const layers = this.at
-      ? [
-          ...(clickable ? ownedStyleLayers(map, clickable) : []),
-          ...(clustered ? ownedStyleLayers(map, clustered, "only") : []),
-        ]
-      : [];
-    this.over =
-      this.at !== null &&
-      layers.length > 0 &&
-      map.queryRenderedFeatures(this.at, { layers }).length > 0;
+    this.over = this.at !== null && this.queryClickable(this.at).length > 0;
     this.applyCursor();
   }
 
