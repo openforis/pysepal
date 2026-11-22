@@ -1,0 +1,575 @@
+"""Drawing with the real Terra Draw: the views own the features, Python mirrors them."""
+
+import json
+import uuid
+
+from IPython.display import display
+from pysepal_map import GeoJSONSource, Layer, MapState, MapWidget
+
+MOUNTED = "[...document.querySelectorAll('.psm-map')].filter((el) => el.psmDraw)"
+
+
+def square(west, south, east, north):
+    ring = [[west, south], [east, south], [east, north], [west, north], [west, south]]
+    return {"type": "Polygon", "coordinates": [ring]}
+
+
+def feature(geometry, **extra):
+    return {"type": "Feature", "properties": {}, "geometry": geometry, **extra}
+
+
+def payload(*geometries):
+    features = [feature(g) for g in geometries]
+    return json.dumps({"type": "FeatureCollection", "features": features}).encode()
+
+
+def show(page, widget, count=1):
+    """Display ``widget`` once more; its ``count`` views once their maps are idle."""
+    display(widget)
+    page.wait_for_function(f"n => {MOUNTED}.length === n", arg=count)
+    views = [page.locator(".psm-map").nth(i).element_handle() for i in range(count)]
+    for el in views:
+        el.evaluate("el => psmHarness.quiet(el)")
+    return views
+
+
+def state(el):
+    return el.evaluate("el => psmHarness.drawState(el)")
+
+
+def wait_drawing(page, el, mode):
+    """Wait until the view's Terra Draw runs in ``mode``."""
+    page.wait_for_function(
+        "([el, mode]) => { const s = psmHarness.drawState(el); return s.running && s.mode === mode; }",
+        arg=[el, mode],
+    )
+
+
+def wait_stopped(page, el):
+    page.wait_for_function("el => !psmHarness.drawState(el).running", arg=el)
+
+
+def wait_for(page, check, what, timeout_ms=15_000):
+    """Wait until ``check()`` holds; Python's side changes as messages arrive."""
+    for _ in range(timeout_ms // 20):
+        if check():
+            return
+        page.wait_for_timeout(20)
+    raise AssertionError(what)
+
+
+def record(widget):
+    """The draw reports Python handled, and the ``on_draw`` calls, as they come."""
+    reports, calls = [], []
+
+    def on_msg(_, content, buffers):
+        if content.get("type") == "draw_report":
+            reports.append(content)
+
+    widget.on_msg(on_msg)
+    widget.on_draw(calls.append)
+    return reports, calls
+
+
+def at(page, el, x, y):
+    """The page position of the view's canvas pixel, once nothing covers it."""
+    box = el.bounding_box()
+    px, py = box["x"] + x, box["y"] + y
+    # Solara can briefly lay a progress spinner over the page as a test starts.
+    page.wait_for_function(
+        "([el, x, y]) => document.elementFromPoint(x, y) === el.psmMap.getCanvas()",
+        arg=[el, px, py],
+    )
+    return px, py
+
+
+def click(page, el, x, y, **kwargs):
+    page.mouse.click(*at(page, el, x, y), **kwargs)
+
+
+def drag(page, el, start, by):
+    x, y = at(page, el, *start)
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + by[0], y + by[1], steps=8)
+    page.mouse.up()
+
+
+def pixel(el, lnglat):
+    """The whole canvas pixel of a coordinate, as pointer events carry it."""
+    return el.evaluate(
+        "(el, c) => { const p = el.psmMap.project(c); return [Math.round(p.x), Math.round(p.y)]; }",
+        list(lnglat),
+    )
+
+
+def lnglat(el, x, y):
+    """The coordinate of a canvas pixel."""
+    return el.evaluate("(el, p) => el.psmMap.unproject(p).toArray()", [x, y])
+
+
+def spread(el, *fractions):
+    """Canvas pixels at fractions of the view's width and height."""
+    box = el.bounding_box()
+    return [(round(fx * box["width"]), round(fy * box["height"])) for fx, fy in fractions]
+
+
+def close(got, want, tol=1e-6):
+    return all(abs(g - w) < tol for g, w in zip(got, want))
+
+
+def same_corners(ring, want, tol=1e-6):
+    """Whether a closed ring has the corners ``want``, in any order or winding."""
+    corners = ring[:-1]
+    return (
+        ring[0] == ring[-1]
+        and len(corners) == len(want)
+        and all(any(close(c, w, tol) for c in corners) for w in want)
+    )
+
+
+def place(page, el, points, first=1):
+    """Click each canvas pixel of ``points`` in polygon mode, the ``first``-th vertex first."""
+    for n, (x, y) in enumerate(points, start=first):
+        click(page, el, x, y)
+        page.wait_for_function(
+            "([el, n]) => psmHarness.drawState(el).store.some((f) =>"
+            " f.properties.currentlyDrawing && f.properties.committedCoordinateCount === n)",
+            arg=[el, n],
+        )
+
+
+def draw_polygon(page, el, points):
+    """Click each canvas pixel of ``points``, then the first again to close the polygon."""
+    place(page, el, points)
+    click(page, el, *points[0])
+    page.wait_for_function(
+        "el => !psmHarness.drawState(el).store.some((f) => f.properties.currentlyDrawing)",
+        arg=el,
+    )
+
+
+def polygons(el):
+    """The committed polygons the view holds."""
+    return [f for f in state(el)["committed"] if f["geometry"]["type"] == "Polygon"]
+
+
+def shown(page, el, lnglat_, layer):
+    """Wait until the view renders a feature of Terra Draw's ``layer`` at ``lnglat_``."""
+    page.wait_for_function(
+        """([el, c, layer]) => {
+            const map = el.psmMap;
+            if (!map.getLayer(layer)) return false;
+            const p = map.project(c);
+            map.triggerRepaint();
+            return map.queryRenderedFeatures([p.x, p.y], {layers: [layer]}).length > 0;
+        }""",
+        arg=[el, list(lnglat_), layer],
+    )
+
+
+def select(page, el, inside):
+    """Select the drawn feature under ``inside`` in select mode."""
+    click(page, el, *pixel(el, inside))
+    page.wait_for_function(
+        "el => psmHarness.drawState(el).store.some((f) => f.properties.selected)", arg=el
+    )
+
+
+def test_draw_polygon_reports_feature(harness, page_session):
+    widget = MapWidget(zoom=3)
+    reports, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "polygon")
+    points = spread(el, (0.3, 0.3), (0.5, 0.25), (0.55, 0.65), (0.35, 0.7))
+    want = [lnglat(el, *p) for p in points]
+
+    draw_polygon(page_session, el, points)
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    page_session.wait_for_timeout(500)
+
+    [drawn] = widget.draw.features["features"]
+    assert drawn["geometry"]["type"] == "Polygon"
+    assert same_corners(drawn["geometry"]["coordinates"][0], want)
+    assert drawn["properties"] == {"mode": "polygon"}
+    assert calls == [widget.draw.features]
+    assert [r["cause"] for r in reports] == ["user"]
+
+    # Terra Draw owns the cursor while it draws and clears it on the way out.
+    widget.cursor = "wait"
+    page_session.wait_for_timeout(200)
+    assert el.evaluate("el => el.psmMap.getCanvas().style.cursor") != "wait"
+    widget.draw.stop()
+    page_session.wait_for_function("el => el.psmMap.getCanvas().style.cursor === 'wait'", arg=el)
+
+
+def test_reorder_mid_polygon_through_widget(harness, page_session, wait_settled):
+    widget = MapWidget(zoom=3)
+    south = Layer("south", GeoJSONSource(widget.add_payload(payload(square(-40, -20, -30, -10)))))
+    north = Layer("north", GeoJSONSource(widget.add_payload(payload(square(30, 10, 40, 20)))))
+    widget.publish(MapState(layers=(south, north)))
+    reports, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [el] = show(page_session, widget)
+    wait_settled(page_session, 1)
+    wait_drawing(page_session, el, "polygon")
+
+    def drawing_on_top():
+        order = el.evaluate("el => el.psmMap.getLayersOrder()")
+        drawing = [i for i, i_d in enumerate(order) if i_d.startswith("psm-draw-")]
+        owned = [i for i, i_d in enumerate(order) if i_d.startswith("psm:")]
+        assert drawing and owned and max(owned) < min(drawing), order
+
+    drawing_on_top()
+    points = spread(el, (0.3, 0.3), (0.55, 0.25), (0.45, 0.7))
+    want = [lnglat(el, *p) for p in points]
+    place(page_session, el, points[:2])
+    third = Layer("third", GeoJSONSource(widget.add_payload(payload(square(-5, -5, 5, 5)))))
+    widget.publish(MapState(layers=(north, south, third)))
+    wait_settled(page_session, 2)
+    drawing_on_top()
+
+    place(page_session, el, points[2:], first=3)
+    drawing_on_top()
+    click(page_session, el, *points[0])
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    drawing_on_top()
+    page_session.wait_for_timeout(500)
+    assert len(calls) == 1 and [r["cause"] for r in reports] == ["user"]
+    [drawn] = widget.draw.features["features"]
+    assert same_corners(drawn["geometry"]["coordinates"][0], want)
+
+
+def test_cancel_and_vertex_delete(harness, page_session):
+    widget = MapWidget(zoom=3)
+    widget.draw.enable(("polygon",))
+    widget.draw.set(feature(square(-20, -10, 0, 10)))
+    reports, calls = record(widget)
+    [el] = show(page_session, widget)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+
+    widget.draw.start("polygon")
+    wait_drawing(page_session, el, "polygon")
+    place(page_session, el, spread(el, (0.7, 0.3), (0.8, 0.4)))
+    el.evaluate("el => el.psmMap.getCanvas().focus()")
+    page_session.keyboard.press("Escape")
+    page_session.wait_for_function(
+        "el => !psmHarness.drawState(el).store.some((f) => f.properties.currentlyDrawing)",
+        arg=el,
+    )
+    page_session.wait_for_timeout(500)
+    assert [r["cause"] for r in reports] == ["request"]
+
+    widget.draw.start("select")
+    wait_drawing(page_session, el, "select")
+    select(page_session, el, (-10, 0))
+    click(page_session, el, *pixel(el, (0, 10)), button="right")
+    wait_for(page_session, lambda: calls, "the vertex deletion never reached Python")
+    page_session.wait_for_timeout(500)
+    assert [r["cause"] for r in reports] == ["request", "user"]
+    [edited] = widget.draw.features["features"]
+    assert same_corners(edited["geometry"]["coordinates"][0], [[-20, -10], [0, -10], [-20, 10]])
+
+
+def test_theme_change_mid_polygon(harness, page_session):
+    widget = MapWidget(zoom=3)
+    _, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "polygon")
+    points = spread(el, (0.3, 0.3), (0.55, 0.25), (0.45, 0.7))
+    want = [lnglat(el, *p) for p in points]
+    place(page_session, el, points[:2])
+
+    widget.draw.set_color("#ff0000")
+    # wait_for_function takes a pending promise for a truthy result; evaluate awaits it.
+    outlined = """async el => {
+        const data = await el.psmMap.getSource('psm-draw-polygon').getData();
+        return data.features.some((f) => f.properties.polygonOutlineColor === '#ff0000');
+    }"""
+    wait_for(page_session, lambda: el.evaluate(outlined), "the colour never reached the map")
+    assert state(el)["color"] == "#ff0000"
+    [drawing] = [f for f in state(el)["store"] if f["properties"].get("currentlyDrawing")]
+    assert drawing["properties"]["committedCoordinateCount"] == 2
+
+    place(page_session, el, points[2:], first=3)
+    click(page_session, el, *points[0])
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    [drawn] = widget.draw.features["features"]
+    assert same_corners(drawn["geometry"]["coordinates"][0], want)
+
+
+def test_redisplay_restores_drawing(harness, page_session):
+    widget = MapWidget(zoom=3, height="250px")
+    _, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [first] = show(page_session, widget)
+    wait_drawing(page_session, first, "polygon")
+    draw_polygon(page_session, first, spread(first, (0.3, 0.2), (0.6, 0.2), (0.6, 0.8), (0.3, 0.8)))
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    [drawn] = widget.draw.features["features"]
+
+    _, second = show(page_session, widget, count=2)
+    wait_drawing(page_session, second, "polygon")
+    assert polygons(second) == [drawn]
+
+    widget.draw.start("select")
+    wait_drawing(page_session, second, "select")
+    corners = drawn["geometry"]["coordinates"][0]
+    middle = [sum(c[i] for c in corners[:-1]) / 4 for i in (0, 1)]
+    select(page_session, second, middle)
+    vertex = pixel(second, corners[1])
+    drag(page_session, second, vertex, (30, 20))
+    wait_for(page_session, lambda: len(calls) == 2, "the vertex drag never reached Python")
+    [moved] = widget.draw.features["features"]
+    assert widget.drawn["request_seq"] == 0
+    assert moved["id"] == drawn["id"]
+    target = lnglat(second, vertex[0] + 30, vertex[1] + 20)
+    assert any(close(c, target, 1e-3) for c in moved["geometry"]["coordinates"][0])
+    assert not any(close(c, corners[1], 1e-6) for c in moved["geometry"]["coordinates"][0])
+
+
+def test_seed_replaces_drawing(harness, page_session):
+    widget = MapWidget(zoom=3)
+    reports, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "polygon")
+    draw_polygon(page_session, el, spread(el, (0.3, 0.3), (0.5, 0.25), (0.45, 0.7)))
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+
+    widget.draw.set(feature(square(-10, -10, 10, 10)))
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    page_session.wait_for_timeout(500)
+    [seed] = widget.draw_request["features"]
+    assert polygons(el) == [seed] and len(state(el)["committed"]) == 1
+    assert widget.drawn["features"] == [seed]
+    assert len(calls) == 1
+    assert [r["cause"] for r in reports] == ["user", "request"]
+
+
+def test_multipolygon_seed_survives(harness, page_session):
+    widget = MapWidget(zoom=3, height="250px")
+    widget.draw.enable()
+    fid = str(uuid.uuid4())
+    rings = [square(w, 0, w + 5, 5)["coordinates"] for w in (-20, -5, 10)]
+    multi = {"type": "MultiPolygon", "coordinates": rings}
+    widget.draw.set(feature(multi, id=fid, properties={"name": "m"}))
+    [first] = show(page_session, widget)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    acknowledged = widget.drawn["features"]
+    ids = [f["id"] for f in acknowledged]
+    assert len(acknowledged) == 3 and len(set(ids)) == 3 and ids[0] == fid
+    assert all(f["properties"] == {"name": "m", "mode": "polygon"} for f in acknowledged)
+
+    _, second = show(page_session, widget, count=2)
+    wait_drawing(page_session, second, "static")
+    assert polygons(second) == acknowledged
+
+
+def test_select_deselect_reports_nothing(harness, page_session):
+    widget = MapWidget(zoom=3)
+    widget.draw.enable(("polygon",))
+    widget.draw.set(feature(square(-10, -10, 10, 10)))
+    widget.draw.start("select")
+    reports, _ = record(widget)
+    [el] = show(page_session, widget)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    wait_drawing(page_session, el, "select")
+    log = el.evaluate("el => psmHarness.drawLog(el).length")
+
+    select(page_session, el, (0, 0))
+    page_session.wait_for_function(
+        "el => psmHarness.drawState(el).store.some((f) => f.properties.selectionPoint)", arg=el
+    )
+    click(page_session, el, *spread(el, (0.15, 0.25))[0])
+    page_session.wait_for_function(
+        "el => !psmHarness.drawState(el).store.some((f) => f.properties.selected"
+        " || f.properties.selectionPoint)",
+        arg=el,
+    )
+    page_session.wait_for_timeout(500)
+    assert el.evaluate("el => psmHarness.drawLog(el).length") == log
+    assert [r["cause"] for r in reports] == ["request"]
+
+
+def test_point_in_repeated_world(harness, page_session):
+    widget = MapWidget(center=(-170, 10), zoom=4, height="250px")
+    _, calls = record(widget)
+    widget.draw.enable(("point",), edit=False)
+    widget.draw.start("point")
+    [first] = show(page_session, widget)
+    wait_drawing(page_session, first, "point")
+    widget.set_center(190, 10)
+    page_session.wait_for_function(
+        "el => Math.abs(el.psmMap.getCenter().lng - 190) < 1e-6", arg=first
+    )
+    first.evaluate("el => psmHarness.quiet(el)")
+
+    x, y = pixel(first, (190.1, 10))
+    assert lnglat(first, x, y)[0] > 180
+    click(page_session, first, x, y)
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    [held] = [f for f in state(first)["store"] if f["geometry"]["type"] == "Point"]
+    raw_lng, raw_lat = held["geometry"]["coordinates"]
+    assert raw_lng > 180
+    expected = first.evaluate("(el, lng) => Math.round((lng - 360) * 1e9) / 1e9", raw_lng)
+    [point] = widget.draw.features["features"]
+    lng, lat = point["geometry"]["coordinates"]
+    assert lng == expected and lat == raw_lat
+    assert abs(lng - -169.9) < 0.05 and round(lng, 9) == lng
+
+    widget.draw.disable()
+    wait_stopped(page_session, first)
+    widget.draw.enable(("point",), edit=False)
+    wait_drawing(page_session, first, "static")
+    assert [f["geometry"]["coordinates"] for f in state(first)["store"]] == [[lng, lat]]
+    shown(page_session, first, (lng + 360, lat), "psm-draw-point")
+
+    _, second = show(page_session, widget, count=2)
+    wait_drawing(page_session, second, "static")
+    assert [f["geometry"]["coordinates"] for f in state(second)["store"]] == [[lng, lat]]
+    shown(page_session, second, (lng + 360, lat), "psm-draw-point")
+
+
+def test_rectangle_edit_survives_redisplay(harness, page_session):
+    widget = MapWidget(zoom=3, height="250px")
+    _, calls = record(widget)
+    widget.draw.enable(("rectangle",))
+    widget.draw.start("rectangle")
+    [first] = show(page_session, widget)
+    wait_drawing(page_session, first, "rectangle")
+    a, b = spread(first, (0.3, 0.25), (0.45, 0.65))
+    click(page_session, first, *a)
+    page_session.mouse.move(*at(page_session, first, *b), steps=5)
+    click(page_session, first, *b)
+    wait_for(page_session, lambda: calls, "on_draw never ran")
+    [drawn] = widget.draw.features["features"]
+    assert drawn["properties"]["mode"] == "rectangle"
+
+    widget.draw.start("select")
+    wait_drawing(page_session, first, "select")
+    corners = drawn["geometry"]["coordinates"][0]
+    middle = [sum(c[i] for c in corners[:-1]) / 4 for i in (0, 1)]
+    select(page_session, first, middle)
+    corner = max(corners[:-1], key=lambda c: (c[0], -c[1]))
+    drag(page_session, first, pixel(first, corner), (40, 30))
+    wait_for(page_session, lambda: len(calls) == 2, "the resize never reached Python")
+    [resized] = widget.draw.features["features"]
+    ring = resized["geometry"]["coordinates"][0]
+    assert resized["properties"]["mode"] == "rectangle" and ring != corners
+    assert len({c[0] for c in ring}) == 2 and len({c[1] for c in ring}) == 2
+
+    _, second = show(page_session, widget, count=2)
+    wait_drawing(page_session, second, "select")
+    [again] = polygons(second)
+    assert again["id"] == resized["id"]
+    assert again["geometry"] == resized["geometry"]
+
+
+def test_edit_after_style_replacement(harness, page_session, browser_errors):
+    widget = MapWidget(zoom=3)
+    widget.draw.enable(("polygon",))
+    widget.draw.set(feature(square(-10, -10, 10, 10)))
+    widget.draw.start("select")
+    reports, calls = record(widget)
+    [el] = show(page_session, widget)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    wait_drawing(page_session, el, "select")
+
+    for diff in ("false", "true"):
+        before = state(el)["committed"]
+        el.evaluate(
+            f"el => el.psmMap.setStyle({{version: 8, sources: {{}}, layers: []}}, {{diff: {diff}}})"
+        )
+        page_session.wait_for_function(
+            "el => psmHarness.drawState(el).running && el.psmMap.getSource('psm-draw-polygon')"
+            " && el.psmMap.isStyleLoaded()",
+            arg=el,
+        )
+        wait_drawing(page_session, el, "select")
+        assert state(el)["committed"] == before
+        shown(page_session, el, (0, 0), "psm-draw-polygon")
+
+        count = len(calls)
+        corners = before[0]["geometry"]["coordinates"][0]
+        select(page_session, el, (0, 0))
+        drag(page_session, el, pixel(el, corners[1]), (25, 15))
+        wait_for(page_session, lambda: len(calls) == count + 1, f"no edit after diff={diff}")
+        page_session.wait_for_timeout(300)
+        assert len(calls) == count + 1
+        assert widget.drawn["features"][0]["geometry"] != before[0]["geometry"]
+        # Deselect, for the next round's click to select again.
+        click(page_session, el, *spread(el, (0.15, 0.25))[0])
+    assert [r["cause"] for r in reports] == ["request", "user", "user"]
+    assert browser_errors == []
+
+
+def test_disable_mid_drag_restores_navigation(harness, page_session):
+    widget = MapWidget(zoom=3)
+    widget.draw.enable(("polygon",))
+    widget.draw.set(feature(square(-10, -10, 10, 10)))
+    widget.draw.start("select")
+    reports, _ = record(widget)
+    [el] = show(page_session, widget)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    wait_drawing(page_session, el, "select")
+    select(page_session, el, (0, 0))
+
+    x, y = at(page_session, el, *pixel(el, (10, 10)))
+    page_session.mouse.move(x, y)
+    page_session.mouse.down()
+    page_session.mouse.move(x + 20, y + 20, steps=5)
+    page_session.wait_for_function("el => !el.psmMap.dragPan.isEnabled()", arg=el)
+    widget.draw.disable()
+    wait_stopped(page_session, el)
+    page_session.mouse.move(x + 40, y + 40, steps=5)
+    page_session.mouse.up()
+    assert el.evaluate(
+        "el => [el.psmMap.dragPan.isEnabled(), el.psmMap.doubleClickZoom.isEnabled()]"
+    ) == [True, True]
+
+    middle = spread(el, (0.5, 0.5))[0]
+    center = el.evaluate("el => el.psmMap.getCenter().toArray()")
+    drag(page_session, el, middle, (-120, 60))
+    page_session.wait_for_function(
+        "([el, c]) => !el.psmMap.isMoving() && Math.abs(el.psmMap.getCenter().lng - c[0]) > 1",
+        arg=[el, center],
+    )
+    zoom = el.evaluate("el => el.psmMap.getZoom()")
+    page_session.mouse.dblclick(*at(page_session, el, *middle))
+    page_session.wait_for_function("([el, z]) => el.psmMap.getZoom() > z + 0.5", arg=[el, zoom])
+    assert [r["cause"] for r in reports] == ["request"]
+
+
+def test_views_stay_independent_across_disable(harness, page_session):
+    widget = MapWidget(zoom=3, height="250px")
+    _, calls = record(widget)
+    widget.draw.enable(("polygon",))
+    widget.draw.start("polygon")
+    display(widget)
+    one, two = show(page_session, widget, count=2)
+    for el in (one, two):
+        wait_drawing(page_session, el, "polygon")
+    draw_polygon(page_session, one, spread(one, (0.2, 0.3), (0.35, 0.3), (0.3, 0.7)))
+    wait_for(page_session, lambda: len(calls) == 1, "the first view's polygon never arrived")
+    [mine] = widget.draw.features["features"]
+    draw_polygon(page_session, two, spread(two, (0.6, 0.3), (0.75, 0.3), (0.7, 0.7)))
+    wait_for(page_session, lambda: len(calls) == 2, "the second view's polygon never arrived")
+    [theirs] = widget.draw.features["features"]
+    assert mine["id"] != theirs["id"]
+
+    widget.draw.disable()
+    for el in (one, two):
+        wait_stopped(page_session, el)
+    widget.draw.enable(("polygon",))
+    for el in (one, two):
+        wait_drawing(page_session, el, "static")
+    assert polygons(one) == [mine]
+    assert polygons(two) == [theirs]

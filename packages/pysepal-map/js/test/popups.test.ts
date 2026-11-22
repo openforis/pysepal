@@ -313,6 +313,20 @@ describe("click popup", () => {
     expect(map.queries).toEqual([]);
   });
 
+  it("closes with the tooltip when drawing becomes interactive", () => {
+    const { map, declare, click, move, popups, popup, tooltip, setDrawing } =
+      setup();
+    declare(layer("a", 1, { popup: ["name"], tooltip: ["name"] }));
+    map.features = [feature("a", 1, { name: "x" })];
+    click();
+    move();
+    popups.drawingChanged();
+    expect([popup()[0].open, tooltip()[0].open]).toEqual([true, true]);
+    setDrawing(true);
+    popups.drawingChanged();
+    expect([popup()[0].open, tooltip()[0].open]).toEqual([false, false]);
+  });
+
   it("forgets a popup the user closed", () => {
     const { map, declare, click, model, popup } = setup();
     declare(layer("a", 1, POPUP("name")));

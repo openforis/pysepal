@@ -152,6 +152,14 @@ export class ViewPointer {
     this.marker = null;
   }
 
+  /**
+   * Drawing became interactive or stopped being so. Back from it, the cursor
+   * rule applies again: Terra Draw leaves its own cursor on the canvas.
+   */
+  drawingChanged(): void {
+    if (!this.disposed) this.applyCursor();
+  }
+
   /** The hits at a point, top first, capped per layer and in all. */
   hitsAt(point: PointLike): Hit[] {
     return this.hitsOf(this.rendered(point));

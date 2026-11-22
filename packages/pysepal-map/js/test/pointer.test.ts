@@ -425,6 +425,19 @@ describe("cursor", () => {
     move(map);
     expect(map.canvas.style.cursor).toBe("cell");
   });
+
+  it("is put back when drawing stops being interactive", () => {
+    let drawing = true;
+    const { map, model, pointer } = setup({ drawing: () => drawing });
+    model.set("cursor", "wait");
+    // Terra Draw clears its own cursor as it leaves a mode.
+    map.canvas.style.cursor = "";
+    pointer.drawingChanged();
+    expect(map.canvas.style.cursor).toBe("");
+    drawing = false;
+    pointer.drawingChanged();
+    expect(map.canvas.style.cursor).toBe("wait");
+  });
 });
 
 describe("marker", () => {

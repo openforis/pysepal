@@ -17,17 +17,18 @@ display(widget)
 - **Python owns the persistent map state**: layers and their order, basemap, theme, controls (zoom, fullscreen, a metric scale, a coordinates readout), the cursor and a highlight marker. `MapWidget.publish(MapState)` publishes a whole snapshot, and every mounted view reconciles its map to it. Python never sends a one-off command that changes the map.
 - **The browser owns the camera** and reports it back (`on_view`); Python can ask for a move with `set_center` and `fit_bounds`, which takes a `max_zoom` cap and a `zoom_out` step.
 - **Clicks** reach Python as `ClickEvent`s (`on_click`) with the features under the point, from current layer instances only.
+- **Drawing** uses the bundled [Terra Draw](https://github.com/JamesLMilner/terra-draw). `widget.draw.enable(("polygon", "rectangle", "circle"))` offers the tools (and `select` to edit them), `draw.start(mode)` picks one, and `draw.set(features)` or `draw.clear()` asks every view to replace what it shows. Like the camera, the drawn features belong to the browser: `draw.features` mirrors the last report Python accepted, and `on_draw` runs on each drawing or edit a user made. Polygons with holes and drawings across the antimeridian are not supported.
 - **Insets** name the parts of the map that other UI covers: after `set_insets(left=300)`, views center and fit inside the rest, report its bounds, and move their controls in by as much. A fullscreen map uses none.
-- The traits that carry the contract (`state`, `view`, `view_request`, `insets`, `marker`) are read-only; only the widget's methods write them.
+- The traits that carry the contract (`state`, `view`, `view_request`, `insets`, `marker`, `drawing`, `draw_request`, `drawn`) are read-only; only the widget's methods write them.
 - **Layer status** (`loading`, `ready`, `error`) flows back per layer (`layer_status`, `on_status`).
 - GeoJSON bytes never travel inside the state: `add_payload` returns a sha256 digest, and the browser pulls the bytes it lacks.
-- Everything the widget adds to the MapLibre style has an id starting with `psm:`; it never touches other layers, such as those of a drawing plugin.
+- Everything the widget adds to the MapLibre style has an id starting with `psm:`; it never touches other layers, such as those of a drawing plugin. The sources and layers of its own Terra Draw start with `psm-draw-` and, like any other layer, stay above every `psm:` layer.
 
 [`src/pysepal_map/state.py`](src/pysepal_map/state.py) declares and validates the state. The module docstring of [`widget.py`](src/pysepal_map/widget.py) describes the rest of the contract: how draws give out instances, the owned style ids, the messages between Python and the views, the camera request and report rules, and the insets.
 
 ## Build
 
-Node 22 or later is needed to build, not to run. MapLibre and its worker are bundled into the Python package, so no request leaves the machine at runtime.
+Node 22 or later is needed to build, not to run. MapLibre and its worker, PMTiles and Terra Draw are bundled into the Python package, so no request leaves the machine at runtime.
 
 ```bash
 npm ci && npm run build

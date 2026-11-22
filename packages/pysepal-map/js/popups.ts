@@ -130,6 +130,13 @@ export class ViewPopups {
     this.close("tooltip");
   }
 
+  /** Drawing became interactive or stopped being so: while it is, nothing stays open. */
+  drawingChanged(): void {
+    if (this.disposed || !this.options.drawing?.()) return;
+    this.close("popup");
+    this.close("tooltip");
+  }
+
   /** Whether a layer shows a popup or a tooltip: its features take `pointer`. */
   clickable = (layerId: string): boolean => {
     const interaction = this.layers().find(

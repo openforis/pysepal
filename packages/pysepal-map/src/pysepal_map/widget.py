@@ -4,9 +4,10 @@
 keeps the rest of the contract, summed up here for whoever drives a widget or
 writes a front end for it.
 
-Traits. ``state``, ``view``, ``view_request``, ``insets`` and ``marker`` are read-only:
-assigning one raises ``traitlets.TraitError``, and only the widget writes
-them. The comm opens with the first request, sequence 1, in ``view_request``.
+Traits. ``state``, ``view``, ``view_request``, ``insets``, ``marker``, ``drawing``,
+``draw_request`` and ``drawn`` are read-only: assigning one raises
+``traitlets.TraitError``, and only the widget writes them. The comm opens with
+the first request, sequence 1, in ``view_request``.
 
 Publishing. ``MapWidget.publish`` sets a whole ``MapState`` in the ``state``
 trait, with a ``revision`` one above the last. Each layer gets an
@@ -30,9 +31,9 @@ Messages. Each mounted view has a unique ``view_id`` and a side (``main``;
 ``left`` and ``right`` are kept for a compare view). It sends JSON messages
 with a ``type``: ``view_open`` on mount and every 20 s, ``view_close``,
 ``pull`` with the GeoJSON digests it lacks, ``status`` on one layer instance,
-``click`` and ``view_report`` with its camera. A ``status`` on a rejected
-style operation also carries its ``style_revision``, which counts only for the
-current publish.
+``click``, ``view_report`` with its camera and ``draw_report`` with its drawn
+features. A ``status`` on a rejected style operation also carries its
+``style_revision``, which counts only for the current publish.
 Python answers each pulled digest with a ``data`` message that carries the
 UTF-8 GeoJSON as one buffer, or ``missing: true`` once a publish dropped it, and
 sends ``status_request`` to ask one view and side to send its statuses again.
@@ -86,7 +87,8 @@ new instance. A clustered source must hold only points: MapLibre's cluster index
 drops lines and polygons, and the property names ``cluster``, ``cluster_id``,
 ``point_count`` and ``point_count_abbreviated`` are reserved on it. The view
 draws count bubbles in the stroke colour; a click on one zooms into it and
-sends no click or popup, and clusters are never hits or tooltips. The
+sends no click or popup, and clusters are never hits or tooltips. A bubble
+also hides the popups and tooltips of the features it covers. The
 view draws pins and bubbles on a canvas and registers them as images with ids
 ``psm-pin:<color>`` and ``psm-count:<color>:<label>`` (colours escaped as
 ``encodeURIComponent`` does), so no glyphs are fetched; the label uses the
@@ -106,10 +108,34 @@ named property shows only its value, otherwise one ``name: value`` line each. It
 hides when nothing is hit and when the pointer leaves the map. Values are
 strings as they are, numbers with ``str``, ``null`` as empty and objects or
 arrays as JSON, each cut at 200 characters, and are inserted as text, never
-HTML. Both are off while drawing is interactive. Each remembers the source id
-of its feature and closes when that source is no longer declared, its layer is
-hidden, or the layer no longer declares it. The click message is sent
-whether or not a popup opens.
+HTML. Both are off while drawing is interactive, and close when it becomes
+so. Each remembers the source id of its feature and closes when that source is
+no longer declared, its layer is hidden, or the layer no longer declares it.
+The click message is sent whether or not a popup opens.
+
+Drawing. ``drawing`` declares the tools: ``modes`` (empty while drawing is
+off, else drawing modes with ``select`` last when editing is on), ``mode``
+(``static`` or one of ``modes``) and ``color``. Drawing is interactive while
+``mode`` is not ``static``. The browser owns the drawn features, like the
+camera. ``draw.set`` and ``draw.clear`` write ``draw_request``, ``{"seq",
+"features"}``, whose ``seq`` only grows from 0, and ``drawn``, ``{"request_seq",
+"features"}``, mirrors the last accepted report. Each view runs its own Terra
+Draw 1.39 while ``modes`` is not empty, with every drawing mode registered,
+and keeps its features while drawing is off. On its first start it restores
+``drawn`` when ``drawn.request_seq >= draw_request.seq``, else applies the
+request; on a later one it restores its own features unless a newer request
+came. Applying a request replaces its features and sends a ``draw_report``
+with cause ``request``; a user's finished drawing or edit, or deletion, sends
+one with cause ``user``, on the request it last applied. A report carries
+``request_seq``, ``cause`` and ``features``: committed Polygon, LineString and
+Point features only (no helper or in-progress geometry, no selection flags),
+each moved by whole turns so its first vertex lies in [-180, 180] and rounded
+to 9 decimals; one that still crosses the antimeridian is left out. Python
+accepts a report only from a mounted view on the current request; once a user
+report was accepted on it, an acknowledgement from any view is dropped. A
+feature that ``draw.set`` would not accept is dropped from a report, and a
+user report runs the ``on_draw`` callbacks. Terra Draw's sources and layers
+have ids starting with ``psm-draw-`` and stay above every owned layer.
 
 Insets. ``insets`` holds the CSS pixels other UI covers on each side of the
 map element, as ``left``, ``right``, ``top`` and ``bottom``, all 0 at first. A
@@ -144,6 +170,7 @@ import traitlets
 
 from ._callbacks import CallbackQueue, running_loop
 from ._camera import INSET_SIDES, _bounds_request, _center_request, _insets
+from ._draw import DEFAULT_COLOR, STATIC, Draw, report_features
 from ._events import ClickEvent, FeatureHit
 from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
@@ -168,6 +195,8 @@ SIDES = ("main", "left", "right")
 STATUSES = ("loading", "ready", "error")
 #: What moved a view's camera: a user, a request, or anything else.
 CAUSES = ("user", "request", "resize")
+#: What changed a view's drawing: a user, or applying a request.
+DRAW_CAUSES = ("user", "request")
 #: A mounted view repeats ``view_open`` every 20 s, and any message from it
 #: renews it; one silent this long is late. Chrome runs the timers of a
 #: hidden tab as rarely as once a minute.
@@ -180,6 +209,7 @@ VIEW_GRACE_S = 10.0
 StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
 ViewCallback = Callable[[dict], Any]
 ClickCallback = Callable[[ClickEvent], object]
+DrawCallback = Callable[[dict], object]
 CURSORS = ("", "crosshair", "pointer", "wait")
 View = tuple[str, str]
 
@@ -249,6 +279,9 @@ class MapWidget(anywidget.AnyWidget):
     view_request = traitlets.Dict(read_only=True).tag(sync=True)
     insets = traitlets.Dict(dict.fromkeys(INSET_SIDES, 0), read_only=True).tag(sync=True)
     marker = traitlets.Dict(read_only=True).tag(sync=True)
+    drawing = traitlets.Dict(read_only=True).tag(sync=True)
+    draw_request = traitlets.Dict(read_only=True).tag(sync=True)
+    drawn = traitlets.Dict(read_only=True).tag(sync=True)
     cursor = traitlets.Enum(CURSORS, "").tag(sync=True)
     height = traitlets.Unicode("400px").tag(sync=True)
 
@@ -287,6 +320,10 @@ class MapWidget(anywidget.AnyWidget):
         self._status_callbacks: list[StatusCallback] = []
         self._view_callbacks: list[ViewCallback] = []
         self._click_callbacks: list[ClickCallback] = []
+        self._draw_callbacks: list[DrawCallback] = []
+        # The request a user report was accepted on: acknowledgements of it lose.
+        self._draw_user_seq: int | None = None
+        self._draw = Draw(self)
         # The last request issued, and the one the last accepted report applied.
         self._issued = 1
         self._acknowledged = 0
@@ -310,6 +347,23 @@ class MapWidget(anywidget.AnyWidget):
     @traitlets.default("view_request")
     def _default_view_request(self) -> dict:
         return self._first_request
+
+    @traitlets.default("drawing")
+    def _default_drawing(self) -> dict:
+        return {"modes": [], "mode": STATIC, "color": DEFAULT_COLOR}
+
+    @traitlets.default("draw_request")
+    def _default_draw_request(self) -> dict:
+        return {"seq": 0, "features": []}
+
+    @traitlets.default("drawn")
+    def _default_drawn(self) -> dict:
+        return {"request_seq": 0, "features": []}
+
+    @property
+    def draw(self) -> Draw:
+        """The drawing tools of this map, and the features they drew."""
+        return self._draw
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
@@ -365,6 +419,19 @@ class MapWidget(anywidget.AnyWidget):
                     self._click_callbacks.remove(callback)
             elif callback not in self._click_callbacks:
                 self._click_callbacks.append(callback)
+
+    def on_draw(self, callback: DrawCallback, remove: bool = False) -> None:
+        """Call ``callback(features)`` with a FeatureCollection on each drawing a user made.
+
+        It runs once per accepted report whose cause is ``"user"``, never for
+        the acknowledgement of a ``draw.set``. ``remove=True`` unregisters it.
+        """
+        with self._lock:
+            if remove:
+                if callback in self._draw_callbacks:
+                    self._draw_callbacks.remove(callback)
+            elif callback not in self._draw_callbacks:
+                self._draw_callbacks.append(callback)
 
     def set_marker(self, lng: float, lat: float, color: str = "#3388ff") -> None:
         """Show the one highlight marker at ``(lng, lat)`` in ``color``, in every view."""
@@ -467,6 +534,8 @@ class MapWidget(anywidget.AnyWidget):
             self._view_report(content)
         elif kind == "click":
             self._click(content)
+        elif kind == "draw_report":
+            self._draw_report(content)
 
     def _answer_pull(self, digests) -> None:
         """Send each digest's bytes, or ``missing`` once a publish dropped them."""
@@ -665,6 +734,41 @@ class MapWidget(anywidget.AnyWidget):
             for callback in self._click_callbacks:
                 self._callbacks.put(callback, event)
         self._callbacks.flush(self._loop)
+
+    def _draw_report(self, content: dict) -> None:
+        """Mirror one view's drawn features in ``drawn`` and tell the callbacks.
+
+        Only a report of a mounted view on the current request counts, and on
+        that request, once a user report was accepted, an acknowledgement from
+        any view is dropped. Features a view could not add back are dropped.
+        """
+        view = self._view_of(content)
+        seq, cause, features = (content.get(k) for k in ("request_seq", "cause", "features"))
+        if (
+            view is None
+            or not (_is_int(seq) and seq >= 0)
+            or cause not in DRAW_CAUSES
+            or not isinstance(features, list)
+        ):
+            return
+        with self._lock:
+            self._expire_due()
+            if (
+                not self._closed
+                and view in self._views
+                and seq == self.draw_request["seq"]
+                and not (cause == "request" and self._draw_user_seq == seq)
+            ):
+                accepted = report_features(features)
+                if cause == "user":
+                    self._draw_user_seq = seq
+                    collection = {"type": "FeatureCollection", "features": accepted}
+                    # Before ``drawn`` is written: a report that an observer of
+                    # it gets accepted then runs its callbacks after these.
+                    for callback in self._draw_callbacks:
+                        self._callbacks.put(callback, copy.deepcopy(collection))
+                self.set_trait("drawn", {"request_seq": seq, "features": accepted})
+        self._refresh()
 
     def _refresh(self) -> None:
         """Reduce the reports again, tell the callbacks if that changed.

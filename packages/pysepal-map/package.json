@@ -12,14 +12,14 @@
   },
   "dependencies": {
     "maplibre-gl": "^6.19.0",
-    "pmtiles": "^4.5.0"
+    "pmtiles": "^4.5.0",
+    "terra-draw": "1.39.0",
+    "terra-draw-maplibre-gl-adapter": "1.5.0"
   },
   "devDependencies": {
     "@anywidget/types": "^0.4.0",
     "@maplibre/maplibre-gl-style-spec": "26.9.0",
     "esbuild": "^0.28.2",
-    "terra-draw": "1.39.0",
-    "terra-draw-maplibre-gl-adapter": "1.5.0",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1"
   }

@@ -6,6 +6,7 @@ import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 import { TerraDraw, TerraDrawPolygonMode } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 
+import type { DrawReport, ViewDraw } from "../../js/draw";
 import type { StatusMessage, StatusReporter } from "../../js/status";
 import type { ViewCamera, ViewReport } from "../../js/view";
 
@@ -14,6 +15,7 @@ type PsmElement = HTMLElement & {
   psmInspect?: () => unknown;
   psmStatus?: StatusReporter;
   psmCamera?: ViewCamera;
+  psmDraw?: ViewDraw;
 };
 
 interface Probe {
@@ -337,6 +339,38 @@ function drawnPolygons(el: Element) {
     .map(({ geometry, properties }) => ({ geometry, properties }));
 }
 
+function drawView(el: Element): ViewDraw {
+  const draw = (el as PsmElement).psmDraw;
+  if (!draw) throw new Error("the element holds no mounted view");
+  return draw;
+}
+
+/**
+ * What the view's drawing holds: whether its Terra Draw runs, its mode, the
+ * request it applied, its committed features, and Terra Draw's whole store,
+ * helpers included.
+ */
+function drawState(el: Element) {
+  return drawView(el).inspect();
+}
+
+const drawLogs = new WeakMap<ViewDraw, DrawReport[]>();
+
+/** Every draw report the view sent since the first call, at its origin. */
+function drawLog(el: Element): DrawReport[] {
+  const draw = drawView(el);
+  const existing = drawLogs.get(draw);
+  if (existing) return existing;
+  const log: DrawReport[] = [];
+  const transmit = draw.transmit.bind(draw);
+  draw.transmit = (report) => {
+    log.push(structuredClone(report));
+    transmit(report);
+  };
+  drawLogs.set(draw, log);
+  return log;
+}
+
 const expansions = new WeakMap<MapLibreMap, (() => Promise<unknown>)[]>();
 
 /** Hold the answers to `getClusterExpansionZoom` of a source until released. */
@@ -379,4 +413,6 @@ async function releaseExpansion(el: Element): Promise<void> {
   ownedSnapshot,
   startDrawing,
   drawnPolygons,
+  drawState,
+  drawLog,
 };

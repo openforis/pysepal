@@ -87,6 +87,33 @@ export interface MapState {
   layers: LayerState[];
 }
 
+/** A drawn feature, as Terra Draw holds it and the drawing traits carry it. */
+export interface DrawFeature {
+  type: "Feature";
+  id: string | number;
+  geometry: { type: string; coordinates: unknown };
+  properties: Record<string, unknown>;
+}
+
+/** The `drawing` trait: the tools offered (empty while off), the active one, the colour. */
+export interface DrawingState {
+  modes: string[];
+  mode: string;
+  color: string;
+}
+
+/** The `draw_request` trait: features to show instead; `seq` only grows. */
+export interface DrawRequestState {
+  seq: number;
+  features: DrawFeature[];
+}
+
+/** The `drawn` trait: the last report Python accepted, on the request it named. */
+export interface DrawnState {
+  request_seq: number;
+  features: DrawFeature[];
+}
+
 export type OwnedSourceSpec =
   | SourceSpecification
   | Omit<GeoJSONSourceSpecification, "data">;

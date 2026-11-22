@@ -6,6 +6,7 @@ import workerSource from "psm:maplibre-worker";
 import type { RenderProps } from "@anywidget/types";
 
 import { ViewControls } from "./controls";
+import { ViewDraw, terraDraw } from "./draw";
 import { installImages } from "./images";
 import { MapSync } from "./maplive";
 import { ViewPointer } from "./pointer";
@@ -31,6 +32,9 @@ interface Model {
   insets: unknown;
   cursor: string;
   marker: unknown;
+  drawing: unknown;
+  draw_request: unknown;
+  drawn: unknown;
 }
 
 type PsmElement = HTMLElement & {
@@ -38,6 +42,7 @@ type PsmElement = HTMLElement & {
   psmInspect?: () => unknown;
   psmStatus?: StatusReporter;
   psmCamera?: ViewCamera;
+  psmDraw?: ViewDraw;
 };
 
 // Phase 1 renders a single map; compare views will mount "left" and "right".
@@ -83,9 +88,13 @@ function render({ model, el }: RenderProps<Model>) {
   presence.start();
   const sync = new MapSync(map, model, root, reporter, { viewId, side: SIDE });
   root.psmInspect = () => sync.inspect();
+  // Built after the map sync, so it handles a style load after the sync did.
+  let draw: ViewDraw | null = null;
+  const drawing = () => draw?.interactive() ?? false;
   const popups = new ViewPopups({
     map,
     model,
+    drawing,
     createPopup: (options) => new maplibregl.Popup(options),
   });
   const pointer = new ViewPointer({
@@ -94,6 +103,7 @@ function render({ model, el }: RenderProps<Model>) {
     viewId,
     side: SIDE,
     settled: () => sync.settled(),
+    drawing,
     clickable: popups.clickable,
     clustered: (id) => {
       const state = model.get("state") as Partial<MapState> | null;
@@ -103,6 +113,19 @@ function render({ model, el }: RenderProps<Model>) {
     },
     createMarker: (color) => new maplibregl.Marker({ color }),
   });
+  draw = new ViewDraw({
+    map,
+    model,
+    viewId,
+    side: SIDE,
+    send,
+    createDraw: terraDraw(map),
+    onInteractiveChange: () => {
+      popups.drawingChanged();
+      pointer.drawingChanged();
+    },
+  });
+  root.psmDraw = draw;
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
   root.psmCamera = camera;
   const controls = new ViewControls({
@@ -121,6 +144,7 @@ function render({ model, el }: RenderProps<Model>) {
     reporter.replay();
     sync.reconnect();
     camera.reconnect();
+    draw?.reconnect();
   });
 
   const applyControls = () =>
@@ -134,6 +158,8 @@ function render({ model, el }: RenderProps<Model>) {
   return () => {
     stopLive();
     camera.dispose();
+    // Before the map goes: it removes Terra Draw's layers.
+    draw?.dispose();
     pointer.dispose();
     popups.dispose();
     removeImages();
@@ -148,6 +174,7 @@ function render({ model, el }: RenderProps<Model>) {
     delete root.psmInspect;
     delete root.psmStatus;
     delete root.psmCamera;
+    delete root.psmDraw;
     map.remove();
   };
 }
