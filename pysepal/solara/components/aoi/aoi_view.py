@@ -424,10 +424,26 @@ def AoiView(
     def _owns_draw() -> bool:
         return aoi_draw is not None and _DRAW_OWNERS.get(aoi_draw) is token
 
-    def _take_draw():
-        aoi_draw.clear()
-        aoi_draw.enable(_DRAW_MODES)
+    def _acquire_draw(setup):
+        # The token goes first: the previous owner renders again on the changes ``setup``
+        # makes, and must already see itself as a non-owner. A failure hands the tools back.
+        previous = _DRAW_OWNERS.get(aoi_draw)
         _DRAW_OWNERS[aoi_draw] = token
+        try:
+            setup()
+        except BaseException:
+            if previous is None:
+                _DRAW_OWNERS.pop(aoi_draw, None)
+            else:
+                _DRAW_OWNERS[aoi_draw] = previous
+            raise
+
+    def _take_draw():
+        def setup():
+            aoi_draw.clear()
+            aoi_draw.enable(_DRAW_MODES)
+
+        _acquire_draw(setup)
 
     def _sync_draw_control(active_method: str = "", *, retry: bool = False):
         """Hold the drawing tools for DRAW, and let them go for any other method.
@@ -742,7 +758,9 @@ def AoiView(
         if aoi_draw is None:
             return
         fallback = None
-        try:
+
+        def setup():
+            nonlocal fallback
             aoi_draw.clear()
             try:
                 aoi_draw.set((geo_json or {}).get("features") or [])
@@ -750,7 +768,9 @@ def AoiView(
                 log.warning("The drawn AOI cannot be edited on the map", exc_info=True)
                 fallback = geo_json
             aoi_draw.enable(_DRAW_MODES)
-            _DRAW_OWNERS[aoi_draw] = token
+
+        try:
+            _acquire_draw(setup)
         except Exception:
             log.exception("The drawing tools could not be seeded")
         draw_fallback.set(fallback)

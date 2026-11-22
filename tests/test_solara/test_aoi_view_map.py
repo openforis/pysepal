@@ -20,7 +20,7 @@ from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 from pysepal.solara.components.aoi.constants import admin_source_attribution
 
-from ._draw_helpers import mount, report
+from ._draw_helpers import HOLE, SQUARE, mount, report
 from ._harness import wait_until, walk
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_polygons.geojson"
@@ -317,23 +317,48 @@ def test_the_earth_engine_aoi_fits_once(monkeypatch, gee_spec):
     _run(scenario, gee=True, spec=ADMIN)
 
 
-def test_a_view_another_took_over_from_neither_submits_nor_clears_its_drawing():
+@pytest.mark.parametrize("holed", [False, True], ids=["drawing", "fallback"])
+def test_a_view_another_took_over_from_neither_submits_nor_clears_its_drawing(holed):
     m = sm.SepalMap(gee=False)
     mount(m)
     held_a, held_b = solara.reactive(None), solara.reactive(None)
+    clear_a = SimpleNamespace(current=None)
+    spec_a = AoiSpec(
+        method="DRAW",
+        geo_json={
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": {"type": "Polygon", "coordinates": [SQUARE, HOLE]},
+                }
+            ],
+        },
+    )
 
     @solara.component
     def ViewA():
-        AoiView(map_=m, gee=False, value=held_a)
+        AoiView(
+            map_=m,
+            gee=False,
+            value=held_a,
+            clear_ref=clear_a,
+            spec=spec_a if holed else None,
+            autoselect=False,
+        )
 
     @solara.component
     def ViewB():
         AoiView(map_=m, gee=False, value=held_b)
 
-    def pick_draw(root):
-        next(
-            w for w in walk(root) if getattr(w, "label", None) == msg("aoi_sel.method")
-        ).v_model = "DRAW"
+    def label_of(root, label):
+        return next(w for w in walk(root) if getattr(w, "label", None) == label)
+
+    def button(root):
+        return next(
+            w for w in walk(root) if type(w).__name__ == "Btn" and msg("aoi_sel.btn") in w.children
+        )
 
     def press_enter(root):
         next(w for w in walk(root) if hasattr(w, "vue_submit")).vue_submit(None)
@@ -342,18 +367,34 @@ def test_a_view_another_took_over_from_neither_submits_nor_clears_its_drawing():
         root_a, rc_a = reacton.render(ViewA(), handle_error=False)
         root_b, rc_b = reacton.render(ViewB(), handle_error=False)
         try:
-            pick_draw(root_a)
-            pick_draw(root_b)
+            if not holed:
+                label_of(root_a, msg("aoi_sel.method")).v_model = "DRAW"
+                report(m)
+            assert not button(root_a).disabled
+
+            label_of(root_b, msg("aoi_sel.method")).v_model = "DRAW"
+            assert button(root_a).disabled
+
             report(m)
             press_enter(root_b)
             await wait_until(lambda: held_b.value is not None and "aoi" in m.layer_store)
+            assert button(root_a).disabled
 
-            press_enter(root_a)
+            # a click that reaches the run path anyway must not send B's geometry
+            button(root_a).fire_event("click", {})
             await asyncio.sleep(0.1)
             assert held_a.value is None
 
+            # neither clearing nor leaving DRAW touches B's drawing, tools or outline
+            clear_a.current()
+            label_of(root_a, msg("aoi_sel.method")).v_model = "ADMIN0"
+            tools = ("polygon", "rectangle", "circle", "select")
+            assert m.draw.modes == tools
+            assert len(m.draw.features["features"]) == 1
+            assert "aoi" in m.layer_store
+
             rc_a.close()
-            assert m.draw.modes == ("polygon", "rectangle", "circle", "select")
+            assert m.draw.modes == tools
             assert len(m.draw.features["features"]) == 1
             assert "aoi" in m.layer_store
         finally:
