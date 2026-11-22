@@ -59,12 +59,17 @@ out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
 usable area has no size, and runs once it has one.
 
 Linked maps. ``link_views(*maps)`` keeps two or more widgets on one camera. It
-holds an integer per map, the highest request it issued on it, and forwards a
-report as ``set_center`` on the other maps only when it is a ``user`` report
-not older than that integer or a ``request`` report newer than it: an older
-report is superseded, a ``request`` at the integer is the echo of the group's
-own request, and a ``resize`` is never forwarded. Each request it issues, and
-its read of the seq, run under that map's lock, never under two at once.
+holds an integer per map, the highest request it issued on it or whose
+acknowledgement it forwarded, and forwards a report as ``set_center`` on the
+other maps only when it is a ``user`` report not older than that integer or a
+``request`` report newer than it: an older report is superseded, a ``request``
+at the integer is the echo of the group's own request, and a ``resize`` is
+never forwarded. A programmatic move so reaches the others only once a view of
+its map is mounted and acknowledges it. Each request it issues, and its read of
+the seq, run under that map's lock, never under two at once. A map is in one
+group at most: linking exactly the maps of a live group again returns its
+unlink function and changes nothing, and any other overlap raises
+``ValueError``.
 
 Compare. ``MapState.compare`` turns on a swipe compare: each ``Layer.side``
 (``left``, ``right`` or ``both``) says which half draws it. The ``main`` view

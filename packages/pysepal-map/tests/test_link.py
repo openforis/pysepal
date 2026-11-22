@@ -176,6 +176,65 @@ def test_a_map_joins_one_group_only():
     assert seq(c) == 1
 
 
+@pytest.mark.parametrize("order", [(0, 1, 2), (2, 0, 1)])
+def test_linking_the_same_group_again_returns_its_unlink(order):
+    maps = [mounted(), mounted(), mounted()]
+    ack(maps[0], center=(9, 8), zoom=7)
+    unlink = link_views(*maps)
+    maps[0].set_center(1, 2, 3)
+    issued = [seq(w) for w in maps]
+    assert link_views(*(maps[i] for i in order)) is unlink
+    assert [seq(w) for w in maps] == issued
+    unlink()
+    report(maps[0], seq(maps[0]), "user", center=(10, 20), zoom=5)
+    assert [seq(w) for w in maps] == issued
+
+
+@pytest.mark.parametrize("pick", [(0, 1), (0, 1, 3), (1, 3)])
+def test_linking_part_or_more_of_a_group_raises(pick):
+    maps = [mounted(), mounted(), mounted(), mounted()]
+    link_views(*maps[:3])
+    with pytest.raises(ValueError, match="in one call"):
+        link_views(*(maps[i] for i in pick))
+    assert seq(maps[3]) == 1
+
+
+def test_a_group_can_be_linked_again_after_unlinking():
+    a, b = mounted(), mounted()
+    first = link_views(a, b)
+    first()
+    ack(a, center=(4, 5), zoom=6)
+    second = link_views(a, b)
+    assert second is not first
+    assert b.view_request["center"] == [4, 5]
+    ack(a)
+    ack(b)
+    before = seq(b)
+    report(a, seq(a), "user", center=(10, 20), zoom=5)
+    assert seq(b) == before + 1
+
+
+def test_a_failed_link_leaves_the_maps_free(monkeypatch):
+    a, b = mounted(), mounted()
+    ack(a, center=(9, 8), zoom=7)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(b, "set_center", fail)
+    with pytest.raises(RuntimeError, match="boom"):
+        link_views(a, b)
+    monkeypatch.undo()
+    unlink = link_views(a, b)
+    assert b.view_request["center"] == [9, 8]
+    ack(a)
+    ack(b)
+    before = seq(b)
+    report(a, seq(a), "user", center=(10, 20), zoom=5)
+    assert seq(b) == before + 1
+    unlink()
+
+
 def test_a_stale_unlink_does_not_free_a_relinked_map():
     a, b, c, d = mounted(), mounted(), mounted(), mounted()
     first = link_views(a, b)
@@ -208,3 +267,14 @@ def test_a_linked_pair_can_be_collected_once_closed():
     del a, b
     gc.collect()
     assert [r() for r in refs] == [None, None]
+
+
+def test_a_closed_member_is_collected_while_the_other_lives():
+    a, b = mounted(), mounted()
+    link_views(a, b)
+    ref = weakref.ref(b)
+    b.close()
+    del b
+    gc.collect()
+    assert ref() is None
+    assert a.comm is not None

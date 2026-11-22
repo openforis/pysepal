@@ -7,7 +7,6 @@ from collections.abc import Callable
 from .widget import MapWidget
 
 _lock = threading.Lock()
-_linked: weakref.WeakSet[MapWidget] = weakref.WeakSet()
 
 
 class _Member:
@@ -31,6 +30,25 @@ class _Group:
     def __init__(self, members: list[_Member]) -> None:
         self.members = members
         self.active = True
+        self.unlink: Callable[[], None] = lambda: None
+
+    def holds(self, widgets: tuple[MapWidget, ...]) -> bool:
+        """Whether ``widgets`` are exactly its members still alive, in any order."""
+        alive = {id(w) for m in self.members if (w := m.ref()) is not None}
+        return alive == {id(w) for w in widgets}
+
+
+# The group of each linked widget, held weakly.
+_groups: "weakref.WeakKeyDictionary[MapWidget, _Group]" = weakref.WeakKeyDictionary()
+
+
+def _release(group: _Group) -> None:
+    """Free the widgets of ``group``; under ``_lock``."""
+    group.active = False
+    for member in group.members:
+        widget = member.ref()
+        if widget is not None and _groups.get(widget) is group:
+            del _groups[widget]
 
 
 def _forward(group: _Group, origin: _Member, view: dict) -> None:
@@ -62,7 +80,9 @@ def link_views(*widgets: MapWidget) -> Callable[[], None]:
     The others take the first map's view now, and from then on a user's
     move of any map, or a ``set_center`` or ``fit_bounds`` the app makes
     on one, moves the others to that center and zoom. A map holds one group
-    at most, and the group holds no strong reference to its maps.
+    at most, and the group holds no strong reference to its maps. Linking
+    exactly the maps of a live group again, in any order, changes nothing and
+    returns that group's unlink function; any other overlap raises.
     """
     if len(widgets) < 2:
         raise ValueError("link_views needs at least two maps")
@@ -70,23 +90,46 @@ def link_views(*widgets: MapWidget) -> Callable[[], None]:
         raise ValueError("link_views got the same map twice")
     members = [_Member(w) for w in widgets]
     group = _Group(members)
-    with _lock:
-        if any(w in _linked for w in widgets):
-            raise ValueError("a map can be in one linked group only; link all of them in one call")
-        _linked.update(widgets)
 
-    for member, widget in zip(members, widgets):
-        with widget._lock:
-            member.issued = widget.view_request["seq"]
-    first = widgets[0]
-    with first._lock:
-        view = first.view
-        pending = {k: v for k, v in first.view_request.items() if k != "seq"}
-    for member, widget in list(zip(members, widgets))[1:]:
-        if view:
-            _issue(member, widget, lambda w=widget: w.set_center(*view["center"], view["zoom"]))
-        else:
-            _issue(member, widget, lambda w=widget: w._request(dict(pending)))
+    def unlink() -> None:
+        # Only the first call acts: a later one must not free widgets another group took.
+        with _lock:
+            if not group.active:
+                return
+            _release(group)
+        for member in members:
+            widget = member.ref()
+            if widget is not None and member.callback is not None:
+                widget.on_view(member.callback, remove=True)
+
+    # Set before the group is visible, so a relink never returns a placeholder.
+    group.unlink = unlink
+    with _lock:
+        found = {id(g): g for w in widgets if (g := _groups.get(w)) is not None}
+        if len(found) == 1 and (same := next(iter(found.values()))).holds(widgets):
+            return same.unlink
+        if found:
+            raise ValueError("a map can be in one linked group only; link all of them in one call")
+        for widget in widgets:
+            _groups[widget] = group
+
+    try:
+        for member, widget in zip(members, widgets):
+            with widget._lock:
+                member.issued = widget.view_request["seq"]
+        first = widgets[0]
+        with first._lock:
+            view = first.view
+            pending = {k: v for k, v in first.view_request.items() if k != "seq"}
+        for member, widget in list(zip(members, widgets))[1:]:
+            if view:
+                _issue(member, widget, lambda w=widget: w.set_center(*view["center"], view["zoom"]))
+            else:
+                _issue(member, widget, lambda w=widget: w._request(dict(pending)))
+    except BaseException:
+        with _lock:
+            _release(group)
+        raise
 
     for member in members:
 
@@ -97,20 +140,5 @@ def link_views(*widgets: MapWidget) -> Callable[[], None]:
         widget = member.ref()
         if widget is not None:
             widget.on_view(on_view)
-
-    def unlink() -> None:
-        # Only the first call acts: a later one must not free widgets another group took.
-        with _lock:
-            if not group.active:
-                return
-            group.active = False
-            for member in members:
-                widget = member.ref()
-                if widget is not None:
-                    _linked.discard(widget)
-        for member in members:
-            widget = member.ref()
-            if widget is not None and member.callback is not None:
-                widget.on_view(member.callback, remove=True)
 
     return unlink

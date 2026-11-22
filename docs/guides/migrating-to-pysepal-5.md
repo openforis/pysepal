@@ -169,6 +169,11 @@ Notes on the interaction replacements:
 - **The inspector is opt-in.** `SepalMap(inspector=True)` builds it, and every
   `MapView` of the map shows its toggle and card. It reads Earth Engine images
   at the clicked view's scale.
+- **Link maps once.** `link_views(m1, m2)` returns the function that unlinks
+  them. Linking exactly the same maps again (a re-run cell) returns that
+  function and changes nothing; any other overlap raises `ValueError`. In a
+  Solara component, link in an effect and let the unlink be its cleanup:
+  `solara.use_effect(lambda: link_views(m1, m2), [m1, m2])`.
 
 ```python
 import pandas as pd
