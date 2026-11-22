@@ -238,6 +238,10 @@ class SepalMap(MapWidget):
                 ),
             )
             self.draw.set_color(THEMES[self.theme == "dark"]["info"])
+            if inspector:
+                from pysepal.mapping.inspector import MapInspector
+
+                self.inspector = MapInspector(self)
             self._bind_theme_source(source)
         except BaseException:
             self.close()

@@ -1132,3 +1132,14 @@ def test_ee_vector_point_restyle_reuses_render(monkeypatch):
     assert layer_of(widget, "g")["instance"] == before["instance"]
     store.restyle("g", stroke="#ff0000")
     assert gee.calls == 2
+
+
+def test_accepted_instance_follows_the_published_instance(fake):
+    widget, store, engine = headless()
+    assert engine.accepted_instance("a") is None
+    store.add(vector_spec("a"))
+    assert engine.accepted_instance("a") == layer_of(widget, "a")["instance"]
+    before = engine.accepted_instance("a")
+    store.add(tile_spec("a"), replace=True)
+    assert engine.accepted_instance("a") == layer_of(widget, "a")["instance"]
+    assert engine.accepted_instance("a") != before

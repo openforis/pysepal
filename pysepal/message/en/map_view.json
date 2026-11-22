@@ -1,5 +1,10 @@
 {
   "map_view": {
-    "loading": "Loading layers"
+    "loading": "Loading layers",
+    "inspector": {
+      "changed": "This layer changed, click again",
+      "empty": "No data at this point",
+      "unsupported": "This layer cannot be inspected"
+    }
   }
 }

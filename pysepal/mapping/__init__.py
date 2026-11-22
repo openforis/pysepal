@@ -19,6 +19,7 @@ from .geojson_utils import *
 from .handle import LayerGoneError as LayerGoneError
 from .handle import LayerHandle as LayerHandle
 from .handle import ZoomResult as ZoomResult
+from .inspector import *
 from .layer import *
 from .map_btn import *
 from .marker_cluster import *

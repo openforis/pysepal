@@ -264,6 +264,11 @@ class MapLibreEngine:
         entry = self._accepted.get(layer_id)
         return None if entry is None else (entry.spec, entry.render)
 
+    def accepted_instance(self, layer_id: str) -> Optional[int]:
+        """Return the widget instance the last publish gave an id, or None."""
+        entry = self._accepted.get(layer_id)
+        return None if entry is None else entry.instance
+
     def bounds(self, layer_id: str) -> BoundsResult:
         """Return the bounds of a layer, looking those of an Earth Engine render up once.
 
