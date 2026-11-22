@@ -77,16 +77,36 @@ def wait_settled(page, revision, expected_views=1):
     )
 
 
-def owned_snapshot(page):
-    """What each mounted view's map holds of the owned style, in DOM order.
+def owned_snapshot(page, side="main"):
+    """What one map of each mounted view holds of the owned style, in DOM order.
 
     Per view: the owned layers bottom-first in live order (id, type, source,
     source layer, visibility, paint, zoom range), the owned sources by id as
     set (tiles and attribution included, GeoJSON data apart), the
     coordinates of each GeoJSON source's features in its worker, and the
-    theme.
+    theme. ``side="right"`` reads the compare map, ``None`` for a view
+    without one.
     """
-    return page.evaluate(f"() => Promise.all({MOUNTED}.map((el) => psmHarness.ownedSnapshot(el)))")
+    return page.evaluate(
+        f"""side => Promise.all({MOUNTED}.map((el) =>
+            side === 'right' && !el.psmCompare ? null : psmHarness.ownedSnapshot(el, side)))""",
+        side,
+    )
+
+
+def for_side(state, side):
+    """The published ``state`` with only the layers one map of a view draws.
+
+    From the contract: outside compare ``main`` draws every layer and ``right``
+    none; in compare ``main`` draws the ``left`` and ``both`` layers and
+    ``right`` the ``right`` and ``both`` ones.
+    """
+    if not state["compare"]:
+        layers = state["layers"] if side == "main" else []
+    else:
+        drawn = {"main": ("left", "both"), "right": ("right", "both")}[side]
+        layers = [layer for layer in state["layers"] if layer["side"] in drawn]
+    return {**state, "layers": layers}
 
 
 def _owned_id(layer):
@@ -144,12 +164,13 @@ def _paints(layer):
     ]
 
 
-def expected_snapshot(state, payloads):
-    """The ``owned_snapshot`` of one view showing a published ``state``.
+def expected_snapshot(state, payloads, side="main"):
+    """The ``owned_snapshot`` of one map of a view showing a published ``state``.
 
     Derived from the state contract in the plan, not from translate.ts.
     ``payloads`` maps each digest to its GeoJSON bytes.
     """
+    state = for_side(state, side)
     layers, sources, coordinates = [], {}, {}
     basemap = state["basemap"]
     if basemap is not None:
@@ -213,13 +234,13 @@ def wait_settled_fixture():
 
 @pytest.fixture(name="owned_snapshot")
 def owned_snapshot_fixture():
-    """``owned_snapshot(page) -> list[dict]``."""
+    """``owned_snapshot(page, side="main") -> list[dict | None]``."""
     return owned_snapshot
 
 
 @pytest.fixture(name="expected_snapshot")
 def expected_snapshot_fixture():
-    """``expected_snapshot(state, payloads) -> dict``."""
+    """``expected_snapshot(state, payloads, side="main") -> dict``."""
     return expected_snapshot
 
 

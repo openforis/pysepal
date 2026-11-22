@@ -27,11 +27,18 @@ export interface InteractionState {
   tooltip: string[] | null;
 }
 
+/** Which half of a compare map draws a layer. */
+export type LayerSide = "left" | "right" | "both";
+
+/** The maps of a view: its own, and the right one beside it in compare. */
+export type ViewSide = "main" | "right";
+
 interface LayerBase {
   id: string;
   token: number;
   instance: number;
   zone: "data" | "overlay";
+  side: LayerSide;
   visible: boolean;
   opacity: number;
   min_zoom: number;
@@ -77,6 +84,8 @@ export interface BasemapState {
 export interface MapState {
   revision: number;
   theme: "light" | "dark";
+  /** A swipe compare: each layer's `side` says which map draws it. */
+  compare: boolean;
   controls: {
     zoom: boolean;
     fullscreen: boolean;

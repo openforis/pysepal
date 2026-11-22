@@ -8,6 +8,7 @@ import type {
   OwnedStyle,
   PMTilesLayerState,
   RasterLayerState,
+  ViewSide,
 } from "./types";
 
 export const BASEMAP_ID = "psm:basemap";
@@ -227,6 +228,26 @@ function translateLayer(layer: LayerState): {
       };
     }
   }
+}
+
+const DRAWN_ON: Record<ViewSide, ReadonlySet<unknown>> = {
+  main: new Set(["left", "both"]),
+  right: new Set(["right", "both"]),
+};
+
+/**
+ * The state one map of a view draws: outside compare, `main` draws every
+ * layer and `right` none; in compare, each draws its half's layers and
+ * those on both. Everything else is kept as it is.
+ */
+export function forSide(state: MapState, side: ViewSide): MapState {
+  // Left for toOwnedStyle to reject.
+  if (!Array.isArray(state.layers)) return state;
+  const compare = state.compare === true;
+  const layers = state.layers.filter((layer) =>
+    compare ? DRAWN_ON[side].has(layer?.side) : side === "main"
+  );
+  return { ...state, layers };
 }
 
 /** Translate the published state into owned sources and layers, bottom-first. */

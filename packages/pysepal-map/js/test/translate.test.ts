@@ -2,7 +2,7 @@ import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import fixture from "./fixtures/state.json";
-import { toOwnedStyle } from "../translate";
+import { forSide, toOwnedStyle } from "../translate";
 import type { GeoJSONLayerState, LayerState, MapState } from "../types";
 
 const base = fixture as unknown as MapState;
@@ -262,5 +262,50 @@ describe("toOwnedStyle", () => {
     expect(poly(ctx, tiled(2))).toBe(false);
     expect(line(ctx, tiled(2))).toBe(true);
     expect(circle(ctx, tiled(1))).toBe(true);
+  });
+});
+
+describe("forSide", () => {
+  // The fixture's layers are v1, pm and r1, top-first.
+  const sided = (compare: boolean): MapState => {
+    const state = withLayers((layers) => {
+      layers[0].side = "left";
+      layers[1].side = "right";
+      layers[2].side = "both";
+    });
+    return { ...state, compare };
+  };
+  const ids = (state: MapState) => state.layers.map((layer) => layer.id);
+
+  it("gives main every layer outside compare", () => {
+    expect(ids(forSide(sided(false), "main"))).toEqual(["v1", "pm", "r1"]);
+  });
+
+  it("gives right no layer outside compare", () => {
+    expect(ids(forSide(sided(false), "right"))).toEqual([]);
+  });
+
+  it("gives main the left and both layers in compare", () => {
+    expect(ids(forSide(sided(true), "main"))).toEqual(["v1", "r1"]);
+  });
+
+  it("gives right the right and both layers in compare", () => {
+    expect(ids(forSide(sided(true), "right"))).toEqual(["pm", "r1"]);
+  });
+
+  it("keeps the order, basemap, theme and controls", () => {
+    const state = sided(true);
+    const dark = {
+      ...state,
+      theme: "dark" as const,
+      layers: [...state.layers].reverse(),
+    };
+    const out = forSide(dark, "right");
+    expect(ids(out)).toEqual(["r1", "pm"]);
+    const { layers: _out, ...rest } = out;
+    const { layers: _dark, ...expected } = dark;
+    expect(rest).toEqual(expected);
+    expect(out.basemap).toEqual(base.basemap);
+    expect(out.layers[0]).toEqual(dark.layers[0]);
   });
 });

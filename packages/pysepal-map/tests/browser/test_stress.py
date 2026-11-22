@@ -2,9 +2,10 @@
 
 The ipyleaflet map this widget replaces drew a layer in the wrong place after
 many fast operations. Here each operation is drawn at once, with no waiting,
-and after each burst every view's owned style must equal what the state
-contract derives from the published state (``expected_snapshot``, written
-without translate.ts), with a foreign layer still on top.
+and after each burst the owned style of every view's map, and of its compare
+map in compare mode, must equal what the state contract derives from the
+published state for that side (``expected_snapshot``, written without
+translate.ts), with a foreign layer still on top.
 """
 
 import json
@@ -36,6 +37,7 @@ COLORS = ("#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00")
 OPACITIES = (0.0, 0.25, 0.5, 1.0)
 ZOOM_RANGES = ((0, None), (2, None), (0, 20))
 RASTER_SETS = ("r1", "r2", "r3")
+SIDES = ("left", "right", "both")
 # How often each operation is picked when it applies. Order bugs need layers
 # that stay in place while others move around them, so adds outweigh
 # removals and moves come often.
@@ -52,6 +54,9 @@ WEIGHTS = {
     "theme": 1,
     "basemap": 1,
     "zone": 2,
+    "compare_on": 1,
+    "compare_off": 1,
+    "side": 2,
 }
 
 # A foreign layer, as a drawing plugin would add one.
@@ -87,6 +92,7 @@ class Scenario:
             Basemap((tiles.url("base-c"),), "© Base C", max_zoom=17),
         )
         self.basemap = None
+        self.compare = False
         self.payloads = {}  # digest -> bytes of every payload published
         self.count = 0
 
@@ -117,6 +123,7 @@ class Scenario:
                     source,
                     token=self.tokens[spec["id"]],
                     zone=spec["zone"],
+                    side=spec["side"],
                     visible=spec["visible"],
                     opacity=spec["opacity"],
                     min_zoom=spec["min_zoom"],
@@ -125,7 +132,9 @@ class Scenario:
                     attribution=spec["attribution"],
                 )
             )
-        return MapState(layers=tuple(layers), basemap=self.basemap, theme=self.theme)
+        return MapState(
+            layers=tuple(layers), basemap=self.basemap, theme=self.theme, compare=self.compare
+        )
 
     def _applicable(self):
         kinds = {spec["kind"] for spec in self.layers}
@@ -142,6 +151,9 @@ class Scenario:
             "theme": True,
             "basemap": True,
             "zone": bool(self.layers),
+            "compare_on": not self.compare,
+            "compare_off": self.compare,
+            "side": bool(self.layers),
         }
 
     def _pick(self, kinds=None):
@@ -183,6 +195,7 @@ class Scenario:
             "id": layer_id,
             "kind": kind,
             "zone": self.rng.choice(("data", "overlay")),
+            "side": self.rng.choice(SIDES),
             "visible": self.rng.random() < 0.8,
             "opacity": self.rng.choice((1.0, 0.5)),
             "min_zoom": min_zoom,
@@ -256,6 +269,19 @@ class Scenario:
         spec["zone"] = "overlay" if spec["zone"] == "data" else "data"
         return f"zone of {spec['id']!r} to {spec['zone']}"
 
+    def _compare_on(self):
+        self.compare = True
+        return "compare on"
+
+    def _compare_off(self):
+        self.compare = False
+        return "compare off"
+
+    def _side(self):
+        spec = self._pick()
+        spec["side"] = self.rng.choice([s for s in SIDES if s != spec["side"]])
+        return f"side of {spec['id']!r} to {spec['side']}"
+
 
 def difference(view, expected):
     """What a view's snapshot has that the expected one does not, by key."""
@@ -303,8 +329,13 @@ def test_random_operations_converge(
     scenario = Scenario(seed, widget, tiles, pmtiles)
 
     def fail(burst, why, live=None):
-        expected = expected_snapshot(widget.state, scenario.payloads)
-        differs = [difference(view, expected) for view in live or []]
+        """Report a burst that did not converge; ``live`` maps each side to its snapshots."""
+        live = live or {}
+        expected = {side: expected_snapshot(widget.state, scenario.payloads, side) for side in live}
+        differs = {
+            side: [difference(view, expected[side]) for view in views if view is not None]
+            for side, views in live.items()
+        }
         report = {
             "seed": seed,
             "burst": burst,
@@ -320,7 +351,10 @@ def test_random_operations_converge(
                 "() => [...document.querySelectorAll('.psm-map')].map((el) => ({"
                 " revision: el.dataset.psmRevision ?? null,"
                 " order: el.psmMap?.getLayersOrder(),"
-                " held: el.psmInspect?.() }))"
+                " held: el.psmInspect?.(),"
+                " right: el.psmCompare ? {"
+                "  order: el.psmCompare.map.getLayersOrder(),"
+                "  held: el.psmCompare.sync.inspect() } : null }))"
             )
         except PlaywrightError as error:
             report["views"] = str(error)
@@ -329,14 +363,19 @@ def test_random_operations_converge(
     def check(burst, views=1):
         try:
             wait_settled(page_session, widget.state["revision"], views)
-            live = owned_snapshot(page_session)
+            live = {side: owned_snapshot(page_session, side) for side in ("main", "right")}
         except PlaywrightError as error:
             fail(burst, f"never settled: {error.message}")
-        expected = expected_snapshot(widget.state, scenario.payloads)
-        if len(live) != views:
-            fail(burst, f"{len(live)} live snapshots for {views} views", live)
-        if any(view != expected for view in live):
-            fail(burst, "a view differs from the desired state", live)
+        if len(live["main"]) != views:
+            fail(burst, f"{len(live['main'])} live snapshots for {views} views", live)
+        # Each map holds its side's layers in store order; no right map outside compare.
+        for side, snapshots in live.items():
+            if side == "right" and not widget.state["compare"]:
+                expected = None
+            else:
+                expected = expected_snapshot(widget.state, scenario.payloads, side)
+            if any(view != expected for view in snapshots):
+                fail(burst, f"a {side} map differs from the desired state", live)
         order = first.evaluate("el => el.psmMap.getLayersOrder()")
         if not order or order[-1] != FOREIGN:
             fail(burst, f"{FOREIGN} is not on top: {order}", live)

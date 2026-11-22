@@ -1,22 +1,28 @@
 // Test-only probes for mounted pysepal-map views, built to .build/harness.js
 // and injected into the page by the browser tests. It reaches a view through
-// `el.psmMap` and wraps that map instance's methods; the widget bundle never
-// imports it. Terra Draw, a foreign drawing plugin, is bundled here only.
+// `el.psmMap` (and the compare map through `el.psmCompare`) and wraps that
+// map instance's methods; the widget bundle never imports it. Terra Draw, a
+// foreign drawing plugin, is bundled here only.
 import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 import { TerraDraw, TerraDrawPolygonMode } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 
+import type { CompareRoot } from "../../js/compare";
 import type { DrawReport, ViewDraw } from "../../js/draw";
 import type { StatusMessage, StatusReporter } from "../../js/status";
 import type { ViewCamera, ViewReport } from "../../js/view";
 
-type PsmElement = HTMLElement & {
-  psmMap?: MapLibreMap;
-  psmInspect?: () => unknown;
-  psmStatus?: StatusReporter;
-  psmCamera?: ViewCamera;
-  psmDraw?: ViewDraw;
-};
+type PsmElement = HTMLElement &
+  CompareRoot & {
+    psmMap?: MapLibreMap;
+    psmInspect?: () => unknown;
+    psmStatus?: StatusReporter;
+    psmCamera?: ViewCamera;
+    psmDraw?: ViewDraw;
+  };
+
+/** Which map of a view a probe reaches: its own, or the compare one. */
+type Side = "main" | "right";
 
 interface Probe {
   /** Owned-id calls of the map's style mutators. */
@@ -44,9 +50,10 @@ const MUTATORS = [
 
 const probes = new WeakMap<MapLibreMap, Probe>();
 
-function mapOf(el: Element): MapLibreMap {
-  const map = (el as PsmElement).psmMap;
-  if (!map) throw new Error("the element holds no mounted map");
+function mapOf(el: Element, side: Side = "main"): MapLibreMap {
+  const view = el as PsmElement;
+  const map = side === "main" ? view.psmMap : view.psmCompare?.map;
+  if (!map) throw new Error(`the element holds no mounted ${side} map`);
   return map;
 }
 
@@ -71,8 +78,8 @@ function holdFirstResult(
   };
 }
 
-function attach(el: Element): Probe {
-  const map = mapOf(el);
+function attach(el: Element, side: Side = "main"): Probe {
+  const map = mapOf(el, side);
   const existing = probes.get(map);
   if (existing) return existing;
   const probe: Probe = {
@@ -113,8 +120,12 @@ function attach(el: Element): Probe {
 }
 
 /** Wait for `count` animation frames after the map went idle. */
-async function quiet(el: Element, count = 5): Promise<void> {
-  const map = mapOf(el);
+async function quiet(
+  el: Element,
+  count = 5,
+  side: Side = "main"
+): Promise<void> {
+  const map = mapOf(el, side);
   if (!map.loaded()) await map.once("idle");
   for (let i = 0; i < count; i++) {
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -163,15 +174,17 @@ function featuresAt(
   return map.queryRenderedFeatures(box, { layers: present }).length;
 }
 
-function inspect(el: Element): unknown {
-  const fn = (el as PsmElement).psmInspect;
-  if (!fn) throw new Error("the element holds no mounted view");
-  return fn();
+function inspect(el: Element, side: Side = "main"): unknown {
+  const view = el as PsmElement;
+  const held =
+    side === "main" ? view.psmInspect?.() : view.psmCompare?.sync.inspect();
+  if (!held) throw new Error(`the element holds no mounted ${side} map`);
+  return held;
 }
 
-/** The view's current status reports, as it would replay them. */
-function statuses(el: Element): StatusMessage[] {
-  return (inspect(el) as { statuses: StatusMessage[] }).statuses;
+/** The current status reports of a map of the view, as it would replay them. */
+function statuses(el: Element, side: Side = "main"): StatusMessage[] {
+  return (inspect(el, side) as { statuses: StatusMessage[] }).statuses;
 }
 
 interface Gate {
@@ -186,10 +199,11 @@ interface Gate {
 
 const gates = new WeakMap<StatusReporter, Gate>();
 
-/** Hold a view's status reports at their origin, the reporter's `transmit`. */
-function gate(el: Element): Gate {
-  const reporter = (el as PsmElement).psmStatus;
-  if (!reporter) throw new Error("the element holds no mounted view");
+/** Hold a map's status reports at their origin, the reporter's `transmit`. */
+function gate(el: Element, side: Side = "main"): Gate {
+  const view = el as PsmElement;
+  const reporter = side === "main" ? view.psmStatus : view.psmCompare?.status;
+  if (!reporter) throw new Error(`the element holds no mounted ${side} map`);
   const existing = gates.get(reporter);
   if (existing) return existing;
   const transmit = reporter.transmit.bind(reporter);
@@ -270,12 +284,12 @@ function post(el: Element, content: unknown): void {
 }
 
 /**
- * What the view's map holds of the owned style: layers bottom-first, sources
- * by id as they were set (without GeoJSON data), the coordinates each
- * GeoJSON source holds in its worker, and the theme.
+ * What a map of the view holds of the owned style: layers bottom-first,
+ * sources by id as they were set (without GeoJSON data), the coordinates
+ * each GeoJSON source holds in its worker, and the view's theme.
  */
-async function ownedSnapshot(el: Element) {
-  const map = mapOf(el);
+async function ownedSnapshot(el: Element, side: Side = "main") {
+  const map = mapOf(el, side);
   const layers = map
     .getLayersOrder()
     .filter(owned)

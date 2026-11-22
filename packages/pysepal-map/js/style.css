@@ -7,6 +7,17 @@
   width: 100%;
 }
 
+/* The right map of a compare view, over the main canvas and under its
+   markers. The canvas container has no height of its own, so the insets
+   resolve against the root; the selector outweighs `.maplibregl-map`, which
+   MapLibre adds to the container and which makes it relative. The main map
+   keeps every input. */
+.psm-map .psm-compare-right {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 /* The control icons are background images, so they are inverted on the dark
    surface. */
 .psm-dark .maplibregl-ctrl-group {

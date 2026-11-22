@@ -34,7 +34,10 @@ const data = (digest: string) => ({ type: "data", digest });
 const missing = (digest: string) => ({ type: "data", digest, missing: true });
 
 /** `sent` decides whether each pull reaches Python. */
-function setup(sent: () => boolean = () => true) {
+function setup(
+  sent: () => boolean = () => true,
+  lookup?: (digest: string) => GeoJSON.GeoJSON | undefined
+) {
   const requests: string[][] = [];
   const arrived = vi.fn();
   const failed = vi.fn();
@@ -45,6 +48,7 @@ function setup(sent: () => boolean = () => true) {
     },
     arrived,
     failed,
+    lookup,
   });
   return { cache, requests, arrived, failed };
 }
@@ -295,5 +299,41 @@ describe("PayloadCache", () => {
     await settle();
     expect(requests).toEqual([]);
     expect(arrived).not.toHaveBeenCalled();
+  });
+
+  it("pulls nothing its lookup holds", async () => {
+    const held = new Map<string, GeoJSON.GeoJSON>([["a", A]]);
+    const { cache, requests } = setup(undefined, (d) => held.get(d));
+    cache.want(["a", "b"]);
+    await settle();
+    expect(requests).toEqual([["b"]]);
+    expect(cache.get("a")).toBe(A);
+    expect(cache.digests()).toEqual(["a"]);
+
+    // A retry looks again: the lookup got "b" meanwhile.
+    cache.receive(missing("b"), []);
+    held.set("b", B);
+    vi.advanceTimersByTime(MAX_RETRY_MS);
+    expect(requests).toEqual([["b"]]);
+    expect(cache.get("b")).toBe(B);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("tells it arrived when a pull is answered by its lookup", async () => {
+    const held = new Map<string, GeoJSON.GeoJSON>();
+    const { cache, requests, arrived } = setup(undefined, (d) => held.get(d));
+    cache.want(["a"]);
+    held.set("a", A);
+    await settle();
+    expect(requests).toEqual([]);
+    expect(cache.get("a")).toBe(A);
+    expect(arrived).toHaveBeenCalledTimes(1);
+
+    // A digest the lookup lacks is pulled as usual.
+    cache.want(["a", "b"]);
+    await settle();
+    expect(requests).toEqual([["b"]]);
+    cache.receive(data("b"), [buffer(B)]);
+    expect(cache.get("b")).toEqual(B);
   });
 });

@@ -65,7 +65,11 @@ draws the ``left`` and ``both`` layers and the ``right`` view the ``right`` and
 its side, and the ``right`` view's reports count for nothing. A layer's status
 reduces over the views that draw it, and a publish drops the reports of a view
 whose side stops drawing a layer, since the browser sends nothing then. A
-change of side keeps the layer's instance.
+change of side keeps the layer's instance. A compare view keeps its own map
+as ``main`` and adds the ``right`` map, under the same ``view_id``, while the
+state compares: it opens with ``view_open`` and closes with ``view_close``
+like a view, follows the main map's camera and sends no camera, click or
+draw report. It pulls only the digests the main map does not hold.
 
 Clicks. A ``click`` carries the view's ``lnglat`` (longitude wrapped into
 [-180, 180]), its ``zoom``, ``settled`` and ``features``. ``settled`` is true
@@ -160,7 +164,8 @@ the reported center is its middle, the reported ``bounds`` its corners, and a
 fit stays inside it. While its map is fullscreen, a view uses no insets.
 
 A view marks its root element with ``data-psm-revision`` once its owned style
-matches that revision and every GeoJSON source has loaded its data. Its
+matches that revision and every GeoJSON source has loaded its data, on both
+maps when the state at that revision compares. Its
 fullscreen control fills the closest ancestor marked
 ``data-psm-fullscreen-root``, else the root element, and marks that element
 with ``data-psm-fullscreen`` while it is fullscreen.

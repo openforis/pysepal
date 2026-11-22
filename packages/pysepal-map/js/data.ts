@@ -16,6 +16,8 @@ export interface PayloadCacheOptions {
   arrived(): void;
   /** A payload failed to decode; `failure` now names why. */
   failed?(digest: string): void;
+  /** A payload held elsewhere, read before a digest is pulled. */
+  lookup?(digest: string): GeoJSON.GeoJSON | undefined;
 }
 
 /** A digest that was pulled and still lacks bytes. */
@@ -49,7 +51,8 @@ function decode(buffer: Buffer): GeoJSON.GeoJSON {
  * the view waiting for a draw that may never come. A pull that was sent is
  * most likely just slow, and each one makes Python send the whole payload,
  * so it is repeated only after a long wait or on reconnect. A `missing`
- * reply or a pull that could not be sent is retried soon.
+ * reply or a pull that could not be sent is retried soon. A digest the
+ * `lookup` holds is taken from it instead of being pulled.
  */
 export class PayloadCache {
   private wanted = new Set<string>();
@@ -94,6 +97,7 @@ export class PayloadCache {
     }
     // A new state may now answer what was missing; its reply is on the way.
     for (const digest of this.outstanding()) {
+      if (this.adopt(digest)) continue;
       if (!this.pulls.get(digest)?.inFlight) this.queued.add(digest);
     }
     this.scheduleFlush();
@@ -179,10 +183,26 @@ export class PayloadCache {
     });
   }
 
+  /** Take a wanted digest from `lookup` rather than pull it; true if held. */
+  private adopt(digest: string): boolean {
+    const payload = this.options.lookup?.(digest);
+    if (payload === undefined) return false;
+    this.payloads.set(digest, payload);
+    this.pulls.delete(digest);
+    this.queued.delete(digest);
+    return true;
+  }
+
   private flush(): void {
     if (this.disposed || !this.queued.size) return;
-    const digests = [...this.queued];
+    const queued = [...this.queued];
     this.queued.clear();
+    const digests = queued.filter((digest) => !this.adopt(digest));
+    if (digests.length < queued.length) {
+      this.schedule();
+      this.options.arrived();
+    }
+    if (this.disposed || !digests.length) return;
     const sent = this.options.request(digests);
     const now = Date.now();
     for (const digest of digests) {

@@ -605,6 +605,7 @@ class StateGenerator {
     return {
       revision: ++this.revision,
       theme: "light",
+      compare: false,
       controls: {
         zoom: true,
         fullscreen: true,

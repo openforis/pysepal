@@ -5,6 +5,7 @@ import { Protocol } from "pmtiles";
 import workerSource from "psm:maplibre-worker";
 import type { RenderProps } from "@anywidget/types";
 
+import { CompareView, RevisionMark, type CompareRoot } from "./compare";
 import { ViewControls } from "./controls";
 import { ViewDraw, terraDraw } from "./draw";
 import { installImages } from "./images";
@@ -37,15 +38,16 @@ interface Model {
   drawn: unknown;
 }
 
-type PsmElement = HTMLElement & {
-  psmMap?: maplibregl.Map;
-  psmInspect?: () => unknown;
-  psmStatus?: StatusReporter;
-  psmCamera?: ViewCamera;
-  psmDraw?: ViewDraw;
-};
+type PsmElement = HTMLElement &
+  CompareRoot & {
+    psmMap?: maplibregl.Map;
+    psmInspect?: () => unknown;
+    psmStatus?: StatusReporter;
+    psmCamera?: ViewCamera;
+    psmDraw?: ViewDraw;
+  };
 
-// Phase 1 renders a single map; compare views will mount "left" and "right".
+// The view's own map; in compare, a CompareView adds the "right" one.
 const SIDE = "main";
 
 function render({ model, el }: RenderProps<Model>) {
@@ -86,8 +88,35 @@ function render({ model, el }: RenderProps<Model>) {
   // Open before the first report, so Python counts the view in.
   const presence = new ViewPresence({ viewId, side: SIDE, send, page: window });
   presence.start();
-  const sync = new MapSync(map, model, root, reporter, { viewId, side: SIDE });
+  const mark = new RevisionMark(root, model);
+  const sync = new MapSync(
+    map,
+    model,
+    (revision) => mark.set(SIDE, revision),
+    reporter,
+    { viewId, side: SIDE }
+  );
   root.psmInspect = () => sync.inspect();
+  // Before the tools that read it: the pointer's settled waits for both maps.
+  const compare = new CompareView({
+    root,
+    main: map,
+    model,
+    viewId,
+    send,
+    mark,
+    lookup: (digest) => sync.payload(digest),
+    createMap: (container) =>
+      new maplibregl.Map({
+        container,
+        style: { version: 8, sources: {}, layers: [] },
+        ...CAMERA_OPTIONS,
+        interactive: false,
+        attributionControl: false,
+        // The root's resize observer resizes it with the main map.
+        trackResize: false,
+      }),
+  });
   // Built after the map sync, so it handles a style load after the sync did.
   let draw: ViewDraw | null = null;
   const drawing = () => draw?.interactive() ?? false;
@@ -103,7 +132,7 @@ function render({ model, el }: RenderProps<Model>) {
     viewId,
     side: SIDE,
     send,
-    settled: () => sync.settled(),
+    settled: () => sync.settled() && compare.settled(),
     drawing,
     clickable: popups.clickable,
     clustered: (id) => {
@@ -144,6 +173,7 @@ function render({ model, el }: RenderProps<Model>) {
     presence.reopen();
     reporter.replay();
     sync.reconnect();
+    compare.reconnect();
     camera.reconnect();
     draw?.reconnect();
   });
@@ -153,7 +183,11 @@ function render({ model, el }: RenderProps<Model>) {
   applyControls();
   model.on("change:state", applyControls);
 
-  const resizer = new ResizeObserver(() => map.resize());
+  const resizer = new ResizeObserver(() => {
+    // The right map first, so the main map's move paints it at its new size.
+    compare.resize();
+    map.resize();
+  });
   resizer.observe(root);
 
   return () => {
@@ -163,6 +197,8 @@ function render({ model, el }: RenderProps<Model>) {
     draw?.dispose();
     pointer.dispose();
     popups.dispose();
+    // Before the main map goes: the right map lives in its canvas container.
+    compare.dispose();
     removeImages();
     controls.dispose();
     sync.dispose();

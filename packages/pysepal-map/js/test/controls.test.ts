@@ -236,6 +236,7 @@ function state(controls: Partial<MapState["controls"]> = {}): MapState {
   return {
     revision: 1,
     theme: "light",
+    compare: false,
     controls: {
       zoom: true,
       fullscreen: true,

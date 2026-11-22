@@ -13,8 +13,8 @@ import {
   type SourceErrorEvent,
   type StatusReporter,
 } from "./status";
-import { parseSourceId, sourceId, toOwnedStyle } from "./translate";
-import type { MapState, OwnedStyle } from "./types";
+import { forSide, parseSourceId, sourceId, toOwnedStyle } from "./translate";
+import type { MapState, OwnedStyle, ViewSide } from "./types";
 
 type Layout = Parameters<MapLibreMap["setLayoutProperty"]>;
 type Paint = Parameters<MapLibreMap["setPaintProperty"]>;
@@ -71,7 +71,12 @@ export interface ViewModel {
 /** Which view and side a MapSync keeps, named in its pulls. */
 export interface ViewIdentity {
   viewId: string;
-  side: string;
+  side: ViewSide;
+}
+
+export interface MapSyncOptions extends ViewIdentity {
+  /** A payload held elsewhere, taken instead of pulling its digest. */
+  lookup?(digest: string): GeoJSON.GeoJSON | undefined;
 }
 
 /** A GeoJSON source this view added, and whether its worker load finished. */
@@ -117,22 +122,26 @@ function wantedOf(state: Partial<MapState>): Map<string, Wanted> {
 }
 
 /**
- * Keeps one view's map at the state Python declares.
+ * Keeps one map of a view at the state Python declares for its side.
  *
- * Every trigger runs the same pass on the latest model state: reconcile
- * everything whose payload is at hand, then publish `data-psm-revision`
- * once a fresh diff of the full state is empty and every GeoJSON source
- * has finished its worker load in the current style generation.
+ * Every trigger runs the same pass on the latest model state, narrowed to
+ * the layers its side draws: reconcile everything whose payload is at hand,
+ * then `mark` the revision once a fresh diff of the full state is empty and
+ * every GeoJSON source has finished its worker load in the current style
+ * generation. It marks null whenever that stops holding.
  */
 export class MapSync {
   private readonly map: MapLibreMap;
   private readonly model: ViewModel;
-  private readonly root: HTMLElement;
+  private readonly mark: (revision: number | null) => void;
+  private readonly side: ViewSide;
   private readonly reporter: StatusReporter;
   private readonly live: LiveMap;
   private readonly cache: PayloadCache;
   private readonly applied = new Map<string, Applied>();
   private rejected: Rejection[] = [];
+  /** The revision whose whole state is on the map, as last marked. */
+  private marked: number | null = null;
   /** The revision whose layers, but those in error, are on the map. */
   private rest: number | null = null;
   /** The style has loaded; `isStyleLoaded()` also waits for tiles. */
@@ -160,13 +169,14 @@ export class MapSync {
   constructor(
     map: MapLibreMap,
     model: ViewModel,
-    root: HTMLElement,
+    mark: (revision: number | null) => void,
     reporter: StatusReporter,
-    { viewId, side }: ViewIdentity
+    { viewId, side, lookup }: MapSyncOptions
   ) {
     this.map = map;
     this.model = model;
-    this.root = root;
+    this.mark = mark;
+    this.side = side;
     this.reporter = reporter;
     this.live = liveMap(map);
     this.cache = new PayloadCache({
@@ -175,6 +185,7 @@ export class MapSync {
         this.send({ type: "pull", view_id: viewId, side, digests }),
       arrived: () => this.sync(true),
       failed: () => this.sync(true),
+      lookup,
     });
     model.on("change:state", this.onState);
     model.on("msg:custom", this.onMessage);
@@ -198,14 +209,18 @@ export class MapSync {
     };
   }
 
-  /** Whether the root is marked with the revision of the latest state. */
+  /** Whether it marked the latest revision, or settled it but for errors. */
   settled(): boolean {
     const { revision } = this.state();
     return (
       typeof revision === "number" &&
-      (this.root.dataset.psmRevision === String(revision) ||
-        this.rest === revision)
+      (this.marked === revision || this.rest === revision)
     );
+  }
+
+  /** The decoded payload this map holds for `digest`. */
+  payload(digest: string): GeoJSON.GeoJSON | undefined {
+    return this.cache.get(digest);
   }
 
   /** The comm came back: pull every payload still lacking now. */
@@ -560,9 +575,9 @@ export class MapSync {
     );
     this.clearMarker();
     if (revision === null || !loaded || todo.length) return;
-    // The marker means the whole state is on the map; the rest alone is only `settled`.
+    // The mark means the whole state is on the map; the rest alone is only `settled`.
     if (failed.size) this.rest = revision;
-    else this.root.dataset.psmRevision = String(revision);
+    else this.setMarked(revision);
   }
 
   private reject(
@@ -606,12 +621,19 @@ export class MapSync {
 
   private clearMarker(): void {
     this.rest = null;
-    delete this.root.dataset.psmRevision;
+    this.setMarked(null);
   }
 
+  private setMarked(revision: number | null): void {
+    this.marked = revision;
+    this.mark(revision);
+  }
+
+  /** The latest state, with only the layers this side draws. */
   private state(): Partial<MapState> {
     const state = this.model.get("state");
-    return state && typeof state === "object" ? (state as MapState) : {};
+    if (!state || typeof state !== "object") return {};
+    return forSide(state as MapState, this.side);
   }
 
   private send(content: unknown): boolean {
