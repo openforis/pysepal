@@ -9,6 +9,7 @@ import solara
 from pysepal.frontend.styles import THEMES
 from pysepal.layers import LayerSpec, Legend, LegendItem, RenderLayer
 from pysepal.mapping import SepalMap
+from pysepal.mapping.inspector import Inspection
 from pysepal.solara.components import map_app, map_view
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.map_view import MapView
@@ -335,4 +336,34 @@ def test_map_app_passes_overlays_to_the_map_view():
         handle_error=False,
     )
     assert "overlay-text" in corner_text(box, "bottom-left")
+    rc.close()
+
+
+def test_slot_keys_stay_stable_when_the_toolbar_and_inspector_come_and_go():
+    mounts = []
+    m = SepalMap(gee=False, inspector=True)
+    box, rc = solara.render(
+        MapView(m, overlays={"top-left": [counter(mounts)]}), handle_error=False
+    )
+    rc.find(v.Btn, children=["count 0"]).widget.click()
+    m.draw.enable(["polygon"])
+    m.inspector.activate()
+    m.inspector.inspection = Inspection(0.0, 0.0, 1.0, (), False)
+    m.draw.disable()
+    m.inspector.deactivate()
+    assert "count 1" in corner_text(box, "top-left")
+    assert mounts == ["mount"]
+    for role in ("map-draw", "map-inspector"):
+        assert len(role_widgets(box, role)) == 1
+    rc.close()
+
+
+@pytest.mark.parametrize(("coordinates", "offset"), [(False, "36px"), (True, "64px")])
+def test_bottom_left_stack_clears_the_coordinates_readout(coordinates, offset):
+    m = SepalMap(gee=False, coordinates=coordinates)
+    m.layer_engine.flush()
+    assert bool(m.state["controls"].get("coordinates")) is coordinates
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert f"--pysepal-controls-bottom-left: {offset}" in box.children[0].style_
+    assert "var(--pysepal-controls-bottom-left)" in map_view.CSS
     rc.close()

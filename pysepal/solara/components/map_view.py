@@ -11,11 +11,16 @@ from pysepal.layers import derive_legend
 from pysepal.message import msg
 from pysepal.solara.components.layer_panel.hooks import use_layer_store
 from pysepal.solara.components.legend import LegendComponent
+from pysepal.solara.components.map_view_tools import (
+    draw_toolbar,
+    inspector_panel,
+    toolbar_height,
+)
 
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 CORNERS: tuple[str, ...] = ("top-left", "top-right", "bottom-left", "bottom-right")
 
-_TRAITS = ["state", "theme", "insets", "height"]
+_TRAITS = ["state", "theme", "insets", "height", "drawing", "cursor"]
 _SIDES = ("left", "right", "top", "bottom")
 
 # What the widget shows while the map has not declared its controls yet.
@@ -24,6 +29,10 @@ _DEFAULT_CONTROLS = {"zoom": True, "fullscreen": True, "scale": True}
 # tall, the 1 px rule between the two zoom buttons included.
 _CONTROL_MARGIN = 10
 _TOP_LEFT_GROUPS = (("zoom", 58), ("fullscreen", 29))
+# The scale bar and attribution sit 36 px up; the coordinates readout above them is 18 px
+# of text (``.psm-coordinates``) and a 10 px margin.
+_BOTTOM_LEFT_BASE = 36
+_COORDINATES_HEIGHT = 18 + _CONTROL_MARGIN
 
 # The root takes the map's height and the map fills it, through the wrapper ipyvue puts
 # around a widget (``height: 100%``): a percentage height then resolves against the
@@ -61,7 +70,7 @@ CSS = """
   align-items: flex-end;
 }
 .pysepal-map-corner[data-corner="bottom-left"] {
-  bottom: calc(var(--pysepal-inset-bottom) + 36px);
+  bottom: calc(var(--pysepal-inset-bottom) + var(--pysepal-controls-bottom-left));
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
 }
@@ -87,6 +96,12 @@ def _top_left_offset(map_) -> int:
     controls = map_.state.get("controls") or _DEFAULT_CONTROLS
     shown = (height for name, height in _TOP_LEFT_GROUPS if controls.get(name))
     return _CONTROL_MARGIN + sum(height + _CONTROL_MARGIN for height in shown)
+
+
+def _bottom_left_offset(map_) -> int:
+    """The offset of the bottom-left stack above the bottom inset, clear of the scale and readout."""
+    controls = map_.state.get("controls") or _DEFAULT_CONTROLS
+    return _BOTTOM_LEFT_BASE + (_COORDINATES_HEIGHT if controls.get("coordinates") else 0)
 
 
 def _legends(map_) -> list[dict]:
@@ -145,9 +160,26 @@ def MapView(
 
     solara.use_effect(follow_map, [map_])
 
+    # Only follows the inspector; a view that unmounts leaves it as it is.
+    inspector = map_.inspector
+
+    def follow_inspector():
+        if inspector is None:
+            return None
+
+        def on_change(_change):
+            set_version(lambda v: v + 1)
+
+        inspector.observe(on_change, names=["active", "inspection"])
+        return lambda: inspector.unobserve(on_change, names=["active", "inspection"])
+
+    solara.use_effect(follow_inspector, [inspector])
+
     insets = map_.insets or {}
     variables = {f"--pysepal-inset-{side}": f"{int(insets.get(side, 0))}px" for side in _SIDES}
     variables["--pysepal-controls-top-left"] = f"{_top_left_offset(map_)}px"
+    variables["--pysepal-controls-bottom-left"] = f"{_bottom_left_offset(map_)}px"
+    variables["--pysepal-map-height"] = map_.height
     variables["height"] = map_.height
     style = "; ".join(f"{name}: {value}" for name, value in variables.items())
     overlays = overlays or {}
@@ -164,6 +196,12 @@ def MapView(
     legends = _legends(map_) if legend else []
     legend_elements = [LegendComponent(legend_data=data, inline=True) for data in legends]
     stacks["bottom-right"].append(_slot("map-legend", legend_elements).key("legend"))
+    stacks["top-left"].append(_slot("map-draw", draw_toolbar(map_)).key("draw"))
+    # what the card leaves: the toolbar above it and 10 px of margin at the bottom
+    reserved = toolbar_height(map_) + _CONTROL_MARGIN
+    stacks["top-left"].append(
+        _slot("map-inspector", inspector_panel(map_, reserved)).key("inspector")
+    )
     for corner in CORNERS:
         stacks[corner].extend(overlays.get(corner, ()))
 

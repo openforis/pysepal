@@ -1,7 +1,18 @@
 {
   "map_view": {
     "loading": "Loading layers",
+    "draw": {
+      "polygon": "Draw a polygon",
+      "rectangle": "Draw a rectangle",
+      "circle": "Draw a circle",
+      "linestring": "Draw a line",
+      "point": "Draw a point",
+      "select": "Select and edit shapes",
+      "clear": "Remove all shapes"
+    },
     "inspector": {
+      "toggle": "Inspect values on click",
+      "scale": "Scale",
       "changed": "This layer changed, click again",
       "empty": "No data at this point",
       "unsupported": "This layer cannot be inspected"
