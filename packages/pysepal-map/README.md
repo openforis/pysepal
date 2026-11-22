@@ -25,9 +25,9 @@ display(widget)
 - The traits that carry the contract (`state`, `view`, `view_request`, `insets`, `marker`, `drawing`, `draw_request`, `drawn`) are read-only; only the widget's methods write them.
 - **Layer status** (`loading`, `ready`, `error`) flows back per layer (`layer_status`, `on_status`).
 - GeoJSON bytes never travel inside the state: `add_payload` returns a sha256 digest, and the browser pulls the bytes it lacks.
-- Everything the widget adds to the MapLibre style has an id starting with `psm:`; it never touches other layers, such as those of a drawing plugin. The sources and layers of its own Terra Draw start with `psm-draw-` and, like any other layer, stay above every `psm:` layer.
+- The sources and layers the widget owns have ids starting with `psm:`, and the images it generates `psm-`; it never touches other layers, such as those of a drawing plugin. The sources and layers of its own Terra Draw start with `psm-draw-` and, like any other layer, stay above every `psm:` layer.
 
-[`src/pysepal_map/state.py`](src/pysepal_map/state.py) declares and validates the state. The module docstring of [`widget.py`](src/pysepal_map/widget.py) describes the rest of the contract: how draws give out instances, the owned style ids, the messages between Python and the views, the camera request and report rules, and the insets.
+[`src/pysepal_map/state.py`](src/pysepal_map/state.py) declares and validates the state. The module docstring of [`widget.py`](src/pysepal_map/widget.py) describes the rest of the contract: how `publish` gives out instances, the owned style ids, the messages between Python and the views, the camera request and report rules, and the insets.
 
 ## Build
 

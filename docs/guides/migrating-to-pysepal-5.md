@@ -145,6 +145,10 @@ Notes on the interaction replacements:
 
 - **Coordinates are `lng, lat`.** ipyleaflet used `[lat, lon]`; a `ClickEvent`,
   the drawn features and `LayerSpec.from_points` use longitude first.
+- **Callback shapes changed.** `m.on_draw(cb)` calls `cb(collection)` with one
+  GeoJSON FeatureCollection of everything drawn, not ipyleaflet's
+  `(target, action, geo_json)`. `m.on_click(cb)` calls `cb(event)` with one
+  `ClickEvent`, not the `**kwargs` of `on_interaction`.
 - **Clicks.** `m.on_click(cb)` calls `cb(event)` with the features under the
   point, top first. `event.hits(layer_id)` gives the properties of one layer.
   A click on a cluster zooms into it and sends no event.
@@ -165,11 +169,14 @@ Notes on the interaction replacements:
   at the clicked view's scale.
 
 ```python
+import pandas as pd
+
 from pysepal.layers import LayerSpec, VectorStyle
 
 m = SepalMap(inspector=True, coordinates=True)
+sites = pd.DataFrame({"lng": [-74.0, -73.9], "lat": [4.6, 4.7], "name": ["A", "B"]})
 spec = LayerSpec.from_points(
-    [(-74.0, 4.6), (-73.9, 4.7)],
+    sites,
     name="Sites",
     style=VectorStyle(marker="pin", cluster=True, tooltip=["name"]),
 )
