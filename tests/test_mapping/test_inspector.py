@@ -20,7 +20,12 @@ from pysepal.layers import (
     local_fingerprint,
 )
 from pysepal.mapping import SepalMap
-from pysepal.mapping.inspector import Inspection, MapInspector, inspect_point
+from pysepal.mapping.inspector import (
+    InspectedLayer,
+    Inspection,
+    MapInspector,
+    inspect_point,
+)
 
 # ---------------------------------------------------------------------------
 # A made-up map and Earth Engine
@@ -440,6 +445,69 @@ async def test_deactivate_drops_late_result(amap):
         answer.set_result({"x": 1.0})
     await settle()
     assert inspector.inspection is None and amap.marker is None and amap.cursor == ""
+
+
+def late_inspections(monkeypatch) -> list:
+    """Replace ``inspect_point`` by one that ignores cancellation and answers when released.
+
+    Returns the futures, one per call, each resolved with the layers to answer.
+    """
+    futures: list = []
+
+    async def late(map_, event, rows=None):
+        future = asyncio.get_running_loop().create_future()
+        futures.append(future)
+        while True:
+            try:
+                return await asyncio.shield(future)
+            except asyncio.CancelledError:
+                continue  # the result still arrives after the click was superseded
+
+    monkeypatch.setattr("pysepal.mapping.inspector.inspect_point", late)
+    return futures
+
+
+def answer_of(value: str) -> list:
+    return [InspectedLayer("a", "a", "ready", (("x", value),))]
+
+
+@pytest.mark.asyncio
+async def test_superseded_late_result_is_dropped(amap, monkeypatch):
+    futures = late_inspections(monkeypatch)
+    inspector = started(amap)
+    amap.click(click(lng=1))
+    await settle()
+    amap.click(click(lng=2))
+    await settle()
+    futures[1].set_result(answer_of("2"))
+    await settle()
+    futures[0].set_result(answer_of("1"))
+    await settle()
+    assert inspector.inspection.lng == 2 and not inspector.inspection.pending
+    assert inspector.inspection.layers[0].values == (("x", "2"),)
+
+
+@pytest.mark.asyncio
+async def test_deactivated_late_result_is_dropped(amap, monkeypatch):
+    futures = late_inspections(monkeypatch)
+    inspector = started(amap)
+    amap.click(click())
+    await settle()
+    inspector.deactivate()
+    futures[0].set_result(answer_of("1"))
+    await settle()
+    assert inspector.inspection is None and amap.marker is None and amap.cursor == ""
+
+
+@pytest.mark.asyncio
+async def test_click_pairs_before_the_task_runs(amap):
+    ee_layer(amap, "a", {"x": 1.0})
+    inspector = started(amap)
+    amap.click(click())
+    amap.accept_replacement("a")  # accepted after the click, before the task's first step
+    await settle()
+    # paired at the click, the row reads the clicked instance; pairing in the task would say "changed"
+    assert [x.status for x in inspector.inspection.layers] == ["ready"]
 
 
 def test_sepal_map_builds_and_closes_the_inspector():
