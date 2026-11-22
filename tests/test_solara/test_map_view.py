@@ -265,6 +265,9 @@ def test_top_left_stack_clears_the_controls(fullscreen_control, offset):
     box, rc = solara.render(MapView(m), handle_error=False)
     assert f"--pysepal-controls-top-left: {offset}" in box.children[0].style_
     assert "var(--pysepal-controls-top-left)" in map_view.CSS
+    cap = map_view.CSS.split('[data-corner="top-left"] {')[1].split("}")[0]
+    assert "- var(--pysepal-controls-bottom-left)" in cap
+    assert "10px\n  );" not in cap
     rc.close()
 
 

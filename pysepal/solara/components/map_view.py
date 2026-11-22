@@ -57,7 +57,8 @@ CSS = """
 }
 .pysepal-map-corner > * { pointer-events: auto; }
 .pysepal-map-corner > [data-idle] { display: none; }
-/* The offsets clear the controls: zoom and fullscreen, scale, attribution. */
+/* The offsets clear the controls: zoom and fullscreen, scale, attribution. The top-left cap
+   ends above the bottom-left ones, scale and coordinates, which a card must not cover. */
 .pysepal-map-corner[data-corner="top-left"] {
   top: calc(var(--pysepal-inset-top) + var(--pysepal-controls-top-left));
   left: calc(var(--pysepal-inset-left) + 10px);
@@ -66,7 +67,7 @@ CSS = """
      overlay after it that still overflows scrolls the corner instead of being cut. */
   max-height: calc(
     100% - var(--pysepal-inset-top) - var(--pysepal-controls-top-left)
-      - var(--pysepal-inset-bottom) - 10px
+      - var(--pysepal-inset-bottom) - var(--pysepal-controls-bottom-left)
   );
   overflow-y: auto;
 }

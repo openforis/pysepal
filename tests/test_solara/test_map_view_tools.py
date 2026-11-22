@@ -157,3 +157,15 @@ def test_two_views_share_the_inspector():
     assert m.cursor == "crosshair" and m.inspector.active
     assert "Alpha" in all_text(role_widgets(second, "inspector-card")[0])
     rc2.close()
+
+
+@pytest.mark.parametrize(
+    ("scale", "text"),
+    [(0.29, "0.29 m"), (1.23, "1.2 m"), (38.4, "38 m"), (99.9, "100 m"), (1234.0, "1,234 m")],
+)
+def test_card_scale_keeps_two_significant_digits(scale, text):
+    m = SepalMap(gee=False, inspector=True)
+    box, rc = render(m)
+    m.inspector.inspection = Inspection(-1.5, 2.1, scale, (), False)
+    assert text in all_text(role_widgets(box, "inspector-card")[0])
+    rc.close()

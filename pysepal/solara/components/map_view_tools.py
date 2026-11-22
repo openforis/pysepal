@@ -1,5 +1,7 @@
 """The draw toolbar and the inspector toggle and card that ``MapView`` shows over the map."""
 
+import math
+
 import reacton.ipyvuetify as rv
 import solara
 
@@ -97,6 +99,13 @@ def inspector_panel(map_) -> list:
     return elements
 
 
+def _metres(scale: float) -> str:
+    """``scale`` with two significant digits below 100 (``0.29``, ``1.2``, ``38``), else whole, grouped."""
+    if scale >= 100 or scale <= 0:
+        return f"{max(scale, 0):,.0f}"
+    return f"{scale:.{max(0, 1 - math.floor(math.log10(scale)))}f}"
+
+
 def _card(result):
     header = f"{result.lat:.5f}, {result.lng:.5f}"
     head = rv.Html(
@@ -107,7 +116,7 @@ def _card(result):
             rv.Html(
                 tag="div",
                 style_="font-weight: 400; font-size: 12px",
-                children=[f"{msg('map_view.inspector.scale')}: {result.scale:.0f} m"],
+                children=[f"{msg('map_view.inspector.scale')}: {_metres(result.scale)} m"],
             ),
         ],
     )
