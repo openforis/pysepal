@@ -138,7 +138,20 @@ Both follow the map, so every `MapView` of one map shows the same state.
 
 ### Compare mode
 
-While the map compares (`m.compare = True`), each row of the `LayerPanel` (built with `map_=m`) shows a side button. It follows the map's state, so it appears by itself, and a click cycles left, both, right and back to left. The panel has no compare switch: an app that wants one adds its own and sets `m.compare`.
+`m.compare = True` turns the map into a swipe compare: a divider splits it, the
+left half draws the `left` and `both` layers and the right half the `right` and
+`both` ones. Outside compare every layer is drawn, whatever its side.
+
+- **Sides.** The layer methods take `side=` (`"left"`, `"right"` or `"both"`,
+  the default): `m.add_ee_layer(image, side="left")`, and the same on
+  `add_raster` and their async forms. `handle.side = "right"` moves a layer
+  that is already on the map.
+- **The panel button.** While the map compares, each row of the `LayerPanel`
+  (built with `map_=m`) shows a side button. It follows the map's state, so it
+  appears by itself, and a click cycles left, both, right and back to left.
+- **The switch is the app's.** The panel has no compare switch: an app that
+  wants one adds its own, such as a `solara.Switch` whose `on_value` sets
+  `m.compare`.
 
 ## Theme and language
 

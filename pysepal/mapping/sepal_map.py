@@ -725,6 +725,7 @@ class SepalMap(MapWidget):
             use_map_vis: whether or not to use the map visualization parameters. default to True
             autocenter: whether or not to center the map on the layer. default to False
             overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed by no layer panel. For a reference layer such as the AOI. Default to False.
+            side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
 
         Returns:
             a handle to the layer.

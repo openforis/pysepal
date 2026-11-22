@@ -40,20 +40,23 @@ def LayerPanel(
     version = use_layer_store(store)
     is_dark = use_theme_dark()
 
-    _, set_map_version = solara.use_state(0)
+    compare = bool(map_.state.get("compare")) if map_ is not None else False
+    # only re-renders as compare flips, not on every publish of the map
+    _, set_compare = solara.use_state(compare)
 
     def follow_state():
         if map_ is None:
             return None
 
-        def on_change(_change):
-            set_map_version(lambda v: v + 1)
+        def on_change(change):
+            set_compare(bool(change["new"].get("compare")))
 
         map_.observe(on_change, names=["state"])
+        # a new map, or a publish between the render and this effect
+        set_compare(bool(map_.state.get("compare")))
         return lambda: map_.unobserve(on_change, names=["state"])
 
     solara.use_effect(follow_state, [map_])
-    compare = bool(map_.state.get("compare")) if map_ is not None else False
 
     ids = _data_ids(store)
 

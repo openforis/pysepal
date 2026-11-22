@@ -12,7 +12,7 @@ import solara
 from pysepal.layers import LayerSpec, LayerStore
 from pysepal.mapping import SepalMap
 from pysepal.mapping.basemaps import basemap_label
-from pysepal.solara.components.layer_panel import LayerPanel, download, row
+from pysepal.solara.components.layer_panel import LayerPanel, download, panel, row
 from pysepal.solara.components.layer_panel.download import download_payload
 from pysepal.solara.theme import ThemeState
 from tests.test_solara._harness import wait_until, walk
@@ -364,6 +364,23 @@ def test_side_buttons_follow_compare(raster_spec, raster_spec_b):
     assert header_roles(box)[:5] == ["visibility", "zoom", "side", "settings", "remove"]
 
     m.compare = False
+    assert role_widgets(box, "side") == []
+
+
+def test_a_publish_that_keeps_compare_does_not_render_the_panel(
+    raster_spec, raster_spec_b, monkeypatch
+):
+    renders = []
+    data_ids = panel._data_ids
+    monkeypatch.setattr(panel, "_data_ids", lambda store: renders.append(1) or data_ids(store))
+    m, box = _compare_panel(raster_spec, raster_spec_b)
+    m.compare = True
+    count = len(renders)
+    m.layer_engine.flush()
+    m.layer_engine.flush()
+    assert len(renders) == count
+    m.compare = False
+    assert len(renders) > count
     assert role_widgets(box, "side") == []
 
 
