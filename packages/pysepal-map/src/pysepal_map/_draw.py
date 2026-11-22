@@ -48,6 +48,8 @@ RESERVED_PROPERTIES = frozenset(
         "coordinatePointIds",
         "provisionalCoordinateCount",
         "committedCoordinateCount",
+        # Select mode fetches its default marker image from raw.githubusercontent.com
+        # for a point flagged `marker`, which breaks the no-CDN rule.
         "marker",
     }
 )
@@ -85,13 +87,18 @@ def _position(value) -> list[float]:
     """A finite ``[lng, lat]`` on the globe, rounded to Terra Draw's precision."""
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise ValueError(f"a position is [lng, lat], got {value!r}")
-    if not all(
-        isinstance(x, numbers.Real) and not isinstance(x, bool) and math.isfinite(x) for x in value
-    ):
+    if not all(isinstance(x, numbers.Real) and not isinstance(x, bool) for x in value):
         raise ValueError(f"a position holds two finite numbers, got {value!r}")
-    lng, lat = (_round(float(x)) for x in value)
+    try:
+        lng, lat = (float(x) for x in value)
+    except OverflowError:
+        raise ValueError(f"a position holds two finite numbers, got {value!r}") from None
+    if not (math.isfinite(lng) and math.isfinite(lat)):
+        raise ValueError(f"a position holds two finite numbers, got {value!r}")
+    # Before rounding: scaling a huge value would overflow
     if not (-180 <= lng <= 180 and -90 <= lat <= 90):
         raise ValueError(f"a position needs a lng in [-180, 180] and a lat in [-90, 90]: {value!r}")
+    lng, lat = _round(lng), _round(lat)
     return [lng, lat]
 
 

@@ -90,6 +90,8 @@ const TRANSIENT = new Set([
   "coordinatePointIds",
   "provisionalCoordinateCount",
   "committedCoordinateCount",
+  // Select mode fetches its default marker image from raw.githubusercontent.com
+  // for a point flagged `marker`, which breaks the no-CDN rule.
   "marker",
 ]);
 /** The mode a geometry is drawn under when its own mode rejects it. */

@@ -233,6 +233,8 @@ def test_set_drops_the_property_names_terra_draw_reserves():
         polygon([[0, 0], [True, 0], [1, 1], [0, 0]]),
         {"type": "LineString", "coordinates": [[0, 0]]},
         {"type": "Point", "coordinates": [0, "1"]},
+        {"type": "Point", "coordinates": [1e300, 0]},
+        {"type": "Point", "coordinates": [10**400, 0]},
         {"type": "GeometryCollection", "geometries": []},
         None,
     ],
@@ -305,6 +307,16 @@ def test_features_follow_request_until_acknowledged():
     report(widget, [b], cause="request")
     assert widget.draw.features == collection([b])
     assert widget.drawn == {"request_seq": 1, "features": [b]}
+
+
+def test_a_report_drops_a_feature_with_an_out_of_range_coordinate():
+    widget = mounted()
+    widget.draw.set(feature(polygon()))
+    good = drawn(polygon(ring(5, 5, 6, 6)))
+    for huge in (1e300, 10**400):
+        bad = drawn({"type": "Point", "coordinates": [huge, 0]}, mode="point")
+        report(widget, [bad, good], cause="request")
+        assert widget.draw.features == collection([good])
 
 
 def test_features_are_a_copy():

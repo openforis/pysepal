@@ -7,7 +7,7 @@ from datetime import datetime as dt
 from typing import Any, Dict, Optional
 
 import geopandas as gpd
-from pysepal_map._draw import RESERVED_PROPERTIES
+from pysepal_map import RESERVED_PROPERTIES
 
 from pysepal.message import msg
 from pysepal.scripts import utils as su

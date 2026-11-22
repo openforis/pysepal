@@ -73,10 +73,37 @@
   background: #1e1e1e;
   color: #ffffff;
 }
-.psm-dark .psm-popup .maplibregl-popup-tip,
-.psm-dark .psm-tooltip .maplibregl-popup-tip {
-  border-top-color: #1e1e1e;
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-top
+  .maplibregl-popup-tip,
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-top-left
+  .maplibregl-popup-tip,
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-top-right
+  .maplibregl-popup-tip {
   border-bottom-color: #1e1e1e;
+}
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-bottom
+  .maplibregl-popup-tip,
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-bottom-left
+  .maplibregl-popup-tip,
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-bottom-right
+  .maplibregl-popup-tip {
+  border-top-color: #1e1e1e;
+}
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-left
+  .maplibregl-popup-tip {
+  border-right-color: #1e1e1e;
+}
+.psm-dark
+  :is(.psm-popup, .psm-tooltip).maplibregl-popup-anchor-right
+  .maplibregl-popup-tip {
+  border-left-color: #1e1e1e;
 }
 .psm-dark .psm-popup .maplibregl-popup-close-button {
   color: #ffffff;
