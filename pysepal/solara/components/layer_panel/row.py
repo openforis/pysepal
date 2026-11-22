@@ -25,6 +25,15 @@ def _icon_button(icon: str, role: str, layer_id: str, on_click, title: str = "",
     )
 
 
+# The side a click moves to, and the icon of each side.
+_NEXT_SIDE = {"left": "both", "both": "right", "right": "left"}
+_SIDE_ICONS = {
+    "left": "mdi-format-horizontal-align-left",
+    "both": "mdi-arrow-expand-horizontal",
+    "right": "mdi-format-horizontal-align-right",
+}
+
+
 def _published_instance(map_, layer_id: str) -> Optional[int]:
     """The instance the map's widget published for a layer, None when it has none yet."""
     for entry in map_.state.get("layers", ()):
@@ -41,6 +50,7 @@ def LayerRow(
     on_export: Optional[Callable[[LayerSpec], None]] = None,
     is_dark: bool = False,
     version: int = 0,
+    compare: bool = False,
 ):
     """A layer on one line: visibility, name, status, zoom, settings and remove.
 
@@ -52,6 +62,7 @@ def LayerRow(
         is_dark: Whether the theme is dark.
         version: The panel's store version. A row whose arguments did not change is not
             re-rendered with the panel, so this makes it follow every store event.
+        compare: Whether the map is in compare mode; shows the button that sets the layer's side.
     """
     open_, set_open = solara.use_state(False)
     # What the last zoom said: ("no_bounds", instance) or ("failed", None).
@@ -140,6 +151,23 @@ def LayerRow(
                         ],
                     )
                 ],
+            )
+        )
+
+    if compare:
+        side = view.side
+        children.append(
+            solara.Button(
+                icon=True,
+                text=True,
+                on_click=lambda: store.set_side(layer_id, _NEXT_SIDE[side]),
+                attributes={
+                    "data-role": "side",
+                    "data-layer-id": layer_id,
+                    "data-side": side,
+                    "title": msg(f"layer_panel.side.{side}"),
+                },
+                children=[rv.Icon(size="small", children=[_SIDE_ICONS[side]])],
             )
         )
 

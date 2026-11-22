@@ -65,7 +65,7 @@ def export_buttons(box: Any) -> List[str]:
     return [_attr(w, "data-layer-id") for w in role_widgets(box, "export")]
 
 
-HEADER_ROLES = ("visibility", "zoom", "settings", "remove")
+HEADER_ROLES = ("visibility", "zoom", "side", "settings", "remove")
 
 
 def header_roles(box: Any) -> List[str]:

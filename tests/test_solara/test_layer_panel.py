@@ -341,6 +341,58 @@ def test_no_zoom_button_without_a_map(raster_spec):
     assert header_roles(box) == ["visibility", "settings", "remove"]
 
 
+def _compare_panel(raster_spec, raster_spec_b):
+    m = SepalMap(gee=False)
+    m.layer_store.add(raster_spec)
+    m.layer_store.add(raster_spec_b)
+    box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    return m, box
+
+
+def test_no_side_button_while_compare_is_off(raster_spec):
+    m = SepalMap(gee=False)
+    m.layer_store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    assert role_widgets(box, "side") == []
+
+
+def test_side_buttons_follow_compare(raster_spec, raster_spec_b):
+    m, box = _compare_panel(raster_spec, raster_spec_b)
+
+    m.compare = True
+    assert len(role_widgets(box, "side")) == 2
+    assert header_roles(box)[:5] == ["visibility", "zoom", "side", "settings", "remove"]
+
+    m.compare = False
+    assert role_widgets(box, "side") == []
+
+
+def test_side_button_cycles_the_layer_side(raster_spec, raster_spec_b):
+    m, box = _compare_panel(raster_spec, raster_spec_b)
+    m.compare = True
+    layer_id = raster_spec.id
+
+    seen = []
+    for _ in range(3):
+        button = find_by_role(box, "side", layer_id)
+        assert button.attributes["data-side"] == m.layer_store.view(layer_id).side
+        click(button)
+        seen.append(m.layer_store.view(layer_id).side)
+    assert seen == ["right", "left", "both"]
+    assert m.layer_store.view(raster_spec_b.id).side == "both"
+
+
+def test_side_button_shows_the_current_side(raster_spec, raster_spec_b):
+    m, box = _compare_panel(raster_spec, raster_spec_b)
+    m.compare = True
+    m.layer_store.set_side(raster_spec.id, "left")
+
+    button = find_by_role(box, "side", raster_spec.id)
+    assert button.attributes["data-side"] == "left"
+    assert button.attributes["title"] == "Left side only"
+    assert button_icon(button) == "mdi-format-horizontal-align-left"
+
+
 def test_settings_menu_holds_opacity_restyle_download(raster_spec):
     store = LayerStore()
     store.add(raster_spec)

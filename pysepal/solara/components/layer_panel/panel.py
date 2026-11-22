@@ -40,6 +40,21 @@ def LayerPanel(
     version = use_layer_store(store)
     is_dark = use_theme_dark()
 
+    _, set_map_version = solara.use_state(0)
+
+    def follow_state():
+        if map_ is None:
+            return None
+
+        def on_change(_change):
+            set_map_version(lambda v: v + 1)
+
+        map_.observe(on_change, names=["state"])
+        return lambda: map_.unobserve(on_change, names=["state"])
+
+    solara.use_effect(follow_state, [map_])
+    compare = bool(map_.state.get("compare")) if map_ is not None else False
+
     ids = _data_ids(store)
 
     def on_move(layer_id: str, to: int) -> None:
@@ -53,7 +68,7 @@ def LayerPanel(
         content = SortableList(
             ids=ids,
             children=[
-                LayerRow(store, layer_id, map_, on_export, is_dark, version).key(layer_id)
+                LayerRow(store, layer_id, map_, on_export, is_dark, version, compare).key(layer_id)
                 for layer_id in ids
             ],
             on_move=on_move,

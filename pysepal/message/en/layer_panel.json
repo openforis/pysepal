@@ -24,6 +24,11 @@
     "stroke": "Stroke",
     "fill": "Fill",
     "fill_opacity": "Fill opacity",
-    "width": "Width"
+    "width": "Width",
+    "side": {
+      "left": "Left side only",
+      "both": "Both sides",
+      "right": "Right side only"
+    }
   }
 }
