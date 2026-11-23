@@ -10,18 +10,51 @@ from pysepal.message import msg
 
 from .settings import LayerSettings
 
+ICON_SIZE = 18
+# A small icon button at comfortable density is 28px square: the width of every action slot.
+SLOT_WIDTH = "28px"
 
-def _icon_button(icon: str, role: str, layer_id: str, on_click, title: str = "", **kwargs):
-    attributes = {"data-role": role, "data-layer-id": layer_id}
+
+def _icon_button(
+    icon: str,
+    role: str,
+    layer_id: str,
+    on_click,
+    label: str,
+    title: bool = True,
+    attributes: Optional[dict] = None,
+    **kwargs,
+):
+    """An icon-only button named ``label``; ``title=False`` when a tooltip already shows it."""
+    attributes = {
+        "data-role": role,
+        "data-layer-id": layer_id,
+        "aria-label": label,
+        **(attributes or {}),
+    }
     if title:
-        attributes["title"] = title
+        attributes["title"] = label
     return solara.Button(
         icon=True,
         text=True,
+        size="small",
+        density="comfortable",
         on_click=on_click,
         attributes=attributes,
-        children=[rv.Icon(size="small", children=[icon])],
+        children=[rv.Icon(size=ICON_SIZE, children=[icon])],
         **kwargs,
+    )
+
+
+def _slot(name: str, *children):
+    """A cell of the row grid; without children it is the placeholder that keeps the column."""
+    align = "flex-start" if name == "name" else "center"
+    return rv.Html(
+        tag="div",
+        class_=f"pysepal-layer-row__slot pysepal-layer-row__slot--{name}",
+        attributes={"data-slot": name},
+        style_=f"display: flex; align-items: center; justify-content: {align}; gap: 4px; min-width: 0",
+        children=list(children),
     )
 
 
@@ -54,6 +87,9 @@ def LayerRow(
 ):
     """A layer on one line: visibility, name, status, zoom, settings and remove.
 
+    The row is a grid of slots: one fixed-width column per action and the name in the
+    rest, so the icons of every row line up.
+
     Args:
         store: The layer store.
         layer_id: Id of the layer shown.
@@ -85,7 +121,7 @@ def LayerRow(
 
     # The panel drops a removed layer's row, but a render can still reach it first.
     if layer_id not in store:
-        return solara.Row(classes=["pysepal-layer-row"], children=[])
+        return solara.Div(classes=["pysepal-layer-row"], children=[])
     spec, view = store.get(layer_id), store.view(layer_id)
 
     status = view.status
@@ -93,33 +129,47 @@ def LayerRow(
         status_icon = rv.ProgressCircular(indeterminate=True, size=16, width=2)
         tip = msg("layer_panel.preparing")
     elif status == "error":
-        status_icon = rv.Icon(color="error", size="small", children=["mdi-alert"])
+        status_icon = rv.Icon(color="error", size=ICON_SIZE, children=["mdi-alert"])
         tip = view.error or msg("layer_panel.error")
     else:
-        status_icon = rv.Icon(
-            size="small", style_="visibility: hidden", children=["mdi-circle-small"]
-        )
+        status_icon = rv.Icon(size=ICON_SIZE, children=["mdi-circle-small"])
         tip = ""
 
-    children = [
-        _icon_button(
-            "mdi-eye" if view.visible else "mdi-eye-off",
+    slots = [
+        _slot(
             "visibility",
-            layer_id,
-            lambda: store.set_visible(layer_id, not view.visible),
+            _icon_button(
+                "mdi-eye" if view.visible else "mdi-eye-off",
+                "visibility",
+                layer_id,
+                lambda: store.set_visible(layer_id, not view.visible),
+                msg("layer_panel.hide") if view.visible else msg("layer_panel.show"),
+            ),
         ),
-        solara.Text(
-            spec.name,
-            style={
-                "flex": "1 1 auto",
-                "min-width": "0",
-                "overflow": "hidden",
-                "text-overflow": "ellipsis",
-                "white-space": "nowrap",
-            },
+        _slot(
+            "name",
+            rv.Html(
+                tag="span",
+                class_="pysepal-layer-row__name text-body-2",
+                attributes={"title": spec.name},
+                style_=(
+                    "flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;"
+                    f" white-space: nowrap; opacity: {1 if view.visible else 0.6}"
+                ),
+                children=[spec.name],
+            ),
+            # Always rendered, so the element tree keeps its shape across statuses.
+            solara.Tooltip(
+                tip,
+                children=[
+                    rv.Html(
+                        tag="span",
+                        style_=f"display: {'flex' if tip else 'none'}",
+                        children=[status_icon],
+                    )
+                ],
+            ),
         ),
-        # Always rendered, so the element tree keeps its shape across statuses.
-        solara.Tooltip(tip, children=[rv.Html(tag="span", children=[status_icon])]),
     ]
 
     if map_ is not None:
@@ -134,40 +184,36 @@ def LayerRow(
             zoom_tip = msg("layer_panel.zoom_failed")
         else:
             zoom_tip = msg("layer_panel.zoom")
-        children.append(
-            solara.Tooltip(
-                zoom_tip,
-                children=[
-                    rv.Html(
-                        tag="span",
-                        children=[
-                            _icon_button(
-                                "mdi-crosshairs-gps",
-                                "zoom",
-                                layer_id,
-                                lambda: zoom_task(),
-                                disabled=status == "pending" or no_bounds,
-                            )
-                        ],
-                    )
-                ],
+        zoom_button = _icon_button(
+            "mdi-crosshairs-gps",
+            "zoom",
+            layer_id,
+            lambda: zoom_task(),
+            zoom_tip,
+            title=False,
+            disabled=status == "pending" or no_bounds,
+        )
+        # A disabled button gets no pointer events, so the tooltip hangs on a span around it.
+        slots.append(
+            _slot(
+                "zoom",
+                solara.Tooltip(zoom_tip, children=[rv.Html(tag="span", children=[zoom_button])]),
             )
         )
 
     if compare:
         side = view.side
-        children.append(
-            solara.Button(
-                icon=True,
-                text=True,
-                on_click=lambda: store.set_side(layer_id, _NEXT_SIDE[side]),
-                attributes={
-                    "data-role": "side",
-                    "data-layer-id": layer_id,
-                    "data-side": side,
-                    "title": msg(f"layer_panel.side.{side}"),
-                },
-                children=[rv.Icon(size="small", children=[_SIDE_ICONS[side]])],
+        slots.append(
+            _slot(
+                "side",
+                _icon_button(
+                    _SIDE_ICONS[side],
+                    "side",
+                    layer_id,
+                    lambda: store.set_side(layer_id, _NEXT_SIDE[side]),
+                    msg(f"layer_panel.side.{side}"),
+                    attributes={"data-side": side},
+                ),
             )
         )
 
@@ -176,37 +222,50 @@ def LayerRow(
         v_bind="menu.props",
         children=[
             _icon_button(
-                "mdi-cog-outline",
-                "settings",
-                layer_id,
-                lambda: None,
-                title=msg("layer_panel.settings"),
+                "mdi-tune", "settings", layer_id, lambda: None, msg("layer_panel.settings")
             )
         ],
     )
-    children.append(
-        rv.Menu(
-            v_model=open_,
-            on_v_model=set_open,
-            close_on_content_click=False,
-            location="bottom end",
-            attributes={"data-role": "settings-menu", "data-layer-id": layer_id},
-            v_slots=[{"name": "activator", "variable": "menu", "children": [gear]}],
-            # Built only while open: the form reads the layer's file on mount.
-            children=[LayerSettings(store, layer_id, on_export, is_dark, version)] if open_ else [],
+    slots.append(
+        _slot(
+            "settings",
+            rv.Menu(
+                v_model=open_,
+                on_v_model=set_open,
+                close_on_content_click=False,
+                location="bottom end",
+                attributes={"data-role": "settings-menu", "data-layer-id": layer_id},
+                v_slots=[{"name": "activator", "variable": "menu", "children": [gear]}],
+                # Built only while open: the form reads the layer's file on mount.
+                children=(
+                    [LayerSettings(store, layer_id, on_export, is_dark, version)] if open_ else []
+                ),
+            ),
         )
     )
-    children.append(
-        _icon_button(
-            "mdi-close",
+    slots.append(
+        _slot(
             "remove",
-            layer_id,
-            lambda: store.remove(layer_id),
-            title=msg("layer_panel.remove"),
+            _icon_button(
+                "mdi-close",
+                "remove",
+                layer_id,
+                lambda: store.remove(layer_id),
+                msg("layer_panel.remove"),
+            ),
         )
     )
-    return solara.Row(
+
+    actions = len(slots) - 2
+    return solara.Div(
         classes=["pysepal-layer-row", "pysepal-layer-row__header"],
-        style={"align-items": "center", "gap": "4px", "flex-wrap": "nowrap"},
-        children=children,
+        style={
+            "display": "grid",
+            "grid-template-columns": (
+                f"{SLOT_WIDTH} minmax(0, 1fr) repeat({actions}, {SLOT_WIDTH})"
+            ),
+            "align-items": "center",
+            "column-gap": "2px",
+        },
+        children=slots,
     )

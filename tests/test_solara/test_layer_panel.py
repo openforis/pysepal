@@ -17,6 +17,7 @@ from pysepal.solara.components.layer_panel.download import download_payload
 from pysepal.solara.theme import ThemeState
 from tests.test_solara._harness import wait_until, walk
 from tests.test_solara._layer_panel_helpers import (
+    HEADER_ROLES,
     all_text,
     button_icon,
     click,
@@ -128,7 +129,63 @@ def test_vuetify_3_sizes(raster_spec):
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
     assert role_widgets(box, "basemap")[0].density == "compact"
     icons = of_kind(box, "Icon")
-    assert len(icons) == 5 and {icon.size for icon in icons} == {"small"}
+    assert len(icons) == 5 and {icon.size for icon in icons} == {row.ICON_SIZE}
+    buttons = [w for role in HEADER_ROLES for w in role_widgets(box, role)]
+    assert buttons and {(b.size, b.density) for b in buttons} == {("small", "comfortable")}
+
+
+def _slots(row_widget):
+    return [w.attributes["data-slot"] for w in row_widget.children]
+
+
+def _rows(box):
+    return [w for w in walk(box) if "pysepal-layer-row__header" in (getattr(w, "class_", "") or "")]
+
+
+def test_every_row_has_the_same_fixed_slots(raster_spec, raster_spec_b):
+    m, box = _compare_panel(raster_spec, raster_spec_b)
+    m.compare = True
+    rows = _rows(box)
+    assert len(rows) == 2
+    for widget in rows:
+        assert _slots(widget) == ["visibility", "name", "zoom", "side", "settings", "remove"]
+        # one fixed column per action, the name takes the rest
+        template = f"{row.SLOT_WIDTH} minmax(0, 1fr) repeat(4, {row.SLOT_WIDTH})"
+        assert f"grid-template-columns:{template};" in widget.style_
+
+    m.compare = False
+    assert all("repeat(3," in widget.style_ for widget in _rows(box))
+
+
+def test_an_empty_slot_keeps_its_column():
+    box, _ = solara.render(row._slot("zoom"), handle_error=False)
+    slot = next(w for w in walk(box) if "__slot--zoom" in (getattr(w, "class_", "") or ""))
+    assert slot.children == [] and slot.attributes == {"data-slot": "zoom"}
+
+
+def test_every_row_button_has_an_accessible_name(raster_spec, raster_spec_b):
+    m, box = _compare_panel(raster_spec, raster_spec_b)
+    m.compare = True
+    for role in HEADER_ROLES:
+        for widget in role_widgets(box, role):
+            assert widget.attributes.get("aria-label"), role
+
+
+def test_visibility_button_says_what_a_click_does(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert find_visibility_toggle(box, raster_spec.id).attributes["aria-label"] == "Hide layer"
+    click(find_visibility_toggle(box, raster_spec.id))
+    assert find_visibility_toggle(box, raster_spec.id).attributes["aria-label"] == "Show layer"
+
+
+def test_the_handles_are_labelled(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    sortable = next(w for w in walk(box) if hasattr(w, "vue_move"))
+    assert "Alt+Up" in sortable.handle_label
 
 
 def test_basemap_picker_lists_the_choices_and_switches_the_map():

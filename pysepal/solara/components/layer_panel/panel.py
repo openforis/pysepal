@@ -75,6 +75,7 @@ def LayerPanel(
                 for layer_id in ids
             ],
             on_move=on_move,
+            handle_label=msg("layer_panel.reorder"),
         )
     else:
         content = solara.Text(msg("layer_panel.empty"), classes=["pysepal-layer-panel__empty"])
