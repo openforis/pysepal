@@ -427,6 +427,19 @@ def test_divider_keyboard(harness, page_session, wait_settled):
     assert cameras(el) == before
 
 
+def wait_left(page, el, selector, left):
+    """Wait until the first ``selector`` in ``el`` starts ``left`` px (±1) from its left edge."""
+    page.wait_for_function(
+        """([el, selector, left]) => {
+            const target = el.querySelector(selector);
+            const x = target?.getBoundingClientRect().left - el.getBoundingClientRect().left;
+            return Math.abs(x - left) <= 1;
+        }""",
+        arg=[el, selector, left],
+        timeout=10_000,
+    )
+
+
 def test_controls_use_the_main_map_corners(harness, page_session, wait_settled):
     widget = MapWidget()
     widget.set_insets(left=60)
@@ -434,11 +447,7 @@ def test_controls_use_the_main_map_corners(harness, page_session, wait_settled):
     # The right map's corners, empty, come first in tree order.
     first = "el.querySelector('.maplibregl-ctrl-top-left')"
     assert el.evaluate(f"el => {first}.closest('.psm-compare-right') !== null")
-    left = el.evaluate(
-        "el => el.querySelector('.maplibregl-ctrl-zoom-in').getBoundingClientRect().left"
-        " - el.getBoundingClientRect().left"
-    )
-    assert left == pytest.approx(60 + 10, abs=1)
+    wait_left(page_session, el, ".maplibregl-ctrl-zoom-in", 60 + 10)
     page_session.wait_for_function(
         """el => {
             const corner = el.querySelector(
@@ -450,6 +459,26 @@ def test_controls_use_the_main_map_corners(harness, page_session, wait_settled):
         arg=el,
         timeout=10_000,
     )
+
+    # Mounted with compare on, then off: the main corners still take the insets.
+    widget.publish(MapState(compare=False))
+    page_session.wait_for_function("el => !el.querySelector('.psm-compare-right')", arg=el)
+    widget.set_insets(left=100)
+    wait_left(page_session, el, ".maplibregl-ctrl-zoom-in", 100 + 10)
+    session = widget.draw.begin(("polygon",))
+    wait_left(page_session, el, ".psm-draw-toolbar", 100 + 10)
+    # A click there reaches the button. Solara can briefly lay a progress spinner over the page.
+    page_session.wait_for_function(
+        """el => {
+            const button = el.querySelector('.psm-draw-toolbar button');
+            const box = button.getBoundingClientRect();
+            const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+            return top?.closest('button') === button;
+        }""",
+        arg=el,
+        timeout=10_000,
+    )
+    session.end()
 
 
 def test_divider_stays_inside_insets(harness, page_session, wait_settled):

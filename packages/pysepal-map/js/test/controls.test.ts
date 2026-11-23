@@ -643,6 +643,16 @@ describe("ViewControls", () => {
     expect(published(root)).toEqual(inPx(HEIGHTS));
   });
 
+  it("keeps the main map's corners once the compare map is gone", () => {
+    const { root, map, controls, measure, right } = setup({ compare: true });
+    right.remove();
+    controls.setInsets(INSETS);
+    expect(corners(map)).toEqual(placedAt(INSETS));
+    setHeights(map, HEIGHTS);
+    measure();
+    expect(published(root)).toEqual(inPx(HEIGHTS));
+  });
+
   it("dispose leaves a newer view's variables and mark", () => {
     const first = setup({ viewId: "view-1" });
     const ancestor = inFullscreenRoot(first.doc, first.root);
