@@ -63,6 +63,50 @@ def test_from_vector_formats(fake_vector):
     assert LayerSpec.from_vector(fake_vector).style.stroke is None
 
 
+def test_from_vector_takes_the_format_and_the_style():
+    # a tile server's URL has no suffix to read
+    url = "https://x.org/pmtiles?filePath=/data/a.pmtiles"
+    style = VectorStyle(fill="#ff0000")
+    spec = LayerSpec.from_vector(url, format="PMTiles", layer="a", style=style)
+    assert (spec.source.uri, spec.source.format, spec.source.layer) == (url, "PMTiles", "a")
+    assert spec.style == style
+    assert (
+        LayerSpec.from_vector("https://x.org/a.json", format="GeoJSON").source.format == "GeoJSON"
+    )
+
+
+def test_from_vector_says_to_pass_a_format_it_cannot_infer():
+    url = "https://x.org/pmtiles?filePath=/data/a.pmtiles"
+    with pytest.raises(
+        ValueError, match=r"cannot infer the vector format of .*pmtiles; pass format="
+    ):
+        LayerSpec.from_vector(url)
+
+
+def test_from_vector_takes_a_style_or_its_parts():
+    with pytest.raises(ValueError, match="not both"):
+        LayerSpec.from_vector("https://x.org/a.pmtiles", style=VectorStyle(), width=1)
+    style = LayerSpec.from_vector("https://x.org/a.pmtiles", stroke="red", width=3).style
+    assert (style.stroke, style.width) == ("#ff0000", 3)
+    assert LayerSpec.from_vector("https://x.org/a.pmtiles").style.width == 2
+
+
+def test_a_root_relative_pmtiles_url_stays_a_url():
+    url = "/api/sandbox/jupyter/proxy/8000/pmtiles?filePath=/home/me/a.pmtiles"
+    assert LayerSpec.from_vector(url, format="PMTiles").source.uri == url
+    assert LayerSpec.from_vector("/tiles/a.pmtiles").source.uri == "/tiles/a.pmtiles"
+
+
+def test_a_local_file_stays_a_file(tmp_path):
+    archive = tmp_path / "a.pmtiles"
+    archive.write_bytes(b"")
+    as_uri = archive.resolve().as_uri()
+    # an existing file is a file, a Path always is, and only PMTiles reach the browser
+    assert LayerSpec.from_vector(str(archive)).source.uri == as_uri
+    assert LayerSpec.from_vector(tmp_path / "gone.pmtiles").source.uri.startswith("file://")
+    assert LayerSpec.from_vector("/nowhere/a.gpkg").source.uri == "file:///nowhere/a.gpkg"
+
+
 def test_local_uri_is_absolute(byte):
     spec = LayerSpec.from_raster(byte)
     assert spec.source.uri.startswith("file://") and uri_to_path(spec.source.uri) == byte.resolve()

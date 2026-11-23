@@ -12,6 +12,8 @@ from pysepal.layers import (
     LayerPrepareError,
     LayerSpec,
     TileSource,
+    VectorSource,
+    VectorStyle,
     local_fingerprint,
     prepare,
     prepare_sync,
@@ -83,6 +85,28 @@ def test_prepare_pmtiles_http():
 def test_local_pmtiles_not_supported(tmp_path):
     with pytest.raises(LayerPrepareError, match="PMTiles"):
         prepare_sync(LayerSpec.from_vector(tmp_path / "a.pmtiles", layer="x"))
+
+
+def test_a_root_relative_pmtiles_url_reaches_the_browser_as_is():
+    # what vectortileserver hands out behind SEPAL's proxy
+    url = "/api/sandbox/jupyter/proxy/8000/pmtiles?filePath=/home/me/a.pmtiles"
+    spec = LayerSpec.from_vector(url, format="PMTiles", layer="roads")
+    render = prepare_sync(spec)
+    assert (render.kind, render.url, render.source_layer) == ("pmtiles", url, "roads")
+    assert local_fingerprint(spec) is None
+
+
+@pytest.mark.parametrize("given", ["path", "str", "bare uri"])
+def test_a_local_pmtiles_file_is_refused_however_it_is_named(tmp_path, given):
+    archive = tmp_path / "a.pmtiles"
+    archive.write_bytes(b"")
+    if given == "bare uri":
+        source = VectorSource(uri=str(archive), format="PMTiles", layer="x")
+        spec = LayerSpec(id="a", name="a", source=source, style=VectorStyle())
+    else:
+        spec = LayerSpec.from_vector(archive if given == "path" else str(archive), layer="x")
+    with pytest.raises(LayerPrepareError, match="local PMTiles"):
+        prepare_sync(spec)
 
 
 def test_missing_file(tmp_path):

@@ -38,6 +38,11 @@ APPS = {
     "solara_vector_app": "Page",
 }
 
+#: The module of the demos extra an app imports; ``nox -s test`` has neither.
+NEEDS = {"solara_chart_app": "ipecharts", "solara_vector_app": "vectortileserver"}
+
+LOOPBACK_ARCHIVE = "http://127.0.0.1:9/pmtiles?filePath=/smoke/landcover.pmtiles"
+
 
 class _FakeGee:
     """An Earth Engine interface with an empty asset folder."""
@@ -55,22 +60,30 @@ class _FakeGee:
 class _FakeVectorLayer:
     """What the vector demo reads off the layer ``vectortileserver`` returns."""
 
-    url = "http://127.0.0.1:9/pmtiles?filePath=/smoke/landcover.pmtiles"
     bounds = [[-0.4, 20.0], [0.0, 20.4]]  # [[south, west], [north, east]]
-    name = ""
+
+    def __init__(self, url: str):
+        self.url = url
 
     def list_layers(self):
         return ["landcover"]
 
 
 class _FakeWorkspace:
-    """A ``TileWorkspace`` that converts nothing and starts no server."""
+    """A ``TileWorkspace`` that converts nothing and starts no server.
 
-    def __init__(self, **kwargs):
-        pass
+    It builds the archive's URL as ``vectortileserver`` does: the loopback URL, or the
+    client prefix with the port in it.
+    """
+
+    def __init__(self, *, client_prefix=None, **kwargs):
+        self.client_prefix = client_prefix
 
     async def open_async(self, source, **kwargs):
-        return _FakeVectorLayer()
+        base = "http://127.0.0.1:9"
+        if self.client_prefix:
+            base = "/" + self.client_prefix.replace("{port}", "9").strip("/")
+        return _FakeVectorLayer(f"{base}/pmtiles?filePath=/smoke/landcover.pmtiles")
 
 
 @pytest.fixture
@@ -80,7 +93,12 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(SessionManager, "get_drive_interface", lambda self: object())
     monkeypatch.setattr(SessionManager, "get_sepal_client", lambda self, **kwargs: None)
     monkeypatch.setattr(su, "init_ee", lambda: None)
-    for name in ("PYSEPAL_DEMO_RASTER_DIR", "PYSEPAL_DEMO_VECTOR_DIR"):
+    for name in (
+        "PYSEPAL_DEMO_RASTER_DIR",
+        "PYSEPAL_DEMO_VECTOR_DIR",
+        "LOCALTILESERVER_CLIENT_PREFIX",
+        "VECTORTILESERVER_CLIENT_PREFIX",
+    ):
         monkeypatch.delenv(name, raising=False)
 
     settings = solara.server.settings
@@ -184,7 +202,7 @@ async def _raster_app(root, module) -> None:
     assert "continuous" not in m.layer_store
 
 
-async def _vector_app(root, module) -> None:
+async def _vector_app(root, module, url: str = LOOPBACK_ARCHIVE) -> None:
     (m,) = _maps(root)
     msg = module.msg
     store = m.layer_store
@@ -192,11 +210,9 @@ async def _vector_app(root, module) -> None:
     _click(root, msg("buttons.single"))
     assert await _eventually(lambda: "single" in store)
     source = store.get("single").source
-    assert (source.uri, source.format, source.layer) == (
-        _FakeVectorLayer.url,
-        "PMTiles",
-        "landcover",
-    )
+    assert (source.uri, source.format, source.layer) == (url, "PMTiles", "landcover")
+    # the engine took it as a URL for the browser, not as a local file it refuses
+    assert await _eventually(lambda: m.layer_engine.accepted("single") is not None)
     assert m.view_request["bounds"] == [20.0, -0.4, 20.4, 0.0]
 
     _click(root, msg("buttons.categorized"))
@@ -235,17 +251,15 @@ def test_the_gallery_lists_every_demo():
     assert sorted(listed) == sorted(APPS)
 
 
-@pytest.mark.parametrize("name", sorted(APPS))
-def test_the_demo_renders_on_the_map(name, isolated, monkeypatch):
-    module = _load(name, monkeypatch, isolated)
-    component = getattr(module, APPS[name])
+def _run(name: str, module, exercise) -> None:
+    """Render the app's component on a live loop, run ``exercise``, then check its legends."""
 
     async def run():
-        root, rc = reacton.render(component(), handle_error=False)
+        root, rc = reacton.render(getattr(module, APPS[name])(), handle_error=False)
         try:
             if name != "solara_chart_app":  # its map opens from the page
                 assert len(_maps(root)) == 1
-            await EXERCISES[name](root, module)
+            await exercise(root, module)
             # MapView draws the map's legend; one the app mounts itself would overlap it.
             legends = [w for w in _tree(root) if hasattr(w, "selector_options")]
             assert [w.placement for w in legends if w.placement != "map"] == []
@@ -253,3 +267,23 @@ def test_the_demo_renders_on_the_map(name, isolated, monkeypatch):
             rc.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("name", sorted(APPS))
+def test_the_demo_renders_on_the_map(name, isolated, monkeypatch):
+    if name in NEEDS:
+        pytest.importorskip(NEEDS[name], reason="needs the demos extra: nox -s demos")
+    _run(name, _load(name, monkeypatch, isolated), EXERCISES[name])
+
+
+def test_the_vector_demo_draws_behind_sepals_proxy(isolated, monkeypatch):
+    """SEPAL sets only the raster prefix; the demo borrows it, so the archive's URL is root-relative."""
+    pytest.importorskip("vectortileserver", reason="needs the demos extra: nox -s demos")
+    monkeypatch.setenv("LOCALTILESERVER_CLIENT_PREFIX", "/api/sandbox/jupyter/proxy/{port}")
+    module = _load("solara_vector_app", monkeypatch, isolated)
+    url = "/api/sandbox/jupyter/proxy/9/pmtiles?filePath=/smoke/landcover.pmtiles"
+
+    async def exercise(root, module):
+        await _vector_app(root, module, url)
+
+    _run("solara_vector_app", module, exercise)

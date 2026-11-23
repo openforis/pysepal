@@ -111,6 +111,15 @@ def _to_uri(path_or_url: str | Path) -> str:
     return Path(text).expanduser().resolve().as_uri()
 
 
+def _on_page_origin(uri: str) -> bool:
+    """Whether ``uri`` is a root-relative URL rather than a path on this machine.
+
+    It starts with one ``/`` and names no existing file, like the
+    ``/api/sandbox/jupyter/proxy/{port}/...`` a tile server behind SEPAL's proxy hands out.
+    """
+    return uri.startswith("/") and not uri.startswith("//") and not os.path.exists(uri)
+
+
 def _canonical_hash(obj: Any) -> str:
     text = json.dumps(obj, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode()).hexdigest()
@@ -570,21 +579,55 @@ class LayerSpec(BaseModel):
         name: str | None = None,
         id: str | None = None,
         layer: str | None = None,
+        format: VectorFormat | None = None,
+        style: VectorStyle | None = None,
         stroke: str | None = None,
         fill: str | None = None,
-        width: float = 2.0,
+        width: float | None = None,
     ) -> "LayerSpec":
-        """Build a spec from a vector file or URL, inferring the format from the suffix."""
-        uri = _to_uri(path_or_url)
-        suffix = Path(urlparse(uri).path).suffix.lower()
-        if suffix not in _VECTOR_SUFFIXES:
-            raise ValueError(f"Unsupported vector format: {suffix!r}")
-        source = VectorSource(uri=uri, format=_VECTOR_SUFFIXES[suffix], layer=layer)
+        """Build a spec from a vector file or URL.
+
+        Args:
+            path_or_url: a local file, an http(s) URL, or for PMTiles a root-relative URL
+                that the browser fetches from the page's origin, such as the
+                ``/proxy/{port}/pmtiles?filePath=...`` of a proxied tile server. A string
+                starting with one ``/`` that names no file on this machine is such a URL; a
+                ``Path`` is always a file.
+            name: layer name, by default the stem of the path.
+            id: layer id, a new UUID by default.
+            layer: the layer inside the source, e.g. the source layer of a PMTiles archive.
+            format: the vector format, by default read from the suffix of the path.
+            style: the vector style. Without one, a style is built from ``stroke``,
+                ``fill`` and ``width`` (2 by default).
+            stroke: outline color.
+            fill: fill color.
+            width: outline width.
+
+        Raises:
+            ValueError: when the format cannot be read from the path and ``format`` is not
+                given, or when ``style`` comes with ``stroke``, ``fill`` or ``width``.
+        """
+        if style is not None and (stroke, fill, width) != (None, None, None):
+            raise ValueError("pass either style or stroke, fill and width, not both")
+        page_url = isinstance(path_or_url, str) and _on_page_origin(path_or_url)
+        uri = str(path_or_url) if page_url else _to_uri(path_or_url)
+        if format is None:
+            suffix = Path(urlparse(uri).path).suffix.lower()
+            if suffix not in _VECTOR_SUFFIXES:
+                raise ValueError(f"cannot infer the vector format of {path_or_url}; pass format=")
+            format = _VECTOR_SUFFIXES[suffix]
+        # only PMTiles reach the browser as they are; any other format is read here
+        if page_url and format != "PMTiles":
+            uri = _to_uri(path_or_url)
+        if style is None:
+            style = VectorStyle(
+                stroke=stroke, fill=fill, **({} if width is None else {"width": width})
+            )
         return cls(
             id=id or uuid.uuid4().hex,
             name=name or Path(urlparse(uri).path).stem,
-            source=source,
-            style=VectorStyle(stroke=stroke, fill=fill, width=width),
+            source=VectorSource(uri=uri, format=format, layer=layer),
+            style=style,
         )
 
     @classmethod

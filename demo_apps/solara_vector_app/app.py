@@ -34,7 +34,7 @@ from vectortileserver import TileWorkspace
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
-from pysepal.layers import LayerSpec, VectorSource, VectorStyle
+from pysepal.layers import LayerSpec, VectorStyle
 from pysepal.scripts.scratch import scratch_root
 from pysepal.solara import (
     get_current_theme_state,
@@ -164,7 +164,7 @@ def VectorPanel():
 
     def build_map():
         return sm.SepalMap(
-            zoom=3, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
+            zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         )
 
     sepal_map = solara.use_memo(build_map, [])
@@ -173,13 +173,19 @@ def VectorPanel():
         """Convert if needed, then draw the archive with ``style``.
 
         Only the URL, the source layer and the bounds of the layer the workspace
-        returns are used: the map draws the archive itself.
+        returns are used: the map draws the archive itself. Behind a proxy the URL is
+        root-relative, and the browser reads it from the page's origin.
         """
         layer = await workspace.open_async(vector["source"])
-        source = VectorSource(uri=layer.url, format="PMTiles", layer=layer.list_layers()[0])
-        sepal_map.layer_store.add(
-            LayerSpec(id=key, name=layer_name, source=source, style=style), replace=True
+        spec = LayerSpec.from_vector(
+            layer.url,
+            format="PMTiles",
+            layer=layer.list_layers()[0],
+            id=key,
+            name=layer_name,
+            style=style,
         )
+        sepal_map.layer_store.add(spec, replace=True)
         (south, west), (north, east) = layer.bounds
         sepal_map.zoom_bounds((west, south, east, north))
 

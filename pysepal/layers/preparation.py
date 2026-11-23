@@ -29,6 +29,7 @@ from .spec import (
     TileSource,
     VectorSource,
     VectorStyle,
+    _on_page_origin,
     uri_to_path,
 )
 
@@ -65,8 +66,19 @@ class LayerPrepareError(Exception):
         self.layer_id = layer_id
 
 
-def _is_local(uri: str) -> bool:
-    return urlparse(uri).scheme in ("", "file")
+def _is_local(source: RasterSource | VectorSource) -> bool:
+    """Whether a source is a file on this machine.
+
+    A PMTiles source given as a root-relative URL is not: the browser fetches it from the
+    page's origin.
+    """
+    if urlparse(source.uri).scheme not in ("", "file"):
+        return False
+    return not (
+        isinstance(source, VectorSource)
+        and source.format == "PMTiles"
+        and _on_page_origin(source.uri)
+    )
 
 
 def local_files(spec: LayerSpec) -> list[Path]:
@@ -79,7 +91,7 @@ def local_files(spec: LayerSpec) -> list[Path]:
         The files, or ``[]`` for sources that are not local files.
     """
     source = spec.source
-    if not isinstance(source, (RasterSource, VectorSource)) or not _is_local(source.uri):
+    if not isinstance(source, (RasterSource, VectorSource)) or not _is_local(source):
         return []
     main = uri_to_path(source.uri)
     if isinstance(source, RasterSource):
@@ -131,7 +143,7 @@ def _check_supported(spec: LayerSpec) -> None:
                 "and ignores it"
             )
         return
-    if not _is_local(source.uri):
+    if not _is_local(source):
         if source.type == "raster":
             raise ValueError("remote rasters are not supported")
         return
@@ -144,7 +156,7 @@ def _check_supported(spec: LayerSpec) -> None:
 
 def _remote_pmtiles(spec: LayerSpec) -> RenderLayer | None:
     source = spec.source
-    if source.type != "vector" or source.format != "PMTiles" or _is_local(source.uri):
+    if source.type != "vector" or source.format != "PMTiles" or _is_local(source):
         return None
     return RenderLayer(
         render_hash=spec.render_hash,
@@ -158,7 +170,7 @@ def _remote_pmtiles(spec: LayerSpec) -> RenderLayer | None:
 def _read_vector(source: VectorSource) -> tuple[dict, tuple | None]:
     import geopandas as gpd
 
-    path = uri_to_path(source.uri) if _is_local(source.uri) else source.uri
+    path = uri_to_path(source.uri) if _is_local(source) else source.uri
     if source.format == "Parquet":
         gdf = gpd.read_parquet(path)
     else:
