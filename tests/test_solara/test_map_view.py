@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import ipyvuetify as v
+import pytest
 import solara
 
 from pysepal.frontend.styles import THEMES
@@ -270,6 +271,28 @@ def test_default_is_the_top_layer():
     m.compare = True
     assert picked(box, "left") == "c"
     assert picked(box, "right") == "b"
+    # the default follows the top until the user picks
+    m.compare = False
+    m.layer_store.move("a", 0)
+    assert picked(box) == "a"
+    rc.close()
+
+
+@pytest.mark.parametrize("arrival", [("b", "a"), ("a", "b")])
+def test_the_card_starts_on_the_top_layer_whatever_draws_last(arrival):
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b"):
+        m.layer_store.add(legend_tiles(layer_id))
+    # as while the layers prepare: the store holds them, the map draws neither yet
+    held = {layer_id: m.layer_engine._accepted.pop(layer_id) for layer_id in ("a", "b")}
+    m.layer_engine.flush()
+    assert m.state["layers"] == []
+    box, rc = solara.render(MapView(m), handle_error=False)
+    for layer_id in arrival:
+        m.layer_engine._accepted[layer_id] = held[layer_id]
+        m.layer_engine.flush()
+    assert listed(box) == ["b", "a"]
+    assert picked(box) == "b"
     rc.close()
 
 
@@ -306,12 +329,34 @@ def test_fallback_when_the_selected_layer_hides():
     pick(box, "all", "b")
     m.layer_store.set_visible("b", False)
     assert picked(box) == "c"
-    # the fallback stays when the layer comes back
+    # the user's pick comes back with the layer
     m.layer_store.set_visible("b", True)
+    assert picked(box) == "b"
+    # and survives an empty list
+    for layer_id in ("a", "b", "c"):
+        m.layer_store.set_visible(layer_id, False)
+    assert card(box) is None
+    for layer_id in ("a", "b", "c"):
+        m.layer_store.set_visible(layer_id, True)
+    assert picked(box) == "b"
+    m.layer_store.remove("b")
     assert picked(box) == "c"
+    rc.close()
+
+
+def test_a_pick_outside_the_left_half_survives_compare():
+    m = SepalMap(gee=False)
+    for layer_id, side in (("a", "both"), ("r", "right")):
+        m.layer_store.add(legend_tiles(layer_id), side=side)
+    box, rc = solara.render(MapView(m), handle_error=False)
     pick(box, "all", "a")
-    m.layer_store.remove("a")
-    assert picked(box) == "c"
+    pick(box, "all", "r")
+    m.compare = True
+    # the left half does not draw it, so it shows its top layer meanwhile
+    assert listed(box, "left") == ["a"]
+    assert picked(box, "left") == "a"
+    m.compare = False
+    assert picked(box) == "r"
     rc.close()
 
 
@@ -412,6 +457,10 @@ def test_a_card_hides_when_its_area_has_no_room():
     narrow = container_block("pysepal-legend (width < 120px)")
     assert f"{slot} .sepal-legend__body {{ display: none; }}" in narrow
     assert f"{slot} .sepal-legend {{ pointer-events: none; }}" in narrow
+    # the pill: the icon and the shown layer's name, without the chevron
+    assert f"{slot} .sepal-legend__chevron {{ display: none; }}" in narrow
+    assert f"{slot} .sepal-legend__bar-title {{ display: inline; }}" in narrow
+    assert ":last-child" not in narrow
     gone = container_block("pysepal-legend (width < 40px)")
     assert f"{slot} .sepal-legend {{ display: none; }}" in gone
 

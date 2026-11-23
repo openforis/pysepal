@@ -112,10 +112,14 @@
       <!-- px: the named icon sizes scale with the font; the icons take the
            bar's themed text colour -->
       <v-icon :size="16">mdi-map-legend</v-icon>
-      <span v-if="barTitle" class="sepal-legend__bar-title">{{
-        barTitle
-      }}</span>
-      <v-icon :size="12">{{
+      <!-- Rendered while expanded too, hidden by a class a host can override. -->
+      <span
+        v-if="displayTitle"
+        class="sepal-legend__bar-title"
+        :class="barTitleClasses"
+        >{{ displayTitle }}</span
+      >
+      <v-icon :size="12" class="sepal-legend__chevron">{{
         isCollapsed ? "mdi-chevron-up" : "mdi-chevron-down"
       }}</v-icon>
     </div>
@@ -227,8 +231,8 @@ module.exports = {
       if (!this.showSelector || this.selectedIndex < 0) return "";
       return this.selectedIndex + 1 + "/" + this.options.length;
     },
-    barTitle() {
-      return this.isCollapsed ? this.displayTitle : "";
+    barTitleClasses() {
+      return { "sepal-legend__bar-title--off": !this.isCollapsed };
     },
   },
   watch: {
@@ -363,6 +367,10 @@ module.exports = {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sepal-legend__bar-title--off {
+  display: none;
 }
 
 .sepal-legend__title {

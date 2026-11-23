@@ -126,12 +126,14 @@ CSS = """
   bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-right, 0px) + 10px);
   width: calc(100% - var(--pysepal-inset-right) - var(--psm-divider-x, 50%) - 20px);
 }
-/* An area under 140 px shows the card's bar only, which cannot open there; one under 60 px,
+/* An area under 140 px shows the card's bar only, with the layer's name, and the bar cannot
+   open there; one under 60 px,
    e.g. a half the divider has pushed to the edge, shows nothing. The root in each selector
    outranks Legend.vue's scoped rules, which ipyvue suffixes with an attribute. */
 @container pysepal-legend (width < 120px) {
   .pysepal-map-root > .pysepal-map-legend .sepal-legend__body { display: none; }
-  .pysepal-map-root > .pysepal-map-legend .sepal-legend__bar > :last-child { display: none; }
+  .pysepal-map-root > .pysepal-map-legend .sepal-legend__chevron { display: none; }
+  .pysepal-map-root > .pysepal-map-legend .sepal-legend__bar-title { display: inline; }
   .pysepal-map-root > .pysepal-map-legend .sepal-legend { pointer-events: none; }
 }
 @container pysepal-legend (width < 40px) {
@@ -200,8 +202,8 @@ def MapView(
         overlays: Elements or widgets to stack in each corner, after the built-in ones.
         legend: Show a legend card centred at the bottom of each area: the whole map, or each
             half of a compare. A card lists the visible layers its area draws that have a
-            legend, and shows one: the top one, a layer as soon as it appears, else the user's
-            pick.
+            legend, and shows one: the user's pick, or a layer added after the view mounted,
+            while it is listed, else the top one.
         status: Show a loading status while layers are pending, top-right.
     """
     store = map_.layer_store
@@ -260,11 +262,14 @@ def MapView(
         lambda: _legends(map_) if legend else None,
         [map_, legend, map_.state.get("revision"), map_.theme],
     )
+    # The user's picks and the new layers'; the top and the fallback are derived each render.
     selected, set_selected = solara.use_state({})
     collapsed, set_collapsed = solara.use_state({})
-    seen = solara.use_ref({"left": set(), "right": set()})
+    # The layers the store holds at mount are not new: the card starts on the top one,
+    # whichever the engine draws last.
+    seen = solara.use_ref({"left": set(store.ids), "right": set(store.ids)})
     areas = (("left", "right") if map_.state.get("compare") else ("all",)) if lists else ()
-    picks, slots = {}, []
+    fresh, slots = {}, []
     # The memo predates a removal the engine has not drawn yet.
     drawn = {
         area: [e for e in entries if e["id"] in store] for area, entries in (lists or {}).items()
@@ -276,9 +281,10 @@ def MapView(
         new = [layer_id for layer_id in ids if layer_id not in seen.current[keeper]]
         # The whole map's card would list the right half's layers too: none is new to it.
         seen.current[keeper].update(e["id"] for e in drawn["all" if keeper == "left" else area])
+        if new:
+            fresh[keeper] = new[0]
         current = selected.get(keeper)
         pick = new[0] if new else current if current in ids else next(iter(ids), None)
-        picks[keeper] = pick
         children = []
         if pick is not None:
             shown = entries[ids.index(pick)]
@@ -303,12 +309,12 @@ def MapView(
             ).key(f"legend-{area}")
         )
 
-    # A new layer or a fallback stays the area's pick once it is no longer new.
-    def keep_picks():
-        if any(selected.get(keeper) != pick for keeper, pick in picks.items()):
-            set_selected(lambda previous: {**previous, **picks})
+    # A new layer stays the area's pick once it is no longer new, as if the user picked it.
+    def keep_fresh():
+        if fresh:
+            set_selected(lambda previous: {**previous, **fresh})
 
-    solara.use_effect(keep_picks, [tuple(picks.items())])
+    solara.use_effect(keep_fresh, [tuple(fresh.items())])
 
     # The widget sets the corner heights inline on the fullscreen root, so the root binds no
     # style: Vue would then rewrite it.

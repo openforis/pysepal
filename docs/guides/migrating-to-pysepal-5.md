@@ -254,8 +254,8 @@ over the map. `MapApp` builds all three for you.
 - **Legends and loading status are in the `MapView`.** One legend card sits
   centred at the bottom of the map, or of each half while the map compares. It
   lists the visible layers of its area that have a legend, built from each
-  layer's legend, and shows one at a time: a dropdown picks it, and a layer
-  that appears is shown at once. A status badge at the top right counts the
+  layer's legend, and shows one at a time: the top one, the one picked in its
+  dropdown, or a layer the app has just added. A status badge at the top right counts the
   layers still loading. Overlays you add are placed
   in the corner you name, inside the map's insets.
 

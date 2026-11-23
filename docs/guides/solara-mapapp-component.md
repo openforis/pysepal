@@ -131,14 +131,15 @@ the map has measured them.
 controls there (`MapView(legend=False)` turns it off):
 
 - It lists the visible layers that have a legend, top first, and shows one: the
-  top one at first, then the user's pick in its dropdown. A layer that appears
-  for the first time is shown at once. When the shown layer is hidden or
-  removed, the card shows the top one.
+  top one until the user picks one in its dropdown. A layer added after the
+  view mounted is shown at once, as if picked. While the picked layer is hidden,
+  the card shows the top one, and it shows the pick again when the layer comes
+  back.
 - The card follows the map's insets, so it stays centred between the drawer
   and the panel, and in fullscreen it centres on the whole screen.
 - A long legend scrolls inside the card, which takes at most 40 % of the map's
-  height. In an area narrower than 140 px only the card's bar shows, and in
-  one narrower than 60 px nothing.
+  height. In an area narrower than 140 px only the card's bar shows, with the
+  layer's name, and in one narrower than 60 px nothing.
 
 ### The inspector, and the draw toolbar the map draws
 

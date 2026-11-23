@@ -95,7 +95,7 @@ def test_bar_icons_have_pixel_sizes_and_no_theme_props():
     """Named icon sizes scale with the font; the icons take the bar's themed text colour."""
     markup = re.sub(r"<!--.*?-->", "", _TEMPLATE.read_text().split("<script>")[0], flags=re.DOTALL)
     icons = re.findall(r"<v-icon\b([^>]*)>", markup)
-    assert icons == [' :size="16"', ' :size="12"']
+    assert icons == [' :size="16"', ' :size="12" class="sepal-legend__chevron"']
 
 
 @needs_node
@@ -251,14 +251,20 @@ def test_collapsed_bar_shows_the_title():
         return [true, false].map((collapsed) => {{
           const vm = makeVm({{ collapsed, selector_options: {_OPTIONS!r}, selected: "gain" }});
           options.created.call(vm);
-          return vm.barTitle;
+          return vm.barTitleClasses;
         }});
         """,
     )
-    assert shown == ["Gain", ""]
+    off = "sepal-legend__bar-title--off"
+    assert shown == [{off: False}, {off: True}]
 
-    assert "{{ barTitle }}" in _markup().split('class="sepal-legend__bar"')[1]
+    # Rendered while expanded too, so a host can show it, e.g. in a map area too narrow to open.
+    bar = _markup().split('class="sepal-legend__bar"')[1]
+    assert "{{ displayTitle }}" in bar.split("sepal-legend__bar-title")[1]
+    assert "display: none" in _rule(f".{off}")
     assert "text-overflow: ellipsis" in _rule(".sepal-legend__bar-title")
+    # A host can hide the chevron by its class.
+    assert 'class="sepal-legend__chevron"' in bar
 
 
 def test_labels_default_to_messages():
