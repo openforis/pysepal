@@ -33,7 +33,7 @@ const FULLSCREEN_ROOT = "data-psm-fullscreen-root";
 /** Set on the element the fullscreen control filled, while it is fullscreen. */
 const FULLSCREEN = "data-psm-fullscreen";
 /** Set on the element that holds the corner heights, to the measuring view's id. */
-const CONTROLS = "data-psm-controls";
+export const CONTROLS = "data-psm-controls";
 
 /** The variable that holds the height of a control corner. */
 const cornerVariable = (position: ControlPosition) =>
@@ -48,7 +48,7 @@ const CORNERS: [ControlPosition, "top" | "bottom", "left" | "right"][] = [
 ];
 
 /** What fullscreen fills for a map: its closest marked ancestor, or itself. */
-function fullscreenTarget(el: HTMLElement): HTMLElement {
+export function fullscreenTarget(el: HTMLElement): HTMLElement {
   return el.closest<HTMLElement>(`[${FULLSCREEN_ROOT}]`) ?? el;
 }
 

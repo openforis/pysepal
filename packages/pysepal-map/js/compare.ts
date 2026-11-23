@@ -1,6 +1,7 @@
 /// <reference types="geojson" />
 import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 
+import { CONTROLS, fullscreenTarget } from "./controls";
 import { MIRROR_SOURCE, mirrorLayers } from "./draw";
 import { installImages } from "./images";
 import { MapSync, type ViewModel } from "./maplive";
@@ -9,6 +10,9 @@ import type { DrawFeature, MapState, ViewSide } from "./types";
 import { NO_INSETS, type Insets } from "./view";
 
 const RIGHT = "right";
+
+/** The variable that holds the divider's x, in px from the fullscreen target's left edge. */
+const DIVIDER_VARIABLE = "--psm-divider-x";
 
 type Paint = Parameters<MapLibreMap["setPaintProperty"]>;
 
@@ -136,6 +140,8 @@ export class CompareView {
   private insets: Insets = NO_INSETS;
   /** The pointer dragging the handle, and where it took hold of the divider. */
   private grab: { pointerId: number; offset: number } | null = null;
+  /** The element holding the divider variable this view last set. */
+  private published: HTMLElement | null = null;
 
   constructor(private readonly options: CompareViewOptions) {
     options.model.on("change:state", this.onState);
@@ -315,6 +321,7 @@ export class CompareView {
     this.grab = null;
     right.divider.remove();
     right.handle.remove();
+    this.unpublish();
   }
 
   /** Draw the drawing on the right map: in place, or anew on a new style. */
@@ -354,6 +361,7 @@ export class CompareView {
     if (!right) return;
     const { root } = this.options;
     const x = this.x();
+    this.publish(x);
     right.container.style.clipPath = `inset(0 0 0 ${x}px)`;
     right.divider.style.left = `${x}px`;
     right.handle.style.left = `${x}px`;
@@ -365,6 +373,23 @@ export class CompareView {
       "aria-valuenow",
       String(Math.round(this.fraction * 100))
     );
+  }
+
+  // Resolved each time, as ViewControls does: the view may join the page late.
+  private publish(x: number): void {
+    const target = fullscreenTarget(this.options.root);
+    if (this.published !== target) this.unpublish();
+    target.style.setProperty(DIVIDER_VARIABLE, `${x}px`);
+    this.published = target;
+  }
+
+  // Only while the target is still marked as this view's: a newer view's
+  // variable stays.
+  private unpublish(): void {
+    const el = this.published;
+    this.published = null;
+    if (el?.getAttribute(CONTROLS) !== this.options.viewId) return;
+    el.style.removeProperty(DIVIDER_VARIABLE);
   }
 
   private moveTo(fraction: number): void {

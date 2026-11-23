@@ -90,6 +90,25 @@ class FakeDocument {
   }
 }
 
+/** An element that holds CSS variables and attributes, as the fullscreen root does. */
+class FakeTarget {
+  readonly variables = new Map<string, string>();
+  readonly attributes = new Map<string, string>();
+  readonly style = {
+    setProperty: (name: string, value: string) =>
+      void this.variables.set(name, value),
+    removeProperty: (name: string) => void this.variables.delete(name),
+  };
+
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, value);
+  }
+
+  getAttribute(name: string) {
+    return this.attributes.get(name) ?? null;
+  }
+}
+
 /** A map with a camera, a canvas and the image resolver, over FakeMapLibre. */
 class FakeViewMap extends FakeMapLibre {
   center = { lng: 0, lat: 0 };
@@ -153,7 +172,10 @@ function rightReporter(map: FakeMapLibre, side: "main" | "right") {
 async function setup(initial: MapState, failing = () => false) {
   const model = new FakeModel(initial);
   const document = new FakeDocument();
-  const root = {
+  const root = Object.assign(new FakeTarget(), {
+    /** The fullscreen root above the view, if any; else the root is its own. */
+    mount: null as FakeTarget | null,
+    closest: () => root.mount,
     dataset: {} as Record<string, string>,
     ownerDocument: document,
     clientWidth: 1000,
@@ -164,7 +186,7 @@ async function setup(initial: MapState, failing = () => false) {
       root.appended.push(...elements);
     },
     getBoundingClientRect: () => ({ left: 50, top: 20 }),
-  };
+  });
   const element = root as unknown as HTMLElement;
   const messages: any[] = [];
   const send = (content: any) => {
@@ -695,6 +717,66 @@ describe("CompareView", () => {
     model.set(compareState(3));
     expect(handle().getAttribute("aria-valuenow")).toBe("45");
     expect(clip()).toBe("inset(0 0 0 450px)");
+  });
+});
+
+describe("the divider variable", () => {
+  const VARIABLE = "--psm-divider-x";
+  const mark = (target: FakeTarget, id: string) =>
+    target.setAttribute("data-psm-controls", id);
+
+  it("is on the root itself without a fullscreen root, from the first open", async () => {
+    const { root } = await setup(compareState(1));
+    expect(root.variables.get(VARIABLE)).toBe("500px");
+  });
+
+  it("moves it with the divider", async () => {
+    const { root, handle } = await setup(compareState(1));
+    handle().fire("keydown", { key: "ArrowLeft" });
+    expect(root.variables.get(VARIABLE)).toBe("450px");
+    handle().fire("pointerdown", { pointerId: 1, clientX: 50 + 450 });
+    handle().fire("pointermove", { pointerId: 1, clientX: 50 + 700 });
+    expect(root.variables.get(VARIABLE)).toBe("700px");
+    handle().fire("keydown", { key: "End" });
+    expect(root.variables.get(VARIABLE)).toBe("1000px");
+  });
+
+  it("follows a resize and new insets", async () => {
+    const { root, compare } = await setup(compareState(1));
+    compare.setInsets(INSETS);
+    expect(root.variables.get(VARIABLE)).toBe("600px");
+    root.clientWidth = 600;
+    compare.resize();
+    expect(root.variables.get(VARIABLE)).toBe("400px");
+  });
+
+  it("publishes the divider on the fullscreen root", async () => {
+    const mount = new FakeTarget();
+    const { root, model, compare } = await setup(state(1));
+    root.mount = mount;
+    model.set(compareState(2));
+    expect(mount.variables.get(VARIABLE)).toBe("500px");
+    expect(root.variables.has(VARIABLE)).toBe(false);
+    compare.setInsets(INSETS);
+    expect(mount.variables.get(VARIABLE)).toBe("600px");
+  });
+
+  it("removes it on close and dispose", async () => {
+    const { root, model, compare } = await setup(compareState(1));
+    mark(root, "view-1");
+    model.set(state(2));
+    expect(root.variables.has(VARIABLE)).toBe(false);
+    model.set(compareState(3));
+    expect(root.variables.get(VARIABLE)).toBe("500px");
+    compare.dispose();
+    expect(root.variables.has(VARIABLE)).toBe(false);
+  });
+
+  it("leaves a newer view's divider variable", async () => {
+    const { root, model } = await setup(compareState(1));
+    mark(root, "view-2");
+    model.set(state(2));
+    expect(root.variables.get(VARIABLE)).toBe("500px");
   });
 });
 

@@ -281,8 +281,10 @@ are set inline as ``--psm-controls-top-left``, ``--psm-controls-top-right``,
 ``--psm-controls-bottom-left`` and ``--psm-controls-bottom-right``, with
 ``data-psm-controls`` set to the view's id, so a host's overlays can clear
 the controls. A view removes them when it goes, unless a newer view has
-measured there since. A host must not bind the fullscreen root's ``style``:
-rewriting it drops the heights.
+measured there since. While compare is on, the same element also holds
+``--psm-divider-x``, the divider's x in CSS pixels from its left edge, which
+follows every move of the divider and is removed under the same rule. A host
+must not bind the fullscreen root's ``style``: rewriting it drops them.
 """
 
 from __future__ import annotations

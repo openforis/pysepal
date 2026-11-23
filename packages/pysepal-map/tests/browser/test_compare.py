@@ -403,6 +403,26 @@ def test_divider_drag_clips_without_panning(harness, page_session, wait_settled)
     assert after["y"] + after["height"] / 2 == pytest.approx(y, abs=1)
 
 
+def test_divider_variable_follows_the_drag(harness, page_session, wait_settled):
+    el = compare_view(page_session, wait_settled, MapWidget())
+    read = """el => ({
+        variable: parseFloat(getComputedStyle(el).getPropertyValue('--psm-divider-x')),
+        divider: el.querySelector('.psm-compare-divider').getBoundingClientRect().left
+            - el.getBoundingClientRect().left,
+    })"""
+    start = el.evaluate(read)
+    assert start["variable"] == pytest.approx(width_of(el) / 2, abs=1)
+
+    x, y = center_of(page_session, page_session.locator(HANDLE))
+    page_session.mouse.move(x, y)
+    page_session.mouse.down()
+    page_session.mouse.move(x - 100, y, steps=10)
+    page_session.mouse.up()
+    after = el.evaluate(read)
+    assert after["variable"] == pytest.approx(start["variable"] - 100, abs=1)
+    assert after["variable"] == pytest.approx(after["divider"], abs=1)
+
+
 def test_divider_keyboard(harness, page_session, wait_settled):
     el = compare_view(page_session, wait_settled, MapWidget())
     width = width_of(el)
