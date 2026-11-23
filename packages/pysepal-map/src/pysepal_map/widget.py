@@ -528,7 +528,6 @@ class MapWidget(anywidget.AnyWidget):
         first :attr:`link_group`; a group that has a camera replaces
         ``center`` and ``zoom`` with it.
         """
-        self._link_scope = _kernel_scope()
         # Set before anything can raise, since close() reads them.
         self._lock = threading.RLock()
         self._closed = False
@@ -544,6 +543,7 @@ class MapWidget(anywidget.AnyWidget):
         self._late: set[View] = set()
         # (view_id, side) -> layer id -> that view's report on the layer
         self._reports: dict[View, dict[str, LayerStatus]] = {}
+        self._link_scope = _kernel_scope()
         self._status: dict[str, LayerStatus] = {}
         self._status_callbacks: list[StatusCallback] = []
         self._view_callbacks: list[ViewCallback] = []

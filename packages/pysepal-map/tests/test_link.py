@@ -411,6 +411,19 @@ class Failing(MapWidget):
         super().__init__(height=3, **kwargs)
 
 
+def test_a_map_whose_link_scope_failed_can_still_close(monkeypatch):
+    def fail():
+        raise RuntimeError("no kernel")
+
+    monkeypatch.setattr(widget, "_kernel_scope", fail)
+    refs = []
+    # Held, so the half-built map lives until it is closed here, not by __del__.
+    with pytest.raises(RuntimeError, match="no kernel") as failure:
+        Failing(refs, link_group="g")
+    refs[0]().close()
+    del failure
+
+
 @pytest.mark.parametrize("how", ["closed", "failed"])
 def test_collecting_a_dropped_map_takes_no_link_lock(monkeypatch, how):
     # A fresh lock, so a deadlock here cannot hang the tests after it.
