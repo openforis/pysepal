@@ -132,7 +132,7 @@ bar: it is the map's declared state.
 | `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                                                          | `MapView` shows layer loading                                                                                                                                  |
 | `LegendControl`, `m.add_legend`, `m.add_colorbar`                                                                                 | the `MapView` legend, built from each layer's legend                                                                                                           |
 | `MenuControl`                                                                                                                     | Solara components in `MapView(overlays=...)`                                                                                                                   |
-| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.enable(modes)`, `m.draw.disable()`, `m.draw.start(mode)`, `m.on_draw(cb)`, `m.draw.set(features)`, `m.draw.features`                                   |
+| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.begin(modes)` and the `DrawSession` it returns (`features`, `set`, `clear`, `end`, `on_change`)                                                        |
 | `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`                                                 | `SepalMap(inspector=True)`, shown by `MapView`                                                                                                                 |
 | `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                                                                |
 | mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                                                   |
@@ -147,7 +147,7 @@ Notes on the interaction replacements:
 
 - **Coordinates are `lng, lat`.** ipyleaflet used `[lat, lon]`; a `ClickEvent`,
   the drawn features and `LayerSpec.from_points` use longitude first.
-- **Callback shapes changed.** `m.on_draw(cb)` calls `cb(collection)` with one
+- **Callback shapes changed.** A session's `on_change(collection)` gets one
   GeoJSON FeatureCollection of everything drawn, not ipyleaflet's
   `(target, action, geo_json)`. `m.on_click(cb)` calls `cb(event)` with one
   `ClickEvent`, not the `**kwargs` of `on_interaction`.
@@ -168,7 +168,7 @@ Notes on the interaction replacements:
 - **Clusters hold only points.** The names `cluster`, `cluster_id`,
   `point_count` and `point_count_abbreviated` are reserved on a clustered layer.
 - **Drawing.** `AoiView` offers DRAW on a `SepalMap` again. A polygon with holes
-  cannot be drawn or given to `m.draw.set` (it raises), and drawings across the
+  cannot be drawn or given to `session.set` (it raises), and drawings across the
   antimeridian are not supported.
 - **The inspector is opt-in.** `SepalMap(inspector=True)` builds it, and every
   `MapView` of the map shows its toggle and card. It reads Earth Engine images

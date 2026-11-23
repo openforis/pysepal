@@ -1,6 +1,6 @@
 """A generic MapLibre GL JS anywidget."""
 
-from ._draw import DRAW_MODES, RESERVED_PROPERTIES, Draw
+from ._draw import DRAW_MODES, Draw, DrawSession
 from ._events import ClickEvent, FeatureHit
 from .state import (
     Basemap,
@@ -26,6 +26,7 @@ __all__ = [
     "Cluster",
     "Controls",
     "Draw",
+    "DrawSession",
     "FeatureHit",
     "GeoJSONSource",
     "Interaction",
@@ -34,7 +35,6 @@ __all__ = [
     "MapState",
     "MapWidget",
     "PMTilesSource",
-    "RESERVED_PROPERTIES",
     "RasterSource",
     "Side",
     "VectorPaint",

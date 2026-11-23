@@ -7,7 +7,6 @@ from datetime import datetime as dt
 from typing import Any, Dict, Optional
 
 import geopandas as gpd
-from pysepal_map import RESERVED_PROPERTIES
 
 from pysepal.message import msg
 from pysepal.scripts import utils as su
@@ -15,8 +14,9 @@ from pysepal.scripts.gee_interface import refuse_ambient_session_per_connection
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 
-# What Terra Draw puts in a feature's properties, besides the style the old control added.
-_DRAWING_PROPERTIES = RESERVED_PROPERTIES | {"style", "radiusKilometers"}
+# What a drawn feature carries besides the caller's own properties: the map drops the
+# other names Terra Draw reserves.
+_DRAWING_PROPERTIES = frozenset({"mode", "radiusKilometers", "style"})
 
 
 def process_draw(

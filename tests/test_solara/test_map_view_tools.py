@@ -23,17 +23,17 @@ def test_toolbar_hidden_until_enabled():
     box, rc = render(m)
     assert mode_buttons(box) == []
     assert _attr(role_widgets(box, "map-draw")[0], "data-idle") is not None
-    m.draw.enable(["polygon", "point"])
+    session = m.draw.begin(["polygon", "point"])
     assert [_attr(b, "data-mode") for b in mode_buttons(box)] == ["polygon", "point", "select"]
     assert _attr(role_widgets(box, "map-draw")[0], "data-idle") is None
-    m.draw.disable()
+    session.end()
     assert mode_buttons(box) == []
     rc.close()
 
 
 def test_toolbar_starts_and_stops_modes():
     m = SepalMap(gee=False)
-    m.draw.enable(["polygon", "circle"], edit=False)
+    m.draw.begin(["polygon", "circle"], edit=False)
     box, rc = render(m)
     click(mode_buttons(box)[0])
     assert m.draw.mode == "polygon"
@@ -46,14 +46,17 @@ def test_toolbar_starts_and_stops_modes():
     rc.close()
 
 
-def test_clear_button_clears():
+def test_clear_button_clears_the_active_session():
     m = SepalMap(gee=False)
-    m.draw.enable(["polygon"])
+    square = [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]
+    polygon = {"type": "Polygon", "coordinates": [square]}
+    session = m.draw.begin(["polygon"], features=[{"type": "Feature", "geometry": polygon}])
     seq = m.draw_request["seq"]
     box, rc = render(m)
     click(role_widgets(box, "draw-clear")[0])
     assert m.draw_request["seq"] == seq + 1
     assert m.draw_request["features"] == []
+    assert session.active and session.features["features"] == []
     rc.close()
 
 

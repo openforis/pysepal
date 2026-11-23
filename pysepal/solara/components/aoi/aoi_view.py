@@ -63,10 +63,8 @@ __all__ = ["AoiResult", "AoiView", "MethodSelect"]
 
 log = logging.getLogger(__name__)
 
-# Who holds a map's drawing tools, and who drew the AOI outline of a store: one token per
-# AoiView, so a view another one took over from never clears or disables what is now the
-# newer owner's.
-_DRAW_OWNERS: "weakref.WeakKeyDictionary[Draw, object]" = weakref.WeakKeyDictionary()
+# Who drew the AOI outline of a store: one token per AoiView, so a view another one took
+# over from never removes what is now the newer owner's.
 _OUTLINE_OWNERS: "weakref.WeakKeyDictionary[LayerStore, object]" = weakref.WeakKeyDictionary()
 _DRAW_MODES = ("polygon", "rectangle", "circle")
 
@@ -390,6 +388,8 @@ def AoiView(
     # drawing the tools could not take (a polygon with holes), kept for submit.
     draw_tick = solara.use_reactive(0)
     draw_fallback = solara.use_reactive(None)
+    # The drawing session this view began; a newer session on the map ends it.
+    draw_session = solara.use_ref(None)
     allowed_countries = None if countries is None else {str(code) for code in countries}
 
     # Restore and unmount bookkeeping; see Note in the docstring.
@@ -421,34 +421,24 @@ def AoiView(
         for layer_id in (AOI_LAYER_ID, AOI_PREVIEW_LAYER_ID):
             store.remove(layer_id, missing_ok=True)
 
+    def on_user_edit(_collection):
+        draw_fallback.set(None)
+
     def _owns_draw() -> bool:
-        return aoi_draw is not None and _DRAW_OWNERS.get(aoi_draw) is token
+        session = draw_session.current
+        return session is not None and session.active
 
-    def _acquire_draw(setup):
-        # The token goes first: the previous owner renders again on the changes ``setup``
-        # makes, and must already see itself as a non-owner. A failure hands the tools back.
-        previous = _DRAW_OWNERS.get(aoi_draw)
-        _DRAW_OWNERS[aoi_draw] = token
-        try:
-            setup()
-        except BaseException:
-            if previous is None:
-                _DRAW_OWNERS.pop(aoi_draw, None)
-            else:
-                _DRAW_OWNERS[aoi_draw] = previous
-            raise
-
-    def _take_draw():
-        def setup():
-            aoi_draw.clear()
-            aoi_draw.enable(_DRAW_MODES)
-
-        _acquire_draw(setup)
+    def _take_draw(features=None):
+        draw_session.current = aoi_draw.begin(
+            _DRAW_MODES, features=features, on_change=on_user_edit
+        )
+        # The traits the begin wrote rendered this view before it held the session.
+        draw_tick.set(draw_tick.peek() + 1)
 
     def _sync_draw_control(active_method: str = "", *, retry: bool = False):
-        """Hold the drawing tools for DRAW, and let them go for any other method.
+        """Hold a drawing session for DRAW, and end it for any other method.
 
-        ``retry``: DRAW stays selected, so the tools stay on and are only cleared.
+        ``retry``: DRAW stays selected, so the session goes on and is only cleared.
         """
         if aoi_draw is None:
             return
@@ -457,11 +447,11 @@ def AoiView(
                 if not retry:
                     _take_draw()
                 elif _owns_draw():
-                    aoi_draw.clear()
-            elif _owns_draw():
-                aoi_draw.clear()
-                aoi_draw.disable()
-                _DRAW_OWNERS.pop(aoi_draw, None)
+                    draw_session.current.clear()
+            elif draw_session.current is not None:
+                # A session a newer one ended stays ended: this leaves the newer one be.
+                draw_session.current.end()
+                draw_session.current = None
         except Exception:
             log.exception("The drawing tools could not be synced")
 
@@ -469,7 +459,7 @@ def AoiView(
         """The drawing this view may submit: nothing unless it holds the tools."""
         if not _owns_draw():
             return {"type": "FeatureCollection", "features": []}
-        return draw_fallback.value or aoi_draw.features
+        return draw_fallback.value or draw_session.current.features
 
     def _cancel_pending_run():
         """Stop a run in flight, unless the run itself is what asked.
@@ -754,23 +744,17 @@ def AoiView(
 
     def _seed_draw(geo_json):
         # The restored AOI stays editable. Tools that cannot take it (a polygon with
-        # holes) leave the drawing empty, and the spec's GeoJSON stands in for it.
+        # holes) begin empty, and the spec's GeoJSON stands in for it.
         if aoi_draw is None:
             return
         fallback = None
-
-        def setup():
-            nonlocal fallback
-            aoi_draw.clear()
+        try:
             try:
-                aoi_draw.set((geo_json or {}).get("features") or [])
+                _take_draw((geo_json or {}).get("features") or [])
             except ValueError:
                 log.warning("The drawn AOI cannot be edited on the map", exc_info=True)
                 fallback = geo_json
-            aoi_draw.enable(_DRAW_MODES)
-
-        try:
-            _acquire_draw(setup)
+                _take_draw()
         except Exception:
             log.exception("The drawing tools could not be seeded")
         draw_fallback.set(fallback)
@@ -866,22 +850,17 @@ def AoiView(
         def on_change(_change=None):
             draw_tick.set(draw_tick.peek() + 1)
 
-        def on_user_edit(_features):
-            draw_fallback.set(None)
-
-        # After a map swap the new tools are taken here; the cleanup above let the old go.
+        # After a map swap the new tools are taken here; the cleanup above ended the old.
         if selected_method.peek() == "DRAW" and not _owns_draw():
             try:
                 _take_draw()
             except Exception:
                 log.exception("The drawing tools could not be taken")
         map_.observe(on_change, names=["drawn", "draw_request"])
-        map_.on_draw(on_user_edit)
         on_change()
 
         def stop():
             map_.unobserve(on_change, names=["drawn", "draw_request"])
-            map_.on_draw(on_user_edit, remove=True)
 
         return stop
 

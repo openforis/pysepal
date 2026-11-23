@@ -159,9 +159,9 @@ def test_the_select_button_waits_for_a_drawing():
     _session(_Harness, scenario)
 
 
-def test_selecting_draw_clears_and_enables_the_tools_and_leaving_disables_them():
+def test_selecting_draw_begins_an_empty_session_and_leaving_ends_it():
     sepal_map = _draw_map()
-    sepal_map.draw.set([drawn_feature()])
+    app = sepal_map.draw.begin(features=[drawn_feature()])
 
     @solara.component
     def _Harness():
@@ -169,10 +169,13 @@ def test_selecting_draw_clears_and_enables_the_tools_and_leaving_disables_them()
 
     async def scenario(root):
         _pick(root, msg("aoi_sel.method"), "DRAW")
+        assert not app.active
         assert sepal_map.draw.modes == ("polygon", "rectangle", "circle", "select")
         assert sepal_map.draw.features["features"] == []
+        picker = sepal_map.draw._session
 
         _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        assert not picker.active and sepal_map.draw._session is None
         assert sepal_map.draw.modes == ()
 
     _session(_Harness, scenario)
@@ -223,10 +226,9 @@ def test_a_drawing_submits_without_the_properties_terra_draw_adds():
     _session(_Harness, scenario)
 
 
-def test_unmounting_an_admin_only_view_leaves_the_apps_own_drawing():
+def test_an_admin_picker_leaves_an_app_session():
     sepal_map = _draw_map()
-    sepal_map.draw.set([drawn_feature()])
-    sepal_map.draw.enable(("point",))
+    app = sepal_map.draw.begin(("point",), features=[drawn_feature()])
 
     @solara.component
     def _Harness():
@@ -235,12 +237,14 @@ def test_unmounting_an_admin_only_view_leaves_the_apps_own_drawing():
     async def run():
         root, rc = reacton.render(_Harness(), handle_error=False)
         _pick(root, msg("aoi_sel.method"), "ADMIN0")
+        assert app.active
         rc.close()
 
     asyncio.run(run())
 
+    assert app.active and sepal_map.draw._session is app
     assert sepal_map.draw.modes == ("point", "select")
-    assert len(sepal_map.draw.features["features"]) == 1
+    assert len(app.features["features"]) == 1
 
 
 def test_swapping_the_map_moves_the_tools_and_the_external_clear():

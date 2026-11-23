@@ -188,29 +188,51 @@ so. Each remembers the source id of its feature and closes when that source is
 no longer declared, its layer is hidden, or the layer no longer declares it.
 The click message is sent whether or not a popup opens.
 
-Drawing. ``drawing`` declares the tools: ``modes`` (empty while drawing is
-off, else drawing modes with ``select`` last when editing is on), ``mode``
-(``static`` or one of ``modes``) and ``color``. Drawing is interactive while
-``mode`` is not ``static``. The browser owns the drawn features, like the
-camera. ``draw.set`` and ``draw.clear`` write ``draw_request``, ``{"seq",
-"features"}``, whose ``seq`` only grows from 0, and ``drawn``, ``{"request_seq",
-"features"}``, mirrors the last accepted report. Each view runs its own Terra
-Draw 1.39 while ``modes`` is not empty, with every drawing mode registered,
-and keeps its features while drawing is off. On its first start it restores
-``drawn`` when ``drawn.request_seq >= draw_request.seq``, else applies the
-request; on a later one it restores its own features unless a newer request
-came. Applying a request replaces its features and sends a ``draw_report``
-with cause ``request``; a user's finished drawing or edit, or deletion, sends
-one with cause ``user``, on the request it last applied. A report carries
-``request_seq``, ``cause`` and ``features``: committed Polygon, LineString and
-Point features only (no helper or in-progress geometry, no selection flags),
-each moved by whole turns so its first vertex lies in [-180, 180] and rounded
-to 9 decimals; one that still crosses the antimeridian is left out. Python
-accepts a report only from a mounted view on the current request; once a user
-report was accepted on it, an acknowledgement from any view is dropped. A
-feature that ``draw.set`` would not accept is dropped from a report, and a
-user report runs the ``on_draw`` callbacks. Terra Draw's sources and layers
-have ids starting with ``psm-draw-`` and stay above every owned layer.
+Drawing. ``drawing`` declares the tools: ``session``, ``modes`` (empty while
+no session is active, else drawing modes with ``select`` last when editing is
+on), ``mode`` (``static`` or one of ``modes``) and ``color``. Drawing is
+interactive while ``mode`` is not ``static``. Python holds the tools through
+sessions, one at a time: ``draw.begin`` ends the active session and begins the
+next, numbered in ``session`` from 1 (0 before the first), and
+``DrawSession.end`` clears the drawing and hides the tools. The browser owns
+the drawn features, like the camera. ``begin``, ``end`` and a session's
+``set`` and ``clear`` write ``draw_request``, ``{"seq", "features"}``, whose
+``seq`` only grows from 0; ``begin`` and ``end`` write it with ``drawing`` in
+one message, ``end`` with no features, so the reports of an ended session are
+dropped. ``drawn``, ``{"request_seq", "features"}``, mirrors the last accepted
+report. Python checks the shapes it requests: one closed ring of 4 positions
+or more per polygon, lines of 2 or more, finite positions on the globe and
+JSON properties. It splits Multi* geometries and keeps ids, properties and
+coordinates as given.
+
+Each view runs its own Terra Draw 1.39 while ``modes`` is not empty, with every
+drawing mode registered, and prepares each feature before it adds it: it
+rounds the coordinates to 9 decimals, drops Terra Draw's reserved property
+names but ``mode``, replaces a ``mode`` that does not draw the geometry with
+the geometry's own, and replaces an id that is not a UUID4 string, or repeats
+one of the batch, with ``SSSSSSSS-0000-4000-8000-IIIIIIIIIIII``: the batch's
+seq in 8 hex digits and the feature's index in 12. The seq is the request's,
+or ``drawn.request_seq`` on a restore, so every view gives the same ids. On its
+first start a view restores ``drawn`` when ``drawn.request_seq >=
+draw_request.seq``, else applies the request. A new ``session`` stops its
+Terra Draw, drops its features and starts it empty, then applies the request
+if it is newer than the last one the view applied, which ``begin`` always
+makes it. ``modes`` going empty stops it and drops its features. A restart in
+one session, after a style replacement, restores the view's own features
+unless a newer request came. A view applies a request only while it runs the
+session ``drawing`` names, with tools. Applying a request replaces its
+features and sends a ``draw_report`` with cause ``request``; a user's finished
+drawing or edit, or deletion, sends one with cause ``user``, on the request it
+last applied. A report carries ``request_seq``, ``cause`` and ``features``:
+committed Polygon, LineString and Point features only (no helper or
+in-progress geometry, no reserved names but ``mode``), each moved by whole
+turns so its first vertex lies in [-180, 180] and rounded to 9 decimals; one
+that still crosses the antimeridian is left out. Python accepts a report only
+from a mounted view on the current request; once a user report was accepted
+on it, an acknowledgement from any view is dropped. A feature whose shape
+Python would not request is dropped from a report, and a user report runs the
+active session's ``on_change``. Terra Draw's sources and layers have ids
+starting with ``psm-draw-`` and stay above every owned layer.
 
 Insets. ``insets`` holds the CSS pixels other UI covers on each side of the
 map element, as ``left``, ``right``, ``top`` and ``bottom``, all 0 at first. A
@@ -293,7 +315,6 @@ VIEW_GRACE_S = 10.0
 StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
 ViewCallback = Callable[[dict], Any]
 ClickCallback = Callable[[ClickEvent], object]
-DrawCallback = Callable[[dict], object]
 CURSORS = ("", "crosshair", "pointer", "wait")
 View = tuple[str, str]
 
@@ -479,7 +500,6 @@ class MapWidget(anywidget.AnyWidget):
         self._status_callbacks: list[StatusCallback] = []
         self._view_callbacks: list[ViewCallback] = []
         self._click_callbacks: list[ClickCallback] = []
-        self._draw_callbacks: list[DrawCallback] = []
         # The request a user report was accepted on: acknowledgements of it lose.
         self._draw_user_seq: int | None = None
         self._draw = Draw(self)
@@ -534,7 +554,7 @@ class MapWidget(anywidget.AnyWidget):
 
     @traitlets.default("drawing")
     def _default_drawing(self) -> dict:
-        return {"modes": [], "mode": STATIC, "color": DEFAULT_COLOR}
+        return {"session": 0, "modes": [], "mode": STATIC, "color": DEFAULT_COLOR}
 
     @traitlets.default("draw_request")
     def _default_draw_request(self) -> dict:
@@ -650,19 +670,6 @@ class MapWidget(anywidget.AnyWidget):
                     self._click_callbacks.remove(callback)
             elif callback not in self._click_callbacks:
                 self._click_callbacks.append(callback)
-
-    def on_draw(self, callback: DrawCallback, remove: bool = False) -> None:
-        """Call ``callback(features)`` with a FeatureCollection on each drawing a user made.
-
-        It runs once per accepted report whose cause is ``"user"``, never for
-        the acknowledgement of a ``draw.set``. ``remove=True`` unregisters it.
-        """
-        with self._lock:
-            if remove:
-                if callback in self._draw_callbacks:
-                    self._draw_callbacks.remove(callback)
-            elif callback not in self._draw_callbacks:
-                self._draw_callbacks.append(callback)
 
     def set_marker(self, lng: float, lat: float, color: str = "#3388ff") -> None:
         """Show the one highlight marker at ``(lng, lat)`` in ``color``, in every view."""
@@ -1054,11 +1061,11 @@ class MapWidget(anywidget.AnyWidget):
         return tuple(features)
 
     def _draw_report(self, content: dict) -> None:
-        """Mirror one view's drawn features in ``drawn`` and tell the callbacks.
+        """Mirror one view's drawn features in ``drawn``, and tell the session a user's.
 
         Only a report of a mounted view on the current request counts, and on
         that request, once a user report was accepted, an acknowledgement from
-        any view is dropped. Features a view could not add back are dropped.
+        any view is dropped. Features ``check_features`` refuses are dropped.
         """
         view = self._view_of(content)
         seq, cause, features = (content.get(k) for k in ("request_seq", "cause", "features"))
@@ -1080,10 +1087,13 @@ class MapWidget(anywidget.AnyWidget):
                 accepted = report_features(features)
                 if cause == "user":
                     self._draw_user_seq = seq
-                    collection = {"type": "FeatureCollection", "features": accepted}
+                    # The current request is the active session's, since begin
+                    # and end each write a new one.
+                    callback = self._draw._change_callback()
                     # Before ``drawn`` is written: a report that an observer of
-                    # it gets accepted then runs its callbacks after these.
-                    for callback in self._draw_callbacks:
+                    # it gets accepted then runs its callback after this one.
+                    if callback is not None:
+                        collection = {"type": "FeatureCollection", "features": accepted}
                         self._callbacks.put(callback, copy.deepcopy(collection))
                 self.set_trait("drawn", {"request_seq": seq, "features": accepted})
         self._refresh()

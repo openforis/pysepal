@@ -39,6 +39,16 @@ def test_process_draw_strips_style_property():
     assert result.gdf.iloc[0]["name"] == "keep"
 
 
+def test_process_draw_strips_only_what_the_drawing_tools_add():
+    tools = {"mode": "circle", "radiusKilometers": 1.5, "style": {"color": "red"}}
+    geo = _single_polygon_feature({**tools, "selected": "yes", "name": "keep"})
+
+    result = process_draw(geo, name="plot", gee=False)
+
+    assert list(result.gdf.columns) == ["geometry", "selected", "name"]
+    assert result.spec.geo_json["features"][0]["properties"] == {"selected": "yes", "name": "keep"}
+
+
 def test_process_draw_generates_timestamped_name_when_empty():
     geo = _single_polygon_feature({})
 

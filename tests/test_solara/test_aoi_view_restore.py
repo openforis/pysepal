@@ -293,8 +293,10 @@ def test_restoring_a_draw_spec_seeds_the_drawing_and_leaving_it_removes_the_tool
             assert map_.draw_request["seq"] > 0
             assert len(map_.draw_request["features"]) == 1
             assert map_.draw.modes == ("polygon", "rectangle", "circle", "select")
+            seeded = map_.draw._session
             spec.set(AoiSpec(method="SHAPE", pathname=str(DATA)))
             assert _method_select(root).v_model == "SHAPE"
+            assert not seeded.active and map_.draw._session is None
             assert map_.draw.modes == ()
             assert map_.draw.features["features"] == []
         finally:

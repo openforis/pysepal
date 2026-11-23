@@ -127,8 +127,8 @@ has these methods, the shell calls them:
 of the map:
 
 - **The draw toolbar** has one toggle per drawing tool the map offers
-  (`m.draw.enable(...)`) and a button that removes every shape. It is empty
-  while drawing is off. `AoiView` turns the tools on for its DRAW method.
+  (`m.draw.begin(...)`) and a button that removes every shape. It is empty
+  while no drawing session is active. `AoiView` begins one for its DRAW method.
 - **The inspector** has a toggle and, after a click, a card with the values of
   every visible layer at that point. It exists only for `SepalMap(inspector=True)`.
   A layer that changed between the click and the read shows "this layer

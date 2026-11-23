@@ -4,7 +4,9 @@ import {
   ADAPTER_SOURCES,
   DRAW_MODES,
   ViewDraw,
+  featureId,
   mirrorFeatures,
+  prepareFeatures,
   type DrawEngine,
   type DrawFeature,
   type DrawReport,
@@ -148,9 +150,15 @@ class FakeModel {
     this.listeners.get(name)?.delete(callback);
   }
   set(name: string, value: unknown) {
-    this.values[name] = value;
-    for (const callback of [...(this.listeners.get(`change:${name}`) ?? [])])
-      callback();
+    this.setMany({ [name]: value });
+  }
+  /** Set every value first, then tell each change in order, as one comm message does. */
+  setMany(values: Record<string, unknown>) {
+    Object.assign(this.values, values);
+    for (const name of Object.keys(values)) {
+      for (const callback of [...(this.listeners.get(`change:${name}`) ?? [])])
+        callback();
+    }
   }
   count() {
     return [...this.listeners.values()].reduce((n, s) => n + s.size, 0);
@@ -184,12 +192,19 @@ function point(lng: number, lat = 0, extra: Record<string, unknown> = {}) {
   } as DrawFeature;
 }
 
-const ON = (mode = "static", modes = ["polygon", "point", "select"]) => ({
+const ON = (
+  mode = "static",
+  modes = ["polygon", "point", "select"],
+  session = 1
+) => ({
+  session,
   modes,
   mode,
   color: "#3388ff",
 });
-const OFF = { modes: [], mode: "static", color: "#3388ff" };
+const OFF = { session: 1, modes: [], mode: "static", color: "#3388ff" };
+const UUID4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function setup(
   values: {
@@ -382,39 +397,177 @@ describe("restoring", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0])).toContain("Feature has holes");
   });
+});
 
-  it("restores its own features on a later start, not drawn", () => {
-    const { load, model, engine, engines, sent } = setup();
+describe("preparing", () => {
+  it("prepareFeatures rounds, strips reserved names and fixes ids", () => {
+    const kept = polygon(0, { mode: "rectangle", selected: true, name: "r" });
+    const precise: DrawFeature = {
+      type: "Feature",
+      id: "not-a-uuid",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [1.123456789012, 2.0000000004],
+          [3, 4],
+        ],
+      },
+      properties: { mode: "point", midPoint: true, marker: true },
+    };
+    const seeds = [
+      kept,
+      { ...polygon(2, { mode: "point" }), id: kept.id },
+      precise,
+      { ...point(5), id: undefined } as unknown as DrawFeature,
+    ];
+    const before = structuredClone(seeds);
+    const prepared = prepareFeatures(seeds, 3);
+    expect(seeds).toEqual(before);
+    expect(prepared.map((f) => f.id)).toEqual([
+      kept.id,
+      featureId(3, 1),
+      featureId(3, 2),
+      featureId(3, 3),
+    ]);
+    expect(featureId(3, 1)).toBe("00000003-0000-4000-8000-000000000001");
+    expect(featureId(300, 4096)).toBe("0000012c-0000-4000-8000-000000001000");
+    for (const feature of prepared) expect(String(feature.id)).toMatch(UUID4);
+    expect(prepared.map((f) => f.properties)).toEqual([
+      { mode: "rectangle", name: "r" },
+      { mode: "polygon" },
+      { mode: "linestring" },
+      { mode: "point" },
+    ]);
+    expect(prepared[2].geometry.coordinates).toEqual([
+      [1.123456789, 2],
+      [3, 4],
+    ]);
+
+    // Every view gives the same ids, and a restore numbers them by drawn's request.
+    const views = [1, 2].map(() =>
+      setup({ draw_request: { seq: 3, features: seeds } })
+    );
+    for (const { load, model } of views) {
+      load();
+      model.set("drawing", ON());
+    }
+    const [one, two] = views.map(({ engine }) => engine().store);
+    expect(one).toEqual(prepared);
+    expect(two).toEqual(prepared);
+    expect(views[0].sent[0].features).toEqual(prepared);
+    const restored = setup({
+      draw_request: { seq: 2, features: [] },
+      drawn: { request_seq: 4, features: [{ ...polygon(), id: 7 }] },
+    });
+    restored.load();
+    restored.model.set("drawing", ON());
+    expect(restored.engine().store.map((f) => f.id)).toEqual([featureId(4, 0)]);
+  });
+});
+
+describe("sessions", () => {
+  it("a session change drops the old features before its request arrives", () => {
+    const seed = polygon(5);
+    const { load, model, engine, engines, sent, view } = setup({
+      draw_request: { seq: 1, features: [seed] },
+    });
+    load();
+    model.set("drawing", ON("polygon"));
+    engine().draw(polygon());
+    expect(sent.map((r) => r.cause)).toEqual(["request", "user"]);
+    expect(view.inspect().session).toBe(1);
+
+    model.set("drawing", ON("polygon", undefined, 2));
+    expect(view.inspect().session).toBe(2);
+    expect(engines).toHaveLength(2);
+    expect(engines[0].enabled).toBe(false);
+    expect(engine().store).toEqual([]);
+    expect(view.inspect().committed).toEqual([]);
+    expect(engine().getMode()).toBe("polygon");
+    expect(sent).toHaveLength(2);
+
+    const next = polygon(8);
+    model.set("draw_request", { seq: 2, features: [next] });
+    expect(engine().store).toEqual([next]);
+    expect(sent.at(-1)).toMatchObject({
+      cause: "request",
+      request_seq: 2,
+      features: [next],
+    });
+  });
+
+  it("a new session applies its request once, whichever trait changes first", () => {
+    for (const order of [
+      ["draw_request", "drawing"],
+      ["drawing", "draw_request"],
+    ]) {
+      const { load, model, engine, engines, sent } = setup();
+      load();
+      model.set("drawing", ON("polygon"));
+      engine().draw(polygon());
+      const seed = polygon(3);
+      const values: Record<string, unknown> = {
+        drawing: ON("static", undefined, 2),
+        draw_request: { seq: 1, features: [seed] },
+      };
+      model.setMany(Object.fromEntries(order.map((k) => [k, values[k]])));
+      expect(engines).toHaveLength(2);
+      expect(engines[0].log).not.toContain("clear");
+      expect(engine().store).toEqual([seed]);
+      expect(sent.map((r) => [r.cause, r.request_seq])).toEqual([
+        ["user", 0],
+        ["request", 1],
+      ]);
+    }
+  });
+
+  it("modes going empty drops the committed features", () => {
+    const { load, model, engine, engines, sent, view } = setup();
+    load();
+    model.set("drawing", ON("polygon"));
+    engine().draw(polygon());
+    model.set("drawing", OFF);
+    expect(engines[0].enabled).toBe(false);
+    expect(view.inspect().committed).toEqual([]);
+    model.set("drawing", ON("polygon"));
+    expect(engines).toHaveLength(2);
+    expect(engine().store).toEqual([]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("acknowledges no end, whichever trait changes first", () => {
+    for (const order of [
+      ["draw_request", "drawing"],
+      ["drawing", "draw_request"],
+    ]) {
+      const { load, model, engines, sent } = setup();
+      load();
+      model.set("drawing", ON("polygon"));
+      const values: Record<string, unknown> = {
+        drawing: OFF,
+        draw_request: { seq: 1, features: [] },
+      };
+      model.setMany(Object.fromEntries(order.map((k) => [k, values[k]])));
+      expect(engines[0].enabled).toBe(false);
+      expect(engines[0].log).not.toContain("clear");
+      expect(sent).toEqual([]);
+    }
+  });
+
+  it("a style replacement restores the view's own features", () => {
+    const { load, model, engine, engines, map, sent } = setup();
     load();
     model.set("drawing", ON("polygon"));
     const mine = polygon();
     engine().draw(mine);
-    expect(sent).toHaveLength(1);
-    model.set("drawing", OFF);
-    expect(engines[0].enabled).toBe(false);
     // Another view's edit, accepted meanwhile.
     model.set("drawn", { request_seq: 0, features: [polygon(9)] });
-    model.set("drawing", ON("polygon"));
+    map.emit("styledataloading");
+    map.emit("style.load");
     expect(engines).toHaveLength(2);
     expect(engine().store).toEqual([mine]);
     expect(engine().log).toEqual(["start", "addFeatures", "setMode:polygon"]);
     expect(sent).toHaveLength(1);
-  });
-
-  it("applies a request that came while drawing was off", () => {
-    const { load, model, engine, sent } = setup();
-    load();
-    model.set("drawing", ON());
-    engine().draw(polygon());
-    model.set("drawing", OFF);
-    const seed = polygon(4);
-    model.set("draw_request", { seq: 1, features: [seed] });
-    model.set("drawing", ON());
-    expect(engine().store).toEqual([seed]);
-    expect(sent.map((r) => [r.cause, r.request_seq])).toEqual([
-      ["user", 0],
-      ["request", 1],
-    ]);
   });
 });
 

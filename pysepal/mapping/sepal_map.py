@@ -124,9 +124,9 @@ class SepalMap(MapWidget):
     _widget_ready = False
 
     _REMOVED_MEMBERS = {
-        "dc": "m.draw (enable, start, features) and m.on_draw",
-        "show_dc": "m.draw.enable()",
-        "hide_dc": "m.draw.disable()",
+        "dc": "m.draw.begin(modes) and the DrawSession it returns",
+        "show_dc": "m.draw.begin(modes)",
+        "hide_dc": "end() on the DrawSession that m.draw.begin(modes) returns",
         "v_inspector": "SepalMap(inspector=True) shown in a MapView",
         "on_interaction": "m.on_click(callback) for clicks; tooltips (VectorStyle(tooltip=...)) for hover",
         "add_legend": "the MapView legend, built from each layer's legend",

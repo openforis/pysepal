@@ -401,3 +401,49 @@ def test_a_view_another_took_over_from_neither_submits_nor_clears_its_drawing(ho
             rc_b.close()
 
     asyncio.run(run())
+
+
+def test_an_older_picker_never_ends_the_newer_session():
+    m = sm.SepalMap(gee=False)
+    mount(m)
+    clear_a = SimpleNamespace(current=None)
+
+    @solara.component
+    def ViewA():
+        AoiView(map_=m, gee=False, clear_ref=clear_a)
+
+    @solara.component
+    def ViewB():
+        AoiView(map_=m, gee=False)
+
+    def pick(root, method):
+        label = msg("aoi_sel.method")
+        next(w for w in walk(root) if getattr(w, "label", None) == label).v_model = method
+
+    async def run():
+        root_a, rc_a = reacton.render(ViewA(), handle_error=False)
+        root_b, rc_b = reacton.render(ViewB(), handle_error=False)
+        try:
+            pick(root_a, "DRAW")
+            session_a = m.draw._session
+            pick(root_b, "DRAW")
+            session_b = m.draw._session
+            assert session_a is not None and not session_a.active
+            report(m)
+
+            def b_holds_the_tools():
+                assert session_b.active and m.draw._session is session_b
+                assert m.draw.modes == ("polygon", "rectangle", "circle", "select")
+                assert len(session_b.features["features"]) == 1
+
+            b_holds_the_tools()
+            clear_a.current()
+            b_holds_the_tools()
+            pick(root_a, "ADMIN0")
+            b_holds_the_tools()
+            rc_a.close()
+            b_holds_the_tools()
+        finally:
+            rc_b.close()
+
+    asyncio.run(run())

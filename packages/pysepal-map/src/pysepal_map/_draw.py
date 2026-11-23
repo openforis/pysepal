@@ -1,9 +1,10 @@
-"""The drawing tools of a map, and the rules drawn features follow.
+"""The drawing tools of a map, the sessions that hold them, and the shapes drawn features take.
 
 The views draw with Terra Draw 1.39, which validates every feature added to it.
-The rules here are the ones it applies (``validations/*.validation.ts`` and
-``store/store-feature-validation.ts``), so a feature Python accepts is one a
-view can add back.
+Python checks the shapes it validates (``validations/*.validation.ts``), so a
+feature Python accepts is one a view can add. Each view prepares the features
+before it adds them: it rounds them to Terra Draw's precision, drops the
+property names Terra Draw reserves and gives them ids, the same in every view.
 """
 
 from __future__ import annotations
@@ -12,9 +13,7 @@ import copy
 import json
 import math
 import numbers
-import re
-import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -27,64 +26,19 @@ SELECT = "select"
 #: No tool: the map pans and clicks as usual.
 STATIC = "static"
 DEFAULT_COLOR = "#3388ff"
-#: The decimals Terra Draw keeps: the coordinatePrecision of its MapLibre adapter.
-PRECISION = 9
-_SCALE = 10.0**PRECISION
-#: Terra Draw's SELECT_PROPERTIES and COMMON_PROPERTIES (common.ts), which it
-#: reserves for its own flags. A seed carrying one could be taken for a helper.
-RESERVED_PROPERTIES = frozenset(
-    {
-        "selected",
-        "midPoint",
-        "selectionPointFeatureId",
-        "selectionPoint",
-        "mode",
-        "currentlyDrawing",
-        "edited",
-        "closingPoint",
-        "snappingPoint",
-        "coordinatePoint",
-        "coordinatePointFeatureId",
-        "coordinatePointIds",
-        "provisionalCoordinateCount",
-        "committedCoordinateCount",
-        # Select mode fetches its default marker image from raw.githubusercontent.com
-        # for a point flagged `marker`, which breaks the no-CDN rule.
-        "marker",
-    }
-)
-#: The mode Terra Draw adds a geometry under when no drawing mode is known.
-GEOMETRY_MODES = {"Polygon": "polygon", "LineString": "linestring", "Point": "point"}
-#: The geometry each drawing mode draws.
-MODE_GEOMETRIES = {
-    "polygon": "Polygon",
-    "rectangle": "Polygon",
-    "circle": "Polygon",
-    "linestring": "LineString",
-    "point": "Point",
-}
+#: The geometries Terra Draw draws, and the part each Multi* geometry splits into.
+_KINDS = ("Polygon", "LineString", "Point")
 _MULTI = {"MultiPolygon": "Polygon", "MultiLineString": "LineString", "MultiPoint": "Point"}
-# Terra Draw's own ids are UUID4 strings; its store accepts any 36-character string.
-_UUID4 = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", re.IGNORECASE
-)
+
+DrawCallback = Callable[[dict], object]
 
 
-def _round(value: float) -> float:
-    """``value`` as Terra Draw keeps it: ``Math.round(value * 1e9) / 1e9``.
-
-    Python's ``round`` rounds half to even on the decimal value, which gives
-    another result for some inputs.
-    """
-    scaled = value * _SCALE
-    whole = math.floor(scaled)
-    if scaled - whole >= 0.5:
-        whole += 1
-    return whole / _SCALE
+def _empty() -> dict:
+    return {"type": "FeatureCollection", "features": []}
 
 
 def _position(value) -> list[float]:
-    """A finite ``[lng, lat]`` on the globe, rounded to Terra Draw's precision."""
+    """A finite ``[lng, lat]`` on the globe."""
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise ValueError(f"a position is [lng, lat], got {value!r}")
     if not all(isinstance(x, numbers.Real) and not isinstance(x, bool) for x in value):
@@ -95,10 +49,8 @@ def _position(value) -> list[float]:
         raise ValueError(f"a position holds two finite numbers, got {value!r}") from None
     if not (math.isfinite(lng) and math.isfinite(lat)):
         raise ValueError(f"a position holds two finite numbers, got {value!r}")
-    # Before rounding: scaling a huge value would overflow
     if not (-180 <= lng <= 180 and -90 <= lat <= 90):
         raise ValueError(f"a position needs a lng in [-180, 180] and a lat in [-90, 90]: {value!r}")
-    lng, lat = _round(lng), _round(lat)
     return [lng, lat]
 
 
@@ -109,7 +61,7 @@ def _positions(value, minimum: int) -> list[list[float]]:
 
 
 def _coordinates(kind: str, coordinates):
-    """Valid coordinates of a Polygon, LineString or Point, rounded."""
+    """The checked coordinates of a Polygon, LineString or Point."""
     if kind == "Point":
         return _position(coordinates)
     if kind == "LineString":
@@ -135,23 +87,17 @@ def _geometries(geometry, split: bool) -> list[dict]:
             raise ValueError(f"{kind} coordinates must be a list")
         part = _MULTI[kind]
         return [{"type": part, "coordinates": _coordinates(part, c)} for c in coordinates]
-    if kind not in GEOMETRY_MODES:
+    if kind not in _KINDS:
         raise ValueError(f"Terra Draw draws Polygon, LineString and Point geometries, not {kind!r}")
     return [{"type": kind, "coordinates": _coordinates(kind, coordinates)}]
 
 
-def _properties(properties) -> dict:
-    """A JSON copy of ``properties`` without the names Terra Draw reserves."""
-    if properties is None:
-        return {}
-    if not isinstance(properties, Mapping):
-        raise ValueError(f"feature properties must be a mapping, got {properties!r}")
-    kept = {k: v for k, v in properties.items() if k not in RESERVED_PROPERTIES}
+def _json(value, what: str):
+    """A copy of ``value`` the comm can send: a NaN or an object would fail once synced."""
     try:
-        # What the comm can send: a NaN or an object would fail once synced.
-        return json.loads(json.dumps(kept, allow_nan=False))
+        return json.loads(json.dumps(value, allow_nan=False))
     except (TypeError, ValueError) as error:
-        raise ValueError(f"feature properties must be JSON: {error}") from error
+        raise ValueError(f"{what} must be JSON: {error}") from error
 
 
 def _feature_list(features) -> list:
@@ -168,69 +114,146 @@ def _feature_list(features) -> list:
     raise ValueError(f"expected a FeatureCollection, a Feature or Features, got {features!r}")
 
 
-def _normalise(feature, used: set[str], split: bool) -> list[dict]:
-    """``feature`` as drawn features, one per part, with ids unique in ``used``.
-
-    The mode is the geometry's, unless ``split`` is off (a view's report) and
-    the feature names a drawing mode that draws its geometry.
-    """
+def _check(feature, split: bool) -> list[dict]:
+    """``feature`` as drawn features, one per part, with its id and properties."""
     if not isinstance(feature, Mapping) or feature.get("type") != "Feature":
         raise ValueError(f"expected a GeoJSON Feature, got {feature!r}")
     geometries = _geometries(feature.get("geometry"), split)
-    properties = _properties(feature.get("properties"))
-    named = None if split else (feature.get("properties") or {}).get("mode")
-    mode = named if isinstance(named, str) else None
-    out = []
-    fid = feature.get("id")
-    for geometry in geometries:
-        if not (isinstance(fid, str) and _UUID4.fullmatch(fid)) or fid in used:
-            fid = str(uuid.uuid4())
-        used.add(fid)
-        if MODE_GEOMETRIES.get(mode) != geometry["type"]:
-            mode = GEOMETRY_MODES[geometry["type"]]
-        out.append(
-            {
-                "type": "Feature",
-                "id": fid,
-                "geometry": geometry,
-                "properties": {**properties, "mode": mode},
-            }
-        )
-    return out
+    properties = feature.get("properties")
+    if properties is not None and not isinstance(properties, Mapping):
+        raise ValueError(f"feature properties must be a mapping, got {properties!r}")
+    properties = _json(dict(properties or {}), "feature properties")
+    head: dict[str, Any] = {"type": "Feature"}
+    if "id" in feature:
+        head["id"] = _json(feature["id"], "a feature id")
+    return [
+        {**head, "geometry": geometry, "properties": copy.deepcopy(properties)}
+        for geometry in geometries
+    ]
 
 
-def normalise_features(features) -> list[dict]:
-    """The drawn features of a replacement, all checked; any failure raises ``ValueError``."""
-    used: set[str] = set()
-    return [part for f in _feature_list(features) for part in _normalise(f, used, split=True)]
+def check_features(features) -> list[dict]:
+    """The drawn features of ``features``, each Multi* geometry split into one per part.
+
+    ``features`` is a FeatureCollection, a Feature or a sequence of Features
+    of Polygon, LineString or Point geometries, or Multi* ones. Ids,
+    properties and coordinates are kept as given. A position is a finite
+    ``[lng, lat]`` with a lng in [-180, 180] and a lat in [-90, 90]; a line has
+    2 positions or more, and a polygon one closed ring of 4 or more, since
+    Terra Draw draws no holes. Properties must be JSON. Any failure raises
+    ``ValueError``.
+    """
+    return [part for f in _feature_list(features) for part in _check(f, split=True)]
 
 
 def report_features(features: list) -> list[dict]:
-    """The features of a view's report that a view could add back; the rest are dropped."""
-    used: set[str] = set()
+    """The features of a view's report that ``check_features`` accepts; the rest are dropped.
+
+    A view reports no Multi* geometry, so one is dropped too.
+    """
     out: list[dict] = []
     for feature in features:
         try:
-            out.extend(_normalise(feature, used, split=False))
+            out.extend(_check(feature, split=False))
         except ValueError:
             continue
     return out
 
 
-class Draw:
-    """The drawing tools of one ``MapWidget``: which are offered, the active one, the features.
+def _check_modes(modes, edit: bool) -> list[str]:
+    if isinstance(modes, str) or not isinstance(modes, Sequence):
+        raise ValueError(f"modes must be a sequence of names, got {modes!r}")
+    names = list(modes)
+    if not names or len(set(names)) != len(names) or any(m not in DRAW_MODES for m in names):
+        raise ValueError(f"modes must name tools of {DRAW_MODES} once each, got {modes!r}")
+    return names + ([SELECT] if edit else [])
 
-    The browser owns the drawn features, like the camera: ``set`` and
-    ``clear`` ask every view to replace them, and ``features`` mirrors what
-    the views report.
+
+class DrawSession:
+    """One owner's hold on a map's drawing tools, from ``Draw.begin`` until it ends.
+
+    A session ends when its ``end`` runs or another ``Draw.begin`` does. An
+    ended session stays ended: ``features`` is empty, ``set`` and ``clear``
+    raise ``RuntimeError`` and ``end`` does nothing.
+    """
+
+    def __init__(self, draw: Draw, on_change: DrawCallback | None) -> None:
+        self._draw = draw
+        self._on_change = on_change
+        self._active = True
+
+    @property
+    def active(self) -> bool:
+        """Whether the session still holds the tools."""
+        with self._draw._widget._lock:
+            return self._active
+
+    @property
+    def features(self) -> dict:
+        """The drawn features, as a FeatureCollection the caller may change.
+
+        The features of the newest request until a view acknowledged it, then
+        those of the last report the widget accepted; empty once the session
+        ended.
+        """
+        widget = self._draw._widget
+        with widget._lock:
+            if not self._active:
+                return _empty()
+            request, drawn = widget.draw_request, widget.drawn
+            current = drawn if drawn["request_seq"] >= request["seq"] else request
+            return {"type": "FeatureCollection", "features": copy.deepcopy(current["features"])}
+
+    def set(self, features) -> None:
+        """Ask every view to show exactly ``features``, as ``check_features`` takes them.
+
+        A polygon with holes, or any other failure, raises ``ValueError`` and
+        changes nothing. Each view prepares the features before it shows them:
+        it rounds the coordinates to 9 decimals, drops the property names Terra
+        Draw reserves but ``mode``, replaces a ``mode`` that does not draw the
+        geometry with the geometry's own, and replaces an id that is not a
+        UUID4 string, or repeats one, with an id every view derives alike.
+        ``features`` holds what the views report once one acknowledged them.
+        """
+        self._require()
+        checked = check_features(features)
+        widget = self._draw._widget
+        with widget._lock:
+            self._require()
+            widget.set_trait(
+                "draw_request", {"seq": widget.draw_request["seq"] + 1, "features": checked}
+            )
+
+    def clear(self) -> None:
+        """Ask every view to remove every drawn feature."""
+        self.set([])
+
+    def end(self) -> None:
+        """Clear the drawing and hide the tools in every view; nothing once ended."""
+        with self._draw._widget._lock:
+            if self._active:
+                self._draw._hand_over(None, modes=[], features=[])
+
+    def _require(self) -> None:
+        if not self.active:
+            raise RuntimeError("this drawing session has ended")
+
+
+class Draw:
+    """The drawing tools of one ``MapWidget``, and the session that holds them.
+
+    The browser owns the drawn features, like the camera. ``begin`` offers the
+    tools to one session at a time, which asks every view for features and
+    mirrors what they report.
     """
 
     def __init__(self, widget: MapWidget) -> None:
         self._widget = widget
+        self._session: DrawSession | None = None
 
     @property
     def modes(self) -> tuple[str, ...]:
-        """The tools offered, ``"select"`` last when editing is on; ``()`` while drawing is off."""
+        """The tools offered, ``"select"`` last when editing is on; ``()`` with no session."""
         return tuple(self._widget.drawing["modes"])
 
     @property
@@ -245,46 +268,49 @@ class Draw:
 
     @property
     def features(self) -> dict:
-        """The drawn features, as a FeatureCollection the caller may change.
+        """The active session's ``features``; an empty FeatureCollection with no session."""
+        with self._widget._lock:
+            session = self._session
+        return _empty() if session is None else session.features
 
-        The features of the newest ``set`` until a view acknowledged it, then
-        those of the last report the widget accepted.
+    def begin(
+        self,
+        modes: Sequence[str] = ("polygon", "rectangle", "circle"),
+        *,
+        edit: bool = True,
+        features=None,
+        on_change: DrawCallback | None = None,
+    ) -> DrawSession:
+        """End the active session and begin one that offers the tools ``modes``.
+
+        ``modes`` names tools of ``DRAW_MODES`` once each, in toolbar order, and
+        ``edit`` offers ``"select"`` after them. No tool is active. Every view
+        shows ``features``, as ``DrawSession.set`` takes them, else nothing.
+        ``on_change(collection)`` runs on the session loop with a
+        FeatureCollection on each drawing or edit a user makes in this
+        session, never for a view acknowledging a request. Bad modes or
+        features raise ``ValueError`` and change nothing, so the active
+        session goes on.
         """
-        widget = self._widget
-        with widget._lock:
-            request, drawn = widget.draw_request, widget.drawn
-            current = drawn if drawn["request_seq"] >= request["seq"] else request
-            features = copy.deepcopy(current["features"])
-        return {"type": "FeatureCollection", "features": features}
-
-    def enable(
-        self, modes: Sequence[str] = ("polygon", "rectangle", "circle"), *, edit: bool = True
-    ) -> None:
-        """Offer the tools ``modes``, in that order, and ``"select"`` with ``edit``.
-
-        ``modes`` takes names from ``DRAW_MODES``, each once. No tool is active
-        afterwards.
-        """
-        if isinstance(modes, str) or not isinstance(modes, Sequence):
-            raise ValueError(f"modes must be a sequence of names, got {modes!r}")
-        names = list(modes)
-        if not names or len(set(names)) != len(names) or any(m not in DRAW_MODES for m in names):
-            raise ValueError(f"modes must name tools of {DRAW_MODES} once each, got {modes!r}")
-        self._write(modes=names + ([SELECT] if edit else []), mode=STATIC)
-
-    def disable(self) -> None:
-        """Hide the tools and the features; the features are kept for the next ``enable``."""
-        self._write(modes=[], mode=STATIC)
+        names = _check_modes(modes, edit)
+        seeds = [] if features is None else check_features(features)
+        session = DrawSession(self, on_change)
+        self._hand_over(session, modes=names, features=seeds)
+        return session
 
     def start(self, mode: str) -> None:
         """Make ``mode``, one of ``modes``, the active tool."""
-        if mode not in self.modes:
-            raise ValueError(f"{mode!r} is not among the tools offered: {self.modes}")
-        self._write(mode=mode)
+        with self._widget._lock:
+            self._require()
+            if mode not in self.modes:
+                raise ValueError(f"{mode!r} is not among the tools offered: {self.modes}")
+            self._write(mode=mode)
 
     def stop(self) -> None:
         """Leave the active tool: the map pans and clicks as usual."""
-        self._write(mode=STATIC)
+        with self._widget._lock:
+            self._require()
+            self._write(mode=STATIC)
 
     def set_color(self, color: str) -> None:
         """Draw in ``color``, a MapLibre colour string, from now on."""
@@ -292,30 +318,29 @@ class Draw:
             raise ValueError(f"color must be a non-empty string, got {color!r}")
         self._write(color=color)
 
-    def set(self, features) -> None:
-        """Ask every view to show exactly ``features``.
-
-        ``features`` is a FeatureCollection, a Feature or a sequence of
-        Features of Polygon, LineString or Point geometries; a Multi* geometry
-        becomes one feature per part. Coordinates are rounded to Terra Draw's
-        9 decimals, and must be finite, with a lng in [-180, 180] and a lat in
-        [-90, 90]. A polygon has one closed ring of 4 positions or more, since
-        Terra Draw draws no holes, and a line 2 positions or more. Each feature
-        gets ``properties.mode`` from its geometry (``polygon``, ``linestring``
-        or ``point``), loses the properties Terra Draw reserves
-        (``RESERVED_PROPERTIES``), and keeps its id if it is a UUID4 string
-        not already used here, else gets a new one. Any failure raises
-        ``ValueError`` and changes nothing.
-        """
-        normalised = normalise_features(features)
+    def _hand_over(self, session: DrawSession | None, *, modes: list, features: list) -> None:
+        """Give the tools to ``session``, or to nobody, in one message."""
         widget = self._widget
-        with widget._lock:
+        with widget._lock, widget.hold_sync():
+            # Before the traits: their observers must see who holds the tools.
+            if self._session is not None:
+                self._session._active = False
+            self._session = session
+            drawing = widget.drawing
+            number = drawing["session"] + (0 if session is None else 1)
             seq = widget.draw_request["seq"] + 1
-            widget.set_trait("draw_request", {"seq": seq, "features": normalised})
+            widget.set_trait("draw_request", {"seq": seq, "features": features})
+            widget.set_trait(
+                "drawing", {**drawing, "session": number, "modes": modes, "mode": STATIC}
+            )
 
-    def clear(self) -> None:
-        """Ask every view to remove every drawn feature."""
-        self.set([])
+    def _change_callback(self) -> DrawCallback | None:
+        """The active session's ``on_change``; call with the widget lock held."""
+        return None if self._session is None else self._session._on_change
+
+    def _require(self) -> None:
+        if self._session is None:
+            raise RuntimeError("no drawing session is active: begin one with draw.begin()")
 
     def _write(self, **changes: Any) -> None:
         widget = self._widget

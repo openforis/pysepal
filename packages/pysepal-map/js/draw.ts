@@ -74,7 +74,8 @@ const HELPER_FLAGS = [
 /**
  * Terra Draw's reserved property names (`SELECT_PROPERTIES` and
  * `COMMON_PROPERTIES`) other than `mode`: flags of the moment, such as
- * `selected`, that a committed feature carries while it is edited.
+ * `selected`, that a committed feature carries while it is edited. A feature
+ * added with one could be taken for a helper or shown selected.
  */
 const TRANSIENT = new Set([
   "selected",
@@ -100,6 +101,16 @@ const GEOMETRY_MODES: Record<string, string> = {
   LineString: "linestring",
   Point: "point",
 };
+/** The geometry each drawing mode draws. */
+const MODE_GEOMETRIES: Record<string, string> = {
+  polygon: "Polygon",
+  rectangle: "Polygon",
+  circle: "Polygon",
+  linestring: "LineString",
+  point: "Point",
+};
+const UUID4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const FILL_OPACITY = 0.2;
 const WHITE = "#ffffff";
@@ -278,12 +289,68 @@ export function snapshotOf(features: DrawFeature[]): DrawFeature[] {
       type: "Feature",
       id: feature.id,
       geometry,
-      properties: Object.fromEntries(
-        Object.entries(properties).filter(([name]) => !TRANSIENT.has(name))
-      ),
+      properties: withoutTransient(properties),
     });
   }
   return out;
+}
+
+function withoutTransient(
+  properties: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(properties).filter(([name]) => !TRANSIENT.has(name))
+  );
+}
+
+/**
+ * The id `prepareFeatures` gives the feature at `index` of the batch of
+ * request `seq`: the seq in 8 hex digits and the index in 12, in the shape of
+ * a UUID4, which Terra Draw takes.
+ */
+export function featureId(seq: number, index: number): string {
+  const hex = (value: number, digits: number) =>
+    value.toString(16).padStart(digits, "0").slice(-digits);
+  return `${hex(seq, 8)}-0000-4000-8000-${hex(index, 12)}`;
+}
+
+/**
+ * The features of the batch of request `seq` as Terra Draw takes them, the
+ * same in every view: coordinates rounded to its 9 decimals, its reserved
+ * property names dropped but `mode`, a `mode` that does not draw the geometry
+ * replaced by the geometry's own, and an id that is not a UUID4 string, or
+ * repeats one of the batch, replaced by `featureId(seq, index)`.
+ */
+export function prepareFeatures(
+  features: DrawFeature[],
+  seq: number
+): DrawFeature[] {
+  const used = new Set<string | number>();
+  return features.map((feature, index) => {
+    const { geometry } = feature;
+    const properties = withoutTransient(feature.properties ?? {});
+    const { mode } = properties;
+    const own = GEOMETRY_MODES[geometry?.type];
+    if (
+      own &&
+      (typeof mode !== "string" || MODE_GEOMETRIES[mode] !== geometry.type)
+    ) {
+      properties.mode = own;
+    }
+    let id = feature.id;
+    if (typeof id !== "string" || !UUID4.test(id) || used.has(id)) {
+      id = featureId(seq, index);
+    }
+    used.add(id);
+    return {
+      type: "Feature",
+      id,
+      geometry: own
+        ? movePositions(geometry, (position) => position.map(round))
+        : geometry,
+      properties,
+    };
+  });
 }
 
 /** The point handles Terra Draw draws as vertices; `midPoint` is the other one. */
@@ -463,8 +530,9 @@ const featuresOf = (value: unknown): DrawFeature[] =>
     : [];
 
 function drawingOf(value: unknown): DrawingState {
-  const { modes, mode, color } = isRecord(value) ? value : {};
+  const { session, modes, mode, color } = isRecord(value) ? value : {};
   return {
+    session: isSeq(session) ? session : 0,
     modes: Array.isArray(modes)
       ? modes.filter((m): m is string => typeof m === "string")
       : [],
@@ -491,11 +559,16 @@ function drawnOf(value: unknown): DrawnState {
  * camera.
  *
  * While `drawing` offers tools and the style has loaded, the view runs its own
- * Terra Draw. Python asks for features through `draw_request`, whose `seq`
- * only grows, and mirrors the last report it accepted in `drawn`. On its first
- * start a view restores `drawn` when it is as new as the request, else applies
- * the request; on a later one it restores its own features, kept while drawing
- * was off, unless a newer request came. Views never follow each other.
+ * Terra Draw for the session `drawing` names. Python asks for features through
+ * `draw_request`, whose `seq` only grows, and mirrors the last report it
+ * accepted in `drawn`. The view prepares every feature it adds with
+ * `prepareFeatures`. On its first start it restores `drawn` when it is as new
+ * as the request, else applies the request. A new session drops the features
+ * and starts Terra Draw again, empty, then applies the request if it is newer
+ * than the last one applied. An end, which leaves no tools, stops Terra Draw
+ * and drops the features. A restart in one session, after a style
+ * replacement, restores the view's own features unless a newer request came.
+ * Views never follow each other.
  *
  * Applying a request replaces the features and acknowledges it with a report
  * of cause `request`. A user's finished drawing or edit, or deletion of a
@@ -512,9 +585,11 @@ export class ViewDraw {
   private failed = false;
   /** Whether the view started once: its first start may restore `drawn`. */
   private started = false;
+  /** The session Terra Draw runs, or last ran, for. */
+  private session = 0;
   /** The sequence of the last request this view applied. */
   private applied = 0;
-  /** The view's committed features, kept while Terra Draw is stopped. */
+  /** The view's committed features, kept while Terra Draw is stopped in a session. */
   private committed: DrawFeature[] = [];
   private committedIds = new Set<string | number>();
   private lastSent: string | null = null;
@@ -565,6 +640,7 @@ export class ViewDraw {
   inspect() {
     return {
       running: this.engine !== null,
+      session: this.session,
       mode: this.mode,
       color: this.color,
       applied: this.applied,
@@ -589,11 +665,16 @@ export class ViewDraw {
     if (this.disposed) return;
     this.wanted = drawingOf(this.options.model.get("drawing"));
     this.failed = false;
-    const { modes, mode, color } = this.wanted;
+    const { session, modes, mode, color } = this.wanted;
     if (!modes.length) {
+      // The session ended: its features go with it.
       this.halt();
+      this.drop();
     } else if (!this.engine) {
       if (this.ready) this.begin();
+    } else if (session !== this.session) {
+      this.halt();
+      this.begin();
     } else {
       if (color !== this.color) this.recolor(color);
       this.switchTo(mode);
@@ -603,7 +684,13 @@ export class ViewDraw {
 
   private readonly onRequest = () => {
     if (this.disposed || !this.engine) return;
-    const request = requestOf(this.options.model.get("draw_request"));
+    const { model } = this.options;
+    // A begin or an end writes `drawing` in the same message, and the order of
+    // the change events is not fixed: that change starts the session, or ends
+    // this one, and applies what it should.
+    const { session, modes } = drawingOf(model.get("drawing"));
+    if (session !== this.session || !modes.length) return;
+    const request = requestOf(model.get("draw_request"));
     if (request.seq > this.applied) this.apply(request);
   };
 
@@ -662,6 +749,8 @@ export class ViewDraw {
       return;
     }
     const request = requestOf(model.get("draw_request"));
+    const newSession = this.started && this.wanted.session !== this.session;
+    this.session = this.wanted.session;
     if (!this.started) {
       this.started = true;
       const drawn = drawnOf(model.get("drawn"));
@@ -670,12 +759,21 @@ export class ViewDraw {
       } else {
         this.apply(request);
       }
-    } else if (request.seq > this.applied) {
-      this.apply(request);
     } else {
-      this.restore(this.committed, this.applied);
+      if (newSession) this.drop();
+      if (request.seq > this.applied) {
+        this.apply(request);
+      } else {
+        this.restore(this.committed, this.applied);
+      }
     }
     this.switchTo(this.wanted.mode);
+  }
+
+  /** Forget the committed features, as a session that ended does. */
+  private drop(): void {
+    this.committed = [];
+    this.committedIds = new Set();
   }
 
   /**
@@ -713,7 +811,7 @@ export class ViewDraw {
   }
 
   private restore(features: DrawFeature[], seq: number): void {
-    this.hush(() => this.add(features));
+    this.hush(() => this.add(features, seq));
     this.applied = seq;
     this.commit();
     this.lastSent = keyOf(this.committed);
@@ -724,7 +822,7 @@ export class ViewDraw {
     const engine = this.engine!;
     this.hush(() => {
       engine.clear();
-      this.add(request.features);
+      this.add(request.features, request.seq);
     });
     this.applied = request.seq;
     this.commit();
@@ -732,15 +830,17 @@ export class ViewDraw {
   }
 
   /**
-   * Add features, each one Terra Draw rejects again under the mode its
-   * geometry implies, so an edited rectangle or circle is never lost.
+   * Add the features of request `seq`, prepared, each one Terra Draw rejects
+   * again under the mode its geometry implies, so an edited rectangle or
+   * circle is never lost.
    */
-  private add(features: DrawFeature[]): void {
+  private add(features: DrawFeature[], seq: number): void {
     if (!features.length) return;
     const engine = this.engine!;
-    const results = engine.addFeatures(features);
+    const prepared = prepareFeatures(features, seq);
+    const results = engine.addFeatures(prepared);
     const retry: DrawFeature[] = [];
-    features.forEach((feature, i) => {
+    prepared.forEach((feature, i) => {
       if (results[i]?.valid) return;
       const mode = GEOMETRY_MODES[feature.geometry?.type];
       if (mode && mode !== feature.properties?.mode) {

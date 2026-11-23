@@ -653,16 +653,17 @@ def test_right_half_tooltip_and_cluster(harness, page_session, wait_settled):
 def test_drawing_across_the_divider(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
     reports, _ = record(widget)
-    widget.draw.enable(("polygon",))
+    session = widget.draw.begin(("polygon",))
     widget.draw.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
+    wait_for(page_session, lambda: len(reports) == 1, "the session was never acknowledged")
     # Two vertices each side of the divider, away from its handle.
     clicks = spread(el, (0.3, 0.25), (0.7, 0.25), (0.65, 0.7), (0.35, 0.7))
     draw_polygon(page_session, el, clicks)
-    wait_for(page_session, lambda: len(reports) == 1, "the polygon never arrived")
-    widget.draw.clear()
-    wait_for(page_session, lambda: len(reports) == 2, "the clear was never acknowledged")
+    wait_for(page_session, lambda: len(reports) == 2, "the polygon never arrived")
+    session.clear()
+    wait_for(page_session, lambda: len(reports) == 3, "the clear was never acknowledged")
 
     widget.publish(MapState(compare=True))
     wait_settled(page_session, widget.state["revision"])
@@ -678,7 +679,7 @@ def test_drawing_across_the_divider(harness, page_session, wait_settled):
     assert in_progress == [["shape", "Polygon"], ["vertex", "Point"], ["vertex", "Point"]]
     place(page_session, el, clicks[3:], first=4)
     click(page_session, el, *clicks[0])
-    wait_for(page_session, lambda: len(reports) == 3, "the second polygon never arrived")
+    wait_for(page_session, lambda: len(reports) == 4, "the second polygon never arrived")
     [held] = draw_state(el)["store"]
     wait_for(
         page_session,
@@ -689,9 +690,9 @@ def test_drawing_across_the_divider(harness, page_session, wait_settled):
     def drawn(report):
         return report["cause"], [(f["geometry"], f["properties"]) for f in report["features"]]
 
-    assert drawn(reports[2]) == drawn(reports[0])
+    assert drawn(reports[3]) == drawn(reports[1])
 
-    widget.draw.disable()
+    session.end()
     wait_stopped(page_session, el)
     wait_for(page_session, lambda: mirror(el) == [], "the mirror kept the drawing")
 
@@ -699,12 +700,12 @@ def test_drawing_across_the_divider(harness, page_session, wait_settled):
 def test_mirror_after_compare_on(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
     _, calls = record(widget)
-    widget.draw.enable(("polygon",))
+    widget.draw.begin(("polygon",), on_change=calls.append)
     widget.draw.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
     draw_polygon(page_session, el, spread(el, (0.3, 0.3), (0.7, 0.3), (0.6, 0.75)))
-    wait_for(page_session, lambda: calls, "on_draw never ran")
+    wait_for(page_session, lambda: calls, "on_change never ran")
     [held] = draw_state(el)["store"]
 
     widget.publish(MapState(compare=True))
@@ -718,14 +719,14 @@ def test_mirror_after_compare_on(harness, page_session, wait_settled):
 
 def test_mirror_follows_draw_set(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
-    widget.draw.enable(("polygon",))
+    session = widget.draw.begin(("polygon",))
     widget.publish(MapState(compare=True))
     [el] = show(page_session, widget)
     wait_settled(page_session, 1)
     wait_drawing(page_session, el, "static")
 
-    widget.draw.set(feature(square(10, -10, 30, 10)))
-    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+    session.set(feature(square(10, -10, 30, 10)))
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 2, "no acknowledgement")
     [held] = draw_state(el)["store"]
     wait_for(
         page_session,
@@ -736,8 +737,7 @@ def test_mirror_follows_draw_set(harness, page_session, wait_settled):
 
 def test_mirror_shows_handles_in_select_mode(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
-    widget.draw.enable(("polygon",))
-    widget.draw.set(feature(square(15, -5, 25, 5)))
+    widget.draw.begin(("polygon",), features=[feature(square(15, -5, 25, 5))])
     widget.draw.start("select")
     widget.publish(MapState(compare=True))
     [el] = show(page_session, widget)

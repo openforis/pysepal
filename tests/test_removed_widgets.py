@@ -136,7 +136,7 @@ def test_models_import_without_widgets():
 @pytest.mark.parametrize(
     "module,replacement",
     [
-        ("pysepal.mapping.draw_control", "m.draw"),
+        ("pysepal.mapping.draw_control", "m.draw.begin(modes) and the DrawSession it returns"),
         ("pysepal.mapping.inspector_control", "SepalMap(inspector=True)"),
     ],
 )

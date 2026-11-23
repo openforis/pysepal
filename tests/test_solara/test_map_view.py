@@ -349,10 +349,10 @@ def test_slot_keys_stay_stable_when_the_toolbar_and_inspector_come_and_go():
         MapView(m, overlays={"top-left": [counter(mounts)]}), handle_error=False
     )
     rc.find(v.Btn, children=["count 0"]).widget.click()
-    m.draw.enable(["polygon"])
+    session = m.draw.begin(["polygon"])
     m.inspector.activate()
     m.inspector.inspection = Inspection(0.0, 0.0, 1.0, (), False)
-    m.draw.disable()
+    session.end()
     m.inspector.deactivate()
     assert "count 1" in corner_text(box, "top-left")
     assert mounts == ["mount"]

@@ -30,13 +30,19 @@ def _tool_button(icon: str, tip: str, role: str, on_click, active: bool = False,
 
 
 def draw_toolbar(map_) -> list:
-    """One toggle per drawing mode and a clear button; empty while drawing is off."""
+    """One toggle per drawing mode and a clear button; empty while no session is active."""
     draw = map_.draw
     if not draw.modes:
         return []
 
     def toggle(mode: str):
         return lambda: draw.stop() if draw.mode == mode else draw.start(mode)
+
+    def clear():
+        # The toolbar holds no session of its own: it clears the one holding the tools.
+        session = draw._session
+        if session is not None and session.active:
+            session.clear()
 
     buttons = [
         _tool_button(
@@ -50,7 +56,7 @@ def draw_toolbar(map_) -> list:
         for mode in draw.modes
     ]
     buttons.append(
-        _tool_button("mdi-delete-outline", msg("map_view.draw.clear_all"), "draw-clear", draw.clear)
+        _tool_button("mdi-delete-outline", msg("map_view.draw.clear_all"), "draw-clear", clear)
     )
     return [
         rv.Html(

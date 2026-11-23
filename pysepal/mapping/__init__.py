@@ -37,8 +37,8 @@ _REMOVED = {
         "LayersControl": "SepalMap.layer_store with the Solara LayerPanel",
     },
     "the move to MapLibre": {
-        "DrawControl": "m.draw (enable, start, features) and m.on_draw",
-        "GeomanDrawControl": "m.draw (enable, start, features) and m.on_draw",
+        "DrawControl": "m.draw.begin(modes) and the DrawSession it returns",
+        "GeomanDrawControl": "m.draw.begin(modes) and the DrawSession it returns",
         "InspectorControl": "SepalMap(inspector=True) shown in a MapView",
         "ValueInspector": "SepalMap(inspector=True) shown in a MapView",
         "ZoomControl": "the zoom, scale and fullscreen controls the map draws itself",

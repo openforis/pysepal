@@ -108,8 +108,12 @@ export interface DrawFeature {
   properties: Record<string, unknown>;
 }
 
-/** The `drawing` trait: the tools offered (empty while off), the active one, the colour. */
+/**
+ * The `drawing` trait: the session that holds the tools, the tools offered
+ * (empty while none does), the active one, the colour.
+ */
 export interface DrawingState {
+  session: number;
   modes: string[];
   mode: string;
   color: string;
