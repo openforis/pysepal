@@ -465,7 +465,7 @@ def test_fit_bounds_frames_the_whole_raster(fixture: str, request) -> None:
     west, south, east, north = _render(m, layer).bounds
     assert west < east and south < north
     assert m.view_request["bounds"] == [west, south, east, north]
-    assert (m.view_request["zoom_out"], m.view_request["padding"]) == (0, 20)
+    assert m.view_request["padding"] == 20
 
 
 def test_fit_bounds_can_be_declined(byte: Path) -> None:

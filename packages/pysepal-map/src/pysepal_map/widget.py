@@ -55,9 +55,10 @@ or a zoom outside [0, 24] are dropped, and on the same request a ``user`` or
 
 A center request carries ``center`` and ``zoom``, null to keep the zoom. A fit
 carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
-``zoom_out``: the view fits the bounds no further in than ``max_zoom``, zooms
-out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
-usable area has no size, and runs once it has one.
+the view fits the bounds inside ``padding`` px, no further in than
+``max_zoom``, and jumps there. A padding the usable area cannot hold is
+reduced so that 1 px is left each way. A fit waits while the view's usable
+area has no size, and runs once it has one.
 
 Linked maps. Maps whose ``link_group`` names the same group keep one camera.
 A map in a group has ``_link`` set to ``{"group", "seq"}``, else ``{}``: the
@@ -735,17 +736,15 @@ class MapWidget(anywidget.AnyWidget):
         bounds: tuple[float, float, float, float],
         padding: int = 20,
         max_zoom: float | None = None,
-        zoom_out: float = 0.0,
     ) -> None:
         """Ask every view to fit ``(west, south, east, north)``, ``padding`` px in.
 
         The fit stays inside the insets, zooms in no further than
-        ``max_zoom`` (in [0, 24]; None is the map's maximum), then zooms out
-        by ``zoom_out`` (finite, at least 0), down to zoom 0. A west east of
+        ``max_zoom`` (in [0, 24]; None is the map's maximum). A west east of
         east crosses the antimeridian. A view without a usable area fits
         once it has one.
         """
-        self._request(_bounds_request(bounds, padding, max_zoom, zoom_out))
+        self._request(_bounds_request(bounds, padding, max_zoom))
 
     def set_insets(self, *, left: int = 0, right: int = 0, top: int = 0, bottom: int = 0) -> None:
         """Declare how many CSS pixels of each side of the map other UI covers.

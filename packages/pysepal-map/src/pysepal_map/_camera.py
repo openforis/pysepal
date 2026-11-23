@@ -36,7 +36,7 @@ def _center_request(lng, lat, zoom) -> dict:
     return {"center": center, "zoom": None if zoom is None else _zoom("zoom", zoom)}
 
 
-def _bounds_request(bounds, padding, max_zoom, zoom_out) -> dict:
+def _bounds_request(bounds, padding, max_zoom) -> dict:
     corners = tuple(bounds)
     if len(corners) != 4:
         raise ValueError(f"bounds must be (west, south, east, north), got {bounds!r}")
@@ -49,13 +49,10 @@ def _bounds_request(bounds, padding, max_zoom, zoom_out) -> dict:
     ]
     if box[1] > box[3]:
         raise ValueError(f"south must not be above north, got {bounds!r}")
-    if _finite("zoom_out", zoom_out) < 0:
-        raise ValueError(f"zoom_out must not be negative, got {zoom_out!r}")
     return {
         "bounds": box,
         "padding": _pixels("padding", padding),
         "max_zoom": None if max_zoom is None else _zoom("max_zoom", max_zoom),
-        "zoom_out": float(zoom_out),
     }
 
 

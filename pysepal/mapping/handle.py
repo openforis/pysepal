@@ -109,15 +109,15 @@ class LayerHandle:
         self._check()
         return self.store.restyle(self.id, **changes)
 
-    def zoom(self, zoom_out: int = 1) -> ZoomResult:
+    def zoom(self, *, padding: int = 20) -> ZoomResult:
         """Move the camera to the layer."""
         self._check()
-        return self._map.zoom_layer(self.id, zoom_out)
+        return self._map.zoom_layer(self.id, padding=padding)
 
-    async def zoom_async(self, zoom_out: int = 1) -> ZoomResult:
+    async def zoom_async(self, *, padding: int = 20) -> ZoomResult:
         """Move the camera to the layer without blocking."""
         self._check()
-        return await self._map.zoom_layer_async(self.id, zoom_out)
+        return await self._map.zoom_layer_async(self.id, padding=padding)
 
     def remove(self) -> None:
         """Remove the layer from the map."""

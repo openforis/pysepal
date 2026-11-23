@@ -47,10 +47,14 @@ def test_a_rejected_inset_changes_nothing():
     assert w.insets == {"left": 300, "right": 0, "top": 0, "bottom": 0}
 
 
-def test_fit_bounds_request_carries_max_zoom_and_zoom_out():
+def test_fit_bounds_request_carries_padding_and_max_zoom():
     w = MapWidget()
-    w.fit_bounds((10, 10, 20, 20), max_zoom=12, zoom_out=1)
-    assert (w.view_request["max_zoom"], w.view_request["zoom_out"]) == (12, 1)
+    w.fit_bounds((10, 10, 20, 20), padding=40, max_zoom=12)
+    request = w.view_request
+    assert (request["padding"], request["max_zoom"]) == (40, 12)
+    assert "zoom_out" not in request
+    with pytest.raises(TypeError):
+        w.fit_bounds((10, 10, 20, 20), zoom_out=1)
 
 
 def test_fit_bounds_without_max_zoom_sends_null():
@@ -65,9 +69,6 @@ def test_fit_bounds_without_max_zoom_sends_null():
         {"max_zoom": 25},
         {"max_zoom": -1},
         {"max_zoom": True},
-        {"zoom_out": -1},
-        {"zoom_out": float("nan")},
-        {"zoom_out": float("inf")},
     ],
 )
 def test_fit_bounds_rejects_bad_options(kwargs):

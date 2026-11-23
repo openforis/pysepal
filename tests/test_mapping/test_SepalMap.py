@@ -1,6 +1,7 @@
 """Test the SepalMap object."""
 
 import asyncio
+import inspect
 import math
 import random
 from pathlib import Path
@@ -533,15 +534,27 @@ async def test_closed_map_commits_no_pending_add(byte, monkeypatch) -> None:
 # -- zoom -------------------------------------------------------------------------------------
 
 
-def test_zoom_bounds_default_is_the_exact_fit() -> None:
+def test_zoom_bounds_passes_padding() -> None:
     m = SepalMap(gee=False)
     assert m.zoom_bounds((10, 10, 20, 20)) is m
     assert m.view_request["bounds"] == [10, 10, 20, 20]
-    assert m.view_request["padding"] == 20
-    assert (m.view_request["zoom_out"], m.view_request["max_zoom"]) == (0, 18)
+    assert (m.view_request["padding"], m.view_request["max_zoom"]) == (20, 18)
+    assert "zoom_out" not in m.view_request
 
-    m.zoom_bounds((10, 10, 20, 20), 5)
-    assert m.view_request["zoom_out"] == 4
+    m.zoom_bounds((10, 10, 20, 20), padding=40)
+    assert (m.view_request["padding"], m.view_request["max_zoom"]) == (40, 18)
+
+
+def test_zoom_methods_take_padding_by_keyword() -> None:
+    m = SepalMap(gee=False)
+    with pytest.raises(TypeError):
+        m.zoom_bounds((10, 10, 20, 20), 2)
+    with pytest.raises(TypeError):
+        m.zoom_layer("x", 2)
+    with pytest.raises(TypeError):
+        m.zoom_raster("x", 2)
+    parameter = inspect.signature(SepalMap.zoom_ee_object.__wrapped__).parameters["padding"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_point_fit_stops_at_18() -> None:
@@ -754,7 +767,7 @@ def test_shared_store_tile_error_clears_with_its_map() -> None:
 
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_zoom_ee_object() -> None:
+def test_zoom_ee_object_passes_padding() -> None:
     """Check we can zoom on a GEE object."""
     m = SepalMap()
     ee_object = ee.FeatureCollection("FAO/GAUL/2015/level0").filter(
@@ -764,10 +777,26 @@ def test_zoom_ee_object() -> None:
     m.zoom_ee_object(ee_object.geometry())
     west, south, east, north = m.view_request["bounds"]
     assert ((west + east) / 2, (south + north) / 2) == pytest.approx((2.5, 46.5), abs=5)
-    assert m.view_request["zoom_out"] == 0
+    assert m.view_request["padding"] == 20
 
-    m.centerObject(ee_object.geometry(), 3)
-    assert m.view_request["zoom_out"] == 2
+    m.zoom_ee_object(ee_object.geometry(), padding=40)
+    assert m.view_request["padding"] == 40
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_center_object_follows_the_gee_console() -> None:
+    m = SepalMap()
+    geometry = ee.Geometry.Rectangle([0, 40, 10, 50])
+
+    assert m.centerObject(geometry, 3) is m
+    request = m.view_request
+    assert request["zoom"] == 3
+    assert request["center"] == pytest.approx([5, 45], abs=1)
+
+    m.centerObject(geometry)
+    assert m.view_request["padding"] == 20
+    assert "bounds" in m.view_request
 
 
 @pytest.mark.gee

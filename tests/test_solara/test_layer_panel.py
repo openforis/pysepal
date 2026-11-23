@@ -509,7 +509,7 @@ class _FakeZoom:
         self.calls = 0
         self.instance = instance
 
-    async def zoom_layer_async(self, layer_id, zoom_out=1):
+    async def zoom_layer_async(self, layer_id, *, padding=20):
         self.calls += 1
         result = self.results.pop(0)
         if isinstance(result, Exception):

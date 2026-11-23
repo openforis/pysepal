@@ -13,12 +13,12 @@ class FakeMap:
         self.zoom_calls = []
         self.answer = "moved"
 
-    def zoom_layer(self, layer_id, zoom_out=1):
-        self.zoom_calls.append((layer_id, zoom_out))
+    def zoom_layer(self, layer_id, *, padding=20):
+        self.zoom_calls.append((layer_id, padding))
         return self.answer
 
-    async def zoom_layer_async(self, layer_id, zoom_out=1):
-        self.zoom_calls.append((layer_id, zoom_out))
+    async def zoom_layer_async(self, layer_id, *, padding=20):
+        self.zoom_calls.append((layer_id, padding))
         return self.answer
 
 
@@ -92,14 +92,14 @@ def test_zoom_delegates_and_reports(fake_map, vector_spec):
     fake_map.layer_store.add(vector_spec)
     fake_map.answer = "no_bounds"
     assert LayerHandle(fake_map, vector_spec.id).zoom() == "no_bounds"
-    assert fake_map.zoom_calls == [(vector_spec.id, 1)]
+    assert fake_map.zoom_calls == [(vector_spec.id, 20)]
 
 
 @pytest.mark.asyncio
 async def test_zoom_async_delegates(fake_map, vector_spec):
     fake_map.layer_store.add(vector_spec)
     fake_map.answer = "preparing"
-    assert await LayerHandle(fake_map, vector_spec.id).zoom_async(3) == "preparing"
+    assert await LayerHandle(fake_map, vector_spec.id).zoom_async(padding=3) == "preparing"
     assert fake_map.zoom_calls == [(vector_spec.id, 3)]
 
 
@@ -126,3 +126,12 @@ def test_handle_side(fake_map, vector_spec):
         h.side
     with pytest.raises(LayerGoneError):
         h.side = "left"
+
+
+def test_zoom_takes_padding_by_keyword(fake_map, vector_spec):
+    fake_map.layer_store.add(vector_spec)
+    handle = LayerHandle(fake_map, vector_spec.id)
+    with pytest.raises(TypeError):
+        handle.zoom(2)
+    handle.zoom(padding=2)
+    assert fake_map.zoom_calls == [(vector_spec.id, 2)]

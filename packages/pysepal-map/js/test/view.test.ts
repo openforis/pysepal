@@ -463,15 +463,12 @@ describe("ViewCamera", () => {
     expect(causes()).toEqual([[3, "request"]]);
   });
 
-  it("keeps a fit MapLibre cannot make pending until it fits", () => {
+  it("fits a host too small for the padding with a reduced one", () => {
     const { camera, model, map, seqs } = setup({ width: 30, height: 30 });
     camera.start();
     vi.runAllTimers();
     model.set("view_request", { seq: 2, bounds: [0, 0, 1, 1], padding: 20 });
-    expect(camera.inspect()).toMatchObject({ applied: 1, pending: 2 });
-    vi.runAllTimers();
-    expect(seqs()).toEqual([1]);
-    map.grow(100, 100);
+    expect(map.fits).toEqual([{ padding: 14 }]);
     expect(camera.inspect()).toMatchObject({ applied: 2, pending: null });
     vi.runAllTimers();
     expect(seqs()).toEqual([1, 2]);
@@ -573,7 +570,6 @@ describe("ViewCamera", () => {
     bounds: [0, 0, 10, 10],
     padding: 20,
     max_zoom: null,
-    zoom_out: 0,
     ...more,
   });
 
@@ -593,17 +589,25 @@ describe("ViewCamera", () => {
     expect([map.center, map.zoom]).toEqual([{ lng: 5, lat: 5 }, 12]);
   });
 
-  it("fit subtracts zoom_out, down to zoom 0", () => {
+  it("a fit jumps to cameraForBounds with its padding", () => {
     const { camera, map, model, sent } = setup();
     camera.start();
-    model.set("view_request", fit(2, { zoom_out: 1.5 }));
-    expect(map.zoom).toBe(Math.log2(36) - 1.5);
+    model.set("view_request", fit(2, { padding: 40 }));
+    expect(map.fits).toEqual([{ padding: 40 }]);
+    expect(map.zoom).toBe(Math.log2(32));
     vi.runAllTimers();
     expect(sent.map((r) => [r.request_seq, r.zoom])).toEqual([
-      [2, Math.log2(36) - 1.5],
+      [2, Math.log2(32)],
     ]);
-    model.set("view_request", fit(3, { zoom_out: 9 }));
-    expect(map.zoom).toBe(0);
+  });
+
+  it("clamps a padding that leaves no room", () => {
+    const { camera, map, model } = setup();
+    camera.setInsets({ ...NO_INSETS, left: 100 });
+    camera.start();
+    model.set("view_request", fit(2, { padding: 500 }));
+    expect(map.fits).toEqual([{ padding: 149 }]);
+    expect(camera.inspect()).toMatchObject({ applied: 2, pending: null });
   });
 
   it("a deferred fit runs when insets shrink", () => {

@@ -46,8 +46,6 @@ export interface ViewRequest {
   padding?: number;
   /** Null fits up to the map's maximum zoom. */
   max_zoom?: number | null;
-  /** How far to zoom out from the fit, down to zoom 0. */
-  zoom_out?: number;
 }
 
 /**
@@ -165,8 +163,10 @@ const sameInsets = (a: Insets, b: Insets): boolean =>
 
 function requestOf(value: unknown): ViewRequest | null {
   if (!value || typeof value !== "object") return null;
-  const { seq, center, zoom, bounds, padding, max_zoom, zoom_out } =
-    value as Record<string, unknown>;
+  const { seq, center, zoom, bounds, padding, max_zoom } = value as Record<
+    string,
+    unknown
+  >;
   if (!isSeq(seq)) return null;
   if (numbers(bounds, 4)) {
     return {
@@ -174,7 +174,6 @@ function requestOf(value: unknown): ViewRequest | null {
       bounds: bounds as Bounds,
       padding: isNumber(padding) ? padding : 0,
       max_zoom: isNumber(max_zoom) ? max_zoom : null,
-      zoom_out: isNumber(zoom_out) && zoom_out > 0 ? zoom_out : 0,
     };
   }
   if (numbers(center, 2) && (zoom == null || isNumber(zoom))) {
@@ -320,13 +319,13 @@ export class ViewCamera {
       // just got its size may not have told the map yet, so measure it now.
       if (this.hasSize()) {
         map.resize({ [REQUEST]: request.seq });
-        const { max_zoom, zoom_out = 0 } = request;
+        const { max_zoom } = request;
         const fit = map.cameraForBounds(request.bounds, {
-          padding: request.padding,
+          padding: this.fitPadding(request.padding ?? 0),
           ...(max_zoom == null ? {} : { maxZoom: max_zoom }),
         });
         if (fit?.zoom !== undefined) {
-          camera = { ...fit, zoom: Math.max(0, fit.zoom - zoom_out) };
+          camera = fit;
         }
       }
       if (!camera) {
@@ -398,6 +397,17 @@ export class ViewCamera {
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
     this.owed = null;
+  }
+
+  /** The padding, reduced so the usable area keeps 1 px each way. */
+  private fitPadding(padding: number): number {
+    const { clientWidth, clientHeight } = this.options.host;
+    const { left, right, top, bottom } = this.insets;
+    const room = Math.min(
+      Math.floor((clientWidth - left - right - 1) / 2),
+      Math.floor((clientHeight - top - bottom - 1) / 2)
+    );
+    return Math.max(0, Math.min(padding, room));
   }
 
   /** Whether the insets leave some of the host. */

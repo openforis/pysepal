@@ -398,40 +398,42 @@ class SepalMap(MapWidget):
 
     # -- camera -----------------------------------------------------------------------------
 
-    def zoom_bounds(self, bounds: Sequence[float], zoom_out: int = 1, max_zoom: float = 18) -> Self:
+    def zoom_bounds(
+        self, bounds: Sequence[float], *, padding: int = 20, max_zoom: float = 18
+    ) -> Self:
         """Fit the camera to the given bounds.
 
         Args:
             bounds: coordinates corners as minx, miny, maxx, maxy in EPSG:4326
-            zoom_out: 1 is the exact fit; each level above zooms out once more.
+            padding: px kept free around the bounds; one the map cannot hold is reduced.
             max_zoom: the closest zoom of the fit, so that a point is not shown at zoom 24.
         """
-        self.fit_bounds(tuple(bounds), padding=20, max_zoom=max_zoom, zoom_out=max(zoom_out - 1, 0))
+        self.fit_bounds(tuple(bounds), padding=padding, max_zoom=max_zoom)
         return self
 
     @sd.need_ee
-    def zoom_ee_object(self, item: ee.ComputedObject, zoom_out: int = 1) -> Self:
+    def zoom_ee_object(self, item: ee.ComputedObject, *, padding: int = 20) -> Self:
         """Fit the camera to an Earth Engine object.
 
         Args:
             item: the geometry to zoom on
-            zoom_out: Zoom out the bounding zoom
+            padding: px kept free around the object
         """
-        return self.zoom_bounds(self.gee_interface.get_bounds(item), zoom_out)
+        return self.zoom_bounds(self.gee_interface.get_bounds(item), padding=padding)
 
-    def zoom_raster(self, layer: Union[LayerHandle, str, Path], zoom_out: int = 1) -> Self:
+    def zoom_raster(self, layer: Union[LayerHandle, str, Path], *, padding: int = 20) -> Self:
         """Fit the camera to a raster: a layer of the map, by handle or id, or a file.
 
         Args:
             layer: a handle or an id of :attr:`layer_store`, which uses the bounds of its render, or the path of a raster file.
-            zoom_out: Zoom out the bounding zoom
+            padding: px kept free around the raster
         """
         if isinstance(layer, LayerHandle):
             self._check_handle(layer)
-            self.zoom_layer(layer.id, zoom_out)
+            self.zoom_layer(layer.id, padding=padding)
             return self
         if isinstance(layer, str) and layer in self.layer_store:
-            self.zoom_layer(layer, zoom_out)
+            self.zoom_layer(layer, padding=padding)
             return self
 
         import rioxarray
@@ -444,9 +446,9 @@ class SepalMap(MapWidget):
         if da.rio.crs != CRS.from_string(epsg_4326):
             da = da.rio.reproject(epsg_4326)
 
-        return self.zoom_bounds(da.rio.bounds(), zoom_out)
+        return self.zoom_bounds(da.rio.bounds(), padding=padding)
 
-    def zoom_layer(self, layer_id: str, zoom_out: int = 1) -> ZoomResult:
+    def zoom_layer(self, layer_id: str, *, padding: int = 20) -> ZoomResult:
         """Fit the camera to a layer, with the bounds its render knows.
 
         Returns:
@@ -455,10 +457,10 @@ class SepalMap(MapWidget):
         result = self.layer_engine.bounds(layer_id)
         if isinstance(result, str):
             return result
-        self.zoom_bounds(result, zoom_out)
+        self.zoom_bounds(result, padding=padding)
         return "moved"
 
-    async def zoom_layer_async(self, layer_id: str, zoom_out: int = 1) -> ZoomResult:
+    async def zoom_layer_async(self, layer_id: str, *, padding: int = 20) -> ZoomResult:
         """Fit the camera to a layer, looking Earth Engine bounds up without blocking.
 
         A camera command issued meanwhile wins: a newer zoom, ``fit_bounds`` or
@@ -482,8 +484,22 @@ class SepalMap(MapWidget):
             return "superseded"
         if isinstance(result, str):
             return result
-        self.zoom_bounds(result, zoom_out)
+        self.zoom_bounds(result, padding=padding)
         return "moved"
+
+    @sd.need_ee
+    def centerObject(self, item: ee.ComputedObject, zoom: Optional[float] = None) -> Self:
+        """Center the map on an Earth Engine object, as the Code Editor does.
+
+        Args:
+            item: the object to center on
+            zoom: the zoom to use; without one, the map zooms to fit the object
+        """
+        if zoom is None:
+            return self.zoom_ee_object(item)
+        west, south, east, north = self.gee_interface.get_bounds(item)
+        self.set_center((west + east) / 2, (south + north) / 2, zoom)
+        return self
 
     def get_scale(self) -> float:
         """Return the approximate size of a CSS pixel at the map center, in meters.
@@ -929,7 +945,6 @@ class SepalMap(MapWidget):
     # ##########################################################################
 
     setCenter = MapWidget.set_center
-    centerObject = zoom_ee_object
     addLayer = add_ee_layer
     getScale = get_scale
 
