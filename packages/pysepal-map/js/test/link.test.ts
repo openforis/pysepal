@@ -278,6 +278,27 @@ describe("ViewLink", () => {
   });
 
   it.each([
+    ["the request", false],
+    ["the link change", true],
+  ])(
+    "takes the request of a relink to a group with no peer shown when %s comes first",
+    (_, linkFirst) => {
+      const registry: LinkRegistry = new Map();
+      const a = view(registry);
+      const b = view(registry);
+      a.map.jumps.length = 0;
+      // view_request and _link change in one message, their events in either order.
+      if (linkFirst) b.model.set("h", 3);
+      else b.model.link = { group: "h", seq: 3 };
+      b.map.jumpTo({ center: [30, 40], zoom: 8 }, { psmRequest: 3 });
+      if (!linkFirst) b.model.set("h", 3);
+      expect(a.map.jumps).toEqual([]);
+      expect(camera(b.map)).toEqual([30, 40, 8]);
+      expect(registry.get("h")?.size).toBe(1);
+    }
+  );
+
+  it.each([
     ["no group", {}],
     ["an empty group", { group: "", seq: 1 }],
     ["a text seq", { group: "g", seq: "1" }],

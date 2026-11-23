@@ -154,9 +154,19 @@ export class ViewLink {
     this.group = "";
   }
 
-  private peers(group = this.group): Member[] {
+  private peers(group: string): Member[] {
     const members = this.options.registry.get(group) ?? [];
     return [...members].filter((m) => m.model !== this.options.model);
+  }
+
+  /**
+   * The peers of the group `_link` names now. A request and the link it
+   * came with change in one message, their events in either order, so a
+   * move reads the link itself rather than the group this view has joined.
+   */
+  private linked(): { peers: Member[]; seq: number } {
+    const { group, seq } = linkOf(this.options.model.get("_link"));
+    return { peers: this.peers(group), seq };
   }
 
   private readonly onMove = (event: MoveEvent) => {
@@ -180,7 +190,7 @@ export class ViewLink {
     this.pushed = this.stale = false;
     if (stale) {
       // Here and not in the move, so that no jump runs inside a move listener.
-      const peer = this.peers()[0];
+      const [peer] = this.linked().peers;
       if (peer) jump(this.options.map, peer.map, "link");
     } else if (pushed) {
       this.push(event.originalEvent ? "user" : "link");
@@ -190,15 +200,14 @@ export class ViewLink {
   private isStale(event: MoveEvent): boolean {
     const request = event[REQUEST];
     if (!Number.isInteger(request)) return false;
-    // Read now: the request and the link it came with change in one message.
-    const { seq } = linkOf(this.options.model.get("_link"));
-    return (request as number) <= seq && this.peers().length > 0;
+    const { peers, seq } = this.linked();
+    return (request as number) <= seq && peers.length > 0;
   }
 
   private push(mark: LinkMark): void {
     const { map } = this.options;
     this.last = cameraOf(map);
-    for (const peer of this.peers()) jump(peer.map, map, mark);
+    for (const peer of this.linked().peers) jump(peer.map, map, mark);
   }
 }
 
