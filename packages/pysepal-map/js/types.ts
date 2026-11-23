@@ -14,6 +14,10 @@ export interface VectorPaint {
   width: number;
   point_radius: number;
   marker: "circle" | "pin";
+  /** The property whose value picks a colour in `class_colors`. */
+  color_by: string | null;
+  /** `[value, colour]` pairs; values are all strings or all integers. */
+  class_colors: [string | number, string][];
 }
 
 export interface ClusterState {

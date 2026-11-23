@@ -37,20 +37,21 @@ def derive_legend(
         default_color: chip color for a vector style with neither fill nor stroke.
 
     Returns:
-        The legend, or ``None`` when the style has nothing to explain (e.g. multiband).
+        The legend, one item per class for a style with classes, or ``None`` when the
+        style has nothing to explain (e.g. multiband).
     """
-    if isinstance(style, VectorStyle):
-        color = style.fill or style.stroke or default_color
-        if not color:
-            return None
-        return Legend(title=title, items=[LegendItem(label=title, color=color)])
-
     if style.class_colors:
         labels = style.class_labels or {}
         items = [
             LegendItem(label=labels.get(k, str(k)), color=c) for k, c in style.class_colors.items()
         ]
         return Legend(title=title, items=items)
+
+    if isinstance(style, VectorStyle):
+        color = style.fill or style.stroke or default_color
+        if not color:
+            return None
+        return Legend(title=title, items=[LegendItem(label=title, color=color)])
 
     colors = colormap_stops(style.colormap) if style.colormap else style.palette
     if not colors:

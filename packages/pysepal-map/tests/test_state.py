@@ -273,6 +273,49 @@ def test_marker_json():
         VectorPaint(marker="star")
 
 
+def test_class_colors_json():
+    paint = VectorPaint(color_by="status", class_colors={"a": "#f00", "b": "#0f0"})
+    assert paint.class_colors == (("a", "#f00"), ("b", "#0f0"))
+    assert paint.to_json()["color_by"] == "status"
+    assert paint.to_json()["class_colors"] == [["a", "#f00"], ["b", "#0f0"]]
+    pairs = VectorPaint(color_by="n", class_colors=[(1, "#f00"), (2, "#0f0")])
+    assert pairs.to_json()["class_colors"] == [[1, "#f00"], [2, "#0f0"]]
+    assert VectorPaint().to_json()["color_by"] is None
+    assert VectorPaint().to_json()["class_colors"] == []
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"color_by": "s", "class_colors": {True: "#f00"}},
+        {"color_by": "s", "class_colors": {"a": "#f00", 1: "#0f0"}},
+        {"color_by": "s", "class_colors": {2**53: "#f00"}},
+        {"color_by": "s", "class_colors": {"a": ""}},
+        {"color_by": "s"},
+        {"class_colors": {"a": "#f00"}},
+        {"color_by": "", "class_colors": {"a": "#f00"}},
+        {"color_by": "s", "class_colors": [("a", "#f00"), ("a", "#0f0")]},
+        {"color_by": "s", "class_colors": {1.5: "#f00"}},
+        {"color_by": "s", "class_colors": [("a",)]},
+    ],
+)
+def test_class_colors_validation(kw):
+    with pytest.raises(ValueError):
+        VectorPaint(**kw)
+
+
+def test_class_colors_change_keeps_instance():
+    widget = MapWidget()
+    source = GeoJSONSource(widget.add_payload(EMPTY))
+    red = VectorPaint(color_by="s", class_colors={"a": "#f00"})
+    widget.publish(MapState(layers=(Layer("v", source, paint=red),)))
+    first = widget.state["layers"][0]["instance"]
+    green = VectorPaint(color_by="s", class_colors={"a": "#0f0"})
+    widget.publish(MapState(layers=(Layer("v", source, paint=green),)))
+    assert widget.state["layers"][0]["instance"] == first
+    assert widget.state["layers"][0]["paint"]["class_colors"] == [["a", "#0f0"]]
+
+
 def test_layer_side_defaults_to_both_and_serializes():
     assert raster().side == "both"
     assert raster().to_json()["side"] == "both"

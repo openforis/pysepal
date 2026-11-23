@@ -12,6 +12,7 @@ from pysepal.layers import (
     LayerPrepareError,
     LayerSpec,
     RasterStyle,
+    VectorStyle,
     colormap_stops,
     prepare,
     prepare_sync,
@@ -87,6 +88,20 @@ def test_gee_named_colormap_reaches_map_id(image_id):
     styled = spec.revise(style=spec.style.model_copy(update={"colormap": "viridis"}))
     prepare_sync(styled, gee_interface=gee)
     assert gee.calls[-1]["palette"] == colormap_stops("viridis")
+
+
+def test_color_by_on_an_earth_engine_source_is_refused():
+    gee = FakeGee()
+    style = VectorStyle(color_by="status", class_colors={"a": "#ff0000"})
+    source = GeeSource(expr={}, kind="FeatureCollection")
+    spec = LayerSpec(id="v", name="v", source=source, style=style)
+    refused = "color_by needs a vector the browser draws; Earth Engine draws this layer"
+    with pytest.raises(LayerPrepareError, match=refused) as info:
+        prepare_sync(spec, gee_interface=gee)
+    assert isinstance(info.value.__cause__, ValueError)
+    with pytest.raises(LayerPrepareError, match=refused):
+        asyncio.run(prepare(spec, gee_interface=gee))
+    assert gee.calls == []
 
 
 def test_gee_without_interface_raises():

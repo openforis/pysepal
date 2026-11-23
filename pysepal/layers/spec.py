@@ -3,6 +3,7 @@
 import atexit
 import hashlib
 import json
+import numbers
 import os
 import re
 import shutil
@@ -27,6 +28,7 @@ from pysepal.scripts.scratch import scratch_root
 
 _CONFIG = ConfigDict(frozen=True, extra="forbid")
 _BARE_HEX = re.compile(r"^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$")
+_MAX_SAFE_INTEGER = 2**53 - 1
 
 GeeKind = Literal["Image", "ImageCollection", "FeatureCollection", "Feature", "Geometry"]
 VectorFormat = Literal["GeoJSON", "GPKG", "FlatGeobuf", "Parquet", "ESRI Shapefile", "PMTiles"]
@@ -254,7 +256,14 @@ class RasterStyle(BaseModel):
 
 
 class VectorStyle(BaseModel):
-    """How a vector layer is rendered. A ``None`` stroke is the theme primary color."""
+    """How a vector layer is rendered. A ``None`` stroke is the theme primary color.
+
+    ``color_by`` names a feature property and ``class_colors`` gives its values
+    their colors; the two go together. A feature whose value is not a key, a
+    value of the other type (``"1"`` is not ``1``), a null or a missing property
+    keeps the style's own color. Keys are all ``str`` or all ``int``. Only
+    vectors the browser draws take classes: Earth Engine vectors refuse them.
+    """
 
     model_config = _CONFIG
 
@@ -270,12 +279,40 @@ class VectorStyle(BaseModel):
     cluster_max_zoom: int = Field(default=14, ge=1, le=17)
     popup: bool | list[str] = False
     tooltip: bool | list[str] = False
+    color_by: str | None = Field(default=None, min_length=1)
+    class_colors: dict[str | int, str] | None = None
+    class_labels: dict[str | int, str] | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("stroke", "fill")
     @classmethod
     def _color(cls, value: str | None) -> str | None:
         return None if value is None else _normalise_color(value)
+
+    @field_validator("class_colors", "class_labels", mode="before")
+    @classmethod
+    def _class_keys(cls, value: Any) -> Any:
+        # pydantic would turn a bool key into an int, and a float key too
+        if not isinstance(value, dict):
+            return value
+        kinds = set()
+        for key in value:
+            if isinstance(key, str):
+                kinds.add(str)
+            elif isinstance(key, numbers.Integral) and not isinstance(key, bool):
+                if abs(key) > _MAX_SAFE_INTEGER:
+                    raise ValueError(f"class {key!r} is beyond what JavaScript holds exactly")
+                kinds.add(int)
+            else:
+                raise ValueError(f"classes must be str or int, got {key!r}")
+        if len(kinds) > 1:
+            raise ValueError("classes must be all str or all int")
+        return value
+
+    @field_validator("class_colors")
+    @classmethod
+    def _class_colors(cls, value: dict[str | int, str] | None) -> dict[str | int, str] | None:
+        return None if value is None else {k: _normalise_color(v) for k, v in value.items()}
 
     @field_validator("popup", "tooltip")
     @classmethod
@@ -291,12 +328,18 @@ class VectorStyle(BaseModel):
             raise ValueError("a pin needs a radius above 0")
         return self
 
+    @model_validator(mode="after")
+    def _classes_pair(self) -> "VectorStyle":
+        if (self.color_by is None) != (not self.class_colors):
+            raise ValueError("color_by and a non-empty class_colors must be given together")
+        return self
+
     @property
     def effective_fill_opacity(self) -> float:
-        """The fill opacity: explicit value, else 0 without a fill and 1 with one."""
+        """The fill opacity: explicit value, else 1 with a fill or classes and 0 without."""
         if self.fill_opacity is not None:
             return self.fill_opacity
-        return 0.0 if self.fill is None else 1.0
+        return 0.0 if self.fill is None and not self.class_colors else 1.0
 
     def to_ee_style_params(self) -> dict:
         """Return Earth Engine ``FeatureCollection.style`` parameters."""
@@ -589,7 +632,9 @@ class LayerSpec(BaseModel):
             lng: longitude column of a DataFrame.
             lat: latitude column of a DataFrame.
             id: layer id, a new UUID by default.
-            style: vector style, a pin marker by default.
+            style: vector style, by default a circle filled and outlined in the theme color.
+                Pass ``VectorStyle(marker="pin")`` for pins, and ``color_by`` with
+                ``class_colors`` to color the points by class.
             zone: drawing zone.
             attribution: attribution text.
 
@@ -639,7 +684,7 @@ class LayerSpec(BaseModel):
             gdf,
             name=name,
             id=id,
-            style=style or VectorStyle(marker="pin"),
+            style=style or VectorStyle(fill_opacity=1.0),
             zone=zone,
             attribution=attribution,
         )

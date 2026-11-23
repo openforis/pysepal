@@ -98,6 +98,42 @@ def test_vector_style_to_ee():
     assert VectorStyle().to_ee_style_params() == {"width": 2.0}
 
 
+def test_vector_style_class_colors():
+    style = VectorStyle(color_by="status", class_colors={"a": "red", "b": "00FF00"})
+    assert style.class_colors == {"a": "#ff0000", "b": "#00ff00"}
+    ints = VectorStyle(color_by="n", class_colors={1: "#F00", 2: "blue"}, class_labels={1: "One"})
+    assert ints.class_colors == {1: "#ff0000", 2: "#0000ff"}
+    assert [type(k) for k in ints.class_colors] == [int, int]
+    assert VectorStyle().color_by is None and VectorStyle().class_colors is None
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"color_by": "s", "class_colors": {True: "#ff0000"}},
+        {"color_by": "s", "class_colors": {"a": "#ff0000", 1: "#00ff00"}},
+        {"color_by": "s", "class_colors": {"a": "#ff0000"}, "class_labels": {False: "x"}},
+        {"color_by": "s", "class_colors": {"a": "#ff0000"}, "class_labels": {"a": "x", 1: "y"}},
+        {"color_by": "s"},
+        {"class_colors": {"a": "#ff0000"}},
+        {"color_by": "s", "class_colors": {}},
+        {"color_by": "", "class_colors": {"a": "#ff0000"}},
+        {"color_by": "s", "class_colors": {"a": "not a colour"}},
+        {"color_by": "s", "class_colors": {2**53: "#ff0000"}},
+        {"color_by": "s", "class_colors": {1.0: "#ff0000"}},
+    ],
+)
+def test_vector_style_rejects_bad_classes(kw):
+    with pytest.raises(ValidationError):
+        VectorStyle(**kw)
+
+
+def test_class_colors_fill_by_default():
+    classes = {"color_by": "s", "class_colors": {"a": "#ff0000"}}
+    assert VectorStyle(**classes).effective_fill_opacity == 1.0
+    assert VectorStyle(**classes, fill_opacity=0.3).effective_fill_opacity == 0.3
+
+
 def test_explicit_fill_is_visible():
     assert VectorStyle().effective_fill_opacity == 0.0
     assert VectorStyle(fill="#00ff00").effective_fill_opacity == 1.0
@@ -300,10 +336,17 @@ def _point_inputs():
 @pytest.mark.parametrize("kind", ["gdf", "geojson", "frame", "pairs"])
 def test_from_points_inputs(kind):
     spec = LayerSpec.from_points(_point_inputs()[kind], name="p")
-    assert spec.style.marker == "pin"
     back = gpd.read_parquet(uri_to_path(spec.source.uri))
     assert [(g.x, g.y) for g in back.geometry] == POINTS
     assert [c for c in back.columns if c != "geometry"] == []
+
+
+def test_from_points_defaults_to_a_filled_circle():
+    style = LayerSpec.from_points(POINTS, name="p").style
+    assert style.marker == "circle"
+    assert style.effective_fill_opacity == 1.0
+    pin = VectorStyle(marker="pin")
+    assert LayerSpec.from_points(POINTS, name="p", style=pin).style == pin
 
 
 def test_from_points_dataframe_columns_become_properties():

@@ -126,22 +126,22 @@ modules raise an `ImportError`, their names in `pysepal.mapping` and the removed
 `SepalMap` members raise an `AttributeError`. `m.state` no longer means the state
 bar: it is the map's declared state.
 
-| Removed                                                                                                                           | Replacement                                                                                                                       |
-| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `ZoomControl`, `FullScreenControl`                                                                                                | the map draws its own zoom, scale and fullscreen controls                                                                         |
-| `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                                                          | `MapView` shows layer loading                                                                                                     |
-| `LegendControl`, `m.add_legend`, `m.add_colorbar`                                                                                 | the `MapView` legend, built from each layer's legend                                                                              |
-| `MenuControl`                                                                                                                     | Solara components in `MapView(overlays=...)`                                                                                      |
-| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.enable(modes)`, `m.draw.disable()`, `m.draw.start(mode)`, `m.on_draw(cb)`, `m.draw.set(features)`, `m.draw.features`      |
-| `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`                                                 | `SepalMap(inspector=True)`, shown by `MapView`                                                                                    |
-| `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                                   |
-| mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                      |
-| `Marker`, `AwesomeIcon`, `MarkerCluster`, `LayerGroup` of clusters                                                                | `LayerSpec.from_points(...)` with `VectorStyle(marker="pin", cluster=True)`, one layer per category                               |
-| `Popup` with HTML, `on_hover` labels                                                                                              | `VectorStyle(popup=[...])`, `VectorStyle(tooltip=[...])`                                                                          |
-| `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                                |
-| `hover_style`, `style_callback`                                                                                                   | no replacement: one layer per class                                                                                               |
-| `SplitMapControl(left_layer=..., right_layer=...)`                                                                                | `m.compare = True` with `side="left"` and `side="right"` on the layer methods (or `handle.side`); other layers stay on both sides |
-| `traitlets.link((m1, "center"), (m2, "center"))` and the same on `zoom`                                                           | `SepalMap(link_group="name")`, or `m.link_group = "name"`, on each map                                                            |
+| Removed                                                                                                                           | Replacement                                                                                                                                                    |
+| --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ZoomControl`, `FullScreenControl`                                                                                                | the map draws its own zoom, scale and fullscreen controls                                                                                                      |
+| `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                                                          | `MapView` shows layer loading                                                                                                                                  |
+| `LegendControl`, `m.add_legend`, `m.add_colorbar`                                                                                 | the `MapView` legend, built from each layer's legend                                                                                                           |
+| `MenuControl`                                                                                                                     | Solara components in `MapView(overlays=...)`                                                                                                                   |
+| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.enable(modes)`, `m.draw.disable()`, `m.draw.start(mode)`, `m.on_draw(cb)`, `m.draw.set(features)`, `m.draw.features`                                   |
+| `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`                                                 | `SepalMap(inspector=True)`, shown by `MapView`                                                                                                                 |
+| `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                                                                |
+| mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                                                   |
+| `Marker`, `AwesomeIcon`, `MarkerCluster`, `LayerGroup` of clusters                                                                | `LayerSpec.from_points(...)` with `VectorStyle(marker="pin", cluster=True)`; one layer holds every category with `VectorStyle(color_by=..., class_colors=...)` |
+| `Popup` with HTML, `on_hover` labels                                                                                              | `VectorStyle(popup=[...])`, `VectorStyle(tooltip=[...])`                                                                                                       |
+| `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                                                             |
+| `hover_style`, `style_callback`                                                                                                   | `VectorStyle(color_by=..., class_colors=...)`: one layer holds every class, on vectors the browser draws, not Earth Engine ones; no hover style                |
+| `SplitMapControl(left_layer=..., right_layer=...)`                                                                                | `m.compare = True` with `side="left"` and `side="right"` on the layer methods (or `handle.side`); other layers stay on both sides                              |
+| `traitlets.link((m1, "center"), (m2, "center"))` and the same on `zoom`                                                           | `SepalMap(link_group="name")`, or `m.link_group = "name"`, on each map                                                                                         |
 
 Notes on the interaction replacements:
 
@@ -154,8 +154,12 @@ Notes on the interaction replacements:
 - **Clicks.** `m.on_click(cb)` calls `cb(event)` with the features under the
   point, top first. `event.hits(layer_id)` gives the properties of one layer.
   A click on a cluster zooms into it and sends no event.
-- **No hover events, no hover style, no per-feature style.** Use a tooltip for a
-  hover label, and one layer per class instead of a `style_callback`.
+- **No hover events or hover style, and colors by class only.** Use a tooltip
+  for a hover label. In place of a `style_callback`, one layer holds every class
+  through `VectorStyle(color_by="status", class_colors={"open": "#ff0000"})`,
+  with `class_labels` for the legend. It applies to vectors the browser draws,
+  not to Earth Engine vectors, which refuse it. A feature whose value is in no
+  class keeps the layer's own color.
 - **Popups and tooltips show a table of properties.** `popup=True` shows every
   property, a list names the ones to show. A popup that holds widgets (a
   "Go" button, say) becomes `m.on_click` plus a component in `MapView`.

@@ -161,6 +161,8 @@ def drawn_from(spec: LayerSpec, theme: str) -> dict:
         "width": spec.style.width,
         "point_radius": spec.style.radius,
         "marker": spec.style.marker,
+        "color_by": spec.style.color_by,
+        "class_colors": [list(pair) for pair in (spec.style.class_colors or {}).items()],
     }
     source = {"digest": hashlib.sha256(data).hexdigest(), "cluster": None}
     return expected | {"kind": "geojson", "source": source, "paint": paint}

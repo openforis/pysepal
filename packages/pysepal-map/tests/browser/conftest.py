@@ -132,6 +132,14 @@ def _source_spec(layer):
     return spec
 
 
+def _by_class(paint, default):
+    """A part's colour: a ``match`` on ``color_by`` falling back to ``default``, if set."""
+    if paint["color_by"] is None:
+        return default
+    branches = [item for pair in paint["class_colors"] for item in pair]
+    return ["match", ["get", paint["color_by"]], *branches, default]
+
+
 def _paints(layer):
     """Each part's paint, bottom-first, as the vector paint rule defines it."""
     opacity = layer["opacity"]
@@ -141,11 +149,11 @@ def _paints(layer):
     fill = paint["fill"] if paint["fill"] is not None else paint["stroke"]
     fill_opacity = paint["fill_opacity"] * opacity
     return [
-        ("fill", {"fill-color": fill, "fill-opacity": fill_opacity}),
+        ("fill", {"fill-color": _by_class(paint, fill), "fill-opacity": fill_opacity}),
         (
             "line",
             {
-                "line-color": paint["stroke"],
+                "line-color": _by_class(paint, paint["stroke"]),
                 "line-width": paint["width"],
                 "line-opacity": opacity,
             },
@@ -154,7 +162,7 @@ def _paints(layer):
             "circle",
             {
                 "circle-radius": paint["point_radius"],
-                "circle-color": fill,
+                "circle-color": _by_class(paint, fill),
                 "circle-opacity": fill_opacity,
                 "circle-stroke-color": paint["stroke"],
                 "circle-stroke-width": paint["width"],

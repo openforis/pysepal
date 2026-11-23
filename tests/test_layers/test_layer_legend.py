@@ -42,6 +42,20 @@ def test_vector_prefers_fill_then_stroke():
     assert derive_legend(VectorStyle(stroke="#111111"), title="a").items[0].color == "#111111"
 
 
+def test_vector_legend_lists_the_classes():
+    style = VectorStyle(
+        stroke="#111111",
+        color_by="status",
+        class_colors={"a": "#ff0000", "b": "#00ff00"},
+        class_labels={"a": "Alpha", "z": "unused"},
+    )
+    legend = derive_legend(style, title="Status", default_color="#123456")
+    assert legend.title == "Status"
+    assert [(i.label, i.color) for i in legend.items] == [("Alpha", "#ff0000"), ("b", "#00ff00")]
+    ints = VectorStyle(color_by="n", class_colors={2: "#0000ff", 1: "#ff0000"})
+    assert [i.label for i in derive_legend(ints, title="n").items] == ["2", "1"]
+
+
 def test_asset_viz_categorical():
     viz = {
         "type": "categorical",

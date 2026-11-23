@@ -683,6 +683,8 @@ class StateGenerator {
       width: vary(old?.width, [1, 2, 3.5]),
       point_radius: vary(old?.point_radius, [3, 5, 8]),
       marker: vary(old?.marker, ["circle", "pin"] as const),
+      color_by: null,
+      class_colors: [],
     };
   }
 

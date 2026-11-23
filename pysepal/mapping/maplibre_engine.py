@@ -130,6 +130,8 @@ def _paint(spec: LayerSpec, is_dark: bool) -> VectorPaint:
         width=style.width,
         point_radius=style.radius,
         marker=style.marker,
+        color_by=style.color_by,
+        class_colors=tuple((style.class_colors or {}).items()),
     )
 
 

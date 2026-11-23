@@ -157,6 +157,18 @@ view draws pins and bubbles on a canvas and registers them as images with ids
 ``encodeURIComponent`` does), so no glyphs are fetched; the label uses the
 browser's sans-serif font. The marker option does nothing on raster layers.
 
+Colours by class. ``VectorPaint(color_by=name, class_colors=...)`` colours one
+layer's features by the value of their property ``name``: ``class_colors`` is a
+mapping or a sequence of ``(value, colour)`` pairs, given together with
+``color_by``. Values are unique and all strings or all integers (no bools, at
+most 2**53 - 1 in absolute value). The view turns the fill, line and circle colours and
+the pin image into MapLibre ``match`` expressions on ``["get", name]``. A
+feature whose value is in no class, is of the other type (``"1"`` is not
+``1``), is null or is missing keeps the colour the paint gives without classes:
+the fill (else the stroke) for polygons, circles and pins, the stroke for
+lines. Circle outlines and cluster bubbles keep the stroke. Like any paint
+change, changing the classes keeps the instance.
+
 Popups and tooltips. A vector layer may carry an ``Interaction``, which is part
 of the state but not of its instance identity, so changing it keeps the
 instance. ``popup`` and ``tooltip`` are each ``None`` (off), ``()`` (every

@@ -2,7 +2,9 @@
 
 import json
 from dataclasses import replace
+from urllib.parse import quote
 
+import pytest
 from IPython.display import display
 from pysepal_map import (
     Basemap,
@@ -18,6 +20,8 @@ from test_pointer import canvas_point, wait_for
 ROOT = "document.querySelector('.psm-map')"
 BLUE = (51, 136, 255)
 RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+MISSING = object()
 
 
 def points(coords):
@@ -205,3 +209,79 @@ def test_pin_tint(harness, page_session):
             f"c => {{ const p = {ROOT}.psmMap.project(c); return [p.x, p.y]; }}", [lng, 0]
         )
         assert near(pixel(page_session, x, y - 18 * size), RED), layer_id
+
+
+def classed_points(values, spacing=5):
+    """Points along the equator, one per value of ``status``; ``MISSING`` leaves it out."""
+    start = -spacing * (len(values) - 1) / 2
+    features = [
+        {
+            "type": "Feature",
+            "properties": {} if value is MISSING else {"status": value},
+            "geometry": {"type": "Point", "coordinates": [start + spacing * i, 0]},
+        }
+        for i, value in enumerate(values)
+    ]
+    payload = json.dumps({"type": "FeatureCollection", "features": features}).encode()
+    return payload, [feature["geometry"]["coordinates"] for feature in features]
+
+
+def engine_paint(marker="circle", classes=None):
+    """A paint by class as pysepal's engine emits it for the light theme."""
+    return VectorPaint(
+        stroke="#3388ff",
+        fill="#3388ff",
+        fill_opacity=1.0,
+        marker=marker,
+        color_by="status",
+        class_colors=classes or {"a": "#ff0000", "b": "#00ff00"},
+    )
+
+
+def screen(page, lng, lat):
+    return page.evaluate(
+        f"c => {{ const p = {ROOT}.psmMap.project(c); return [p.x, p.y]; }}", [lng, lat]
+    )
+
+
+@pytest.mark.parametrize("marker", ["circle", "pin"])
+def test_one_layer_colours_each_class(
+    harness, page_session, marker, owned_snapshot, expected_snapshot
+):
+    widget = MapWidget()
+    payload, coords = classed_points(["a", "b", "c"])
+    digest = widget.add_payload(payload)
+    widget.set_center(0, 0, zoom=4)
+    show(page_session, widget, Layer("pts", GeoJSONSource(digest), paint=engine_paint(marker)))
+    # a pin's head sits above its tip
+    lift = 18 if marker == "pin" else 0
+    for (lng, lat), rgb in zip(coords, (RED, GREEN, BLUE)):
+        x, y = screen(page_session, lng, lat)
+        assert near(pixel(page_session, x, y - lift), rgb), (lng, rgb)
+    if marker == "pin":
+        ids = [f"psm-pin:{quote(c, safe='')}" for c in ("#ff0000", "#00ff00", "#3388ff")]
+        has = page_session.evaluate(f"ids => ids.map((id) => {ROOT}.psmMap.hasImage(id))", ids)
+        assert has == [True, True, True]
+    else:
+        expected = expected_snapshot(widget.state, {digest: payload})
+        assert owned_snapshot(page_session) == [expected]
+
+
+def test_unmatched_class_values_draw_in_the_default_colour(harness, page_session, browser_errors):
+    widget = MapWidget()
+    payload, coords = classed_points([1, "1", None, MISSING])
+    digest = widget.add_payload(payload)
+    widget.set_center(0, 0, zoom=4)
+    paint = engine_paint(classes={1: "#ff0000"})
+    show(page_session, widget, Layer("pts", GeoJSONSource(digest), paint=paint))
+    instance = widget.state["layers"][0]["instance"]
+
+    def ready():
+        status = widget.layer_status.get("pts")
+        return status is not None and (status.status, status.instance) == ("ready", instance)
+
+    wait_for(page_session, ready, f"never ready: {dict(widget.layer_status)}")
+    for (lng, lat), rgb in zip(coords, (RED, BLUE, BLUE, BLUE)):
+        x, y = screen(page_session, lng, lat)
+        assert near(pixel(page_session, x, y), rgb), (lng, rgb)
+    assert browser_errors == []

@@ -1,4 +1,8 @@
-import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
+import {
+  expression,
+  featureFilter,
+  latest,
+} from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
 import fixture from "./fixtures/state.json";
@@ -262,6 +266,111 @@ describe("toOwnedStyle", () => {
     expect(poly(ctx, tiled(2))).toBe(false);
     expect(line(ctx, tiled(2))).toBe(true);
     expect(circle(ctx, tiled(1))).toBe(true);
+  });
+});
+
+describe("colours by class", () => {
+  // pm is the fixture's unclustered vector layer.
+  const classed = (
+    classes: [string | number, string][],
+    marker: "circle" | "pin" = "circle"
+  ) =>
+    withLayers((layers) => {
+      const paint = layers[1].paint!;
+      paint.fill = "#123456";
+      paint.marker = marker;
+      paint.color_by = "status";
+      paint.class_colors = classes;
+    });
+  const AB: [string, string][] = [
+    ["a", "#ff0000"],
+    ["b", "#00ff00"],
+  ];
+  const match = (a: string, b: string, fallback: string) => [
+    "match",
+    ["get", "status"],
+    "a",
+    a,
+    "b",
+    b,
+    fallback,
+  ];
+
+  it("colours fill, line and circle by class", () => {
+    const state = classed(AB);
+    expect(byId(state, "psm:pm:2:fill").paint["fill-color"]).toEqual(
+      match("#ff0000", "#00ff00", "#123456")
+    );
+    expect(byId(state, "psm:pm:2:line").paint["line-color"]).toEqual(
+      match("#ff0000", "#00ff00", "#3388ff")
+    );
+    const circle = byId(state, "psm:pm:2:circle").paint;
+    expect(circle["circle-color"]).toEqual(
+      match("#ff0000", "#00ff00", "#123456")
+    );
+    expect(circle["circle-stroke-color"]).toBe("#3388ff");
+  });
+
+  it("picks a pin image by class", () => {
+    const pin = byId(classed(AB, "pin"), "psm:pm:2:pin");
+    expect(pin.layout["icon-image"]).toEqual(
+      match("psm-pin:%23ff0000", "psm-pin:%2300ff00", "psm-pin:%23123456")
+    );
+    const compiled = expression.createPropertyExpression(
+      pin.layout["icon-image"],
+      "icon-image",
+      (latest as any).layout_symbol["icon-image"]
+    );
+    expect(compiled.result).toBe("success");
+    const image = (properties: object) =>
+      (compiled.value as any)
+        .evaluate({ zoom: 0 }, { type: 1, properties })
+        .toString();
+    expect(image({ status: "b" })).toBe("psm-pin:%2300ff00");
+    expect(image({ status: "z" })).toBe("psm-pin:%23123456");
+  });
+
+  it("leaves paint alone without color_by", () => {
+    const plain = withLayers((layers) => {
+      layers[1].paint!.class_colors = AB;
+    });
+    expect(toOwnedStyle(plain)).toEqual(toOwnedStyle(base));
+    const older = withLayers((layers) => {
+      const paint = layers[1].paint as any;
+      delete paint.color_by;
+      delete paint.class_colors;
+    });
+    expect(toOwnedStyle(older)).toEqual(toOwnedStyle(base));
+    expect(byId(base, "psm:pm:2:fill").paint["fill-color"]).toBe("#3388ff");
+    expect(byId(base, "psm:pm:2:line").paint["line-color"]).toBe("#3388ff");
+    expect(byId(base, "psm:pm:2:circle").paint["circle-color"]).toBe("#3388ff");
+  });
+
+  it("draws unmatched class values in the default colour", () => {
+    const state = classed([[1, "#ff0000"]]);
+    const compiled = (part: string, property: string) => {
+      const value = byId(state, `psm:pm:2:${part}`).paint[property];
+      const spec = (latest as any)[`paint_${part}`][property];
+      const result = expression.createPropertyExpression(value, property, spec);
+      if (result.result !== "success") throw new Error(String(result.value));
+      return result.value;
+    };
+    const colour = (part: string, property: string, properties: object) =>
+      compiled(part, property)
+        .evaluate({ zoom: 0 }, { type: 1, properties } as any)
+        .toString();
+    const red = "rgba(255,0,0,1)";
+    const fallback = "rgba(18,52,86,1)";
+    for (const [part, property] of [
+      ["fill", "fill-color"],
+      ["circle", "circle-color"],
+    ]) {
+      expect(colour(part, property, { status: 1 })).toBe(red);
+      expect(colour(part, property, { status: "1" })).toBe(fallback);
+      expect(colour(part, property, { status: null })).toBe(fallback);
+      expect(colour(part, property, { status: 2 })).toBe(fallback);
+      expect(colour(part, property, {})).toBe(fallback);
+    }
   });
 });
 

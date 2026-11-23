@@ -28,6 +28,7 @@ from .spec import (
     RasterStyle,
     TileSource,
     VectorSource,
+    VectorStyle,
     uri_to_path,
 )
 
@@ -124,6 +125,11 @@ def _check_supported(spec: LayerSpec) -> None:
     """Fail early, with a readable cause, on sources that cannot be prepared here."""
     source = spec.source
     if source.type == "gee":
+        if isinstance(spec.style, VectorStyle) and spec.style.color_by is not None:
+            raise ValueError(
+                "color_by needs a vector the browser draws; Earth Engine draws this layer "
+                "and ignores it"
+            )
         return
     if not _is_local(source.uri):
         if source.type == "raster":

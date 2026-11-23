@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import numbers
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -147,17 +148,69 @@ class PMTilesSource:
         return {"url": self.url, "source_layer": self.source_layer}
 
 
+#: The largest integer a JavaScript number holds exactly.
+_MAX_SAFE_INTEGER = 2**53 - 1
+
+
+def _class_value(value) -> str | int:
+    """A class value: a str, or an int MapLibre can compare exactly; never a bool."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise ValueError(f"class values must be str or int, got {value!r}")
+    if abs(value) > _MAX_SAFE_INTEGER:
+        raise ValueError(f"class value {value!r} is beyond what JavaScript holds exactly")
+    return int(value)
+
+
+def _class_colors(value) -> tuple[tuple[str | int, str], ...]:
+    """``(value, color)`` pairs from a mapping or a sequence of pairs, values all of one type."""
+    bad = f"class_colors must be a mapping or (value, color) pairs, got {value!r}"
+    if isinstance(value, Mapping):
+        entries = list(value.items())
+    elif isinstance(value, Sequence) and not isinstance(value, str):
+        entries = list(value)
+    else:
+        raise ValueError(bad)
+    pairs = []
+    for entry in entries:
+        if isinstance(entry, str) or not isinstance(entry, Sequence) or len(entry) != 2:
+            raise ValueError(bad)
+        label, color = entry
+        if not isinstance(color, str) or not color:
+            raise ValueError(f"class colours must be non-empty strings, got {color!r}")
+        pairs.append((_class_value(label), color))
+    labels = [label for label, _ in pairs]
+    if len({type(label) for label in labels}) > 1:
+        raise ValueError("class values must be all str or all int")
+    if len(set(labels)) != len(labels):
+        raise ValueError(f"class values must be unique, got {labels!r}")
+    return tuple(pairs)
+
+
 @dataclass(frozen=True)
 class VectorPaint:
+    """How a vector layer is drawn.
+
+    ``color_by`` names a feature property and ``class_colors``, a mapping or a
+    sequence of ``(value, color)`` pairs, gives its values their colours; the two
+    go together. Fill, line, circle and pin then take the colour of the
+    feature's class, and a feature of no class keeps the colour it would have
+    without them. Values are unique and all str or all int, and are compared as
+    they are, so ``"1"`` is not ``1``.
+    """
+
     stroke: str = "#3388ff"
     fill: str | None = None
     fill_opacity: float = 0.0
     width: float = 2.0
     point_radius: float = 5.0
     marker: Literal["circle", "pin"] = "circle"
+    color_by: str | None = None
+    class_colors: tuple[tuple[str | int, str], ...] = ()
 
     def __post_init__(self) -> None:
-        """Reject an opacity outside [0, 1], a negative or non-finite size and an unknown marker."""
+        """Reject a bad opacity, size, marker or class; store the classes as pairs."""
         if self.marker not in ("circle", "pin"):
             raise ValueError(f"marker must be 'circle' or 'pin', got {self.marker!r}")
         object.__setattr__(self, "fill_opacity", _unit("fill_opacity", self.fill_opacity))
@@ -166,6 +219,11 @@ class VectorPaint:
             if value < 0:
                 raise ValueError(f"{name} must not be negative")
             object.__setattr__(self, name, value)
+        if self.color_by is not None and (not isinstance(self.color_by, str) or not self.color_by):
+            raise ValueError(f"color_by must be a non-empty string, got {self.color_by!r}")
+        object.__setattr__(self, "class_colors", _class_colors(self.class_colors))
+        if (self.color_by is None) != (not self.class_colors):
+            raise ValueError("color_by and class_colors must be given together")
 
     def to_json(self) -> dict:
         """The paint as the JSON the front end reads."""
@@ -176,6 +234,8 @@ class VectorPaint:
             "width": self.width,
             "point_radius": self.point_radius,
             "marker": self.marker,
+            "color_by": self.color_by,
+            "class_colors": [[label, color] for label, color in self.class_colors],
         }
 
 

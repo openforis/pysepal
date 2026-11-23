@@ -1,4 +1,8 @@
-import type { FilterSpecification, LayerSpecification } from "maplibre-gl";
+import type {
+  ExpressionSpecification,
+  FilterSpecification,
+  LayerSpecification,
+} from "maplibre-gl";
 
 import type {
   GeoJSONLayerState,
@@ -8,6 +12,7 @@ import type {
   OwnedStyle,
   PMTilesLayerState,
   RasterLayerState,
+  VectorPaint,
   ViewSide,
 } from "./types";
 
@@ -61,6 +66,29 @@ export const COUNT_PREFIX = "psm-count:";
 
 const NOT_CLUSTER: FilterSpecification = ["!=", ["get", "cluster"], true];
 
+/**
+ * `as(fallback)`, or with classes a `match` on the `color_by` property. `match`
+ * compares without coercion, so a value of the other type, a null or a missing
+ * property falls back like any value outside the classes.
+ */
+function byClass(
+  paint: VectorPaint,
+  fallback: string,
+  as: (color: string) => string = (color) => color
+): string | ExpressionSpecification {
+  if (paint.color_by == null || !paint.class_colors?.length)
+    return as(fallback);
+  return [
+    "match",
+    ["get", paint.color_by],
+    ...paint.class_colors.flatMap(([value, color]) => [value, as(color)]),
+    as(fallback),
+  ] as unknown as ExpressionSpecification;
+}
+
+const pinId = (color: string): string =>
+  `${PIN_PREFIX}${encodeURIComponent(color)}`;
+
 function vectorLayers(
   layer: GeoJSONLayerState | PMTilesLayerState,
   source: string
@@ -90,7 +118,7 @@ function vectorLayers(
           filter: pointFilter,
           layout: {
             ...layout,
-            "icon-image": `${PIN_PREFIX}${encodeURIComponent(fillColor)}`,
+            "icon-image": byClass(paint, fillColor, pinId),
             "icon-size": paint.point_radius / 5,
             "icon-anchor": "bottom",
             "icon-allow-overlap": true,
@@ -105,7 +133,7 @@ function vectorLayers(
           filter: pointFilter,
           paint: {
             "circle-radius": paint.point_radius,
-            "circle-color": fillColor,
+            "circle-color": byClass(paint, fillColor),
             "circle-opacity": fillOpacity,
             "circle-stroke-color": paint.stroke,
             "circle-stroke-width": paint.width,
@@ -118,7 +146,10 @@ function vectorLayers(
       id: `${source}:fill`,
       type: "fill",
       filter: POLYGON,
-      paint: { "fill-color": fillColor, "fill-opacity": fillOpacity },
+      paint: {
+        "fill-color": byClass(paint, fillColor),
+        "fill-opacity": fillOpacity,
+      },
     },
     {
       ...common,
@@ -126,7 +157,7 @@ function vectorLayers(
       type: "line",
       filter: LINE,
       paint: {
-        "line-color": paint.stroke,
+        "line-color": byClass(paint, paint.stroke),
         "line-width": paint.width,
         "line-opacity": opacity,
       },

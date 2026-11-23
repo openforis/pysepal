@@ -156,6 +156,8 @@ export function geojson(
       width: 2,
       point_radius: 5,
       marker: "circle",
+      color_by: null,
+      class_colors: [],
     },
   };
 }

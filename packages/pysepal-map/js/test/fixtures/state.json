@@ -33,7 +33,9 @@
         "fill_opacity": 0.0,
         "width": 2.0,
         "point_radius": 5.0,
-        "marker": "circle"
+        "marker": "circle",
+        "color_by": null,
+        "class_colors": []
       },
       "interaction": null,
       "side": "both",
@@ -59,7 +61,9 @@
         "fill_opacity": 0.0,
         "width": 2.0,
         "point_radius": 5.0,
-        "marker": "circle"
+        "marker": "circle",
+        "color_by": null,
+        "class_colors": []
       },
       "interaction": null,
       "side": "both",
