@@ -1,9 +1,9 @@
 """MapView places the map, the legend of what it draws, a loading status and app overlays."""
 
+import re
 from pathlib import Path
 
 import ipyvuetify as v
-import pytest
 import solara
 
 from pysepal.frontend.styles import THEMES
@@ -18,37 +18,68 @@ from pysepal.solara.theme import ThemeState
 from tests.test_solara._layer_panel_helpers import _attr, _tree, all_text, role_widgets
 
 
-@pytest.fixture
-def shown(monkeypatch):
-    """Record each LegendComponent render as ``(legend_data, inline)``, newest render last."""
-    calls = []
-
-    @solara.component
-    def Stub(legend_data, inline=False):
-        calls.append((legend_data, inline))
-        return solara.Text("legend:" + legend_data["title"])
-
-    monkeypatch.setattr(map_view, "LegendComponent", Stub)
-    return calls
-
-
 def tiles(layer_id: str, **kwargs) -> LayerSpec:
     url = f"https://t.test/{layer_id}/{{z}}/{{x}}/{{y}}.png"
     return LayerSpec.from_tiles(url, name=layer_id, id=layer_id).model_copy(update=kwargs)
 
 
-def legend_titles(box) -> list:
-    """The titles of the legends rendered in the map-legend wrapper, top first."""
-    wrappers = role_widgets(box, "map-legend")
-    if not wrappers:
-        return []
-    texts = [
-        child
-        for w in _tree(wrappers[0])
-        for child in getattr(w, "children", ()) or ()
-        if isinstance(child, str)
-    ]
-    return [t.removeprefix("legend:") for t in texts]
+def legend_tiles(layer_id: str) -> LayerSpec:
+    item = LegendItem(label=layer_id, color="#111111")
+    return tiles(layer_id, legend=Legend(title=layer_id.upper(), items=[item]))
+
+
+def legend_slots(box) -> list:
+    """The legend slots of the view, in document order."""
+    return [w for w in _tree(box) if "pysepal-map-legend" in (getattr(w, "class_", "") or "")]
+
+
+def areas(box) -> list:
+    return [_attr(w, "data-area") for w in legend_slots(box)]
+
+
+def card(box, area: str = "all"):
+    """The ``Legend.vue`` widget of an area, or None while the area lists nothing."""
+    slot = next(w for w in legend_slots(box) if _attr(w, "data-area") == area)
+    return next((w for w in _tree(slot) if hasattr(w, "selector_options")), None)
+
+
+def listed(box, area: str = "all") -> list:
+    """The layer ids an area's card offers, top first."""
+    shown = card(box, area)
+    return [] if shown is None else [o["value"] for o in shown.selector_options]
+
+
+def picked(box, area: str = "all"):
+    return card(box, area).selected
+
+
+def pick(box, area: str, layer_id: str) -> None:
+    """What the card's select does on a change."""
+    card(box, area)._handle_custom_msg({"event": "set_selected", "data": layer_id}, [])
+
+
+def collapse(box, area: str, collapsed: bool = True) -> None:
+    """What the card's toggle bar does on a click."""
+    card(box, area)._handle_custom_msg({"event": "set_collapsed", "data": collapsed}, [])
+
+
+def legend_rule(area: str) -> str:
+    return map_view.CSS.split(f'.pysepal-map-legend[data-area="{area}"] {{')[1].split("}")[0]
+
+
+def flat(css: str) -> str:
+    """CSS on one line, without the spaces a wrapped ``calc(`` adds."""
+    return re.sub(r"\s+\)", ")", re.sub(r"\(\s+", "(", " ".join(css.split())))
+
+
+def container_block(query: str) -> str:
+    """The rules inside ``@container <query> { ... }``, on one line."""
+    body = map_view.CSS.split(f"@container {query} {{")[1]
+    depth, end = 1, 0
+    while depth:
+        depth += {"{": 1, "}": -1}.get(body[end], 0)
+        end += 1
+    return flat(body[: end - 1])
 
 
 def corner(box, name: str):
@@ -73,88 +104,86 @@ def vector_map(fake_vector, mode="light", **kwargs):
     return m
 
 
-def test_legend_lists_drawn_visible_layers_top_first(shown):
+def test_legend_lists_drawn_visible_layers_top_first():
     m = SepalMap(gee=False)
-    legends = {
-        "a": Legend(title="A", items=[LegendItem(label="a", color="#111111")]),
-        "b": Legend(title="B", items=[LegendItem(label="b", color="#222222")]),
-    }
     for key in ("a", "b"):
-        m.layer_store.add(tiles(key, legend=legends[key]))
+        m.layer_store.add(legend_tiles(key))
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert legend_titles(box) == ["B", "A"]
+    assert listed(box) == ["b", "a"]
+    assert card(box).selector_options == [{"value": "b", "text": "b"}, {"value": "a", "text": "a"}]
+    assert card(box).legend_data["title"] == "B"
     rc.close()
 
 
-def test_visible_layer_legend_shows_on_the_map(fake_vector, shown):
+def test_visible_layer_legend_shows_on_the_map(fake_vector):
     m = vector_map(fake_vector)
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert legend_titles(box) == ["Vec"]
+    assert listed(box) == ["v"]
+    assert card(box).title == "Vec"
     rc.close()
 
 
-def test_hiding_a_layer_drops_its_legend(fake_vector, shown):
+def test_hiding_a_layer_drops_its_legend(fake_vector):
     m = vector_map(fake_vector)
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert legend_titles(box) == ["Vec"]
+    assert listed(box) == ["v"]
     m.layer_store.set_visible("v", False)
-    assert legend_titles(box) == []
+    assert listed(box) == []
+    assert card(box) is None
     m.layer_store.set_visible("v", True)
-    assert legend_titles(box) == ["Vec"]
+    assert listed(box) == ["v"]
     rc.close()
 
 
-def test_legend_follows_the_theme_without_a_store_event(fake_vector, shown):
+def test_legend_follows_the_theme_without_a_store_event(fake_vector):
     theme = ThemeState(mode="light")
     m = SepalMap(gee=False, theme_state=theme)
     m.layer_store.add(LayerSpec.from_vector(fake_vector, id="v", name="Vec"))
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert shown[-1][0]["items"][0]["color"] == THEMES[False]["primary"]
+    assert card(box).legend_data["items"][0]["color"] == THEMES[False]["primary"]
     theme.set_mode("dark")
-    assert shown[-1][0]["items"][0]["color"] == THEMES[True]["primary"]
+    assert card(box).legend_data["items"][0]["color"] == THEMES[True]["primary"]
     rc.close()
 
 
-def test_two_maps_with_opposite_themes(fake_vector, shown):
+def test_two_maps_with_opposite_themes(fake_vector):
     light, dark = vector_map(fake_vector, "light"), vector_map(fake_vector, "dark")
     colors = {}
     for name, m in (("light", light), ("dark", dark)):
-        del shown[:]
         box, rc = solara.render(MapView(m), handle_error=False)
         published = next(x for x in m.state["layers"] if x["id"] == "v")["paint"]["stroke"]
-        colors[name] = (shown[-1][0]["items"][0]["color"], published)
+        colors[name] = (card(box).legend_data["items"][0]["color"], published)
         rc.close()
     assert colors["light"][0] == colors["light"][1]
     assert colors["dark"][0] == colors["dark"][1]
     assert colors["light"][0] != colors["dark"][0]
 
 
-def test_first_render_before_any_draw(shown):
+def test_first_render_before_any_draw():
     m = SepalMap(gee=False)
     m.layer_engine.close()
     m.layer_store.add(tiles("a", legend=Legend(title="A", items=[])))
     assert m.state in ({}, {"layers": []}) or not m.state.get("layers")
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert legend_titles(box) == []
+    assert listed(box) == []
     rc.close()
 
 
-def test_removal_before_the_next_draw(shown):
+def test_removal_before_the_next_draw():
     m = SepalMap(gee=False)
-    legend = Legend(title="A", items=[LegendItem(label="a", color="#111111")])
-    m.layer_store.add(tiles("a", legend=legend))
+    m.layer_store.add(legend_tiles("a"))
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert legend_titles(box) == ["A"]
+    assert listed(box) == ["a"]
     # the engine publishes on the next tick; the state still holds the removed id
     m.layer_engine.close()
     m.layer_store.remove("a")
     assert [x["id"] for x in m.state["layers"]] == ["a"]
     m.set_insets(left=1)  # a render before the next draw
-    assert legend_titles(box) == []
+    assert listed(box) == []
     rc.close()
 
 
-def test_two_maps_that_accepted_different_renders(shown):
+def test_two_maps_that_accepted_different_renders():
     store_spec = tiles("a")
     first, second = SepalMap(gee=False), SepalMap(gee=False)
     first.layer_store.add(store_spec)
@@ -171,9 +200,247 @@ def test_two_maps_that_accepted_different_renders(shown):
     result = {}
     for name, m in (("first", first), ("second", second)):
         box, rc = solara.render(MapView(m), handle_error=False)
-        result[name] = legend_titles(box)
+        result[name] = card(box).legend_data["title"]
         rc.close()
-    assert result == {"first": ["First"], "second": ["Second"]}
+    assert result == {"first": "First", "second": "Second"}
+
+
+def test_one_legend_slot_without_compare(fake_vector):
+    m = vector_map(fake_vector)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert areas(box) == ["all"]
+    (slot,) = legend_slots(box)
+    # next to the corner stacks, so it stays over the map in fullscreen
+    assert slot in fullscreen_root(box).children
+    assert card(box).placement == "map"
+    rc.close()
+
+
+def test_two_legend_slots_with_compare(fake_vector):
+    m = vector_map(fake_vector)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    whole = card(box, "all")
+    m.compare = True
+    assert areas(box) == ["left", "right"]
+    assert all(slot in fullscreen_root(box).children for slot in legend_slots(box))
+    # keyed by area: no card is reused for another area
+    left, right = card(box, "left"), card(box, "right")
+    assert len({id(whole), id(left), id(right)}) == 3
+    assert listed(box, "left") == listed(box, "right") == ["v"]
+    m.compare = False
+    assert areas(box) == ["all"]
+    rc.close()
+
+
+def test_lists_follow_the_sides():
+    m = SepalMap(gee=False)
+    for layer_id, side in (("a", "left"), ("b", "right"), ("c", "both")):
+        m.layer_store.add(legend_tiles(layer_id), side=side)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert listed(box, "all") == ["c", "b", "a"]
+    m.compare = True
+    assert listed(box, "left") == ["c", "a"]
+    assert listed(box, "right") == ["c", "b"]
+    m.layer_store.set_side("a", "right")
+    assert listed(box, "left") == ["c"]
+    assert listed(box, "right") == ["c", "b", "a"]
+    rc.close()
+
+
+def test_layers_without_legend_are_not_listed():
+    m = SepalMap(gee=False)
+    m.layer_store.add(legend_tiles("a"))
+    m.layer_store.add(tiles("multiband"))
+    assert [x["id"] for x in m.state["layers"]] == ["multiband", "a"]
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert listed(box) == ["a"]
+    assert picked(box) == "a"
+    assert card(box).title == "a"
+    rc.close()
+
+
+def test_default_is_the_top_layer():
+    m = SepalMap(gee=False)
+    for layer_id, side in (("a", "both"), ("b", "right"), ("c", "left")):
+        m.layer_store.add(legend_tiles(layer_id), side=side)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert picked(box) == "c"
+    assert card(box).title == "c"
+    assert card(box).legend_data["title"] == "C"
+    m.compare = True
+    assert picked(box, "left") == "c"
+    assert picked(box, "right") == "b"
+    rc.close()
+
+
+def test_a_new_layer_is_shown_at_once():
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "all", "a")
+    assert picked(box) == "a"
+    m.layer_store.add(legend_tiles("c"), index=2)  # at the bottom, still new
+    assert listed(box) == ["b", "a", "c"]
+    assert picked(box) == "c"
+    assert card(box).legend_data["title"] == "C"
+    # two at once, as in one tick on a loop: the topmost new one
+    with m.layer_engine._batch():
+        m.layer_store.add(legend_tiles("d"), index=1)
+        m.layer_store.add(legend_tiles("e"), index=3)
+    assert listed(box) == ["b", "d", "a", "e", "c"]
+    assert picked(box) == "d"
+    # a layer shown again is not new
+    pick(box, "all", "a")
+    m.layer_store.set_visible("b", False)
+    m.layer_store.set_visible("b", True)
+    assert picked(box) == "a"
+    rc.close()
+
+
+def test_fallback_when_the_selected_layer_hides():
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b", "c"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "all", "b")
+    m.layer_store.set_visible("b", False)
+    assert picked(box) == "c"
+    # the fallback stays when the layer comes back
+    m.layer_store.set_visible("b", True)
+    assert picked(box) == "c"
+    pick(box, "all", "a")
+    m.layer_store.remove("a")
+    assert picked(box) == "c"
+    rc.close()
+
+
+def test_collapse_is_per_area():
+    m = SepalMap(gee=False)
+    m.layer_store.add(legend_tiles("a"))
+    m.compare = True
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert card(box, "left").collapsed is card(box, "right").collapsed is False
+    collapse(box, "left")
+    assert card(box, "left").collapsed is True
+    assert card(box, "right").collapsed is False
+    collapse(box, "right")
+    collapse(box, "left", False)
+    assert card(box, "left").collapsed is False
+    assert card(box, "right").collapsed is True
+    rc.close()
+
+
+def test_compare_toggle_keeps_the_pick():
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b", "c"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "all", "b")
+    collapse(box, "all")
+    m.compare = True
+    # the left half continues the whole map's card
+    assert (picked(box, "left"), card(box, "left").collapsed) == ("b", True)
+    assert (picked(box, "right"), card(box, "right").collapsed) == ("c", False)
+    pick(box, "right", "a")
+    m.compare = False
+    assert (picked(box), card(box).collapsed) == ("b", True)
+    m.compare = True
+    assert picked(box, "left") == "b"
+    assert picked(box, "right") == "a"
+    rc.close()
+
+
+def test_turning_compare_off_keeps_the_left_pick():
+    m = SepalMap(gee=False)
+    for layer_id, side in (("a", "left"), ("b", "both"), ("r", "right")):
+        m.layer_store.add(legend_tiles(layer_id), side=side)
+    m.compare = True
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "left", "a")
+    m.compare = False
+    # the right-only layer was drawn all along: the whole map's card is not new to it
+    assert listed(box) == ["r", "b", "a"]
+    assert picked(box) == "a"
+    m.compare = True
+    assert picked(box, "left") == "a"
+    # a right-only layer added meanwhile is new to the right half only
+    m.layer_store.add(legend_tiles("s"), side="right")
+    assert picked(box, "right") == "s"
+    m.compare = False
+    assert picked(box) == "a"
+    rc.close()
+
+
+def test_placement_css_centres_each_area():
+    base = map_view.CSS.split(".pysepal-map-legend {")[1].split("}")[0]
+    for declaration in ("position: absolute", "transform: translateX(-50%)", "z-index: 3"):
+        assert declaration in base
+    centre = {
+        "all": "calc(var(--pysepal-inset-left) + (100% - var(--pysepal-inset-left)"
+        " - var(--pysepal-inset-right)) / 2)",
+        "left": "calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2)",
+        "right": "calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2)",
+    }
+    clear = {
+        "all": "max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px))",
+        "left": "var(--psm-controls-bottom-left, 0px)",
+        "right": "var(--psm-controls-bottom-right, 0px)",
+    }
+    for area in ("all", "left", "right"):
+        rule = flat(legend_rule(area))
+        assert f"left: {centre[area]};" in rule
+        assert f"bottom: calc(var(--pysepal-inset-bottom) + {clear[area]} + 10px);" in rule
+    # a long legend scrolls inside the card, which the slot caps
+    assert "flex-direction: column" in base
+    assert "max-height: 40%" in base
+
+
+def test_a_card_hides_when_its_area_has_no_room():
+    # each slot is its area less 10 px a side, so the queries read 140 and 60 px areas
+    width = {
+        "all": "calc(100% - var(--pysepal-inset-left) - var(--pysepal-inset-right) - 20px)",
+        "left": "calc(var(--psm-divider-x, 50%) - var(--pysepal-inset-left) - 20px)",
+        "right": "calc(100% - var(--pysepal-inset-right) - var(--psm-divider-x, 50%) - 20px)",
+    }
+    for area in ("all", "left", "right"):
+        assert f"width: {width[area]};" in flat(legend_rule(area))
+    base = map_view.CSS.split(".pysepal-map-legend {")[1].split("}")[0]
+    assert "container: pysepal-legend / inline-size" in base
+    # three classes: Legend.vue's scoped rules are a class and an attribute, and come later
+    slot = ".pysepal-map-root > .pysepal-map-legend"
+    narrow = container_block("pysepal-legend (width < 120px)")
+    assert f"{slot} .sepal-legend__body {{ display: none; }}" in narrow
+    assert f"{slot} .sepal-legend {{ pointer-events: none; }}" in narrow
+    gone = container_block("pysepal-legend (width < 40px)")
+    assert f"{slot} .sepal-legend {{ display: none; }}" in gone
+
+
+def test_no_legend_slot_when_legend_is_off(fake_vector):
+    m = vector_map(fake_vector)
+    box, rc = solara.render(MapView(m, legend=False), handle_error=False)
+    assert legend_slots(box) == []
+    m.compare = True
+    assert legend_slots(box) == []
+    rc.close()
+
+
+def test_the_legends_follow_the_publishes_only(fake_vector, monkeypatch):
+    derived, renders = [], []
+    real_legends, real_labels = map_view._legends, map_view._draw_labels
+    monkeypatch.setattr(map_view, "_legends", lambda m: derived.append(1) or real_legends(m))
+    monkeypatch.setattr(map_view, "_draw_labels", lambda: renders.append(1) or real_labels())
+    m = vector_map(fake_vector)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert len(derived) == 1
+    mounted = len(renders)
+    m.set_insets(left=10)  # renders, publishes nothing
+    assert len(renders) == mounted + 1 and len(derived) == 1
+    m.cursor = "pointer"  # nothing in the view reads it
+    assert len(renders) == mounted + 1
+    m.layer_store.set_opacity("v", 0.5)
+    assert len(derived) == 2
+    rc.close()
 
 
 def test_stacks_use_zero_insets_in_fullscreen():
@@ -181,12 +448,6 @@ def test_stacks_use_zero_insets_in_fullscreen():
     rule = map_view.CSS.split("[data-psm-fullscreen-root][data-psm-fullscreen] {")[1].split("}")[0]
     for side in ("left", "right", "top", "bottom"):
         assert f"--pysepal-inset-{side}: 0px !important" in rule
-
-
-def test_legends_render_inline(fake_vector, shown):
-    box, rc = solara.render(MapView(vector_map(fake_vector)), handle_error=False)
-    assert shown and all(inline is True for _, inline in shown)
-    rc.close()
 
 
 def test_overlays_render_in_their_corner():
@@ -232,7 +493,8 @@ def test_root_is_the_fullscreen_target():
     root = fullscreen_root(box)
     # The overlays are siblings of the map, so they stay over it in fullscreen.
     assert root.children[0] is m
-    assert [_attr(w, "data-corner") for w in root.children[1:]] == list(map_view.CORNERS)
+    assert [_attr(w, "data-corner") for w in root.children[1:5]] == list(map_view.CORNERS)
+    assert root.children[5:] == legend_slots(box)
     rc.close()
 
 
@@ -274,6 +536,8 @@ def test_stacks_clear_the_measured_corners():
 def test_stacks_wait_for_the_measure():
     hidden = ".pysepal-map-root:not([data-psm-controls]) > .pysepal-map-corner"
     assert f"{hidden} {{ visibility: hidden; }}" in map_view.CSS
+    hidden = ".pysepal-map-root:not([data-psm-controls]) > .pysepal-map-legend"
+    assert f"{hidden} {{ visibility: hidden; }}" in map_view.CSS
     root_rule = map_view.CSS.split(".pysepal-map-root {")[1].split("}")[0]
     assert "position: relative" in root_rule
 
@@ -298,7 +562,7 @@ def test_map_app_fills_the_window_whatever_the_map_height():
     assert "height: 100% !important" in rule
 
 
-def test_legend_skips_overlay_layers(fake_vector, shown):
+def test_legend_skips_overlay_layers(fake_vector):
     m = vector_map(fake_vector)
     aoi = LayerSpec.from_vector(fake_vector, id="aoi", name="AOI").model_copy(
         update={"zone": "overlay"}
@@ -306,7 +570,7 @@ def test_legend_skips_overlay_layers(fake_vector, shown):
     m.layer_store.add(aoi)
     assert "aoi" in [x["id"] for x in m.state["layers"]]
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert legend_titles(box) == ["Vec"]
+    assert listed(box) == ["v"]
     rc.close()
 
 
@@ -327,7 +591,7 @@ def counter(mounts: list):
     return Counter()
 
 
-def test_app_overlay_keeps_its_state_when_the_legend_comes_and_goes(fake_vector, shown):
+def test_app_overlay_keeps_its_state_when_the_legend_comes_and_goes(fake_vector):
     mounts = []
     m = SepalMap(gee=False)
     box, rc = solara.render(
@@ -336,9 +600,12 @@ def test_app_overlay_keeps_its_state_when_the_legend_comes_and_goes(fake_vector,
     rc.find(v.Btn, children=["count 0"]).widget.click()
     assert "count 1" in corner_text(box, "bottom-right")
     m.layer_store.add(LayerSpec.from_vector(fake_vector, id="v", name="Vec"))
-    assert legend_titles(box) == ["Vec"]
+    assert listed(box) == ["v"]
+    m.compare = True
+    assert listed(box, "right") == ["v"]
+    m.compare = False
     m.layer_store.set_visible("v", False)
-    assert legend_titles(box) == []
+    assert listed(box) == []
     assert "count 1" in corner_text(box, "bottom-right")
     assert mounts == ["mount"]
     rc.close()
@@ -364,9 +631,9 @@ def test_app_overlay_keeps_its_state_when_the_status_comes_and_goes():
 def test_idle_slots_are_hidden():
     m = SepalMap(gee=False)
     box, rc = solara.render(MapView(m), handle_error=False)
-    for role in ("map-status", "map-legend"):
-        (slot,) = role_widgets(box, role)
-        assert _attr(slot, "data-idle") is not None
+    (slot,) = role_widgets(box, "map-status")
+    assert _attr(slot, "data-idle") is not None
+    assert role_widgets(box, "map-legend") == []
     assert ".pysepal-map-corner > [data-idle] { display: none; }" in map_view.CSS
     rc.close()
 

@@ -17,8 +17,17 @@ from pysepal.solara.components.map_view_tools import inspector_panel
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 CORNERS: tuple[str, ...] = ("top-left", "top-right", "bottom-left", "bottom-right")
 
-_TRAITS = ["state", "theme", "insets", "height", "cursor"]
+_TRAITS = ["state", "theme", "insets", "height"]
 _SIDES = ("left", "right", "top", "bottom")
+
+# The legend areas: the whole map, or each half of a compare, with the layer sides each draws.
+_AREAS: dict[str, tuple[str, ...]] = {
+    "all": ("left", "right", "both"),
+    "left": ("left", "both"),
+    "right": ("right", "both"),
+}
+# The left half continues the whole map's pick and collapse, and the whole map the left half's.
+_KEEPER = {"all": "left", "left": "left", "right": "right"}
 
 # The view takes the map's height and the root fills it; the map fills the root through the
 # wrapper ipyvue puts around a widget (``height: 100%``), in fullscreen too.
@@ -81,6 +90,53 @@ CSS = """
   right: calc(var(--pysepal-inset-right) + 10px);
   align-items: flex-end;
 }
+/* One legend card per area, centred on it: the whole map, or each half of a compare, whose
+   divider the widget publishes as --psm-divider-x. Each slot is its area less 10 px a side; the
+   card is no wider than the slot, and its body scrolls in a slot capped at 40 % of the map. */
+.pysepal-map-legend {
+  position: absolute;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-height: 40%;
+  pointer-events: none;
+  container: pysepal-legend / inline-size;
+}
+.pysepal-map-legend > * { pointer-events: auto; }
+.pysepal-map-root:not([data-psm-controls]) > .pysepal-map-legend { visibility: hidden; }
+.pysepal-map-legend[data-area="all"] {
+  left: calc(
+    var(--pysepal-inset-left) + (100% - var(--pysepal-inset-left) - var(--pysepal-inset-right)) / 2
+  );
+  bottom: calc(
+    var(--pysepal-inset-bottom)
+      + max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px)) + 10px
+  );
+  width: calc(100% - var(--pysepal-inset-left) - var(--pysepal-inset-right) - 20px);
+}
+.pysepal-map-legend[data-area="left"] {
+  left: calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2);
+  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-left, 0px) + 10px);
+  width: calc(var(--psm-divider-x, 50%) - var(--pysepal-inset-left) - 20px);
+}
+.pysepal-map-legend[data-area="right"] {
+  left: calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2);
+  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-right, 0px) + 10px);
+  width: calc(100% - var(--pysepal-inset-right) - var(--psm-divider-x, 50%) - 20px);
+}
+/* An area under 140 px shows the card's bar only, which cannot open there; one under 60 px,
+   e.g. a half the divider has pushed to the edge, shows nothing. The root in each selector
+   outranks Legend.vue's scoped rules, which ipyvue suffixes with an attribute. */
+@container pysepal-legend (width < 120px) {
+  .pysepal-map-root > .pysepal-map-legend .sepal-legend__body { display: none; }
+  .pysepal-map-root > .pysepal-map-legend .sepal-legend__bar > :last-child { display: none; }
+  .pysepal-map-root > .pysepal-map-legend .sepal-legend { pointer-events: none; }
+}
+@container pysepal-legend (width < 40px) {
+  .pysepal-map-root > .pysepal-map-legend .sepal-legend { display: none; }
+}
 .pysepal-map-status {
   display: flex;
   align-items: center;
@@ -93,13 +149,16 @@ CSS = """
 """
 
 
-def _legends(map_) -> list[dict]:
-    """The legends of the data layers the map draws: visible layers it accepted, top first."""
+def _legends(map_) -> dict[str, list[dict]]:
+    """Each area's legends: ``{id, name, legend}`` per visible data layer it draws, top first.
+
+    A layer without a legend, e.g. a multiband raster, is left out.
+    """
+    lists: dict[str, list[dict]] = {area: [] for area in _AREAS}
     store, engine = map_.layer_store, map_.layer_engine
     if engine is None:
-        return []
+        return lists
     primary = THEMES[map_.theme == "dark"]["primary"]
-    legends = []
     for drawn in map_.state.get("layers", ()):
         layer_id = drawn.get("id")
         if not drawn.get("visible") or layer_id not in store:
@@ -113,9 +172,13 @@ def _legends(map_) -> list[dict]:
         legend = spec.legend or render.legend
         if legend is None:
             legend = derive_legend(spec.style, title=spec.name, default_color=primary)
-        if legend is not None:
-            legends.append(legend.model_dump())
-    return legends
+        if legend is None:
+            continue
+        entry = {"id": layer_id, "name": spec.name, "legend": legend.model_dump()}
+        for area, sides in _AREAS.items():
+            if drawn.get("side", "both") in sides:
+                lists[area].append(entry)
+    return lists
 
 
 @solara.component
@@ -135,7 +198,10 @@ def MapView(
     Args:
         map_: The ``SepalMap``.
         overlays: Elements or widgets to stack in each corner, after the built-in ones.
-        legend: Show the legend of the visible drawn layers, bottom-right.
+        legend: Show a legend card centred at the bottom of each area: the whole map, or each
+            half of a compare. A card lists the visible layers its area draws that have a
+            legend, and shows one: the top one, a layer as soon as it appears, else the user's
+            pick.
         status: Show a loading status while layers are pending, top-right.
     """
     store = map_.layer_store
@@ -185,12 +251,64 @@ def MapView(
         spinner = rv.ProgressCircular(indeterminate=True, size=16, width=2)
         loading = [spinner, f"{msg('map_view.loading')} ({pending})"]
     stacks["top-right"].append(_slot("map-status", loading, "pysepal-map-status").key("status"))
-    legends = _legends(map_) if legend else []
-    legend_elements = [LegendComponent(legend_data=data, inline=True) for data in legends]
-    stacks["bottom-right"].append(_slot("map-legend", legend_elements).key("legend"))
     stacks["top-left"].append(_slot("map-inspector", inspector_panel(map_)).key("inspector"))
     for corner in CORNERS:
         stacks[corner].extend(overlays.get(corner, ()))
+
+    # The published state changes only with a publish; the theme recolours derived legends.
+    lists = solara.use_memo(
+        lambda: _legends(map_) if legend else None,
+        [map_, legend, map_.state.get("revision"), map_.theme],
+    )
+    selected, set_selected = solara.use_state({})
+    collapsed, set_collapsed = solara.use_state({})
+    seen = solara.use_ref({"left": set(), "right": set()})
+    areas = (("left", "right") if map_.state.get("compare") else ("all",)) if lists else ()
+    picks, slots = {}, []
+    # The memo predates a removal the engine has not drawn yet.
+    drawn = {
+        area: [e for e in entries if e["id"] in store] for area, entries in (lists or {}).items()
+    }
+    for area in areas:
+        keeper = _KEEPER[area]
+        entries = drawn[area]
+        ids = [entry["id"] for entry in entries]
+        new = [layer_id for layer_id in ids if layer_id not in seen.current[keeper]]
+        # The whole map's card would list the right half's layers too: none is new to it.
+        seen.current[keeper].update(e["id"] for e in drawn["all" if keeper == "left" else area])
+        current = selected.get(keeper)
+        pick = new[0] if new else current if current in ids else next(iter(ids), None)
+        picks[keeper] = pick
+        children = []
+        if pick is not None:
+            shown = entries[ids.index(pick)]
+            children.append(
+                LegendComponent(
+                    legend_data=shown["legend"],
+                    placement="map",
+                    title=shown["name"],
+                    selector_options=[{"value": e["id"], "text": e["name"]} for e in entries],
+                    selected=pick,
+                    event_set_selected=_setter(set_selected, keeper),
+                    collapsed=collapsed.get(keeper, False),
+                    event_set_collapsed=_setter(set_collapsed, keeper),
+                ).key(area)
+            )
+        slots.append(
+            rv.Html(
+                tag="div",
+                class_="pysepal-map-legend",
+                attributes={"data-area": area},
+                children=children,
+            ).key(f"legend-{area}")
+        )
+
+    # A new layer or a fallback stays the area's pick once it is no longer new.
+    def keep_picks():
+        if any(selected.get(keeper) != pick for keeper, pick in picks.items()):
+            set_selected(lambda previous: {**previous, **picks})
+
+    solara.use_effect(keep_picks, [tuple(picks.items())])
 
     # The widget sets the corner heights inline on the fullscreen root, so the root binds no
     # style: Vue would then rewrite it.
@@ -209,11 +327,17 @@ def MapView(
                 ).key(corner)
                 for corner in CORNERS
             ],
+            *slots,
         ],
     )
     return rv.Html(
         tag="div", class_="pysepal-map-view", style_=style, children=[solara.Style(CSS), root]
     )
+
+
+def _setter(set_state, keeper: str):
+    """A callback that stores one area's value in a per-area state."""
+    return lambda value: set_state(lambda previous: {**previous, keeper: value})
 
 
 def _slot(role: str, children: list, class_: str = ""):

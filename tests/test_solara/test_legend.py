@@ -293,3 +293,25 @@ def test_long_legends_scroll_inside_the_card():
     # In the map the slot caps the card, and the body shrinks into it.
     assert "min-height: 0" in _rule(".sepal-legend.sepal-legend--map")
     assert "flex-shrink: 0" in _rule(".sepal-legend__bar")
+
+
+@needs_node
+def test_a_gradient_titled_like_the_layer_shows_the_name_once():
+    """A legend derived from a style titles its gradient with the layer's name."""
+    shown = run_vue_script(
+        _TEMPLATE,
+        f"""
+        const legend_data = {{
+          gradients: [{{ colors: ["#000", "#fff"], labels: ["0", "1"], title: "Gain" }}],
+          items: [],
+        }};
+        return [
+          makeVm({{ legend_data, title: "Gain" }}),
+          makeVm({{ legend_data, title: "Elevation" }}),
+          makeVm({{ legend_data, selector_options: {_OPTIONS!r}, selected: "gain" }}),
+          makeVm({{ legend_data, selector_options: {_OPTIONS!r}, selected: "loss" }}),
+          makeVm({{ legend_data }}),
+        ].map((vm) => vm.parsedGradients[0].title);
+        """,
+    )
+    assert shown == ["", "Gain", "", "Gain", "Gain"]

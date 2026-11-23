@@ -172,6 +172,9 @@ module.exports = {
     },
     parsedGradients() {
       if (!this.legend_data || !this.legend_data.gradients) return [];
+      // A legend derived from a style titles its gradient with the layer's
+      // name, which the title row already shows.
+      var shown = this.displayTitle;
       return this.legend_data.gradients.map(function (g) {
         var stops = g.colors
           .map(function (c, i) {
@@ -181,7 +184,7 @@ module.exports = {
           })
           .join(", ");
         return {
-          title: g.title || "",
+          title: g.title && g.title !== shown ? g.title : "",
           labels: g.labels || [],
           cssGradient: "linear-gradient(to right, " + stops + ")",
         };

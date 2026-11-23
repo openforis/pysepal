@@ -251,9 +251,12 @@ over the map. `MapApp` builds all three for you.
   no legend. Zoom-to-layer uses the bounds the layer was prepared with; an
   Earth Engine layer looks them up on the first zoom, and a layer without
   bounds still draws but disables its zoom button.
-- **Legends and loading status are in the `MapView`.** The legend sits at the
-  bottom right, built from the legend of each visible layer, and a status badge
-  at the top right counts the layers still loading. Overlays you add are placed
+- **Legends and loading status are in the `MapView`.** One legend card sits
+  centred at the bottom of the map, or of each half while the map compares. It
+  lists the visible layers of its area that have a legend, built from each
+  layer's legend, and shows one at a time: a dropdown picks it, and a layer
+  that appears is shown at once. A status badge at the top right counts the
+  layers still loading. Overlays you add are placed
   in the corner you name, inside the map's insets.
 
 ```python

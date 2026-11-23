@@ -127,6 +127,19 @@ that corner. The browser measures the controls, so a stack moves when the draw
 toolbar or the coordinates readout comes or goes. The stacks stay hidden until
 the map has measured them.
 
+`MapView` also shows a legend card centred at the bottom of the map, above the
+controls there (`MapView(legend=False)` turns it off):
+
+- It lists the visible layers that have a legend, top first, and shows one: the
+  top one at first, then the user's pick in its dropdown. A layer that appears
+  for the first time is shown at once. When the shown layer is hidden or
+  removed, the card shows the top one.
+- The card follows the map's insets, so it stays centred between the drawer
+  and the panel, and in fullscreen it centres on the whole screen.
+- A long legend scrolls inside the card, which takes at most 40 % of the map's
+  height. In an area narrower than 140 px only the card's bar shows, and in
+  one narrower than 60 px nothing.
+
 ### The inspector, and the draw toolbar the map draws
 
 Two tools sit at the top left of the map:
@@ -163,6 +176,11 @@ left half draws the `left` and `both` layers and the right half the `right` and
 - **The switch is the app's.** The panel has no compare switch: an app that
   wants one adds its own, such as a `solara.Switch` whose `on_value` sets
   `m.compare`.
+- **A legend per half.** While the map compares, `MapView` shows two legend
+  cards, each centred on its half and following the divider as it moves. The
+  left card lists the `left` and `both` layers, the right card the `right` and
+  `both` ones. Each half keeps its own pick and collapse, and the left half
+  continues the whole map's card when compare turns on, and back.
 
 ## Theme and language
 
@@ -192,8 +210,10 @@ The shell publishes its geometry as CSS variables on the page root:
 While a step dialog is open, the shell also puts the class `sepal-modal-open` on
 `body`.
 
-The legend and the notifications use these to stay clear of the panels, so mount
-`NotificationProvider()` and the legend next to the shell and they follow it.
+An app's own `LegendComponent` and the notifications use these to stay clear of
+the panels, so mount `NotificationProvider()` and the legend next to the shell
+and they follow it. The legend cards of the map need none of this: `MapView`
+places them.
 
 ## Moving from the removed Vue MapApp
 
