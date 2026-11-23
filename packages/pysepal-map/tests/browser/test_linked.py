@@ -311,6 +311,24 @@ def test_a_mounted_joiner_takes_the_groups_camera(harness, page_session, peer):
         assert same_camera(camera(el_d), panned["center"], panned["zoom"])
 
 
+def test_a_fit_asked_before_a_peer_shows_moves_the_group_when_shown(harness, page_session):
+    a = MapWidget(height="300px", link_group="g")
+    b = MapWidget(height="300px", link_group="g", center=(30, 40), zoom=4)
+    b.fit_bounds(BOX)
+    fit = dict(b.view_request)
+    box = widgets.VBox([a])
+    display(box)
+    wait_view(page_session, a, acknowledged(a))
+
+    box.children = (a, b)
+    wait_views(page_session, 2)
+    wait_view(page_session, b, acknowledged(b))
+    shown_a, shown_b = (camera(view_at(page_session, nth)) for nth in (0, 1))
+    assert b.view_request == fit
+    assert contains(shown_b["bounds"], BOX)
+    assert same_camera(shown_a, shown_b["center"], shown_b["zoom"])
+
+
 @pytest.mark.parametrize("case", ["two members", "three members", "no fit"])
 def test_a_fit_on_a_hidden_member_moves_the_group_when_shown(harness, page_session, case):
     a = MapWidget(height="300px", link_group="g")

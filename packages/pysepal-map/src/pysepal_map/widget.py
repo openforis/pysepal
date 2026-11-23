@@ -65,10 +65,10 @@ A map in a group has ``_link`` set to ``{"group", "seq", "member"}``, else
 ``{}``: the group is the token ``<scope>:<name>``, where the scope is the id
 of the kernel that built the map (each virtual kernel's under ``solara
 run``), else the process's, ``seq`` is the request the link was written on,
-and ``member`` is an id the map keeps for life, by which its views tell
-each other from other maps' views. Linking is
-per page and per kernel: the views of one page that share a token follow
-each other, and a kernel's maps never move another kernel's. In the browser
+and ``member`` is an id the map keeps for life, by which its views tell each
+other from other maps' views. Linking is per page and per kernel: the views
+of one page that share a token follow each other, and a kernel's maps never
+move another kernel's. In the browser
 every move that changes one view's camera jumps the others to its center and
 zoom in the same call, and each paints it on its next frame. Each view still
 reports its own camera, a follower once per movement of the view that moved,
@@ -83,13 +83,19 @@ view takes that member's camera instead.
 Python keeps the group's camera, the last one a member reported that was not
 a ``resize``, and moves only the members with no ``main`` view mounted: each
 new camera becomes a request on them, sent with their ``_link`` in one
-message, its ``seq`` the request's. A map that joins a group with a camera,
-built with ``link_group`` or set to it, requests that camera instead of its
-own ``center``, mounted or not; one that joins with an accepted ``view``
-while the group has none gives the group that view's camera. A group forgets
-its camera with its last member, so a re-run notebook cell builds its new
-maps into the old group, still open, and they ignore their ``center`` until
-the old maps are closed.
+message, its ``seq`` the request's. A ``request`` report moves no such member
+that holds a ``set_center`` or ``fit_bounds`` newer than its link ``seq`` and
+made after the request reported, so that request moves the group once the
+member is shown. A map's first request, and those that follow its group,
+count as made before every ``set_center`` and ``fit_bounds``, and so does
+one that a later ``set_center`` or ``fit_bounds`` of the same map replaced
+before a view reported it. A map that joins a group with a camera, built
+with ``link_group`` or set to it, requests that camera instead of its own
+``center``, mounted or not; one that joins with an accepted ``view`` while
+the group has none gives the group that view's camera. A group forgets its
+camera with its last member, so a re-run notebook cell builds its new maps
+into the old group, still open, and they ignore their ``center`` until the
+old maps are closed.
 
 Compare. ``MapState.compare`` turns on a swipe compare: each ``Layer.side``
 (``left``, ``right`` or ``both``) says which half draws it. The ``main`` view
@@ -284,6 +290,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import itertools
 import logging
 import math
 import os
@@ -420,6 +427,16 @@ _LINK_LOCK = threading.Lock()
 _LINK_MEMBERS: dict[str, weakref.WeakSet[MapWidget]] = {}
 # token -> the group's camera as (lng, lat, zoom)
 _LINK_CAMERAS: dict[str, tuple[float, float, float]] = {}
+# Orders the requests set_center and fit_bounds make, across every map.
+_STAMPS = itertools.count(1)
+# Only guards _STAMPS, and nothing is taken under it.
+_STAMP_LOCK = threading.Lock()
+
+
+def _stamp() -> int:
+    """The stamp of a request ``set_center`` or ``fit_bounds`` makes now."""
+    with _STAMP_LOCK:
+        return next(_STAMPS)
 
 
 def _current_kernel() -> object | None:
@@ -441,7 +458,7 @@ def _kernel_scope() -> str:
         return _KERNEL_SCOPES.setdefault(kernel, uuid.uuid4().hex)
 
 
-def _link_name(value) -> str | None:
+def _group_name(value) -> str | None:
     if value is None or (isinstance(value, str) and value):
         return value
     raise ValueError(f"link_group must be a non-empty string or None, got {value!r}")
@@ -537,13 +554,15 @@ class MapWidget(anywidget.AnyWidget):
         # The last request issued, and the one the last accepted report applied.
         self._issued = 1
         self._acknowledged = 0
+        # The seq and stamp of the last request set_center or fit_bounds made.
+        self._stamped = (0, 0)
         # The view whose user or link move on that request gave the camera in ``view``.
         self._user_view: str | None = None
         lng, lat = center
         # Set before super().__init__(), which opens the comm with this request.
         self._first_request = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
         self._link_member = uuid.uuid4().hex
-        name = _link_name(link_group)
+        name = _group_name(link_group)
         camera = None
         if name is not None:
             self._link_name = name
@@ -622,7 +641,7 @@ class MapWidget(anywidget.AnyWidget):
     @link_group.setter
     def link_group(self, value: str | None) -> None:
         """Join the group ``value`` names, or leave the group for None."""
-        name = _link_name(value)
+        name = _group_name(value)
         token = None if name is None else self._token(name)
         camera = seeded = None
         with _LINK_LOCK:
@@ -726,13 +745,16 @@ class MapWidget(anywidget.AnyWidget):
         Until a view reports, a new view has no zoom to keep, so no zoom
         means the last one asked for.
         """
+        self._center(lng, lat, zoom, stamped=True)
+
+    def _center(self, lng: float, lat: float, zoom: float | None, stamped: bool) -> None:
         request = _center_request(lng, lat, zoom)
         with self._lock:
             if zoom is None:
                 request["zoom"] = self._zoom
             elif self._zoom is not None:
                 self._zoom = request["zoom"]
-            self._request(request)
+            self._request(request, stamped)
 
     def fit_bounds(
         self,
@@ -778,10 +800,12 @@ class MapWidget(anywidget.AnyWidget):
         if layout is not None:
             layout.close()
 
-    def _request(self, request: dict) -> None:
+    def _request(self, request: dict, stamped: bool = True) -> None:
         # Under the lock, so requests from several threads go out in seq order.
         with self._lock:
             self._issued += 1
+            if stamped:
+                self._stamped = (self._issued, _stamp())
             self.set_trait("view_request", {"seq": self._issued, **request})
 
     def _token(self, name: str) -> str:
@@ -807,7 +831,7 @@ class MapWidget(anywidget.AnyWidget):
     def _take_camera(self, token: str, lng: float, lat: float, zoom: float) -> None:
         """Request a group's camera and link on that request, in one message."""
         with self._lock, self.hold_sync():
-            self.set_center(lng, lat, zoom)
+            self._center(lng, lat, zoom, stamped=False)
             self.set_trait("_link", self._link_on(token, self.view_request["seq"]))
 
     def _catch_up(self, token: str, seen: tuple[float, float, float] | None) -> None:
@@ -820,8 +844,14 @@ class MapWidget(anywidget.AnyWidget):
             if not self._closed and self._link.get("group") == token:
                 self._take_camera(token, *camera)
 
-    def _follow(self, token: str, lng: float, lat: float, zoom: float) -> None:
-        """Take a peer's camera, unless this map left ``token`` or shows a view."""
+    def _follow(
+        self, token: str, lng: float, lat: float, zoom: float, stamp: int | None = None
+    ) -> None:
+        """Take a peer's camera, unless this map left ``token``, shows a view or holds a newer request.
+
+        ``stamp`` is the stamp of the request the peer's camera acknowledges,
+        None when a move gave it.
+        """
         with self._lock:
             if (
                 self._closed
@@ -829,15 +859,27 @@ class MapWidget(anywidget.AnyWidget):
                 or self.comm is None
                 or self._link.get("group") != token
                 or any(side == "main" for _, side in self._views)
+                or (stamp is not None and self._holds_newer(stamp))
             ):
                 return
             self._take_camera(token, lng, lat, zoom)
 
-    def _follow_peers(self, token: str, center: list[float], zoom: float) -> None:
+    def _holds_newer(self, stamp: int) -> bool:
+        """Whether this map's request is its own, newer than its link and ``stamp``; call with the lock.
+
+        Such a request moves the group once a view shows it.
+        """
+        seq, own = self._stamped
+        return seq == self._issued and seq > self._link.get("seq", 0) and own > stamp
+
+    def _follow_peers(
+        self, token: str, center: list[float], zoom: float, stamp: int | None
+    ) -> None:
         """Move the group's other maps that show no view to this camera; call without the lock.
 
         A camera the group holds already moves nobody, so a hidden map gets
-        one request per move, however many members report it.
+        one request per move, however many members report it. ``stamp`` is
+        as for ``_follow``.
         """
         camera = (center[0], center[1], zoom)
         with _LINK_LOCK:
@@ -848,7 +890,7 @@ class MapWidget(anywidget.AnyWidget):
             peers = [m for m in members if m is not self]
         for peer in peers:
             try:
-                peer._follow(token, *camera)
+                peer._follow(token, *camera, stamp)
             except Exception:
                 logger.exception("pysepal-map: a linked map could not follow")
 
@@ -989,7 +1031,8 @@ class MapWidget(anywidget.AnyWidget):
         resize of the view that moved, which keeps that camera. An
         acknowledgement, or another view's resize, does not. An accepted
         report that is not a resize then moves the linked maps that show no
-        view.
+        view, but an acknowledgement moves none that holds a newer request of
+        its own (see ``_holds_newer``).
         """
         view_id, seq = content.get("view_id"), content.get("request_seq")
         center = _numbers(content.get("center"), 2)
@@ -1007,7 +1050,7 @@ class MapWidget(anywidget.AnyWidget):
             or cause not in CAUSES
         ):
             return
-        forward = None
+        forward = stamp = None
         with self._lock:
             self._expire_due()
             same = seq == self._acknowledged and self._user_view is not None
@@ -1036,8 +1079,13 @@ class MapWidget(anywidget.AnyWidget):
                 # A resize keeps the camera, and could undo a newer fit on a hidden map.
                 if cause != "resize":
                     forward = self._link.get("group")
+                if cause == "request":
+                    # Only the last set_center or fit_bounds keeps its stamp: one
+                    # it replaced is reported just before it.
+                    stamped_seq, own = self._stamped
+                    stamp = own if seq == stamped_seq else 0
         if forward:
-            self._follow_peers(forward, center, zoom[0])
+            self._follow_peers(forward, center, zoom[0], stamp)
         # Expiring a view can change the status too.
         self._refresh()
 

@@ -209,6 +209,56 @@ def test_a_move_back_to_an_earlier_camera_is_forwarded():
     assert b.view_request == {"seq": 3, "center": [10, 20], "zoom": 5}
 
 
+def test_a_fit_on_a_hidden_member_outlives_a_peers_first_acknowledgement():
+    a, b = MapWidget(link_group="g"), MapWidget(link_group="g")
+    b.fit_bounds((-76, 5, -73, 9))
+    fit = dict(b.view_request)
+    open_view(a)
+    report(a, "request", center=(0, 0), zoom=2)
+    assert b.view_request == fit and b._link["seq"] == 1
+
+    # A user move after the fit still moves it.
+    report(a, center=(10, 20), zoom=5)
+    assert b.view_request == {"seq": 3, "center": [10, 20], "zoom": 5}
+
+
+@pytest.mark.parametrize("fit_first", [True, False], ids=["fit first", "fit last"])
+def test_an_acknowledged_request_moves_a_hidden_member_only_if_newer(fit_first):
+    a, b = mounted("g"), MapWidget(link_group="g")
+    if fit_first:
+        b.fit_bounds((-76, 5, -73, 9))
+    a.set_center(10, 20, 5)
+    if not fit_first:
+        b.fit_bounds((-76, 5, -73, 9))
+    fit = dict(b.view_request)
+    report(a, "request", center=(10, 20), zoom=5)
+    if fit_first:
+        assert b.view_request == {"seq": 3, "center": [10, 20], "zoom": 5}
+    else:
+        assert b.view_request == fit
+
+
+def test_a_fit_made_before_joining_yields_to_a_peers_acknowledgement():
+    # Not newer than b's link, so the browser would not let it move the group either.
+    a, b = MapWidget(link_group="g"), MapWidget()
+    b.fit_bounds((-76, 5, -73, 9))
+    b.link_group = "g"
+    assert b._link["seq"] == seq(b) == 2
+    open_view(a)
+    report(a, "request", center=(10, 20), zoom=5)
+    assert b.view_request == {"seq": 3, "center": [10, 20], "zoom": 5}
+
+
+def test_following_the_group_is_no_request_of_the_map():
+    a, d, b = mounted("g", name="a"), mounted("g", name="d"), MapWidget(link_group="g")
+    a.set_center(1, 2, 3)
+    report(d, center=(30, 40), zoom=5, name="d")
+    assert b.view_request == {"seq": 2, "center": [30, 40], "zoom": 5}
+    # a's request is newer than what b holds, which only follows the group.
+    report(a, "request", center=(1, 2), zoom=3, name="a")
+    assert b.view_request == {"seq": 3, "center": [1, 2], "zoom": 3}
+
+
 def test_the_fallback_stops_once_a_view_mounts():
     a, b, c = mounted("g"), MapWidget(link_group="g"), MapWidget(link_group="g")
     open_view(b)
@@ -278,7 +328,7 @@ def test_a_forward_during_the_join_is_not_lost(monkeypatch):
     a = mounted("g")
     report(a, center=(5, 5), zoom=4)
     b = MapWidget()
-    set_center = b.set_center
+    center = b._center
     calls = []
 
     def racing(*args, **kwargs):
@@ -286,9 +336,9 @@ def test_a_forward_during_the_join_is_not_lost(monkeypatch):
         if len(calls) == 1:
             # Reaches b before its _link is written, so it skips b.
             report(a, center=(1, 2), zoom=3)
-        set_center(*args, **kwargs)
+        center(*args, **kwargs)
 
-    monkeypatch.setattr(b, "set_center", racing)
+    monkeypatch.setattr(b, "_center", racing)
     b.link_group = "g"
     assert (b.view_request["center"], b.view_request["zoom"]) == ([1, 2], 3)
     assert b._link["seq"] == seq(b)
