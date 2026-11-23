@@ -6,6 +6,7 @@ from pathlib import Path
 
 import solara
 
+from pysepal.message import msg
 from pysepal.solara.components.legend import DiscreteEntry, LegendComponent, LegendData
 from tests.test_solara.test_notifications.test_notification_ui_template import (
     needs_node,
@@ -136,6 +137,159 @@ def test_the_legend_opens_in_the_collapsed_state_it_is_given():
     assert collapsed == [True, False]
 
 
-def test_inline_prop():
-    legend_data = {"gradients": [], "items": [{"label": "a", "color": "#fff", "detail": ""}]}
-    assert _render(legend_data=legend_data, inline=True).inline is True
+_DATA = {"gradients": [], "items": [{"label": "a", "color": "#fff", "detail": ""}]}
+
+_OPTIONS = [
+    {"value": "forest", "text": "Forest cover 2024"},
+    {"value": "loss", "text": "Tree cover loss"},
+    {"value": "gain", "text": "Gain"},
+]
+
+
+def _markup() -> str:
+    """The template, with each ``{{ expression }}`` on one line as prettier may wrap it."""
+    markup = _TEMPLATE.read_text().split("<script>")[0]
+    return re.sub(r"\{\{\s*(.*?)\s*\}\}", r"{{ \1 }}", markup, flags=re.DOTALL)
+
+
+def _rule(selector: str) -> str:
+    """The body of the stylesheet rule whose selector is exactly ``selector``."""
+    style = re.sub(
+        r"/\*.*?\*/", "", _TEMPLATE.read_text().split("<style scoped>")[1], flags=re.DOTALL
+    )
+    rules = {m.group(1).strip(): m.group(2) for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", style)}
+    assert selector in rules, f"no CSS rule for {selector}"
+    return rules[selector]
+
+
+def test_placement_follows_inline_unless_given():
+    assert _render(legend_data=_DATA).placement == "viewport"
+    assert _render(legend_data=_DATA, inline=True).placement == "inline"
+    assert _render(legend_data=_DATA, inline=True, placement="map").placement == "map"
+
+
+@needs_node
+def test_map_placement_renders_in_flow():
+    """The map slot positions the card; the card fills at most the slot, its bar under the body."""
+    classes = run_vue_script(
+        _TEMPLATE,
+        """
+        return ["map", "inline", "viewport"].map((placement) => makeVm({ placement }).rootClasses);
+        """,
+    )
+    assert classes[0]["sepal-legend--map"] is True
+    assert classes[0]["sepal-legend--inline"] is False
+    assert classes[1]["sepal-legend--inline"] is True
+    assert not classes[2]["sepal-legend--map"] and not classes[2]["sepal-legend--inline"]
+
+    rule = _rule(".sepal-legend.sepal-legend--map")
+    for declaration in (
+        "position: static",
+        "transform: none",
+        "max-width: 100%",
+        "max-height: 100%",
+    ):
+        assert declaration in rule
+    # The padding counts within the cap, or the card ends up narrower than its content.
+    body = _rule(".sepal-legend.sepal-legend--map > .sepal-legend__body")
+    assert "box-sizing: border-box" in body
+    assert "max-width: min(380px, 100%)" in body
+    # The gradient asks for 200px but yields to a narrower slot.
+    bar = _rule(".sepal-legend__gradient-bar")
+    assert "width: 200px" in bar and "max-width: 100%" in bar
+    assert _markup().index('class="sepal-legend__body"') < _markup().index(
+        'class="sepal-legend__bar"'
+    )
+
+
+@needs_node
+def test_title_and_count_with_several_layers():
+    shown = run_vue_script(
+        _TEMPLATE,
+        f"""
+        const vm = makeVm({{ selector_options: {_OPTIONS!r}, selected: "loss", title: "ignored" }});
+        return [vm.showSelector, vm.showTitle, vm.displayTitle, vm.countText];
+        """,
+    )
+    assert shown == [True, False, "Tree cover loss", "2/3"]
+
+    selector = _markup().split('class="sepal-legend__selector"')[1].split("</select>")[0]
+    assert "{{ displayTitle }}" in selector
+    assert "{{ countText }}" in selector
+    assert "text-overflow: ellipsis" in _rule(".sepal-legend__selector-text")
+
+
+@needs_node
+def test_single_layer_shows_its_title():
+    shown = run_vue_script(
+        _TEMPLATE,
+        """
+        const option = [{ value: "a", text: "NDVI" }];
+        const vms = [
+          makeVm({ selector_options: option, selected: "a", title: "NDVI 2024" }),
+          makeVm({ title: "Elevation" }),
+          makeVm({ selector_options: option, selected: "a" }),
+          makeVm({}),
+        ];
+        return vms.map((vm) => [vm.showSelector, vm.showTitle, vm.displayTitle]);
+        """,
+    )
+    assert shown == [
+        [False, True, "NDVI 2024"],
+        [False, True, "Elevation"],
+        [False, True, "NDVI"],
+        [False, False, ""],
+    ]
+    assert "{{ displayTitle }}" in _markup().split('class="sepal-legend__title"')[1]
+
+
+@needs_node
+def test_collapsed_bar_shows_the_title():
+    shown = run_vue_script(
+        _TEMPLATE,
+        f"""
+        return [true, false].map((collapsed) => {{
+          const vm = makeVm({{ collapsed, selector_options: {_OPTIONS!r}, selected: "gain" }});
+          options.created.call(vm);
+          return vm.barTitle;
+        }});
+        """,
+    )
+    assert shown == ["Gain", ""]
+
+    assert "{{ barTitle }}" in _markup().split('class="sepal-legend__bar"')[1]
+    assert "text-overflow: ellipsis" in _rule(".sepal-legend__bar-title")
+
+
+def test_labels_default_to_messages():
+    expected = {key: msg(f"legend.{key}") for key in ("choose", "show", "hide")}
+    assert _render(legend_data=_DATA).labels == expected
+    assert expected == {
+        "choose": "Choose which layer legend to show",
+        "show": "Show legend",
+        "hide": "Hide legend",
+    }
+    assert _render(legend_data=_DATA, labels={"show": "Montrer"}).labels == {
+        **expected,
+        "show": "Montrer",
+    }
+
+    for english in expected.values():
+        assert english not in _markup()
+    for key in ("choose", "show", "hide"):
+        assert f"strings.{key}" in _markup()
+
+
+def test_title_reaches_the_widget():
+    assert _render(legend_data=_DATA, title="Forest").title == "Forest"
+
+
+def test_long_legends_scroll_inside_the_card():
+    """The title row stays put while the content scrolls, under a cap per placement."""
+    content = _rule(".sepal-legend__content")
+    assert "overflow-y: auto" in content
+    assert "min-height: 0" in content
+    assert "max-height: 40vh" in _rule(".sepal-legend__body")
+    # In the map the slot caps the card, and the body shrinks into it.
+    assert "min-height: 0" in _rule(".sepal-legend.sepal-legend--map")
+    assert "flex-shrink: 0" in _rule(".sepal-legend__bar")
