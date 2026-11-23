@@ -51,6 +51,22 @@ _VECTOR_SUFFIXES: dict[str, VectorFormat] = {
 }
 
 
+def _pairs_to_dict(pairs: Any, what: str) -> dict:
+    """``(key, value)`` pairs as a dict that keeps their order; duplicates and malformed pairs raise."""
+    items = []
+    for pair in pairs:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise ValueError(f"{what} must be (name, value) pairs, got {pair!r}")
+        items.append(tuple(pair))
+    try:
+        result = dict(items)
+    except TypeError:
+        raise ValueError(f"{what} names must be str or int, got {items!r}") from None
+    if len(result) != len(items):
+        raise ValueError(f"{what} names must be unique")
+    return result
+
+
 def _normalise_color(value: str) -> str:
     """Return a color as lowercase ``#rrggbb``, accepting Earth Engine style bare hex."""
     if isinstance(value, str) and _BARE_HEX.match(value):
@@ -301,17 +317,7 @@ class VectorStyle(BaseModel):
     def _class_keys(cls, value: Any) -> Any:
         # pydantic would turn a bool key into an int, and a float key too
         if isinstance(value, (list, tuple)):
-            pairs = []
-            for pair in value:
-                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
-                    raise ValueError(f"classes must be (class, value) pairs, got {pair!r}")
-                pairs.append(tuple(pair))
-            try:
-                value = dict(pairs)
-            except TypeError:
-                raise ValueError(f"classes must be str or int, got {pairs!r}") from None
-            if len(value) != len(pairs):
-                raise ValueError("classes must be unique")
+            value = _pairs_to_dict(value, "classes")
         if not isinstance(value, dict):
             return value
         kinds = set()
@@ -343,12 +349,8 @@ class VectorStyle(BaseModel):
     @classmethod
     def _label_pairs(cls, value: Any) -> Any:
         # the JSON form of a labelled field is [[name, label], ...]; a plain list holds names
-        if (
-            isinstance(value, list)
-            and value
-            and all(isinstance(pair, (list, tuple)) and len(pair) == 2 for pair in value)
-        ):
-            return dict(value)
+        if isinstance(value, list) and any(isinstance(item, (list, tuple)) for item in value):
+            return _pairs_to_dict(value, "popup and tooltip fields")
         return value
 
     @field_validator("popup", "tooltip")

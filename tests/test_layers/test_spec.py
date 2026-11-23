@@ -435,6 +435,21 @@ def test_vector_style_popup_labels(field):
     assert VectorStyle(**{field: ["a"]}).model_dump(mode="json")[field] == ["a"]
 
 
+@pytest.mark.parametrize("field", ["popup", "tooltip"])
+@pytest.mark.parametrize(
+    "bad, message",
+    [
+        ([["a", "A"], ["a", "B"]], "unique"),
+        ([["a", "A"], ("b",)], "pairs"),
+        ([["a", 1]], "string"),
+    ],
+    ids=["duplicate", "short pair", "non-string label"],
+)
+def test_vector_style_label_pairs_are_checked(field, bad, message):
+    with pytest.raises(ValidationError, match=message):
+        VectorStyle(**{field: bad})
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
