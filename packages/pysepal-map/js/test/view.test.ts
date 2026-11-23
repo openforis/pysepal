@@ -359,18 +359,39 @@ describe("ViewCamera", () => {
     ]);
   });
 
-  it("reports a linked map's move as a user's only when a user made it", () => {
-    const { camera, map, causes } = setup();
+  it("ignores frame link moves and reports link and user marks", () => {
+    const { camera, map, sent, causes } = setup();
     camera.start();
     vi.runAllTimers();
+    sent.length = 0;
+    map.fire("moveend", { [LINK]: "frame" });
+    vi.runAllTimers();
+    expect(sent).toEqual([]);
+    map.fire("moveend", { [LINK]: "link" });
+    vi.runAllTimers();
+    map.fire("moveend", { [LINK]: "frame" });
     map.fire("moveend", { [LINK]: "user" });
     vi.runAllTimers();
-    map.fire("moveend", { [LINK]: "other" });
+    expect(causes()).toEqual([
+      [1, "link"],
+      [1, "user"],
+    ]);
+  });
+
+  it("ranks link between request and user", () => {
+    const { camera, map, causes } = setup();
+    camera.start();
+    map.fire("moveend");
+    map.fire("moveend", { [LINK]: "link" });
+    map.fire("moveend");
+    vi.runAllTimers();
+    map.fire("moveend", { [LINK]: "link" });
+    map.userMove(2, 2);
+    map.fire("moveend", { [LINK]: "link" });
     vi.runAllTimers();
     expect(causes()).toEqual([
-      [1, "request"],
+      [1, "link"],
       [1, "user"],
-      [1, "resize"],
     ]);
   });
 

@@ -135,3 +135,36 @@ def test_view_callback_gets_cause():
     send(2, "request")
     assert [v["cause"] for v in seen] == ["user", "request"]
     assert widget.view["cause"] == "request"
+
+
+def test_a_link_report_counts_like_a_user_move():
+    widget = MapWidget()
+    seen = []
+    widget.on_view(seen.append)
+    for name in ("v1", "v2"):
+        widget._handle_custom_msg({"type": "view_open", "view_id": name, "side": "main"}, [])
+
+    def send(name, cause, lng):
+        widget._handle_custom_msg(
+            {
+                "type": "view_report",
+                "view_id": name,
+                "request_seq": 1,
+                "cause": cause,
+                "center": [lng, 0],
+                "zoom": 2,
+                "bounds": [-1, -1, 1, 1],
+            },
+            [],
+        )
+
+    send("v1", "user", 1)
+    send("v2", "link", 2)
+    assert [(v["cause"], v["center"]) for v in seen] == [("user", [1, 0]), ("link", [2, 0])]
+    assert widget.view["cause"] == "link"
+
+    # The link report took the camera: only its own view's resize keeps it.
+    send("v1", "resize", 3)
+    assert widget.view["center"] == [2, 0]
+    send("v2", "resize", 4)
+    assert widget.view["center"] == [4, 0] and widget.view["cause"] == "resize"

@@ -46,12 +46,12 @@ Camera. The browser owns it. ``set_center`` and ``fit_bounds`` write
 ``view_request`` with a ``seq`` that only grows. A new view first restores the
 camera saved in ``view``, then applies each request newer than the last one it
 applied, and every report names that request and its ``cause``: ``user``,
-``request`` or ``resize``. ``view`` mirrors the last accepted report, with its ``cause``, and so does the
-dict each ``on_view`` callback gets. Reports
-from views not mounted, on an older request, or with a latitude outside
-[-90, 90] or a zoom outside [0, 24] are dropped, and on the same
-request a user's camera is kept over an acknowledgement or another view's
-resize.
+``request``, ``resize``, or ``link`` for a linked map's move that no user made
+(see Linked maps). ``view`` mirrors the last accepted report, with its
+``cause``, and so does the dict each ``on_view`` callback gets. Reports from
+views not mounted, on an older request, or with a latitude outside [-90, 90]
+or a zoom outside [0, 24] are dropped, and on the same request a ``user`` or
+``link`` camera is kept over an acknowledgement or another view's resize.
 
 A center request carries ``center`` and ``zoom``, null to keep the zoom. A fit
 carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
@@ -66,12 +66,17 @@ kernel that built the map (each virtual kernel's under ``solara run``), else
 the process's, and ``seq`` is the request the link was written on. Linking is
 per page and per kernel: the views of one page that share a token follow
 each other, and a kernel's maps never move another kernel's. In the browser
-every move of one view jumps the others to its center and zoom in the same
-call, and each paints it on its next frame; each view still reports its own
-camera, a link's move as ``user`` when a user moved the other map. Views of
-one widget never move each other. The first map shown sets the camera: a view
-that joins takes the camera of the group's maps already shown, unless a
-request newer than its link ``seq`` moved it on mount, which then moves them.
+every move that changes one view's camera jumps the others to its center and
+zoom in the same call, and each paints it on its next frame. Each view still
+reports its own camera, a follower once per movement of the view that moved,
+as that view does: as ``user`` when a user moved it, else as ``link``, which
+counts like a user's. A move that keeps a view's camera, such as a resize,
+moves no other view. Views of one widget never move each other. The first map
+shown sets the camera: a view that joins takes the camera of the group's maps
+already shown, unless a request newer than its link ``seq`` moved it on mount,
+which then moves them. A request not newer than the link, such as a fit that
+waited for a size, moves no other view: while another member is shown, the
+view takes that member's camera instead.
 Python keeps the group's camera, the last one a member reported that was not
 a ``resize``, and moves only the members with no ``main`` view mounted: each
 new camera becomes a request on them, sent with their ``_link`` in one
@@ -257,8 +262,11 @@ def _asset(name: str) -> str | Path:
 #: The maps a view mounts: ``main``, and the ``right`` one beside it in compare.
 SIDES = ("main", "right")
 STATUSES = ("loading", "ready", "error")
-#: What moved a view's camera: a user, a request, or anything else.
-CAUSES = ("user", "request", "resize")
+#: What moved a view's camera: a user, a request, anything else, or a linked map's
+#: move that no user made.
+CAUSES = ("user", "request", "resize", "link")
+#: The causes that take the camera: an acknowledgement or a resize does not replace them.
+_TAKING = ("user", "link")
 #: What changed a view's drawing: a user, or applying a request.
 DRAW_CAUSES = ("user", "request")
 #: A mounted view repeats ``view_open`` every 20 s, and any message from it
@@ -466,7 +474,7 @@ class MapWidget(anywidget.AnyWidget):
         # The last request issued, and the one the last accepted report applied.
         self._issued = 1
         self._acknowledged = 0
-        # The view whose user move on that request gave the camera in ``view``.
+        # The view whose user or link move on that request gave the camera in ``view``.
         self._user_view: str | None = None
         lng, lat = center
         # Set before super().__init__(), which opens the comm with this request.
@@ -919,11 +927,12 @@ class MapWidget(anywidget.AnyWidget):
         A report of a view that is not mounted, or on a request older than
         the one the last accepted report applied, is stale and ignored, and
         so is one with a latitude outside [-90, 90] or a zoom outside [0, 24].
-        On the same request, a camera a user move gave is kept for redisplay:
-        a later user move replaces it, and so does a resize of the view the
-        user moved, which keeps it that user's camera. An acknowledgement,
-        or another view's resize, does not. An accepted report that is not a
-        resize then moves the linked maps that show no view.
+        On the same request, a camera a user move or a link move gave is kept
+        for redisplay: a later user or link move replaces it, and so does a
+        resize of the view that moved, which keeps that camera. An
+        acknowledgement, or another view's resize, does not. An accepted
+        report that is not a resize then moves the linked maps that show no
+        view.
         """
         view_id, seq = content.get("view_id"), content.get("request_seq")
         center = _numbers(content.get("center"), 2)
@@ -946,7 +955,7 @@ class MapWidget(anywidget.AnyWidget):
             self._expire_due()
             same = seq == self._acknowledged and self._user_view is not None
             own_resize = same and cause == "resize" and view_id == self._user_view
-            kept = same and cause != "user" and not own_resize
+            kept = same and cause not in _TAKING and not own_resize
             if (
                 not self._closed
                 and any(v[0] == view_id for v in self._views)
@@ -954,7 +963,7 @@ class MapWidget(anywidget.AnyWidget):
                 and not kept
             ):
                 self._acknowledged = seq
-                if cause == "user":
+                if cause in _TAKING:
                     self._user_view = view_id
                 elif not own_resize:
                     self._user_view = None

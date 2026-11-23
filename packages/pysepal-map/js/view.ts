@@ -52,12 +52,13 @@ export interface ViewRequest {
 
 /**
  * What moved the camera: a user gesture or its inertia, applying or
- * acknowledging a request, or anything else, such as a resize.
+ * acknowledging a request, a linked map's move that no user made, or
+ * anything else, such as a resize.
  */
-export type Cause = "user" | "request" | "resize";
+export type Cause = "user" | "request" | "resize" | "link";
 
 /** Within one report the strongest cause wins. */
-const RANK: Record<Cause, number> = { resize: 0, request: 1, user: 2 };
+const RANK: Record<Cause, number> = { resize: 0, request: 1, link: 2, user: 3 };
 
 export interface ViewReport {
   type: "view_report";
@@ -71,13 +72,16 @@ export interface ViewReport {
 }
 
 /** The eventData key that marks a move a request made, with its `seq`. */
-const REQUEST = "psmRequest";
+export const REQUEST = "psmRequest";
 
 /**
- * The eventData key that marks a move a linked map passed on: `"user"` when
- * a user moved that map, `"other"` otherwise.
+ * The eventData key that marks a jump a linked map made, with a `LinkMark`:
+ * `"frame"` for each frame of its movement, which the camera ignores, then,
+ * as the movement ends, `"user"` when a user made it and `"link"` otherwise.
  */
 export const LINK = "psmLink";
+
+export type LinkMark = "frame" | "user" | "link";
 
 interface MoveEvent {
   [REQUEST]?: unknown;
@@ -204,7 +208,7 @@ function savedOf(
  * counts as a move on it. A newer request drops the report an older one
  * still owed, so Python never gets a camera under a sequence it did not
  * come from. Each report says what moved the camera, so that Python can
- * keep the last user move over a later acknowledgement or resize.
+ * keep the last user or link move over a later acknowledgement or resize.
  *
  * The insets are the map's padding: the camera centers, fits and reports
  * inside the area they leave.
@@ -350,9 +354,10 @@ export class ViewCamera {
 
   private readonly onMoveEnd = (event: MoveEvent) => {
     // A request's own move is acknowledged by apply().
-    if (event[REQUEST] !== undefined) return;
+    if (event[REQUEST] !== undefined || event[LINK] === "frame") return;
     const user = event.originalEvent || event[LINK] === "user";
-    this.owe(this.applied, user ? "user" : "resize");
+    const link = event[LINK] === "link";
+    this.owe(this.applied, user ? "user" : link ? "link" : "resize");
   };
 
   private readonly onResize = (event: MoveEvent) => {

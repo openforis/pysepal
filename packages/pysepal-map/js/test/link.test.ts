@@ -5,12 +5,14 @@ import { LINK } from "../view";
 
 type Listener = (event: any) => void;
 
-/** A map that fires `move` on every jump that changes its camera, like MapLibre. */
+const MOVE = ["movestart", "move", "moveend"];
+
+/** A map that fires movestart, move and moveend on every jump, like MapLibre. */
 class FakeMap {
   center = { lng: 0, lat: 0 };
   zoom = 2;
   jumps: { options: any; eventData: any }[] = [];
-  private readonly listeners = new Set<Listener>();
+  private readonly listeners = new Map<string, Set<Listener>>();
 
   getCenter() {
     return { ...this.center };
@@ -23,39 +25,48 @@ class FakeMap {
   jumpTo(options: any, eventData: any = {}) {
     this.jumps.push({ options, eventData });
     const [lng, lat] = options.center;
-    if (
-      lng === this.center.lng &&
-      lat === this.center.lat &&
-      options.zoom === this.zoom
-    )
-      return;
     this.center = { lng, lat };
     this.zoom = options.zoom;
-    this.fire(eventData);
+    for (const type of MOVE) this.fire(type, eventData);
   }
 
-  on(_type: string, listener: Listener) {
-    this.listeners.add(listener);
+  on(type: string, listener: Listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, new Set());
+    this.listeners.get(type)!.add(listener);
   }
 
-  off(_type: string, listener: Listener) {
-    this.listeners.delete(listener);
+  off(type: string, listener: Listener) {
+    this.listeners.get(type)?.delete(listener);
   }
 
   count() {
-    return this.listeners.size;
+    return [...this.listeners.values()].reduce((n, s) => n + s.size, 0);
   }
 
-  /** A user gesture moves the map. */
+  /** A user drags the map through `steps`, each `[lng, lat]` or `[lng, lat, zoom]`. */
+  drag(...steps: number[][]) {
+    const originalEvent = new Event("mousemove");
+    this.fire("movestart", { originalEvent });
+    for (const [lng, lat, zoom = this.zoom] of steps) {
+      this.center = { lng, lat };
+      this.zoom = zoom;
+      this.fire("move", { originalEvent });
+    }
+    this.fire("moveend", { originalEvent: new Event("mouseup") });
+  }
+
   userMove(lng: number, lat: number, zoom = this.zoom) {
-    this.center = { lng, lat };
-    this.zoom = zoom;
-    this.fire({ originalEvent: new Event("mousemove") });
+    this.drag([lng, lat, zoom]);
   }
 
-  fire(data: object = {}) {
-    for (const listener of [...this.listeners])
-      listener({ type: "move", ...data });
+  /** A resize: the camera stays, and nothing marks the move. */
+  resize() {
+    for (const type of MOVE) this.fire(type);
+  }
+
+  fire(type: string, data: object = {}) {
+    for (const listener of [...(this.listeners.get(type) ?? [])])
+      listener({ type, ...data });
   }
 }
 
@@ -102,26 +113,64 @@ function view(
 
 const camera = (map: FakeMap) => [map.center.lng, map.center.lat, map.zoom];
 
+/** The link mark of each jump a map got. */
+const marks = (map: FakeMap) => map.jumps.map((j) => j.eventData[LINK]);
+
 describe("ViewLink", () => {
-  it("jumps the other map in the same call as a user move", () => {
+  it("jumps the other map within the move of the one a user moves", () => {
     const registry: LinkRegistry = new Map();
     const a = view(registry);
     const b = view(registry);
-    a.map.userMove(10, 20, 5);
+    const originalEvent = new Event("mousemove");
+    a.map.fire("movestart", { originalEvent });
+    a.map.center = { lng: 10, lat: 20 };
+    a.map.zoom = 5;
+    a.map.fire("move", { originalEvent });
     expect(camera(b.map)).toEqual([10, 20, 5]);
-    expect(b.map.jumps.at(-1)?.eventData).toEqual({ [LINK]: "user" });
+    expect(b.map.jumps.at(-1)?.eventData).toEqual({ [LINK]: "frame" });
   });
 
-  it("passes a move that is not a user's as other", () => {
+  it("pushes frames the camera ignores, then passes the moveend on once", () => {
     const registry: LinkRegistry = new Map();
     const a = view(registry);
     const b = view(registry);
+    b.map.jumps.length = 0;
+    a.map.drag([1, 1], [2, 2], [3, 3]);
+    expect(marks(b.map)).toEqual(["frame", "frame", "frame", "user"]);
+    expect(camera(b.map)).toEqual([3, 3, 2]);
+  });
+
+  it("a resize moves no peer and passes nothing on", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    const b = view(registry);
+    b.map.jumps.length = 0;
+    a.map.resize();
+    expect(b.map.jumps).toEqual([]);
+  });
+
+  it("a resize after following a peer passes nothing on", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    const b = view(registry);
+    a.map.userMove(10, 20);
+    expect(camera(b.map)).toEqual([10, 20, 2]);
+    a.map.jumps.length = 0;
+    b.map.resize();
+    expect(a.map.jumps).toEqual([]);
+  });
+
+  it("passes a programmatic move on as link", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    const b = view(registry);
+    b.map.jumps.length = 0;
     a.map.jumpTo({ center: [3, 4], zoom: 6 }, { psmRequest: 2 });
     expect(camera(b.map)).toEqual([3, 4, 6]);
-    expect(b.map.jumps.at(-1)?.eventData).toEqual({ [LINK]: "other" });
+    expect(marks(b.map)).toEqual(["frame", "link"]);
   });
 
-  it("does not pass on the jump it got", () => {
+  it("does not pass on the jumps it got", () => {
     const registry: LinkRegistry = new Map();
     const a = view(registry);
     const b = view(registry);
@@ -129,7 +178,7 @@ describe("ViewLink", () => {
     b.map.jumps.length = 0;
     a.map.userMove(10, 20);
     expect(a.map.jumps).toEqual([]);
-    expect(b.map.jumps).toHaveLength(1);
+    expect(marks(b.map)).toEqual(["frame", "user"]);
   });
 
   it("moves every other map of a group of three", () => {
@@ -193,6 +242,41 @@ describe("ViewLink", () => {
     expect(camera(map)).toEqual([30, 40, 8]);
   });
 
+  it("marks the join jump link", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    const b = view(registry);
+    expect(marks(b.map)).toEqual(["link"]);
+    a.map.jumps.length = 0;
+    view(registry, new FakeModel("g", 3), 4);
+    expect(marks(a.map)).toEqual(["link"]);
+  });
+
+  it("a request not newer than the link moves no peer and takes the peers' camera", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    a.map.userMove(10, 20, 5);
+    const b = view(registry, new FakeModel("g", 3));
+    a.map.jumps.length = 0;
+    b.map.jumpTo({ center: [30, 40], zoom: 8 }, { psmRequest: 3 });
+    expect(a.map.jumps).toEqual([]);
+    expect(camera(a.map)).toEqual([10, 20, 5]);
+    expect(camera(b.map)).toEqual([10, 20, 5]);
+    expect(b.map.jumps.at(-1)?.eventData).toEqual({ [LINK]: "link" });
+  });
+
+  it("reads the link seq at the time of the move", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    const b = view(registry);
+    // As when view_request and _link change in one message, before their events.
+    b.model.link = { group: "g", seq: 4 };
+    a.map.jumps.length = 0;
+    b.map.jumpTo({ center: [30, 40], zoom: 8 }, { psmRequest: 4 });
+    expect(a.map.jumps).toEqual([]);
+    expect(camera(b.map)).toEqual([0, 0, 2]);
+  });
+
   it.each([
     ["no group", {}],
     ["an empty group", { group: "", seq: 1 }],
@@ -245,7 +329,8 @@ describe("ViewLink", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     a.map.userMove(10, 20);
     expect(camera(c.map)).toEqual([10, 20, 2]);
-    expect(error).toHaveBeenCalledOnce();
+    // The frame and the moveend passed on.
+    expect(error).toHaveBeenCalledTimes(2);
     error.mockRestore();
   });
 

@@ -1,7 +1,8 @@
-import { LINK } from "./view";
+import { LINK, REQUEST, type LinkMark } from "./view";
 
 interface MoveEvent {
   [LINK]?: unknown;
+  [REQUEST]?: unknown;
   /** Set by MapLibre on the moves of a user gesture. */
   originalEvent?: unknown;
 }
@@ -11,8 +12,8 @@ export interface LinkMap {
   getCenter(): { lng: number; lat: number };
   getZoom(): number;
   jumpTo(options: object, eventData?: object): unknown;
-  on(type: "move", listener: (event: MoveEvent) => void): unknown;
-  off(type: "move", listener: (event: MoveEvent) => void): unknown;
+  on(type: "move" | "moveend", listener: (event: MoveEvent) => void): unknown;
+  off(type: "move" | "moveend", listener: (event: MoveEvent) => void): unknown;
 }
 
 /** The part of the anywidget model a link uses. */
@@ -56,19 +57,43 @@ function linkOf(value: unknown): { group: string; seq: number } {
     : { group: "", seq: 0 };
 }
 
+type Camera = [lng: number, lat: number, zoom: number];
+
+function cameraOf(map: LinkMap): Camera {
+  const { lng, lat } = map.getCenter();
+  return [lng, lat, map.getZoom()];
+}
+
+const sameCamera = (a: Camera, b: Camera): boolean =>
+  a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+
 /**
  * Keeps a view's map on the camera of the other widgets in its group.
  *
  * Python names the group in `_link`; the views of the page that share it
- * find each other here, so every move of one map jumps the others to its
- * center and zoom in the same frame. A jump carries `LINK`, so the maps it
- * moves do not pass it on. Views of one widget never move each other.
+ * find each other here. Each move that changes a map's camera jumps the
+ * others to its center and zoom in the same call, marked `frame`, which
+ * their cameras do not report. As that movement ends, the others jump once
+ * more, marked `user` when a user made it and `link` otherwise, so each
+ * reports it once, as the map that moved does. A move that leaves the
+ * camera where it was, such as a resize, moves nobody. A jump that carries
+ * `LINK` is never passed on, and views of one widget never move each other.
+ *
+ * A request not newer than the link is one the group's camera already
+ * answers, such as a fit that waited for a size, so while a peer is shown
+ * the map takes the peer's camera back instead.
  */
 export class ViewLink {
   private group = "";
   private readonly member: Member;
   private started = false;
   private disposed = false;
+  /** The camera this map last pushed or took. */
+  private last: Camera = [NaN, NaN, NaN];
+  /** Whether the movement under way pushed a frame. */
+  private pushed = false;
+  /** Whether the movement under way applies a request not newer than the link. */
+  private stale = false;
 
   constructor(private readonly options: ViewLinkOptions) {
     this.member = { model: options.model, map: options.map };
@@ -80,9 +105,12 @@ export class ViewLink {
    * on mount, is newer than the link: that request moves them instead.
    */
   start(moved: number | null = null): void {
+    const { map, model } = this.options;
     this.started = true;
-    this.options.map.on("move", this.onMove);
-    this.options.model.on("change:_link", this.onChange);
+    this.last = cameraOf(map);
+    map.on("move", this.onMove);
+    map.on("moveend", this.onMoveEnd);
+    model.on("change:_link", this.onChange);
     this.join(moved);
   }
 
@@ -90,8 +118,10 @@ export class ViewLink {
     if (this.disposed) return;
     this.disposed = true;
     if (this.started) {
-      this.options.map.off("move", this.onMove);
-      this.options.model.off("change:_link", this.onChange);
+      const { map, model } = this.options;
+      map.off("move", this.onMove);
+      map.off("moveend", this.onMoveEnd);
+      model.off("change:_link", this.onChange);
     }
     this.leave();
   }
@@ -106,14 +136,14 @@ export class ViewLink {
     this.leave();
     if (!group) return;
     const { registry, map } = this.options;
+    const peer = this.peers(group)[0];
     let members = registry.get(group);
     if (!members) registry.set(group, (members = new Set()));
-    const peer = this.peers(members)[0];
     members.add(this.member);
     this.group = group;
     if (!peer) return;
-    if (moved !== null && moved > seq) this.push("other");
-    else jump(map, peer.map, "other");
+    if (moved !== null && moved > seq) this.push("link");
+    else jump(map, peer.map, "link");
   }
 
   private leave(): void {
@@ -124,29 +154,59 @@ export class ViewLink {
     this.group = "";
   }
 
-  private peers(members: Set<Member>): Member[] {
+  private peers(group = this.group): Member[] {
+    const members = this.options.registry.get(group) ?? [];
     return [...members].filter((m) => m.model !== this.options.model);
   }
 
   private readonly onMove = (event: MoveEvent) => {
-    if (event[LINK] !== undefined || !this.group) return;
-    this.push(event.originalEvent ? "user" : "other");
+    const { map } = this.options;
+    if (event[LINK] !== undefined) {
+      this.last = cameraOf(map);
+      return;
+    }
+    if (this.isStale(event)) {
+      this.stale = true;
+      return;
+    }
+    if (sameCamera(cameraOf(map), this.last)) return;
+    this.pushed = true;
+    this.push("frame");
   };
 
-  private push(cause: "user" | "other"): void {
-    const members = this.options.registry.get(this.group);
-    if (!members) return;
-    for (const peer of this.peers(members)) {
-      jump(peer.map, this.options.map, cause);
+  private readonly onMoveEnd = (event: MoveEvent) => {
+    if (event[LINK] !== undefined) return;
+    const { pushed, stale } = this;
+    this.pushed = this.stale = false;
+    if (stale) {
+      // Here and not in the move, so that no jump runs inside a move listener.
+      const peer = this.peers()[0];
+      if (peer) jump(this.options.map, peer.map, "link");
+    } else if (pushed) {
+      this.push(event.originalEvent ? "user" : "link");
     }
+  };
+
+  private isStale(event: MoveEvent): boolean {
+    const request = event[REQUEST];
+    if (!Number.isInteger(request)) return false;
+    // Read now: the request and the link it came with change in one message.
+    const { seq } = linkOf(this.options.model.get("_link"));
+    return (request as number) <= seq && this.peers().length > 0;
+  }
+
+  private push(mark: LinkMark): void {
+    const { map } = this.options;
+    this.last = cameraOf(map);
+    for (const peer of this.peers()) jump(peer.map, map, mark);
   }
 }
 
 /** Move `map` to the center and zoom of `to`. */
-function jump(map: LinkMap, to: LinkMap, cause: "user" | "other"): void {
+function jump(map: LinkMap, to: LinkMap, mark: LinkMark): void {
   const { lng, lat } = to.getCenter();
   try {
-    map.jumpTo({ center: [lng, lat], zoom: to.getZoom() }, { [LINK]: cause });
+    map.jumpTo({ center: [lng, lat], zoom: to.getZoom() }, { [LINK]: mark });
   } catch (error) {
     // A map being removed; the others still follow.
     console.error("pysepal-map: a linked map could not follow", error);
