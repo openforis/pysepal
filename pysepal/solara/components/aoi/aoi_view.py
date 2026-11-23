@@ -661,7 +661,7 @@ def AoiView(
                     if current():
                         map_.zoom_bounds(bounds)
                 elif result.gdf is not None:
-                    # a plain GeoDataFrame, as get_ipygeojson made: pygadm's subclass
+                    # a plain GeoDataFrame: pygadm's subclass
                     # fails in the frames geopandas builds from it
                     gdf = gpd.GeoDataFrame(result.gdf).to_crs(4326)
                     outline = LayerSpec.from_geojson(

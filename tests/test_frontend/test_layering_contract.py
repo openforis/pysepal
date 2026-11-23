@@ -24,7 +24,6 @@ APP_LAYER_CEILING = 200
 # Selector -> the file whose rule sets its z-index. Each must stay under the
 # ceiling so a modal covers it instead of it punching through.
 APP_LAYERS = {
-    ".full-screen-map > .leaflet-container": BASE_CSS,
     "header.v-app-bar": BASE_CSS,
     ".sepal-legend": LEGEND_VUE,
     ".pill-wrapper": NOTIFICATION_VUE,
@@ -90,22 +89,7 @@ def test_no_stylesheet_pins_the_vuetify_modal_z_index():
             )
 
 
-def test_the_panes_inside_the_map_keep_their_z_index():
-    """Only the map pane is held down; the panes inside it keep their stacking.
-
-    The layer engine orders a store's layers by pane z-index (201-398), under
-    Leaflet's overlay, marker, tooltip and popup panes (400-700). A z-index on
-    every ``.leaflet-pane`` gives them all the same one, so DOM order decides,
-    and the engine's panes, created after Leaflet's, cover markers and popups.
-    The map pane is positioned, so a z-index on it alone keeps the panes inside
-    from rising over the app.
-    """
-    selectors = [
-        part.strip()
-        for selector, body in _rules(BASE_CSS.read_text())
-        if "z-index" in body
-        for part in selector.split(",")
-    ]
-
-    assert ".leaflet-pane" not in selectors
-    assert ".leaflet-map-pane" in selectors
+def test_base_css_has_no_leaflet_selector():
+    """The map is MapLibre: a `.leaflet-` rule styles nothing and misleads."""
+    assert ".leaflet-" not in BASE_CSS.read_text()
+    assert "geoman" not in BASE_CSS.read_text().lower()

@@ -24,8 +24,7 @@ SOLARA_COMMON_ASSETS = Path(solara_pkg.__file__).parent / "common" / "assets"
 
 # Representative rules that MUST be present in both runtimes (they live in base).
 SHARED_SELECTORS = [
-    ".leaflet-center",
-    ".leaflet-pm-toolbar",  # geoman toolbar block
+    ".v-map-btn",
     ".right-panel .drawer-top .v-sheet",
     "header.v-app-bar",
     ".solara-markdown.jp-RenderedHTMLCommon",

@@ -7,19 +7,6 @@
  * Do NOT add runtime-specific rules here; put them in the override files.
  */
 
-/* keep the map under the app's own elements. Only the map pane: the panes
- * inside it stack by their z-index, which orders the layer engine's panes */
-.leaflet-map-pane,
-.leaflet-top,
-.leaflet-bottom {
-  z-index: 2 !important;
-}
-
-/* remove the shadow from the widgets on the maps */
-.leaflet-widgetcontrol {
-  box-shadow: none !important;
-}
-
 /* Solara's Markdown carries JupyterLab's `jp-RenderedHTMLCommon` class, whose
  * color is the page-wide `--jp-content-font-color1`, not the color of its
  * container. Under Voila that var comes from the light JupyterLab theme (dark
@@ -41,7 +28,6 @@
  *  underneath means vuetify's scrim covers the map on its own, dialogs stack
  *  natively, and the scrim dims the legend and logger for free.
  *
- *      100   fullscreen map
  *      110   app bar
  *      150   map legend
  *      160   MapApp side panels
@@ -63,24 +49,6 @@ header.v-app-bar {
  * (MenuControl) keeps its own width */
 .v-menu > .v-overlay__content {
   max-width: 100% !important;
-}
-
-/* create extra position for the leaflet map controls */
-.leaflet-center {
-  left: 50%;
-  transform: translate(-50%, 0%);
-}
-
-.leaflet-middle {
-  top: 50%;
-  position: absolute;
-  z-index: 600;
-  pointer-events: none;
-  transform: translate(0%, -50%);
-}
-
-.leaflet-center.leaflet-middle {
-  transform: translate(-50%, -50%);
 }
 
 /* create extra classes to customize the layer_control table */
@@ -114,13 +82,6 @@ header.v-app-bar {
   min-width: 0px;
   width: 30px;
   height: 30px;
-}
-
-/* A map control renders without its own app wrapper, so the outlined
- * button would have no background; give it the theme's background. */
-.leaflet-widgetcontrol .v-btn.v-map-btn.v-btn--variant-outlined {
-  background-color: rgb(var(--v-theme-background));
-  color: rgb(var(--v-theme-on-background));
 }
 
 /* add specific css for the zoom btn of the map */
@@ -158,15 +119,6 @@ header.v-app-bar {
   contain: revert !important;
 }
 
-.full-screen-map > .leaflet-container {
-  position: fixed !important;
-  width: 100vw;
-  height: calc(100vh - 48px);
-  z-index: 100;
-  bottom: 0;
-  left: 0;
-}
-
 /* To make it work in solara */
 
 .v-main .v-main {
@@ -181,30 +133,6 @@ header.v-app-bar {
   background-color: #121212 !important;
 }
 
-.leaflet-control-container .v-application__wrap {
-  min-height: revert !important;
-}
-
-.aoi_map .jupyter-widgets.leaflet-widgets {
-  height: 89vh;
-  margin: 0 !important;
-}
-
-.results_map .jupyter-widgets.leaflet-widgets {
-  height: 89vh;
-  margin: 0 !important;
-}
-
-.leaflet-sbs-divider,
-.leaflet-sbs-range {
-  z-index: 201 !important;
-}
-
-.leaflet-sbs-divider,
-.leaflet-sbs-range {
-  z-index: 201 !important;
-}
-
 .v-theme--light .v-toolbar {
   background-color: #2196f3 !important;
   border-color: #2196f3 !important;
@@ -216,151 +144,6 @@ header.v-theme--light.v-app-bar .v-btn.v-btn--icon {
 
 header.v-theme--light.v-app-bar.v-toolbar {
   color: white !important;
-}
-
-/* Apply filter to FAO GAUL WMS tiles in dark theme for better visibility
- * FAO's WMS uses dark borders which are hard to see on dark basemaps.
- * This inverts colors and enhances contrast for better visibility. */
-.v-theme--dark .leaflet-tile-pane img[src*="gaul/wms"] {
-  filter: invert(1) hue-rotate(180deg) brightness(1.3) contrast(1.5);
-}
-
-.pysepal-map-theme-dark > .leaflet-container {
-  background-color: #121212;
-}
-
-.pysepal-map-theme-light > .leaflet-container {
-  background-color: #eceff1;
-}
-
-/* Theme-aware Leaflet-Geoman toolbar styling.
- * Geoman ships with light-leaning defaults, so mirror pysepal's active
- * light/dark theme on the map itself and style the toolbar against that. */
-.pysepal-map-theme-dark .leaflet-container,
-.pysepal-map-theme-light .leaflet-container {
-  --pysepal-geoman-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-}
-
-.pysepal-map-theme-dark .leaflet-container {
-  --pysepal-geoman-toolbar-bg: rgba(26, 26, 26, 0.96);
-  --pysepal-geoman-toolbar-border: rgba(93, 118, 171, 0.45);
-  --pysepal-geoman-toolbar-hover: rgba(54, 62, 79, 0.98);
-  --pysepal-geoman-toolbar-active: #76591e;
-  --pysepal-geoman-toolbar-active-hover: #bf8f2d;
-  --pysepal-geoman-toolbar-text: #f3f3f3;
-  --pysepal-geoman-toolbar-text-muted: rgba(243, 243, 243, 0.78);
-}
-
-.pysepal-map-theme-light .leaflet-container {
-  --pysepal-geoman-toolbar-bg: rgba(255, 255, 255, 0.96);
-  --pysepal-geoman-toolbar-border: rgba(33, 153, 196, 0.3);
-  --pysepal-geoman-toolbar-hover: rgba(243, 248, 252, 0.98);
-  --pysepal-geoman-toolbar-active: #5bb624;
-  --pysepal-geoman-toolbar-active-hover: #76b353;
-  --pysepal-geoman-toolbar-text: rgba(0, 0, 0, 0.84);
-  --pysepal-geoman-toolbar-text-muted: rgba(0, 0, 0, 0.62);
-}
-
-.leaflet-container .leaflet-pm-toolbar.leaflet-bar {
-  border: 1px solid var(--pysepal-geoman-toolbar-border);
-  border-radius: 12px;
-  overflow: visible;
-  box-shadow: var(--pysepal-geoman-shadow);
-}
-
-.leaflet-container .leaflet-pm-toolbar .button-container {
-  position: relative;
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-buttons-control-button,
-.leaflet-container .leaflet-pm-toolbar .leaflet-pm-action {
-  transition: background-color 0.18s ease, color 0.18s ease,
-    border-color 0.18s ease, filter 0.18s ease;
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-buttons-control-button {
-  background: var(--pysepal-geoman-toolbar-bg);
-  border-bottom: 1px solid var(--pysepal-geoman-toolbar-border);
-}
-
-.leaflet-container
-  .leaflet-pm-toolbar
-  .button-container:last-child
-  .leaflet-buttons-control-button {
-  border-bottom: 0;
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-buttons-control-button:hover,
-.leaflet-container .leaflet-pm-toolbar .leaflet-buttons-control-button:focus {
-  background: var(--pysepal-geoman-toolbar-hover);
-  outline: none;
-}
-
-.leaflet-container
-  .leaflet-pm-toolbar
-  .button-container.active
-  .leaflet-buttons-control-button,
-.leaflet-container .leaflet-pm-toolbar .leaflet-buttons-control-button.active {
-  background: var(--pysepal-geoman-toolbar-active);
-}
-
-.leaflet-container
-  .leaflet-pm-toolbar
-  .button-container.active
-  .leaflet-buttons-control-button:hover,
-.leaflet-container
-  .leaflet-pm-toolbar
-  .leaflet-buttons-control-button.active:hover {
-  background: var(--pysepal-geoman-toolbar-active-hover);
-}
-
-.leaflet-container .leaflet-pm-toolbar .control-icon {
-  filter: none;
-}
-
-.pysepal-map-theme-dark .leaflet-container .leaflet-pm-toolbar .control-icon {
-  filter: brightness(0) invert(1);
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-pm-actions-container {
-  background: var(--pysepal-geoman-toolbar-bg);
-  border: 1px solid var(--pysepal-geoman-toolbar-border);
-  border-radius: 10px;
-  box-shadow: var(--pysepal-geoman-shadow);
-  overflow: hidden;
-  min-width: 168px;
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-pm-action {
-  background: transparent;
-  color: var(--pysepal-geoman-toolbar-text);
-  border-bottom: 1px solid var(--pysepal-geoman-toolbar-border);
-  font-weight: 500;
-}
-
-.leaflet-container
-  .leaflet-pm-toolbar
-  .leaflet-pm-actions-container
-  .leaflet-pm-action:last-child {
-  border-bottom: 0;
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-pm-action:hover,
-.leaflet-container .leaflet-pm-toolbar .leaflet-pm-action:focus {
-  background: var(--pysepal-geoman-toolbar-hover);
-  color: var(--pysepal-geoman-toolbar-text);
-  outline: none;
-}
-
-.leaflet-container .leaflet-pm-toolbar .leaflet-pm-action.action-cancel {
-  color: #a63228;
-}
-
-.pysepal-map-theme-dark
-  .leaflet-container
-  .leaflet-pm-toolbar
-  .leaflet-pm-action.action-cancel {
-  color: #e16a60;
 }
 
 /* Right-panel cards sit on the drawer's own themed surface; drop the v-sheet's

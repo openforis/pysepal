@@ -41,7 +41,7 @@ module.exports = {
         root.style.setProperty(name, value)
       );
       this.appliedVars = Object.keys(next);
-      // Leaflet only re-measures on a window resize, and the map's height
+      // MapLibre only re-measures on a window resize, and the map's height
       // changes when the top bar comes or goes and the bottom sheet opens or
       // closes.
       if (reserved() !== reservedBefore) {
