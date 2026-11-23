@@ -7,12 +7,18 @@ type Listener = (event: any) => void;
 
 const MOVE = ["movestart", "move", "moveend"];
 
-/** A map that fires movestart, move and moveend on every jump, like MapLibre. */
+/**
+ * A map that fires movestart, move and moveend on every jump, like MapLibre.
+ * As in MapLibre 6.19, a jump moves the camera at once, but a jump made by a
+ * listener of this map's jump fires its events after the event being fired.
+ */
 class FakeMap {
   center = { lng: 0, lat: 0 };
   zoom = 2;
   jumps: { options: any; eventData: any }[] = [];
   private readonly listeners = new Map<string, Set<Listener>>();
+  private readonly pending: [string, object][] = [];
+  private delivering = false;
 
   getCenter() {
     return { ...this.center };
@@ -27,7 +33,17 @@ class FakeMap {
     const [lng, lat] = options.center;
     this.center = { lng, lat };
     this.zoom = options.zoom;
-    for (const type of MOVE) this.fire(type, eventData);
+    for (const type of MOVE) this.pending.push([type, eventData]);
+    if (this.delivering) return;
+    this.delivering = true;
+    try {
+      while (this.pending.length) this.fire(...this.pending.shift()!);
+    } catch (error) {
+      this.pending.length = 0;
+      throw error;
+    } finally {
+      this.delivering = false;
+    }
   }
 
   on(type: string, listener: Listener) {
@@ -70,20 +86,29 @@ class FakeMap {
   }
 }
 
+let widgets = 0;
+
+/** A widget's model, which all its views share. */
 class FakeModel {
   private readonly listeners = new Set<() => void>();
+  readonly member = `widget-${++widgets}`;
   link: unknown;
 
   constructor(group = "", seq = 1) {
-    this.link = group ? { group, seq } : {};
+    this.write(group, seq);
   }
 
   get(_name: string) {
     return this.link;
   }
 
+  /** Write `_link` as Python does, before its change event. */
+  write(group: string, seq = 1) {
+    this.link = group ? { group, seq, member: this.member } : {};
+  }
+
   set(group: string, seq = 1) {
-    this.link = group ? { group, seq } : {};
+    this.write(group, seq);
     for (const listener of [...this.listeners]) listener();
   }
 
@@ -100,13 +125,24 @@ class FakeModel {
   }
 }
 
+/** What anywidget 0.11 gives each view: an object of its own over the model. */
+function proxy(model: FakeModel) {
+  return {
+    get: (name: "_link") => model.get(name),
+    on: (name: "change:_link", listener: () => void) =>
+      model.on(name, listener),
+    off: (name: "change:_link", listener: () => void) =>
+      model.off(name, listener),
+  };
+}
+
 function view(
   registry: LinkRegistry,
   model = new FakeModel("g"),
   moved: number | null = null
 ) {
   const map = new FakeMap();
-  const link = new ViewLink({ map, model, registry });
+  const link = new ViewLink({ map, model: proxy(model), registry });
   link.start(moved);
   return { map, model, link };
 }
@@ -201,13 +237,30 @@ describe("ViewLink", () => {
     expect(camera(free.map)).toEqual([0, 0, 2]);
   });
 
-  it("never moves another view of the same widget", () => {
+  it("never moves another view of the same widget, and both follow the others", () => {
     const registry: LinkRegistry = new Map();
     const model = new FakeModel("g");
     const one = view(registry, model);
     const two = view(registry, model);
+    const other = view(registry);
     one.map.userMove(10, 20);
     expect(camera(two.map)).toEqual([0, 0, 2]);
+    expect(camera(other.map)).toEqual([10, 20, 2]);
+    other.map.userMove(30, 40);
+    expect([camera(one.map), camera(two.map)]).toEqual([
+      [30, 40, 2],
+      [30, 40, 2],
+    ]);
+  });
+
+  it("a view of a widget alone in its group takes no camera from another view of it", () => {
+    const registry: LinkRegistry = new Map();
+    const model = new FakeModel("g");
+    const one = view(registry, model);
+    one.map.userMove(10, 20);
+    const two = view(registry, model);
+    expect(camera(two.map)).toEqual([0, 0, 2]);
+    expect(two.map.jumps).toEqual([]);
   });
 
   it("takes the camera of the group when it joins", () => {
@@ -227,7 +280,8 @@ describe("ViewLink", () => {
     const a = view(registry);
     a.map.userMove(10, 20, 5);
     const map = new FakeMap();
-    new ViewLink({ map, model: new FakeModel("g", 3), registry }).start(moved);
+    const model = proxy(new FakeModel("g", 3));
+    new ViewLink({ map, model, registry }).start(moved);
     expect(camera(map)).toEqual([10, 20, 5]);
   });
 
@@ -237,7 +291,8 @@ describe("ViewLink", () => {
     const map = new FakeMap();
     map.center = { lng: 30, lat: 40 };
     map.zoom = 8;
-    new ViewLink({ map, model: new FakeModel("g", 3), registry }).start(4);
+    const model = proxy(new FakeModel("g", 3));
+    new ViewLink({ map, model, registry }).start(4);
     expect(camera(a.map)).toEqual([30, 40, 8]);
     expect(camera(map)).toEqual([30, 40, 8]);
   });
@@ -270,7 +325,7 @@ describe("ViewLink", () => {
     const a = view(registry);
     const b = view(registry);
     // As when view_request and _link change in one message, before their events.
-    b.model.link = { group: "g", seq: 4 };
+    b.model.write("g", 4);
     a.map.jumps.length = 0;
     b.map.jumpTo({ center: [30, 40], zoom: 8 }, { psmRequest: 4 });
     expect(a.map.jumps).toEqual([]);
@@ -289,7 +344,7 @@ describe("ViewLink", () => {
       a.map.jumps.length = 0;
       // view_request and _link change in one message, their events in either order.
       if (linkFirst) b.model.set("h", 3);
-      else b.model.link = { group: "h", seq: 3 };
+      else b.model.write("h", 3);
       b.map.jumpTo({ center: [30, 40], zoom: 8 }, { psmRequest: 3 });
       if (!linkFirst) b.model.set("h", 3);
       expect(a.map.jumps).toEqual([]);
@@ -301,7 +356,9 @@ describe("ViewLink", () => {
   it.each([
     ["no group", {}],
     ["an empty group", { group: "", seq: 1 }],
-    ["a text seq", { group: "g", seq: "1" }],
+    ["a text seq", { group: "g", seq: "1", member: "m" }],
+    ["no member", { group: "g", seq: 1 }],
+    ["an empty member", { group: "g", seq: 1, member: "" }],
     ["a text", "g"],
   ])("stays alone with %s", (_, link) => {
     const registry: LinkRegistry = new Map();

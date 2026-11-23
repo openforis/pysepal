@@ -24,7 +24,8 @@ export interface LinkModel {
 }
 
 interface Member {
-  model: object;
+  /** The widget's `member` in `_link`, the same for all its views. */
+  id: string;
   map: LinkMap;
 }
 
@@ -46,15 +47,26 @@ export interface ViewLinkOptions {
   registry: LinkRegistry;
 }
 
-/** The `_link` trait: the group, and the widget's request seq at link time. */
-function linkOf(value: unknown): { group: string; seq: number } {
-  const { group, seq } = (value && typeof value === "object" ? value : {}) as {
-    group?: unknown;
-    seq?: unknown;
-  };
-  return typeof group === "string" && group && Number.isInteger(seq)
-    ? { group, seq: seq as number }
-    : { group: "", seq: 0 };
+interface Link {
+  group: string;
+  /** The widget's request seq at link time. */
+  seq: number;
+  /** The widget's id, the same in every group. */
+  member: string;
+}
+
+/** The `_link` trait, else no group. */
+function linkOf(value: unknown): Link {
+  const { group, seq, member } = (
+    value && typeof value === "object" ? value : {}
+  ) as { group?: unknown; seq?: unknown; member?: unknown };
+  return typeof group === "string" &&
+    group &&
+    Number.isInteger(seq) &&
+    typeof member === "string" &&
+    member
+    ? { group, seq: seq as number, member }
+    : { group: "", seq: 0, member: "" };
 }
 
 type Camera = [lng: number, lat: number, zoom: number];
@@ -85,7 +97,8 @@ const sameCamera = (a: Camera, b: Camera): boolean =>
  */
 export class ViewLink {
   private group = "";
-  private readonly member: Member;
+  /** This view in the group it joined. */
+  private member: Member | null = null;
   private started = false;
   private disposed = false;
   /** The camera this map last pushed or took. */
@@ -95,9 +108,7 @@ export class ViewLink {
   /** Whether the movement under way applies a request not newer than the link. */
   private stale = false;
 
-  constructor(private readonly options: ViewLinkOptions) {
-    this.member = { model: options.model, map: options.map };
-  }
+  constructor(private readonly options: ViewLinkOptions) {}
 
   /**
    * Join the group named now. A view that joins takes the camera of the
@@ -131,14 +142,16 @@ export class ViewLink {
   };
 
   private join(moved: number | null): void {
-    const { group, seq } = linkOf(this.options.model.get("_link"));
+    const link = linkOf(this.options.model.get("_link"));
+    const { group, seq } = link;
     if (group === this.group) return;
     this.leave();
     if (!group) return;
     const { registry, map } = this.options;
-    const peer = this.peers(group)[0];
+    const peer = this.peers(link)[0];
     let members = registry.get(group);
     if (!members) registry.set(group, (members = new Set()));
+    this.member = { id: link.member, map };
     members.add(this.member);
     this.group = group;
     if (!peer) return;
@@ -149,14 +162,20 @@ export class ViewLink {
   private leave(): void {
     const { registry } = this.options;
     const members = registry.get(this.group);
-    members?.delete(this.member);
+    if (this.member) members?.delete(this.member);
     if (members?.size === 0) registry.delete(this.group);
     this.group = "";
+    this.member = null;
   }
 
-  private peers(group: string): Member[] {
+  /**
+   * The maps of the group `link` names but those of this widget. anywidget
+   * gives each view its own model object, so the widget is told by the
+   * `member` Python writes, not by the model.
+   */
+  private peers({ group, member }: Link): Member[] {
     const members = this.options.registry.get(group) ?? [];
-    return [...members].filter((m) => m.model !== this.options.model);
+    return [...members].filter((m) => m.id !== member);
   }
 
   /**
@@ -165,8 +184,8 @@ export class ViewLink {
    * move reads the link itself rather than the group this view has joined.
    */
   private linked(): { peers: Member[]; seq: number } {
-    const { group, seq } = linkOf(this.options.model.get("_link"));
-    return { peers: this.peers(group), seq };
+    const link = linkOf(this.options.model.get("_link"));
+    return { peers: this.peers(link), seq: link.seq };
   }
 
   private readonly onMove = (event: MoveEvent) => {

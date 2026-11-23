@@ -61,10 +61,12 @@ reduced so that 1 px is left each way. A fit waits while the view's usable
 area has no size, and runs once it has one.
 
 Linked maps. Maps whose ``link_group`` names the same group keep one camera.
-A map in a group has ``_link`` set to ``{"group", "seq"}``, else ``{}``: the
-group is the token ``<scope>:<name>``, where the scope is the id of the
-kernel that built the map (each virtual kernel's under ``solara run``), else
-the process's, and ``seq`` is the request the link was written on. Linking is
+A map in a group has ``_link`` set to ``{"group", "seq", "member"}``, else
+``{}``: the group is the token ``<scope>:<name>``, where the scope is the id
+of the kernel that built the map (each virtual kernel's under ``solara
+run``), else the process's, ``seq`` is the request the link was written on,
+and ``member`` is an id the map keeps for life, by which its views tell
+each other from other maps' views. Linking is
 per page and per kernel: the views of one page that share a token follow
 each other, and a kernel's maps never move another kernel's. In the browser
 every move that changes one view's camera jumps the others to its center and
@@ -540,6 +542,7 @@ class MapWidget(anywidget.AnyWidget):
         lng, lat = center
         # Set before super().__init__(), which opens the comm with this request.
         self._first_request = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
+        self._link_member = uuid.uuid4().hex
         name = _link_name(link_group)
         camera = None
         if name is not None:
@@ -579,7 +582,7 @@ class MapWidget(anywidget.AnyWidget):
     def _default_link(self) -> dict:
         if self._link_name is None:
             return {}
-        return {"group": self._token(self._link_name), "seq": self._first_request["seq"]}
+        return self._link_on(self._token(self._link_name), self._first_request["seq"])
 
     @traitlets.default("drawing")
     def _default_drawing(self) -> dict:
@@ -644,7 +647,7 @@ class MapWidget(anywidget.AnyWidget):
             elif camera is not None:
                 self._take_camera(token, *camera)
             else:
-                self.set_trait("_link", {"group": token, "seq": self.view_request["seq"]})
+                self.set_trait("_link", self._link_on(token, self.view_request["seq"]))
         if token is not None:
             # A forward before _link was written skipped this map.
             self._catch_up(token, camera or seeded)
@@ -784,6 +787,10 @@ class MapWidget(anywidget.AnyWidget):
     def _token(self, name: str) -> str:
         return f"{self._link_scope}:{name}"
 
+    def _link_on(self, token: str, seq: int) -> dict:
+        """The ``_link`` of this map in group ``token``, written on request ``seq``."""
+        return {"group": token, "seq": seq, "member": self._link_member}
+
     def _leave_group(self) -> None:
         """Leave the link group once; call without the widget lock.
 
@@ -801,7 +808,7 @@ class MapWidget(anywidget.AnyWidget):
         """Request a group's camera and link on that request, in one message."""
         with self._lock, self.hold_sync():
             self.set_center(lng, lat, zoom)
-            self.set_trait("_link", {"group": token, "seq": self.view_request["seq"]})
+            self.set_trait("_link", self._link_on(token, self.view_request["seq"]))
 
     def _catch_up(self, token: str, seen: tuple[float, float, float] | None) -> None:
         """Take the group's camera if it is no longer ``seen``; call without the lock."""

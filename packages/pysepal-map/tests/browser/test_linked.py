@@ -79,6 +79,39 @@ def test_linked_widgets_follow_each_other(harness, page_session):
     assert (one.view_request["seq"], two.view_request["seq"]) == seqs
 
 
+CAMERAS = "els => els.map(el => [el.psmMap.getCenter().lng, el.psmMap.getCenter().lat, el.psmMap.getZoom()])"
+
+
+def test_two_views_of_one_widget_never_move_each_other(harness, page_session):
+    one = MapWidget(height="250px", link_group="g")
+    peer = MapWidget(height="250px", link_group="g")
+    display(one)
+    display(one)
+    display(peer)
+    wait_views(page_session, 3)
+    views = [view_at(page_session, nth) for nth in range(3)]
+    for m in (one, peer):
+        wait_view(page_session, m, acknowledged(m))
+    before = page_session.evaluate(CAMERAS, views)
+
+    # In one call, so that nothing but the link can move them meanwhile.
+    moved = page_session.evaluate(
+        f"""([a, b, c]) => {{
+            const cameras = {CAMERAS};
+            a.psmMap.jumpTo({{center: [10, 20], zoom: 5}});
+            const first = cameras([b, c]);
+            c.psmMap.jumpTo({{center: [-30, -10], zoom: 4}});
+            return [first, cameras([a, b])];
+        }}""",
+        views,
+    )
+    (other_view, peer_view), followers = moved
+    assert other_view == before[1]
+    assert near(peer_view, [10, 20, 5])
+    for shown in followers:
+        assert near(shown, [-30, -10, 4])
+
+
 def test_a_member_shown_first_after_a_hidden_pan_keeps_the_pan(harness, page_session):
     a = MapWidget(height="300px", link_group="g")
     b = MapWidget(height="300px", link_group="g", center=(30, 40), zoom=4)

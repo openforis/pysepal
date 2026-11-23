@@ -67,17 +67,24 @@ def sends(m):
         m.comm.kernel = kernel
 
 
-def test_link_group_writes_the_group_and_the_request_seq(monkeypatch):
+def test_link_group_writes_the_group_the_request_seq_and_the_member(monkeypatch):
     monkeypatch.setattr(widget, "_current_kernel", lambda: None)
-    m = MapWidget(link_group="g")
+    m, other = MapWidget(link_group="g"), MapWidget(link_group="g")
+    member = m._link.get("member")
     assert re.fullmatch("[0-9a-f]{32}", widget._PROCESS)
-    assert m._link == {"group": f"{widget._PROCESS}:g", "seq": 1}
+    assert re.fullmatch("[0-9a-f]{32}", member) and other._link["member"] != member
+    assert m._link == {"group": f"{widget._PROCESS}:g", "seq": 1, "member": member}
     assert m.link_group == "g"
 
     m.set_center(1, 2)
     m.link_group = "h"
-    assert m._link == {"group": f"{widget._PROCESS}:h", "seq": 2}
+    assert m._link == {"group": f"{widget._PROCESS}:h", "seq": 2, "member": member}
     assert m.link_group == "h"
+
+    # Following the group keeps the member too.
+    peer = mounted("h")
+    report(peer, center=(10, 20), zoom=5)
+    assert m._link == {"group": f"{widget._PROCESS}:h", "seq": 3, "member": member}
 
 
 def test_groups_are_scoped_by_kernel(monkeypatch):
