@@ -3,9 +3,11 @@
 import contextlib
 import gc
 import re
+import threading
 import weakref
 
 import pytest
+import traitlets
 from pysepal_map import MapWidget, widget
 
 
@@ -325,6 +327,63 @@ def test_no_two_locks_are_held(monkeypatch):
     monkeypatch.setattr(c, "_take_camera", take)
     c.link_group = "g"
     assert held[1:] == [(True, False)]
+
+
+def test_a_closed_map_leaves_its_group_and_ignores_link_group():
+    a, b = MapWidget(link_group="g"), MapWidget(link_group="g")
+    b.close()
+    assert b.link_group is None
+    assert {k: set(v) for k, v in widget._LINK_MEMBERS.items()} == {a._link["group"]: {a}}
+
+    b.link_group = "h"
+    assert b.link_group is None and list(widget._LINK_MEMBERS) == [a._link["group"]]
+
+
+def test_a_failed_construction_leaves_the_group():
+    with pytest.raises(traitlets.TraitError):
+        MapWidget(link_group="g", height=3)
+    assert widget._LINK_MEMBERS == {}
+
+
+class Failing(MapWidget):
+    """A map whose construction fails after it joined its group."""
+
+    def __init__(self, refs, **kwargs):
+        """Put a weak reference to the map in ``refs``, then fail on its height."""
+        refs.append(weakref.ref(self))
+        super().__init__(height=3, **kwargs)
+
+
+@pytest.mark.parametrize("how", ["closed", "failed"])
+def test_collecting_a_dropped_map_takes_no_link_lock(monkeypatch, how):
+    # A fresh lock, so a deadlock here cannot hang the tests after it.
+    monkeypatch.setattr(widget, "_LINK_LOCK", type(widget._LINK_LOCK)())
+    gc.disable()
+    try:
+        if how == "closed":
+            m = MapWidget(link_group="g")
+            m.close()
+            ref = weakref.ref(m)
+            del m
+        else:
+            refs = []
+            with pytest.raises(traitlets.TraitError):
+                Failing(refs, link_group="g")
+            (ref,) = refs
+        # Such a map sits in reference cycles, so only the cycle collector frees it,
+        # and ipywidgets' __del__ closes it, on whatever thread collects.
+        assert ref() is not None
+
+        def collect():
+            with widget._LINK_LOCK:
+                gc.collect()
+
+        collector = threading.Thread(target=collect, daemon=True)
+        collector.start()
+        collector.join(10)
+    finally:
+        gc.enable()
+    assert not collector.is_alive() and ref() is None
 
 
 def test_a_linked_map_can_be_collected_once_closed():

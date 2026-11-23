@@ -482,7 +482,12 @@ class MapWidget(anywidget.AnyWidget):
                 self._first_request = {"seq": 1, **_center_request(*camera)}
         # The last zoom asked for, until a report says what the views show.
         self._zoom: float | None = self._first_request["zoom"]
-        super().__init__(height=height, **kwargs)
+        try:
+            super().__init__(height=height, **kwargs)
+        except BaseException:
+            # Left here, since the close() of a failed widget runs in __del__.
+            self._leave_group()
+            raise
         self._payloads: dict[str, bytes] = {}
         self._revision = 0
         self._next_instance = 1
@@ -533,6 +538,8 @@ class MapWidget(anywidget.AnyWidget):
         anything else raises ``ValueError`` and changes nothing. A map that
         joins a group with a camera requests that camera; one that joins
         with a ``view`` while the group has no camera gives it that view's.
+        ``close`` leaves the group, so a closed map reads None, and setting
+        it there does nothing.
         """
         return self._link_name
 
@@ -544,7 +551,8 @@ class MapWidget(anywidget.AnyWidget):
         camera = seeded = None
         with _LINK_LOCK:
             old = self._link_name
-            if name == old:
+            # close() sets _closed before it leaves, so a close never misses this join.
+            if self._closed or name == old:
                 return
             self._link_name = name
             if old is not None:
@@ -690,7 +698,10 @@ class MapWidget(anywidget.AnyWidget):
         self.set_trait("insets", _insets(left, right, top, bottom))
 
     def close(self) -> None:
-        """Close the widget and the layout it built; later messages from its views do nothing."""
+        """Close the widget and the layout it built, and leave its link group.
+
+        Later messages from its views do nothing.
+        """
         with self._lock:
             self._closed = True
             self._cancel_expiry()
@@ -698,9 +709,7 @@ class MapWidget(anywidget.AnyWidget):
             self._late.clear()
             self._reports.clear()
             self._status = {}
-        if self._link_name is not None:
-            with _LINK_LOCK:
-                _leave(self._token(self._link_name), self)
+        self._leave_group()
         self._callbacks.close()
         # _trait_values, not self.layout: reading an unset trait would build one
         layout = self._trait_values.get("layout") if self._owns_layout else None
@@ -716,6 +725,19 @@ class MapWidget(anywidget.AnyWidget):
 
     def _token(self, name: str) -> str:
         return f"{self._link_scope}:{name}"
+
+    def _leave_group(self) -> None:
+        """Leave the link group once; call without the widget lock.
+
+        A later call takes no lock: ipywidgets' ``__del__`` closes the widget
+        again on whatever thread collects it, which may hold ``_LINK_LOCK``.
+        """
+        if self._link_name is None:
+            return
+        with _LINK_LOCK:
+            name, self._link_name = self._link_name, None
+            if name is not None:
+                _leave(self._token(name), self)
 
     def _take_camera(self, token: str, lng: float, lat: float, zoom: float) -> None:
         """Request a group's camera and link on that request, in one message."""
