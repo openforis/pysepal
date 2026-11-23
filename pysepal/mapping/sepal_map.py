@@ -162,6 +162,7 @@ class SepalMap(MapWidget):
         loop: Optional[asyncio.AbstractEventLoop] = None,
         inspector: bool = False,
         coordinates: bool = False,
+        link_group: Optional[str] = None,
     ) -> None:
         """Build a map that draws a layer store.
 
@@ -180,6 +181,7 @@ class SepalMap(MapWidget):
             loop: the session loop; the widget and the engine run their callbacks there.
             inspector: build the map's value inspector as ``m.inspector``.
             coordinates: show the pointer's coordinates.
+            link_group: the group of maps this one keeps one camera with (see :attr:`link_group`). A group that has a camera replaces ``center`` and ``zoom`` with it.
 
         Raises:
             ValueError: if both gee_session and gee_interface are provided, or a basemap is unknown
@@ -203,7 +205,11 @@ class SepalMap(MapWidget):
         # MapWidget sets what its close() reads before anything in it can raise
         self._widget_ready = True
         super().__init__(
-            center=center, zoom=zoom, height="100%" if fullscreen else height, loop=loop
+            center=center,
+            zoom=zoom,
+            height="100%" if fullscreen else height,
+            loop=loop,
+            link_group=link_group,
         )
         try:
             self.layer_store = layer_store if layer_store is not None else LayerStore()

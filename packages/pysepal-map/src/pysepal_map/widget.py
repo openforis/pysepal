@@ -48,7 +48,8 @@ camera saved in ``view``, then applies each request newer than the last one it
 applied, and every report names that request and its ``cause``: ``user``,
 ``request`` or ``resize``. ``view`` mirrors the last accepted report, with its ``cause``, and so does the
 dict each ``on_view`` callback gets. Reports
-from views not mounted, or on an older request, are dropped, and on the same
+from views not mounted, on an older request, or with a latitude outside
+[-90, 90] or a zoom outside [0, 24] are dropped, and on the same
 request a user's camera is kept over an acknowledgement or another view's
 resize.
 
@@ -58,17 +59,29 @@ carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
 out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
 usable area has no size, and runs once it has one.
 
-Linked maps. ``link_views(*maps)`` keeps two or more widgets on one camera
-in the browser. It requests the first map's view on the others, then writes
-``_link``: the group id and each map's request ``seq`` after that. The views
-of a page that share a group jump each other to their center and zoom on
-every move, in the same frame, and Python takes no part; each view still
-reports its own camera, a link's move as ``user`` when a user moved the other
-map. A view that joins takes the camera of the group's maps already shown,
-unless a request newer than its link ``seq`` moved it on mount, which then
-moves them. Views of one widget never move each other. A map is in one group
-at most: linking exactly the maps of a live group again returns its unlink
-function and changes nothing, and any other overlap raises ``ValueError``.
+Linked maps. Maps whose ``link_group`` names the same group keep one camera.
+A map in a group has ``_link`` set to ``{"group", "seq"}``, else ``{}``: the
+group is the token ``<scope>:<name>``, where the scope is the id of the
+kernel that built the map (each virtual kernel's under ``solara run``), else
+the process's, and ``seq`` is the request the link was written on. Linking is
+per page and per kernel: the views of one page that share a token follow
+each other, and a kernel's maps never move another kernel's. In the browser
+every move of one view jumps the others to its center and zoom in the same
+call, and each paints it on its next frame; each view still reports its own
+camera, a link's move as ``user`` when a user moved the other map. Views of
+one widget never move each other. The first map shown sets the camera: a view
+that joins takes the camera of the group's maps already shown, unless a
+request newer than its link ``seq`` moved it on mount, which then moves them.
+Python keeps the group's camera, the last one a member reported that was not
+a ``resize``, and moves only the members with no ``main`` view mounted: each
+new camera becomes a request on them, sent with their ``_link`` in one
+message, its ``seq`` the request's. A map that joins a group with a camera,
+built with ``link_group`` or set to it, requests that camera instead of its
+own ``center``, mounted or not; one that joins with an accepted ``view``
+while the group has none gives the group that view's camera. A group forgets
+its camera with its last member, so a re-run notebook cell builds its new
+maps into the old group, still open, and they ignore their ``center`` until
+the old maps are closed.
 
 Compare. ``MapState.compare`` turns on a swipe compare: each ``Layer.side``
 (``left``, ``right`` or ``both``) says which half draws it. The ``main`` view
@@ -202,10 +215,13 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import logging
 import math
 import os
 import threading
 import time
+import uuid
+import weakref
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -215,12 +231,14 @@ import anywidget
 import traitlets
 
 from ._callbacks import CallbackQueue, running_loop
-from ._camera import INSET_SIDES, _bounds_request, _center_request, _insets
+from ._camera import INSET_SIDES, MAX_ZOOM, _bounds_request, _center_request, _insets
 from ._draw import DEFAULT_COLOR, STATIC, Draw, report_features
 from ._events import ClickEvent, FeatureHit
 from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
 _STATIC = Path(__file__).parent / "static"
+
+logger = logging.getLogger("pysepal_map")
 
 
 def _asset(name: str) -> str | Path:
@@ -321,6 +339,68 @@ def _reduce_status(
     return out
 
 
+#: The link scope of maps built with no kernel running.
+_PROCESS = uuid.uuid4().hex
+# The link scope of each kernel, held weakly.
+_KERNEL_SCOPES: weakref.WeakKeyDictionary[object, str] = weakref.WeakKeyDictionary()
+# Guards the registries below; never held together with a widget's lock.
+_LINK_LOCK = threading.Lock()
+# token -> the maps of that group
+_LINK_MEMBERS: dict[str, weakref.WeakSet[MapWidget]] = {}
+# token -> the group's camera as (lng, lat, zoom)
+_LINK_CAMERAS: dict[str, tuple[float, float, float]] = {}
+
+
+def _current_kernel() -> object | None:
+    """The kernel running now, found as Solara's ``Comm`` finds it, or None."""
+    try:
+        import ipykernel.kernelbase
+    except ImportError:
+        return None
+    kernel = ipykernel.kernelbase.Kernel
+    return kernel.instance() if kernel.initialized() else None
+
+
+def _kernel_scope() -> str:
+    """The link scope of the kernel running now, else of the process."""
+    kernel = _current_kernel()
+    if kernel is None:
+        return _PROCESS
+    with _LINK_LOCK:
+        return _KERNEL_SCOPES.setdefault(kernel, uuid.uuid4().hex)
+
+
+def _link_name(value) -> str | None:
+    if value is None or (isinstance(value, str) and value):
+        return value
+    raise ValueError(f"link_group must be a non-empty string or None, got {value!r}")
+
+
+def _members(token: str) -> weakref.WeakSet[MapWidget] | None:
+    """A group's live maps; a group with none is dropped. Call with ``_LINK_LOCK`` held."""
+    members = _LINK_MEMBERS.get(token)
+    if members:
+        return members
+    _LINK_MEMBERS.pop(token, None)
+    _LINK_CAMERAS.pop(token, None)
+    return None
+
+
+def _join(token: str, widget: MapWidget) -> tuple[float, float, float] | None:
+    """Add ``widget`` to a group, returning the group's camera; call with ``_LINK_LOCK`` held."""
+    camera = _LINK_CAMERAS.get(token) if _members(token) else None
+    _LINK_MEMBERS.setdefault(token, weakref.WeakSet()).add(widget)
+    return camera
+
+
+def _leave(token: str, widget: MapWidget) -> None:
+    """Remove ``widget`` from a group; call with ``_LINK_LOCK`` held."""
+    members = _LINK_MEMBERS.get(token)
+    if members is not None:
+        members.discard(widget)
+    _members(token)
+
+
 class MapWidget(anywidget.AnyWidget):
     """A MapLibre map whose persistent configuration lives in ``state``."""
 
@@ -346,6 +426,7 @@ class MapWidget(anywidget.AnyWidget):
         zoom: float = 2.0,
         height: str = "400px",
         loop: asyncio.AbstractEventLoop | None = None,
+        link_group: str | None = None,
         **kwargs,
     ):
         """Create an empty map of the given CSS height, at ``center`` and ``zoom``.
@@ -354,11 +435,15 @@ class MapWidget(anywidget.AnyWidget):
         run there, and so does the timer that expires silent views. It
         defaults to the loop running now, else the one running when the
         first message from a view arrives. A Solara render can run with no
-        loop running, so pass the session loop there.
+        loop running, so pass the session loop there. ``link_group`` is the
+        first :attr:`link_group`; a group that has a camera replaces
+        ``center`` and ``zoom`` with it.
         """
+        self._link_scope = _kernel_scope()
         # Set before anything can raise, since close() reads them.
         self._lock = threading.RLock()
         self._closed = False
+        self._link_name: str | None = None
         self._loop = loop if loop is not None else running_loop()
         self._callbacks = CallbackQueue()
         # The Layout ipywidgets builds is the widget's own; a given one is the caller's.
@@ -386,6 +471,15 @@ class MapWidget(anywidget.AnyWidget):
         lng, lat = center
         # Set before super().__init__(), which opens the comm with this request.
         self._first_request = {"seq": 1, **_center_request(lng, lat, _finite("zoom", zoom))}
+        name = _link_name(link_group)
+        camera = None
+        if name is not None:
+            self._link_name = name
+            # One hold reads the camera and joins, so no forward falls between them.
+            with _LINK_LOCK:
+                camera = _join(self._token(name), self)
+            if camera is not None:
+                self._first_request = {"seq": 1, **_center_request(*camera)}
         # The last zoom asked for, until a report says what the views show.
         self._zoom: float | None = self._first_request["zoom"]
         super().__init__(height=height, **kwargs)
@@ -399,10 +493,19 @@ class MapWidget(anywidget.AnyWidget):
         # id -> the sides drawing it, from the same publish
         self._drawn_on: dict[str, tuple[str, ...]] = {}
         self.on_msg(self._on_message)
+        if name is not None:
+            # A forward before the comm opened skipped this map.
+            self._catch_up(self._token(name), camera)
 
     @traitlets.default("view_request")
     def _default_view_request(self) -> dict:
         return self._first_request
+
+    @traitlets.default("_link")
+    def _default_link(self) -> dict:
+        if self._link_name is None:
+            return {}
+        return {"group": self._token(self._link_name), "seq": self._first_request["seq"]}
 
     @traitlets.default("drawing")
     def _default_drawing(self) -> dict:
@@ -420,6 +523,50 @@ class MapWidget(anywidget.AnyWidget):
     def draw(self) -> Draw:
         """The drawing tools of this map, and the features they drew."""
         return self._draw
+
+    @property
+    def link_group(self) -> str | None:
+        """The name of the group of maps this one keeps one camera with, or None.
+
+        Setting it joins that group and ``None`` leaves it; the name the map
+        has already changes nothing. A name is a non-empty string, and
+        anything else raises ``ValueError`` and changes nothing. A map that
+        joins a group with a camera requests that camera; one that joins
+        with a ``view`` while the group has no camera gives it that view's.
+        """
+        return self._link_name
+
+    @link_group.setter
+    def link_group(self, value: str | None) -> None:
+        """Join the group ``value`` names, or leave the group for None."""
+        name = _link_name(value)
+        token = None if name is None else self._token(name)
+        camera = seeded = None
+        with _LINK_LOCK:
+            old = self._link_name
+            if name == old:
+                return
+            self._link_name = name
+            if old is not None:
+                _leave(self._token(old), self)
+            if token is not None:
+                camera = _join(token, self)
+                view = self.view
+                if camera is None and view:
+                    seeded = _LINK_CAMERAS[token] = (*view["center"], view["zoom"])
+        with self._lock:
+            if self._link_name != name:
+                # A later assignment on another thread won.
+                return
+            if token is None:
+                self.set_trait("_link", {})
+            elif camera is not None:
+                self._take_camera(token, *camera)
+            else:
+                self.set_trait("_link", {"group": token, "seq": self.view_request["seq"]})
+        if token is not None:
+            # A forward before _link was written skipped this map.
+            self._catch_up(token, camera or seeded)
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
@@ -551,6 +698,9 @@ class MapWidget(anywidget.AnyWidget):
             self._late.clear()
             self._reports.clear()
             self._status = {}
+        if self._link_name is not None:
+            with _LINK_LOCK:
+                _leave(self._token(self._link_name), self)
         self._callbacks.close()
         # _trait_values, not self.layout: reading an unset trait would build one
         layout = self._trait_values.get("layout") if self._owns_layout else None
@@ -563,6 +713,57 @@ class MapWidget(anywidget.AnyWidget):
         with self._lock:
             self._issued += 1
             self.set_trait("view_request", {"seq": self._issued, **request})
+
+    def _token(self, name: str) -> str:
+        return f"{self._link_scope}:{name}"
+
+    def _take_camera(self, token: str, lng: float, lat: float, zoom: float) -> None:
+        """Request a group's camera and link on that request, in one message."""
+        with self._lock, self.hold_sync():
+            self.set_center(lng, lat, zoom)
+            self.set_trait("_link", {"group": token, "seq": self.view_request["seq"]})
+
+    def _catch_up(self, token: str, seen: tuple[float, float, float] | None) -> None:
+        """Take the group's camera if it is no longer ``seen``; call without the lock."""
+        with _LINK_LOCK:
+            camera = _LINK_CAMERAS.get(token)
+        if camera is None or camera == seen:
+            return
+        with self._lock:
+            if not self._closed and self._link.get("group") == token:
+                self._take_camera(token, *camera)
+
+    def _follow(self, token: str, lng: float, lat: float, zoom: float) -> None:
+        """Take a peer's camera, unless this map left ``token`` or shows a view."""
+        with self._lock:
+            if (
+                self._closed
+                # Not open yet: the constructor catches up once it is.
+                or self.comm is None
+                or self._link.get("group") != token
+                or any(side == "main" for _, side in self._views)
+            ):
+                return
+            self._take_camera(token, lng, lat, zoom)
+
+    def _follow_peers(self, token: str, center: list[float], zoom: float) -> None:
+        """Move the group's other maps that show no view to this camera; call without the lock.
+
+        A camera the group holds already moves nobody, so a hidden map gets
+        one request per move, however many members report it.
+        """
+        camera = (center[0], center[1], zoom)
+        with _LINK_LOCK:
+            members = _members(token)
+            if members is None or _LINK_CAMERAS.get(token) == camera:
+                return
+            _LINK_CAMERAS[token] = camera
+            peers = [m for m in members if m is not self]
+        for peer in peers:
+            try:
+                peer._follow(token, *camera)
+            except Exception:
+                logger.exception("pysepal-map: a linked map could not follow")
 
     def _sides_of(self, layer_id: str) -> Sequence[str]:
         """The sides that draw a layer in the last publish; call with the lock held."""
@@ -694,11 +895,13 @@ class MapWidget(anywidget.AnyWidget):
         """Mirror one view's camera in ``view`` and tell the callbacks.
 
         A report of a view that is not mounted, or on a request older than
-        the one the last accepted report applied, is stale and ignored. On
-        the same request, a camera a user move gave is kept for redisplay:
+        the one the last accepted report applied, is stale and ignored, and
+        so is one with a latitude outside [-90, 90] or a zoom outside [0, 24].
+        On the same request, a camera a user move gave is kept for redisplay:
         a later user move replaces it, and so does a resize of the view the
         user moved, which keeps it that user's camera. An acknowledgement,
-        or another view's resize, does not.
+        or another view's resize, does not. An accepted report that is not a
+        resize then moves the linked maps that show no view.
         """
         view_id, seq = content.get("view_id"), content.get("request_seq")
         center = _numbers(content.get("center"), 2)
@@ -709,11 +912,14 @@ class MapWidget(anywidget.AnyWidget):
             not isinstance(view_id, str)
             or not (_is_int(seq) and seq >= 0)
             or center is None
+            or not -90 <= center[1] <= 90
             or zoom is None
+            or not 0 <= zoom[0] <= MAX_ZOOM
             or bounds is None
             or cause not in CAUSES
         ):
             return
+        forward = None
         with self._lock:
             self._expire_due()
             same = seq == self._acknowledged and self._user_view is not None
@@ -739,6 +945,11 @@ class MapWidget(anywidget.AnyWidget):
                 self.set_trait("view", view)
                 for callback in self._view_callbacks:
                     self._callbacks.put(callback, copy.deepcopy(view))
+                # A resize keeps the camera, and could undo a newer fit on a hidden map.
+                if cause != "resize":
+                    forward = self._link.get("group")
+        if forward:
+            self._follow_peers(forward, center, zoom[0])
         # Expiring a view can change the status too.
         self._refresh()
 

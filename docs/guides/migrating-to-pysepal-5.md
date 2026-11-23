@@ -141,7 +141,7 @@ bar: it is the map's declared state.
 | `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                                |
 | `hover_style`, `style_callback`                                                                                                   | no replacement: one layer per class                                                                                               |
 | `SplitMapControl(left_layer=..., right_layer=...)`                                                                                | `m.compare = True` with `side="left"` and `side="right"` on the layer methods (or `handle.side`); other layers stay on both sides |
-| `traitlets.link((m1, "center"), (m2, "center"))` and the same on `zoom`                                                           | `link_views(m1, m2)` from `pysepal.mapping`, which the browser keeps in step                                                      |
+| `traitlets.link((m1, "center"), (m2, "center"))` and the same on `zoom`                                                           | `SepalMap(link_group="name")`, or `m.link_group = "name"`, on each map                                                            |
 
 Notes on the interaction replacements:
 
@@ -169,11 +169,10 @@ Notes on the interaction replacements:
 - **The inspector is opt-in.** `SepalMap(inspector=True)` builds it, and every
   `MapView` of the map shows its toggle and card. It reads Earth Engine images
   at the clicked view's scale.
-- **Link maps once.** `link_views(m1, m2)` returns the function that unlinks
-  them. Linking exactly the same maps again (a re-run cell) returns that
-  function and changes nothing; any other overlap raises `ValueError`. In a
-  Solara component, link in an effect and let the unlink be its cleanup:
-  `solara.use_effect(lambda: link_views(m1, m2), [m1, m2])`.
+- **Linked maps.** Give each map the same `link_group`; `None` unlinks. The
+  first map shown sets the camera, and a map built later starts where the
+  group is. A re-run cell joins the maps it builds to the group of the old
+  ones, so close the old maps or use a new name.
 
 ```python
 import pandas as pd

@@ -37,7 +37,7 @@ interface Model {
   drawing: unknown;
   draw_request: unknown;
   drawn: unknown;
-  _link: string;
+  _link: Record<string, unknown>;
 }
 
 type PsmElement = HTMLElement &

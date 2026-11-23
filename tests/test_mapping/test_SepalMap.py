@@ -158,6 +158,16 @@ def test_set_center() -> None:
     assert m.view_request["center"] == [1, 2]
 
 
+def test_link_group_kwarg() -> None:
+    assert SepalMap(gee=False, link_group="g").link_group == "g"
+
+
+def test_link_views_is_gone() -> None:
+    import pysepal.mapping
+
+    assert not hasattr(pysepal.mapping, "link_views")
+
+
 # -- basemaps ---------------------------------------------------------------------------------
 
 

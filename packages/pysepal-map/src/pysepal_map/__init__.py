@@ -2,7 +2,6 @@
 
 from ._draw import DRAW_MODES, RESERVED_PROPERTIES, Draw
 from ._events import ClickEvent, FeatureHit
-from ._link import link_views
 from .state import (
     Basemap,
     Cluster,
@@ -39,5 +38,4 @@ __all__ = [
     "RasterSource",
     "Side",
     "VectorPaint",
-    "link_views",
 ]

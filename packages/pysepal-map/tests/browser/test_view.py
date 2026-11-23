@@ -3,7 +3,7 @@
 import ipywidgets as widgets
 import pytest
 from IPython.display import display
-from pysepal_map import MapWidget, link_views
+from pysepal_map import MapWidget
 
 BOX = (10, 10, 20, 20)
 
@@ -395,62 +395,3 @@ def test_a_view_applies_a_request_another_view_acknowledged(harness, page_sessio
         raise AssertionError("the old report never arrived")
     assert any(m.get("cause") == "request" for m in received)
     assert widget.view == panned
-
-
-def test_linked_widgets_follow_each_other(harness, page_session):
-    one = MapWidget(height="300px")
-    two = MapWidget(height="300px", center=(30, 40), zoom=4)
-    display(widgets.VBox([one, two]))
-    wait_views(page_session, 2)
-    a, b = view_at(page_session, 0), view_at(page_session, 1)
-    wait_view(page_session, one, lambda v: v["request_seq"] == one.view_request["seq"])
-    wait_view(page_session, two, lambda v: v["request_seq"] == two.view_request["seq"])
-
-    # The second takes the first's view.
-    link_views(one, two)
-    seqs = (one.view_request["seq"], two.view_request["seq"])
-    page_session.wait_for_function(
-        """([a, b]) => {
-            const [p, q] = [a.psmMap, b.psmMap];
-            return q.getCenter().distanceTo(p.getCenter()) < 1 && q.getZoom() === 2;
-        }""",
-        arg=[a, b],
-    )
-
-    # A move of one moves the other in the same call, Python out of the loop.
-    followed = page_session.evaluate(
-        """([a, b]) => {
-            a.psmMap.jumpTo({center: [10, 20], zoom: 5});
-            const c = b.psmMap.getCenter();
-            return [c.lng, c.lat, b.psmMap.getZoom()];
-        }""",
-        [a, b],
-    )
-    assert near(followed, [10, 20, 5])
-
-    # Mid-drag the other map is already there.
-    x, y = middle(page_session, 1)
-    page_session.mouse.move(x, y)
-    page_session.mouse.down()
-    page_session.mouse.move(x - 150, y + 80, steps=10)
-    page_session.wait_for_function("b => Math.abs(b.psmMap.getCenter().lng - 10) > 1e-3", arg=b)
-    during = page_session.evaluate(
-        """([a, b]) => [a, b].map(el => {
-            const c = el.psmMap.getCenter();
-            return [c.lng, c.lat, el.psmMap.getZoom()];
-        })""",
-        [a, b],
-    )
-    page_session.mouse.up()
-    assert near(during[0], during[1])
-
-    # Each view reports its own camera, the follower's as the user's.
-    panned = wait_view(page_session, two, matches(b))
-    wait_view(
-        page_session,
-        one,
-        lambda v: near(v["center"], panned["center"])
-        and v["zoom"] == pytest.approx(panned["zoom"])
-        and v["cause"] == "user",
-    )
-    assert (one.view_request["seq"], two.view_request["seq"]) == seqs

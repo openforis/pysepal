@@ -4,6 +4,7 @@ import dataclasses
 from pathlib import Path
 
 import pytest
+from pysepal_map import widget
 
 BROWSER = Path(__file__).parent / "browser"
 
@@ -76,3 +77,22 @@ class FakeLoop:
 @pytest.fixture
 def loop():
     return FakeLoop()
+
+
+@pytest.fixture(autouse=True)
+def clean_link_registry():
+    """Start and end each test with no link group.
+
+    ipywidgets keeps every unclosed widget alive, and the unit tests all build
+    their maps in the process's scope, so a group's camera would otherwise
+    become the first request of the next test's maps.
+    """
+
+    def clear():
+        with widget._LINK_LOCK:
+            widget._LINK_MEMBERS.clear()
+            widget._LINK_CAMERAS.clear()
+
+    clear()
+    yield
+    clear()
