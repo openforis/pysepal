@@ -112,7 +112,10 @@
   color: #ffffff;
 }
 
+/* It keeps its place while empty: the corner's measured height places a host's
+   overlays, which would otherwise move each time the pointer leaves the map. */
 .psm-coordinates {
+  min-height: 18px;
   padding: 0 6px;
   font: 11px/18px "Helvetica Neue", Arial, Helvetica, sans-serif;
   background: rgba(255, 255, 255, 0.75);
@@ -120,7 +123,7 @@
   pointer-events: none;
 }
 .psm-coordinates:empty {
-  display: none;
+  visibility: hidden;
 }
 .psm-dark .psm-coordinates {
   background: rgba(30, 30, 30, 0.75);

@@ -32,6 +32,12 @@ const DEFAULT_CONTROLS: MapState["controls"] = {
 const FULLSCREEN_ROOT = "data-psm-fullscreen-root";
 /** Set on the element the fullscreen control filled, while it is fullscreen. */
 const FULLSCREEN = "data-psm-fullscreen";
+/** Set on the element that holds the corner heights, to the measuring view's id. */
+const CONTROLS = "data-psm-controls";
+
+/** The variable that holds the height of a control corner. */
+const cornerVariable = (position: ControlPosition) =>
+  `--psm-controls-${position}`;
 
 /** The two sides each control corner is placed from. */
 const CORNERS: [ControlPosition, "top" | "bottom", "left" | "right"][] = [
@@ -44,6 +50,12 @@ const CORNERS: [ControlPosition, "top" | "bottom", "left" | "right"][] = [
 /** What fullscreen fills for a map: its closest marked ancestor, or itself. */
 function fullscreenTarget(el: HTMLElement): HTMLElement {
   return el.closest<HTMLElement>(`[${FULLSCREEN_ROOT}]`) ?? el;
+}
+
+function observeSize(elements: HTMLElement[], callback: () => void) {
+  const observer = new ResizeObserver(() => callback());
+  for (const el of elements) observer.observe(el);
+  return () => observer.disconnect();
 }
 
 /**
@@ -120,8 +132,15 @@ export interface ViewControlsOptions {
   map: MapLibreMap;
   /** The map's element, which holds the control corners. */
   root: HTMLElement;
+  /** The view's id, which marks the element holding its corner heights. */
+  viewId: string;
   /** Called with the insets the view uses each time they may have changed. */
   onInsets(insets: Insets): void;
+  /**
+   * Calls `callback` each time one of `elements` changes size, until the
+   * returned function is called. A `ResizeObserver` by default.
+   */
+  observeSize?(elements: HTMLElement[], callback: () => void): () => void;
 }
 
 /**
@@ -130,6 +149,11 @@ export interface ViewControlsOptions {
  * The control corners sit in by the insets. While fullscreen, the UI the
  * insets describe is out of sight, so the view uses none, and the
  * fullscreen element carries `data-psm-fullscreen`.
+ *
+ * Each time a corner changes size, the fullscreen target gets every
+ * corner's height inline, as `--psm-controls-top-left` and so on, and
+ * `data-psm-controls` set to the view's id, so the host's overlays can
+ * clear the controls. A newer view that measured there since keeps both.
  *
  * The attribution control is MapLibre's default one, which the map is built
  * without: in compare it also lists what only the right map draws, and its
@@ -141,8 +165,24 @@ export class ViewControls {
   private insets: Insets = NO_INSETS;
   /** The element filling the screen, while one does. */
   private fullscreen: HTMLElement | null = null;
+  /** MapLibre's corner elements, which it keeps for the map's life. */
+  private readonly corners = new Map<ControlPosition, HTMLElement>();
+  /** The element holding the corner heights this view last measured. */
+  private measured: HTMLElement | null = null;
+  private readonly stopObserving: () => void;
 
-  constructor(private readonly options: ViewControlsOptions) {}
+  constructor(private readonly options: ViewControlsOptions) {
+    for (const [position] of CORNERS) {
+      const corner = options.root.querySelector<HTMLElement>(
+        `.maplibregl-ctrl-${position}`
+      );
+      if (corner) this.corners.set(position, corner);
+    }
+    this.stopObserving = (options.observeSize ?? observeSize)(
+      [...this.corners.values()],
+      () => this.measure()
+    );
+  }
 
   /** Shows the controls and the theme class that `state` declares. */
   sync(state: Partial<MapState> | null | undefined): void {
@@ -179,8 +219,10 @@ export class ViewControls {
     this.apply();
   }
 
-  /** Takes `data-psm-fullscreen` back off the element it marked. */
+  /** Takes `data-psm-fullscreen` and the corner heights back off. */
   dispose(): void {
+    this.stopObserving();
+    this.unmeasure();
     this.leaveFullscreen();
   }
 
@@ -242,15 +284,37 @@ export class ViewControls {
 
   private apply(): void {
     const insets = this.fullscreen ? NO_INSETS : this.insets;
-    const { root, onInsets } = this.options;
     for (const [position, vertical, horizontal] of CORNERS) {
-      const corner = root.querySelector<HTMLElement>(
-        `.maplibregl-ctrl-${position}`
-      );
+      const corner = this.corners.get(position);
       if (!corner) continue;
       corner.style[vertical] = `${insets[vertical]}px`;
       corner.style[horizontal] = `${insets[horizontal]}px`;
     }
-    onInsets(insets);
+    this.options.onInsets(insets);
+  }
+
+  // The target is resolved each time: the view may join the page, or move,
+  // after its first measure.
+  private measure(): void {
+    const target = fullscreenTarget(this.options.root);
+    if (this.measured !== target) this.unmeasure();
+    for (const [position, corner] of this.corners) {
+      target.style.setProperty(
+        cornerVariable(position),
+        `${corner.offsetHeight}px`
+      );
+    }
+    target.setAttribute(CONTROLS, this.options.viewId);
+    this.measured = target;
+  }
+
+  private unmeasure(): void {
+    const el = this.measured;
+    this.measured = null;
+    if (el?.getAttribute(CONTROLS) !== this.options.viewId) return;
+    el.removeAttribute(CONTROLS);
+    for (const [position] of CORNERS) {
+      el.style.removeProperty(cornerVariable(position));
+    }
   }
 }

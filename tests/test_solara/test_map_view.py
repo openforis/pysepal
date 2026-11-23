@@ -55,6 +55,14 @@ def corner(box, name: str):
     return next(w for w in _tree(box) if _attr(w, "data-corner") == name)
 
 
+def fullscreen_root(box):
+    return next(w for w in _tree(box) if _attr(w, "data-psm-fullscreen-root") is not None)
+
+
+def corner_rule(name: str) -> str:
+    return map_view.CSS.split(f'.pysepal-map-corner[data-corner="{name}"] {{')[1].split("}")[0]
+
+
 def corner_text(box, name: str) -> str:
     return all_text(corner(box, name))
 
@@ -192,13 +200,13 @@ def test_overlays_render_in_their_corner():
 def test_stacks_follow_the_insets():
     m = SepalMap(gee=False)
     box, rc = solara.render(MapView(m), handle_error=False)
-    root = box.children[0]
-    assert "--pysepal-inset-left: 0px" in root.style_
+    view = box.children[0]
+    assert "--pysepal-inset-left: 0px" in view.style_
     m.set_insets(left=320, right=380, top=48, bottom=10)
-    assert "--pysepal-inset-left: 320px" in root.style_
-    assert "--pysepal-inset-right: 380px" in root.style_
-    assert "--pysepal-inset-top: 48px" in root.style_
-    assert "--pysepal-inset-bottom: 10px" in root.style_
+    assert "--pysepal-inset-left: 320px" in view.style_
+    assert "--pysepal-inset-right: 380px" in view.style_
+    assert "--pysepal-inset-top: 48px" in view.style_
+    assert "--pysepal-inset-bottom: 10px" in view.style_
     rc.close()
 
 
@@ -221,21 +229,65 @@ def test_status_counts_pending_layers():
 def test_root_is_the_fullscreen_target():
     m = SepalMap(gee=False)
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert _attr(box.children[0], "data-psm-fullscreen-root") is not None
-    assert m in list(_tree(box))
+    root = fullscreen_root(box)
+    # The overlays are siblings of the map, so they stay over it in fullscreen.
+    assert root.children[0] is m
+    assert [_attr(w, "data-corner") for w in root.children[1:]] == list(map_view.CORNERS)
     rc.close()
 
 
-def test_root_takes_the_map_height():
+def test_the_fullscreen_root_binds_no_style():
+    m = SepalMap(gee=False)
+    m.set_insets(left=320)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    view, root = box.children[0], fullscreen_root(box)
+    assert view.class_ == "pysepal-map-view"
+    assert root in view.children
+    assert root.class_ == "pysepal-map-root"
+    assert root.style_ is None
+    assert "--pysepal-inset-left: 320px" in view.style_
+    assert "height: 400px" in view.style_
+    m.set_insets(left=0)
+    m.height = "100%"
+    assert root.style_ is None
+    rc.close()
+
+
+def test_stacks_clear_the_measured_corners():
+    m = SepalMap(gee=False, coordinates=True)
+    m.layer_engine.flush()
+    m.draw.begin(["polygon"])
+    box, rc = solara.render(MapView(m), handle_error=False)
+    for name in map_view.CORNERS:
+        side = name.split("-")[0]
+        offset = f"var(--pysepal-inset-{side}) + var(--psm-controls-{name}, 0px) + 10px"
+        assert f"{side}: calc({offset})" in corner_rule(name)
+    cap = corner_rule("top-left").split("max-height:")[1].split(";")[0]
+    for name in ("top-left", "bottom-left"):
+        assert f"- var(--psm-controls-{name}, 0px) - 10px" in cap
+    styles = [w.style_ for w in _tree(box) if getattr(w, "style_", None)]
+    assert styles and not [s for s in styles if "--pysepal-controls-" in s]
+    assert "--pysepal-controls-" not in map_view.CSS
+    rc.close()
+
+
+def test_stacks_wait_for_the_measure():
+    hidden = ".pysepal-map-root:not([data-psm-controls]) > .pysepal-map-corner"
+    assert f"{hidden} {{ visibility: hidden; }}" in map_view.CSS
+    root_rule = map_view.CSS.split(".pysepal-map-root {")[1].split("}")[0]
+    assert "position: relative" in root_rule
+
+
+def test_view_takes_the_map_height():
     m = SepalMap(gee=False)
     box, rc = solara.render(MapView(m), handle_error=False)
-    root = box.children[0]
+    view = box.children[0]
     # an auto-height parent (a notebook output) then gets the map's own 400 px, not 0
-    assert "height: 400px" in root.style_
+    assert "height: 400px" in view.style_
     m.height = "100%"
-    assert "height: 100%" in root.style_
-    root_rule = map_view.CSS.split(".pysepal-map-view {")[1].split("}")[0]
-    assert "height" not in root_rule
+    assert "height: 100%" in view.style_
+    view_rule = map_view.CSS.split(".pysepal-map-view {")[1].split("}")[0]
+    assert "height" not in view_rule
     rc.close()
 
 
@@ -255,20 +307,6 @@ def test_legend_skips_overlay_layers(fake_vector, shown):
     assert "aoi" in [x["id"] for x in m.state["layers"]]
     box, rc = solara.render(MapView(m), handle_error=False)
     assert legend_titles(box) == ["Vec"]
-    rc.close()
-
-
-@pytest.mark.parametrize(("fullscreen_control", "offset"), [(False, "78px"), (True, "117px")])
-def test_top_left_stack_clears_the_controls(fullscreen_control, offset):
-    m = SepalMap(gee=False, fullscreen_control=fullscreen_control)
-    m.layer_engine.flush()
-    assert m.state["controls"]["fullscreen"] is fullscreen_control
-    box, rc = solara.render(MapView(m), handle_error=False)
-    assert f"--pysepal-controls-top-left: {offset}" in box.children[0].style_
-    assert "var(--pysepal-controls-top-left)" in map_view.CSS
-    cap = map_view.CSS.split('[data-corner="top-left"] {')[1].split("}")[0]
-    assert "- var(--pysepal-controls-bottom-left)" in cap
-    assert "10px\n  );" not in cap
     rc.close()
 
 
@@ -382,28 +420,4 @@ def test_map_view_sets_the_draw_labels():
     box, rc = solara.render(MapView(m), handle_error=False)
     assert m.drawing["labels"]["clear"] == msg("map_view.draw.clear_all")
     assert m.drawing["labels"] == want
-    rc.close()
-
-
-def test_top_left_stack_clears_the_draw_toolbar():
-    m = SepalMap(gee=False)
-    m.layer_engine.flush()
-    box, rc = solara.render(MapView(m), handle_error=False)
-    assert "--pysepal-controls-top-left: 78px" in box.children[0].style_
-    # Two tools and select, then the clear button: four 29 px buttons and a 10 px margin.
-    session = m.draw.begin(["polygon", "point"])
-    assert "--pysepal-controls-top-left: 204px" in box.children[0].style_
-    session.end()
-    assert "--pysepal-controls-top-left: 78px" in box.children[0].style_
-    rc.close()
-
-
-@pytest.mark.parametrize(("coordinates", "offset"), [(False, "36px"), (True, "64px")])
-def test_bottom_left_stack_clears_the_coordinates_readout(coordinates, offset):
-    m = SepalMap(gee=False, coordinates=coordinates)
-    m.layer_engine.flush()
-    assert bool(m.state["controls"].get("coordinates")) is coordinates
-    box, rc = solara.render(MapView(m), handle_error=False)
-    assert f"--pysepal-controls-bottom-left: {offset}" in box.children[0].style_
-    assert "var(--pysepal-controls-bottom-left)" in map_view.CSS
     rc.close()

@@ -121,6 +121,12 @@ has these methods, the shell calls them:
 
 `SepalMap` has both. A replaced map gets the current insets at once.
 
+`MapView`, which `MapApp` builds around the map, stacks the overlays of each
+corner (`map_overlays`) inside the insets and 10 px past the map's controls in
+that corner. The browser measures the controls, so a stack moves when the draw
+toolbar or the coordinates readout comes or goes. The stacks stay hidden until
+the map has measured them.
+
 ### The inspector, and the draw toolbar the map draws
 
 Two tools sit at the top left of the map:

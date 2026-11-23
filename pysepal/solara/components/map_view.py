@@ -17,28 +17,16 @@ from pysepal.solara.components.map_view_tools import inspector_panel
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 CORNERS: tuple[str, ...] = ("top-left", "top-right", "bottom-left", "bottom-right")
 
-_TRAITS = ["state", "theme", "insets", "height", "drawing", "cursor"]
+_TRAITS = ["state", "theme", "insets", "height", "cursor"]
 _SIDES = ("left", "right", "top", "bottom")
 
-# What the widget shows while the map has not declared its controls yet.
-_DEFAULT_CONTROLS = {"zoom": True, "fullscreen": True, "scale": True}
-# MapLibre's control CSS: a group sits 10 px below the one above it and a button is 29 px
-# tall, the 1 px rule between the two zoom buttons included.
-_CONTROL_MARGIN = 10
-_BUTTON_HEIGHT = 29
-_TOP_LEFT_GROUPS = (("zoom", 2 * _BUTTON_HEIGHT), ("fullscreen", _BUTTON_HEIGHT))
-# The scale bar and attribution sit 36 px up; the coordinates readout above them is 18 px
-# of text (``.psm-coordinates``) and a 10 px margin.
-_BOTTOM_LEFT_BASE = 36
-_COORDINATES_HEIGHT = 18 + _CONTROL_MARGIN
-
-# The root takes the map's height and the map fills it, through the wrapper ipyvue puts
-# around a widget (``height: 100%``): a percentage height then resolves against the
-# root's parent, and in fullscreen the map fills the root.
+# The view takes the map's height and the root fills it; the map fills the root through the
+# wrapper ipyvue puts around a widget (``height: 100%``), in fullscreen too.
 CSS = """
 .pysepal-map-view { position: relative; width: 100%; overflow: hidden; }
+.pysepal-map-root { position: relative; width: 100%; height: 100%; }
 .pysepal-map-view .psm-map { height: 100% !important; }
-/* The root sets the variables inline; in fullscreen the camera uses no insets, so neither do the stacks. */
+/* The view sets the insets inline; in fullscreen the camera uses none, so neither do the stacks. */
 [data-psm-fullscreen-root][data-psm-fullscreen] {
   --pysepal-inset-left: 0px !important;
   --pysepal-inset-right: 0px !important;
@@ -56,17 +44,19 @@ CSS = """
 }
 .pysepal-map-corner > * { pointer-events: auto; }
 .pysepal-map-corner > [data-idle] { display: none; }
-/* The offsets clear the controls: zoom and fullscreen, scale, attribution. The top-left cap
-   ends above the bottom-left ones, scale and coordinates, which a card must not cover. */
+/* The widget sets --psm-controls-* on the root, each corner's height, once it has measured. */
+.pysepal-map-root:not([data-psm-controls]) > .pysepal-map-corner { visibility: hidden; }
+/* Each stack sits 10 px past the map's controls in its corner. The top-left cap ends above the
+   bottom-left controls, scale and coordinates, which a card must not cover. */
 .pysepal-map-corner[data-corner="top-left"] {
-  top: calc(var(--pysepal-inset-top) + var(--pysepal-controls-top-left));
+  top: calc(var(--pysepal-inset-top) + var(--psm-controls-top-left, 0px) + 10px);
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
   /* The cap is the corner's: the inspector card shrinks first and scrolls its body, and an
      overlay after it that still overflows scrolls the corner instead of being cut. */
   max-height: calc(
-    100% - var(--pysepal-inset-top) - var(--pysepal-controls-top-left)
-      - var(--pysepal-inset-bottom) - var(--pysepal-controls-bottom-left)
+    100% - var(--pysepal-inset-top) - var(--psm-controls-top-left, 0px) - 10px
+      - var(--pysepal-inset-bottom) - var(--psm-controls-bottom-left, 0px) - 10px
   );
   overflow-y: auto;
 }
@@ -77,17 +67,17 @@ CSS = """
   min-height: 0;
 }
 .pysepal-map-corner[data-corner="top-right"] {
-  top: calc(var(--pysepal-inset-top) + 10px);
+  top: calc(var(--pysepal-inset-top) + var(--psm-controls-top-right, 0px) + 10px);
   right: calc(var(--pysepal-inset-right) + 10px);
   align-items: flex-end;
 }
 .pysepal-map-corner[data-corner="bottom-left"] {
-  bottom: calc(var(--pysepal-inset-bottom) + var(--pysepal-controls-bottom-left));
+  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-left, 0px) + 10px);
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
 }
 .pysepal-map-corner[data-corner="bottom-right"] {
-  bottom: calc(var(--pysepal-inset-bottom) + 30px);
+  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-right, 0px) + 10px);
   right: calc(var(--pysepal-inset-right) + 10px);
   align-items: flex-end;
 }
@@ -101,26 +91,6 @@ CSS = """
   background: rgba(var(--v-theme-surface, 255, 255, 255), 0.9);
 }
 """
-
-
-def _top_left_offset(map_) -> int:
-    """The offset of the top-left stack below the top inset, clear of the map's controls.
-
-    Those are the zoom, the fullscreen and, while a drawing session offers tools, the draw
-    toolbar: a button per tool and the clear button.
-    """
-    controls = map_.state.get("controls") or _DEFAULT_CONTROLS
-    shown = [height for name, height in _TOP_LEFT_GROUPS if controls.get(name)]
-    tools = map_.drawing.get("modes") or ()
-    if tools:
-        shown.append((len(tools) + 1) * _BUTTON_HEIGHT)
-    return _CONTROL_MARGIN + sum(height + _CONTROL_MARGIN for height in shown)
-
-
-def _bottom_left_offset(map_) -> int:
-    """The offset of the bottom-left stack above the bottom inset, clear of the scale and readout."""
-    controls = map_.state.get("controls") or _DEFAULT_CONTROLS
-    return _BOTTOM_LEFT_BASE + (_COORDINATES_HEIGHT if controls.get("coordinates") else 0)
 
 
 def _legends(map_) -> list[dict]:
@@ -157,8 +127,10 @@ def MapView(
 ):
     """Place a ``SepalMap`` and the overlays over it, in the corners inside its insets.
 
-    The root is the target of the widget's fullscreen control, so the overlays stay
-    over the map in fullscreen, where the insets are zero.
+    Each corner's overlays sit 10 px past the map's controls there, whose heights the widget
+    measures; they stay hidden until it has. The root that holds the map and the overlays is
+    the target of the widget's fullscreen control, so the overlays stay over the map in
+    fullscreen, where the insets are zero.
 
     Args:
         map_: The ``SepalMap``.
@@ -200,8 +172,6 @@ def MapView(
 
     insets = map_.insets or {}
     variables = {f"--pysepal-inset-{side}": f"{int(insets.get(side, 0))}px" for side in _SIDES}
-    variables["--pysepal-controls-top-left"] = f"{_top_left_offset(map_)}px"
-    variables["--pysepal-controls-bottom-left"] = f"{_bottom_left_offset(map_)}px"
     variables["height"] = map_.height
     style = "; ".join(f"{name}: {value}" for name, value in variables.items())
     overlays = overlays or {}
@@ -222,13 +192,13 @@ def MapView(
     for corner in CORNERS:
         stacks[corner].extend(overlays.get(corner, ()))
 
-    return rv.Html(
+    # The widget sets the corner heights inline on the fullscreen root, so the root binds no
+    # style: Vue would then rewrite it.
+    root = rv.Html(
         tag="div",
-        class_="pysepal-map-view",
-        style_=style,
+        class_="pysepal-map-root",
         attributes={"data-psm-fullscreen-root": ""},
         children=[
-            solara.Style(CSS),
             map_,
             *[
                 rv.Html(
@@ -240,6 +210,9 @@ def MapView(
                 for corner in CORNERS
             ],
         ],
+    )
+    return rv.Html(
+        tag="div", class_="pysepal-map-view", style_=style, children=[solara.Style(CSS), root]
     )
 
 

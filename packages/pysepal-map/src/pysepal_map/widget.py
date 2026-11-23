@@ -265,6 +265,15 @@ maps when the state at that revision compares. Its
 fullscreen control fills the closest ancestor marked
 ``data-psm-fullscreen-root``, else the root element, and marks that element
 with ``data-psm-fullscreen`` while it is fullscreen.
+
+The same element, the fullscreen root, holds the height in CSS pixels of each
+control corner, which the view measures each time a corner changes size. They
+are set inline as ``--psm-controls-top-left``, ``--psm-controls-top-right``,
+``--psm-controls-bottom-left`` and ``--psm-controls-bottom-right``, with
+``data-psm-controls`` set to the view's id, so a host's overlays can clear
+the controls. A view removes them when it goes, unless a newer view has
+measured there since. A host must not bind the fullscreen root's ``style``:
+rewriting it drops the heights.
 """
 
 from __future__ import annotations

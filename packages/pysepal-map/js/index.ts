@@ -200,6 +200,7 @@ function render({ model, el }: RenderProps<Model>) {
   const controls = new ViewControls({
     map,
     root,
+    viewId,
     onInsets: (insets) => {
       camera.setInsets(insets);
       compare.setInsets(insets);

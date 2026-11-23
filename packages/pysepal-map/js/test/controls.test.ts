@@ -8,6 +8,23 @@ import type { Insets } from "../view";
 
 type Listener = (event: any) => void;
 
+/** An inline style: properties as fields, custom properties through the methods. */
+class FakeStyle {
+  [name: string]: unknown;
+
+  setProperty(name: string, value: string) {
+    this[name] = value;
+  }
+
+  removeProperty(name: string) {
+    delete this[name];
+  }
+
+  getPropertyValue(name: string): string {
+    return (this[name] as string | undefined) ?? "";
+  }
+}
+
 /** Just enough of a DOM element for MapLibre's controls and ours. */
 class FakeElement {
   className = "";
@@ -15,9 +32,10 @@ class FakeElement {
   type = "";
   textContent = "";
   disabled = false;
+  offsetHeight = 0;
   parentElement: FakeElement | null = null;
   readonly children: FakeElement[] = [];
-  readonly style: Record<string, string> = {};
+  readonly style = new FakeStyle();
   readonly attributes = new Map<string, string>();
   requestFullscreen?: () => void;
   private readonly listeners = new Map<string, Set<Listener>>();
@@ -44,6 +62,10 @@ class FakeElement {
 
   hasAttribute(name: string) {
     return this.attributes.has(name);
+  }
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
   }
 
   removeAttribute(name: string) {
@@ -253,23 +275,82 @@ function state(controls: Partial<MapState["controls"]> = {}): MapState {
   };
 }
 
-function setup({ api = true } = {}) {
-  const doc = fakeDocument(api);
+/** A view; a second one on the same page passes the first one's `doc`. */
+function setup({
+  api = true,
+  doc = fakeDocument(api),
+  viewId = "view-1",
+} = {}) {
   vi.stubGlobal("document", doc);
   vi.stubGlobal("window", { document: doc });
   const root: FakeElement = doc.element();
   const map = new FakeControlMap(root);
   const told: Insets[] = [];
+  const observer = {
+    elements: [] as FakeElement[],
+    callback: () => {},
+    stopped: false,
+  };
   const controls = new ViewControls({
     map: map as unknown as MapLibreMap,
     root: root as unknown as HTMLElement,
+    viewId,
     onInsets: (insets) => told.push(insets),
+    observeSize: (elements, callback) => {
+      observer.elements = elements as unknown as FakeElement[];
+      observer.callback = callback;
+      return () => {
+        observer.stopped = true;
+      };
+    },
   });
   const button = () =>
     root.querySelector(".maplibregl-ctrl-fullscreen") ??
     root.querySelector(".maplibregl-ctrl-shrink")!;
-  return { doc, root, map, controls, told, button };
+  /** What the observer calls when a corner changes size. */
+  const measure = () => observer.callback();
+  return { doc, root, map, controls, told, button, observer, measure };
 }
+
+/** Puts `el` inside a new element marked as the fullscreen root. */
+function inFullscreenRoot(
+  doc: ReturnType<typeof fakeDocument>,
+  el: FakeElement
+) {
+  const ancestor: FakeElement = doc.element();
+  ancestor.setAttribute("data-psm-fullscreen-root", "");
+  const between: FakeElement = doc.element();
+  ancestor.appendChild(between);
+  between.appendChild(el);
+  return ancestor;
+}
+
+/** Gives each corner of `map` a height. */
+function setHeights(map: FakeControlMap, heights: Record<string, number>) {
+  for (const position of POSITIONS) {
+    map.corner(position).offsetHeight = heights[position];
+  }
+}
+
+const HEIGHTS = {
+  "top-left": 107,
+  "top-right": 0,
+  "bottom-left": 28,
+  "bottom-right": 34,
+};
+
+/** The corner variables `el` carries inline. */
+function published(el: FakeElement): Record<string, string> {
+  const found: Record<string, string> = {};
+  for (const position of POSITIONS) {
+    const value = el.style.getPropertyValue(`--psm-controls-${position}`);
+    if (value) found[position] = value;
+  }
+  return found;
+}
+
+const inPx = (heights: Record<string, number>) =>
+  Object.fromEntries(Object.entries(heights).map(([p, h]) => [p, `${h}px`]));
 
 /** Where each corner sits, from the sides it is placed from. */
 function corners(map: FakeControlMap) {
@@ -451,6 +532,92 @@ describe("ViewControls", () => {
       expect(told.at(-1)).toEqual(INSETS);
     }
   );
+
+  it("publishes each corner's height on the fullscreen root", () => {
+    const { doc, root, map, controls, observer, measure } = setup();
+    controls.sync(state());
+    expect(observer.elements).toEqual(POSITIONS.map((p) => map.corner(p)));
+    const ancestor = inFullscreenRoot(doc, root);
+    setHeights(map, HEIGHTS);
+
+    measure();
+    expect(published(ancestor)).toEqual(inPx(HEIGHTS));
+    expect(published(root)).toEqual({});
+  });
+
+  it("falls back to the map root without a marked ancestor", () => {
+    const { doc, root, map, measure } = setup();
+    doc.element().appendChild(root);
+    setHeights(map, HEIGHTS);
+    measure();
+    expect(published(root)).toEqual(inPx(HEIGHTS));
+    expect(root.getAttribute("data-psm-controls")).toBe("view-1");
+
+    // The view joined a marked root since: the next measure moves both there.
+    const ancestor = inFullscreenRoot(doc, root);
+    measure();
+    expect(published(ancestor)).toEqual(inPx(HEIGHTS));
+    expect(ancestor.getAttribute("data-psm-controls")).toBe("view-1");
+    expect(published(root)).toEqual({});
+    expect(root.hasAttribute("data-psm-controls")).toBe(false);
+  });
+
+  it("sets the variables on every measure", () => {
+    const { doc, root, map, measure } = setup();
+    const ancestor = inFullscreenRoot(doc, root);
+    setHeights(map, HEIGHTS);
+    measure();
+
+    ancestor.style.removeProperty("--psm-controls-top-left");
+    measure();
+    expect(published(ancestor)).toEqual(inPx(HEIGHTS));
+
+    const taller = { ...HEIGHTS, "top-left": 223 };
+    setHeights(map, taller);
+    measure();
+    expect(published(ancestor)).toEqual(inPx(taller));
+  });
+
+  it("marks the target with its view id in data-psm-controls", () => {
+    const { doc, root, measure } = setup({ viewId: "view-7" });
+    const ancestor = inFullscreenRoot(doc, root);
+    expect(ancestor.hasAttribute("data-psm-controls")).toBe(false);
+    measure();
+    expect(ancestor.getAttribute("data-psm-controls")).toBe("view-7");
+    expect(root.hasAttribute("data-psm-controls")).toBe(false);
+  });
+
+  it("removes the variables and the mark on dispose", () => {
+    const { doc, root, map, controls, observer, measure } = setup();
+    const ancestor = inFullscreenRoot(doc, root);
+    setHeights(map, HEIGHTS);
+    measure();
+
+    controls.dispose();
+    expect(observer.stopped).toBe(true);
+    expect(published(ancestor)).toEqual({});
+    expect(ancestor.hasAttribute("data-psm-controls")).toBe(false);
+  });
+
+  it("dispose leaves a newer view's variables and mark", () => {
+    const first = setup({ viewId: "view-1" });
+    const ancestor = inFullscreenRoot(first.doc, first.root);
+    const second = setup({ doc: first.doc, viewId: "view-2" });
+    ancestor.appendChild(second.root);
+    const later = { ...HEIGHTS, "top-left": 223 };
+    setHeights(first.map, HEIGHTS);
+    setHeights(second.map, later);
+
+    first.measure();
+    second.measure();
+    first.controls.dispose();
+    expect(ancestor.getAttribute("data-psm-controls")).toBe("view-2");
+    expect(published(ancestor)).toEqual(inPx(later));
+
+    second.controls.dispose();
+    expect(published(ancestor)).toEqual({});
+    expect(ancestor.hasAttribute("data-psm-controls")).toBe(false);
+  });
 
   it("adds the attribution control MapLibre's default would be", () => {
     const { map, controls } = setup();
