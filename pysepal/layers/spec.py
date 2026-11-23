@@ -284,8 +284,8 @@ class VectorStyle(BaseModel):
     cluster: bool = False
     cluster_radius: int = Field(default=50, ge=1)
     cluster_max_zoom: int = Field(default=14, ge=1, le=17)
-    popup: bool | list[str] = False
-    tooltip: bool | list[str] = False
+    popup: bool | list[str] | dict[str, str] = False
+    tooltip: bool | list[str] | dict[str, str] = False
     color_by: str | None = Field(default=None, min_length=1)
     class_colors: dict[str | int, str] | None = None
     class_labels: dict[str | int, str] | None = None
@@ -339,12 +339,35 @@ class VectorStyle(BaseModel):
         # render hash and through a round trip
         return None if value is None else [[k, v] for k, v in value.items()]
 
+    @field_validator("popup", "tooltip", mode="before")
+    @classmethod
+    def _label_pairs(cls, value: Any) -> Any:
+        # the JSON form of a labelled field is [[name, label], ...]; a plain list holds names
+        if (
+            isinstance(value, list)
+            and value
+            and all(isinstance(pair, (list, tuple)) and len(pair) == 2 for pair in value)
+        ):
+            return dict(value)
+        return value
+
     @field_validator("popup", "tooltip")
     @classmethod
-    def _fields_not_empty(cls, value: bool | list[str]) -> bool | list[str]:
-        if isinstance(value, list) and not value:
+    def _fields_not_empty(
+        cls, value: bool | list[str] | dict[str, str]
+    ) -> bool | list[str] | dict[str, str]:
+        if isinstance(value, (list, dict)) and not value:
             raise ValueError("name at least one property, or use True for all of them")
+        if isinstance(value, dict) and not all(k and v for k, v in value.items()):
+            raise ValueError("property names and labels must not be empty")
         return value
+
+    @field_serializer("popup", "tooltip", when_used="json")
+    def _labels_as_pairs(
+        self, value: bool | list[str] | dict[str, str]
+    ) -> bool | list[str] | list[list[str]]:
+        # a mapping is ordered display data: pairs keep the order in the render hash
+        return [[k, v] for k, v in value.items()] if isinstance(value, dict) else value
 
     @model_validator(mode="after")
     def _pin_is_visible(self) -> "VectorStyle":

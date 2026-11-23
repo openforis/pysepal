@@ -77,7 +77,7 @@ interface Shown {
 
 interface Target {
   layer: LayerState;
-  fields: string[];
+  fields: [string, string][];
   properties: Record<string, unknown>;
 }
 
@@ -90,15 +90,15 @@ function cell(value: unknown): string {
   return text.slice(0, MAX_CELL);
 }
 
-/** The `[name, text]` pairs to show: the named properties present, or all. */
+/** The `[label, text]` pairs to show: the named properties present, or all. */
 function entries(
-  fields: string[],
+  fields: [string, string][],
   properties: Record<string, unknown>
 ): [string, string][] {
-  const names = fields.length
-    ? fields.filter((name) => Object.hasOwn(properties, name))
-    : Object.keys(properties);
-  return names.map((name) => [name, cell(properties[name])]);
+  const named = fields.length
+    ? fields.filter(([name]) => Object.hasOwn(properties, name))
+    : Object.keys(properties).map((name): [string, string] => [name, name]);
+  return named.map(([name, label]) => [label, cell(properties[name])]);
 }
 
 /**

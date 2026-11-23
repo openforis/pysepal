@@ -102,7 +102,9 @@ def _style_of(spec: LayerSpec) -> VectorStyle:
     return spec.style if isinstance(spec.style, VectorStyle) else VectorStyle()
 
 
-def _fields(value: Union[bool, list]) -> Optional[tuple]:
+def _fields(value: Union[bool, list, dict]) -> Union[None, tuple, dict]:
+    if isinstance(value, dict):
+        return value
     return None if value is False else () if value is True else tuple(value)
 
 

@@ -49,6 +49,22 @@ def test_click_opens_a_popup_and_hiding_the_layer_closes_it(harness, page_sessio
     popup.wait_for(state="detached")
 
 
+def test_popup_shows_labels(harness, page_session):
+    widget = MapWidget()
+    digest = widget.add_payload(json.dumps(POINT).encode())
+    layer = Layer(
+        "pts", GeoJSONSource(digest), interaction=Interaction(popup={"kind": "Kind of tree"})
+    )
+    display(widget)
+    publish(page_session, widget, layer)
+
+    page_session.mouse.click(*canvas_point(page_session, 0, 0))
+    popup = page_session.locator(".psm-popup")
+    popup.wait_for()
+    assert popup.locator("th").inner_text() == "Kind of tree"
+    assert popup.locator("td").inner_text() == "tree"
+
+
 def test_hover_shows_a_tooltip_that_follows_the_pointer_off(harness, page_session):
     widget = MapWidget()
     digest = widget.add_payload(json.dumps(POINT).encode())

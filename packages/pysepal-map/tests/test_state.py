@@ -208,9 +208,18 @@ def test_numpy_numbers_are_accepted_and_published_as_plain_json():
 
 def test_interaction_json():
     layer = Layer("v", GeoJSONSource("abc"), interaction=Interaction(popup=("a", "b"), tooltip=()))
-    assert layer.to_json()["interaction"] == {"popup": ["a", "b"], "tooltip": []}
+    assert layer.to_json()["interaction"] == {"popup": [["a", "a"], ["b", "b"]], "tooltip": []}
     off = Layer("v", GeoJSONSource("abc"), interaction=Interaction(tooltip=("a",)))
-    assert off.to_json()["interaction"] == {"popup": None, "tooltip": ["a"]}
+    assert off.to_json()["interaction"] == {"popup": None, "tooltip": [["a", "a"]]}
+    labelled = Interaction(popup={"alert_dt": "Date", "status": "status"})
+    assert labelled.to_json()["popup"] == [["alert_dt", "Date"], ["status", "status"]]
+
+
+@pytest.mark.parametrize("field", ["popup", "tooltip"])
+@pytest.mark.parametrize("bad", [{"a": ""}, {"": "A"}, {"a": 1}, {1: "A"}])
+def test_interaction_rejects_empty_label(field, bad):
+    with pytest.raises(ValueError):
+        Interaction(**{field: bad})
     assert Layer("v", GeoJSONSource("abc")).to_json()["interaction"] is None
 
 
@@ -234,7 +243,7 @@ def test_interaction_change_keeps_instance():
     first = widget.state["layers"][0]["instance"]
     widget.publish(MapState(layers=(Layer("v", source, interaction=Interaction(popup=("b",))),)))
     assert widget.state["layers"][0]["instance"] == first
-    assert widget.state["layers"][0]["interaction"] == {"popup": ["b"], "tooltip": None}
+    assert widget.state["layers"][0]["interaction"] == {"popup": [["b", "b"]], "tooltip": None}
 
 
 @pytest.mark.parametrize(

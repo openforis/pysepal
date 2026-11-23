@@ -25,10 +25,10 @@ export interface ClusterState {
   max_zoom: number;
 }
 
-/** What a click or the pointer shows: `[]` is every property, null is off. */
+/** What a click or the pointer shows: `[]` is every property, else `[name, label]` pairs; null is off. */
 export interface InteractionState {
-  popup: string[] | null;
-  tooltip: string[] | null;
+  popup: [string, string][] | null;
+  tooltip: [string, string][] | null;
 }
 
 /** Which half of a compare map draws a layer. */

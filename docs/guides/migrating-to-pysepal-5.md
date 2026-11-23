@@ -137,7 +137,7 @@ bar: it is the map's declared state.
 | `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                                                                |
 | mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                                                   |
 | `Marker`, `AwesomeIcon`, `MarkerCluster`, `LayerGroup` of clusters                                                                | `LayerSpec.from_points(...)` with `VectorStyle(marker="pin", cluster=True)`; one layer holds every category with `VectorStyle(color_by=..., class_colors=...)` |
-| `Popup` with HTML, `on_hover` labels                                                                                              | `VectorStyle(popup=[...])`, `VectorStyle(tooltip=[...])`                                                                                                       |
+| `Popup` with HTML, `on_hover` labels                                                                                              | `VectorStyle(popup=[...])`, `VectorStyle(tooltip={...})`                                                                                                       |
 | `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                                                             |
 | `hover_style`, `style_callback`                                                                                                   | `VectorStyle(color_by=..., class_colors=...)`: one layer holds every class, on vectors the browser draws, not Earth Engine ones; no hover style                |
 | `SplitMapControl(left_layer=..., right_layer=...)`                                                                                | `m.compare = True` with `side="left"` and `side="right"` on the layer methods (or `handle.side`); other layers stay on both sides                              |
@@ -161,7 +161,8 @@ Notes on the interaction replacements:
   not to Earth Engine vectors, which refuse it. A feature whose value is in no
   class keeps the layer's own color.
 - **Popups and tooltips show a table of properties.** `popup=True` shows every
-  property, a list names the ones to show. A popup that holds widgets (a
+  property, a list names the ones to show, a dict maps each name to the label
+  shown for it (`popup={"alert_dt": "Date"}`). A popup that holds widgets (a
   "Go" button, say) becomes `m.on_click` plus a component in `MapView`.
   They apply to vector layers drawn by the browser, not to Earth Engine vectors
   or tile layers.

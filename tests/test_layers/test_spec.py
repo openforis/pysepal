@@ -418,6 +418,23 @@ def test_vector_style_popup_list_must_not_be_empty(field):
     assert VectorStyle(**{field: ["a"]}).model_dump()[field] == ["a"]
 
 
+@pytest.mark.parametrize("field", ["popup", "tooltip"])
+def test_vector_style_popup_labels(field):
+    style = VectorStyle(**{field: {"b": "Bee", "a": "a"}})
+    assert getattr(style, field) == {"b": "Bee", "a": "a"}
+    assert style.model_dump(mode="json")[field] == [["b", "Bee"], ["a", "a"]]
+    for bad in ({}, {"a": ""}, {"": "A"}):
+        with pytest.raises(ValidationError):
+            VectorStyle(**{field: bad})
+    spec = LayerSpec.from_points(POINTS, name="p", style=style)
+    again = LayerSpec.model_validate_json(spec.model_dump_json())
+    assert again == spec and again.render_hash == spec.render_hash
+    assert list(getattr(again.style, field)) == ["b", "a"]
+    flipped = spec.revise(style=VectorStyle(**{field: {"a": "a", "b": "Bee"}}))
+    assert flipped.render_hash != spec.render_hash
+    assert VectorStyle(**{field: ["a"]}).model_dump(mode="json")[field] == ["a"]
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

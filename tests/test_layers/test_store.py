@@ -147,6 +147,15 @@ def test_a_class_restyle_that_keeps_the_colors_is_an_update(vector_spec, classes
     assert events == [StoreEvent("updated", vector_spec.id)]
 
 
+def test_reordering_popup_fields_is_an_update(vector_spec):
+    store, events = LayerStore(), []
+    store.add(vector_spec)
+    store.restyle(vector_spec.id, popup={"a": "A", "b": "B"})
+    store.subscribe(events.append)
+    store.restyle(vector_spec.id, popup={"b": "B", "a": "A"})
+    assert events == [StoreEvent("updated", vector_spec.id)]
+
+
 def test_drawing_order_puts_overlays_first(vector_spec):
     store = LayerStore()
     for name in ("d2", "o1", "d1"):

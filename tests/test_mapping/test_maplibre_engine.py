@@ -1020,7 +1020,7 @@ def test_point_style_maps_to_widget_layer(fake):
     assert x["paint"]["marker"] == "pin"
     assert x["paint"]["point_radius"] == 7
     assert x["source"]["cluster"] == {"radius": 40, "max_zoom": 12}
-    assert x["interaction"] == {"popup": [], "tooltip": ["a"]}
+    assert x["interaction"] == {"popup": [], "tooltip": [["a", "a"]]}
 
 
 def test_default_point_style_has_no_cluster(fake):
@@ -1133,6 +1133,15 @@ def test_popup_restyle_keeps_instance(fake):
     assert after["instance"] == before["instance"]
     assert after["interaction"]["popup"] == []
     assert fake.calls == [("p", None)]
+
+
+def test_popup_labels_reach_the_widget(fake):
+    widget, store, _ = headless()
+    store.add(with_style(vector_spec("p"), popup={"a": "Aye", "b": "b"}, tooltip=["a"]))
+    assert layer_of(widget, "p")["interaction"] == {
+        "popup": [["a", "Aye"], ["b", "b"]],
+        "tooltip": [["a", "a"]],
+    }
 
 
 class CountingGee:

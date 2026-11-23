@@ -170,14 +170,15 @@ change, changing the classes keeps the instance.
 Popups and tooltips. A vector layer may carry an ``Interaction``, which is part
 of the state but not of its instance identity, so changing it keeps the
 instance. ``popup`` and ``tooltip`` are each ``None`` (off), ``()`` (every
-property, in the feature's order) or a tuple naming the properties to show, in
-that order; entries are non-empty strings, and a raster layer takes no
-interaction. A click opens one popup per view, at the click, for the top
+property, in the feature's order), a tuple naming the properties to show, in
+that order, or a mapping from each name to the non-empty label shown for it
+(a plain name is its own label); names are non-empty strings, and a raster
+layer takes no interaction. A click opens one popup per view, at the click, for the top
 feature among layers with a popup: a two-column table with a row per named
-property the feature has, and nothing when there is no row. A new popup
+property the feature has, headed by its label, and nothing when there is no row. A new popup
 replaces the old one. The pointer shows one tooltip, updated once per
 animation frame, for the top feature among layers with a tooltip: a single
-named property shows only its value, otherwise one ``name: value`` line each. It
+named property shows only its value, otherwise one ``label: value`` line each. It
 hides when nothing is hit and when the pointer leaves the map. Values are
 strings as they are, numbers with ``str``, ``null`` as empty and objects or
 arrays as JSON, each cut at 200 characters, and are inserted as text, never

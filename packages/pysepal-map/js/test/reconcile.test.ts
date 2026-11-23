@@ -757,7 +757,13 @@ const INTERACTIONS: (InteractionState | null)[] = [
   null,
   null,
   { popup: [], tooltip: null },
-  { popup: ["name"], tooltip: ["name", "id"] },
+  {
+    popup: [["name", "Name"]],
+    tooltip: [
+      ["name", "name"],
+      ["id", "id"],
+    ],
+  },
   { popup: null, tooltip: [] },
 ];
 

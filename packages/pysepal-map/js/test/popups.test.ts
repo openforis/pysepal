@@ -185,13 +185,60 @@ function setup(options: Pick<PopupsOptions, "pick"> = {}) {
 
 type Ctx = ReturnType<typeof setup>;
 
+const own = (fields: string[]): [string, string][] =>
+  fields.map((name) => [name, name]);
 const POPUP = (...fields: string[]): InteractionState => ({
-  popup: fields,
+  popup: own(fields),
   tooltip: null,
 });
 const TOOLTIP = (...fields: string[]): InteractionState => ({
   popup: null,
-  tooltip: fields,
+  tooltip: own(fields),
+});
+
+describe("labels", () => {
+  it("the popup shows labels", () => {
+    const { map, declare, click, popup } = setup();
+    declare(
+      layer("a", 1, {
+        popup: [
+          ["b", "Bee"],
+          ["a", "a"],
+        ],
+        tooltip: null,
+      })
+    );
+    map.features = [feature("a", 1, { a: 1, b: "<i>x</i>" })];
+    click();
+    expect(rows(popup()[0].content!)).toEqual([
+      ["Bee", "<i>x</i>"],
+      ["a", "1"],
+    ]);
+  });
+
+  it("a labelled tooltip shows label: value lines", () => {
+    const { map, declare, move, tooltip } = setup();
+    declare(
+      layer("a", 1, {
+        popup: null,
+        tooltip: [
+          ["a", "Aye"],
+          ["b", "b"],
+        ],
+      })
+    );
+    map.features = [feature("a", 1, { a: "x", b: 2 })];
+    move();
+    expect(tooltip()[0].lines).toEqual(["Aye: x", "b: 2"]);
+  });
+
+  it("a single labelled tooltip field shows only the value", () => {
+    const { map, declare, move, tooltip } = setup();
+    declare(layer("a", 1, { popup: null, tooltip: [["a", "Aye"]] }));
+    map.features = [feature("a", 1, { a: "x" })];
+    move();
+    expect(tooltip()[0].content!.textContent).toBe("x");
+  });
 });
 
 describe("click popup", () => {
@@ -321,7 +368,9 @@ describe("click popup", () => {
   it("closes with the tooltip when drawing becomes interactive", () => {
     const { map, declare, click, move, popups, popup, tooltip, setDrawing } =
       setup();
-    declare(layer("a", 1, { popup: ["name"], tooltip: ["name"] }));
+    declare(
+      layer("a", 1, { popup: [["name", "name"]], tooltip: [["name", "name"]] })
+    );
     map.features = [feature("a", 1, { name: "x" })];
     click();
     move();
@@ -513,7 +562,9 @@ describe("dispose", () => {
   it("closes both, and stops listening", () => {
     const { map, model, declare, click, move, popups, popup, tooltip } =
       setup();
-    declare(layer("a", 1, { popup: ["name"], tooltip: ["name"] }));
+    declare(
+      layer("a", 1, { popup: [["name", "name"]], tooltip: [["name", "name"]] })
+    );
     map.features = [feature("a", 1, { name: "x" })];
     click();
     move();
@@ -559,7 +610,9 @@ describe("a picked map", () => {
         return other;
       },
     });
-    declare(layer("a", 1, { popup: ["name"], tooltip: ["name"] }));
+    declare(
+      layer("a", 1, { popup: [["name", "name"]], tooltip: [["name", "name"]] })
+    );
     other.layers = [...map.layers];
     map.features = [feature("a", 1, { name: "main" })];
     other.features = [feature("a", 1, { name: "right" })];

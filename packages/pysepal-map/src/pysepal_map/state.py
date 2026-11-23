@@ -239,43 +239,53 @@ class VectorPaint:
         }
 
 
-def _fields(name: str, value) -> tuple[str, ...] | None:
-    """``value`` as a tuple of non-empty property names, or None."""
+def _fields(name: str, value) -> tuple[tuple[str, str], ...] | None:
+    """``value`` as ``(name, label)`` pairs, or None.
+
+    A mapping gives name -> label; a sequence of names labels each with itself.
+    """
     if value is None:
         return None
     if isinstance(value, str):
         raise ValueError(f"{name} must be a tuple of property names, got {value!r}")
-    try:
-        fields = tuple(value)
-    except TypeError:
-        raise ValueError(f"{name} must be a tuple of property names, got {value!r}") from None
-    for field_name in fields:
+    if isinstance(value, Mapping):
+        pairs = tuple(value.items())
+    else:
+        try:
+            pairs = tuple((field, field) for field in value)
+        except TypeError:
+            raise ValueError(
+                f"{name} must be a tuple of property names or a mapping to labels, got {value!r}"
+            ) from None
+    for field_name, label in pairs:
         if not isinstance(field_name, str) or not field_name:
             raise ValueError(f"{name} entries must be non-empty strings, got {field_name!r}")
-    return fields
+        if not isinstance(label, str) or not label:
+            raise ValueError(f"{name} labels must be non-empty strings, got {label!r}")
+    return pairs
 
 
 @dataclass(frozen=True)
 class Interaction:
     """What a click or the pointer shows of a feature's properties.
 
-    ``()`` shows every property, a tuple the named ones in that order, ``None``
-    turns the popup or tooltip off.
+    ``()`` shows every property, a tuple names the ones to show in that order, a mapping
+    names them with the label to show for each, ``None`` turns the popup or tooltip off.
     """
 
-    popup: tuple[str, ...] | None = None
-    tooltip: tuple[str, ...] | None = None
+    popup: tuple[tuple[str, str], ...] | None = None
+    tooltip: tuple[tuple[str, str], ...] | None = None
 
     def __post_init__(self) -> None:
-        """Reject a field that is not a tuple of non-empty strings."""
+        """Store each field as ``(name, label)`` pairs; reject an empty name or label."""
         for name in ("popup", "tooltip"):
             object.__setattr__(self, name, _fields(f"Interaction.{name}", getattr(self, name)))
 
     def to_json(self) -> dict:
-        """The interaction as JSON, with each field a list or null."""
+        """The interaction as JSON, with each field a list of ``[name, label]`` or null."""
         return {
-            "popup": None if self.popup is None else list(self.popup),
-            "tooltip": None if self.tooltip is None else list(self.tooltip),
+            "popup": None if self.popup is None else [list(pair) for pair in self.popup],
+            "tooltip": None if self.tooltip is None else [list(pair) for pair in self.tooltip],
         }
 
 
