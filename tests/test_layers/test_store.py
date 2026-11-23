@@ -133,6 +133,20 @@ def test_zone_or_attribution_change_is_an_update(vector_spec, change):
     assert events == [StoreEvent("updated", vector_spec.id)]
 
 
+@pytest.mark.parametrize(
+    "classes",
+    [{"1": "#ff0000", "2": "#00ff00"}, {2: "#00ff00", 1: "#ff0000"}],
+    ids=["key type", "order"],
+)
+def test_a_class_restyle_that_keeps_the_colors_is_an_update(vector_spec, classes):
+    store, events = LayerStore(), []
+    store.add(vector_spec)
+    store.restyle(vector_spec.id, color_by="n", class_colors={1: "#ff0000", 2: "#00ff00"})
+    store.subscribe(events.append)
+    store.restyle(vector_spec.id, class_colors=classes)
+    assert events == [StoreEvent("updated", vector_spec.id)]
+
+
 def test_drawing_order_puts_overlays_first(vector_spec):
     store = LayerStore()
     for name in ("d2", "o1", "d1"):

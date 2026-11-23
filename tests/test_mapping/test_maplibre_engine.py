@@ -1050,6 +1050,17 @@ def test_class_colors_reach_the_widget_paint(fake):
     }
 
 
+def test_a_class_key_type_restyle_reaches_the_widget_paint(fake):
+    widget, store, _ = headless()
+    style = VectorStyle(color_by="status", class_colors={1: "#ff0000"})
+    spec = LayerSpec.from_points([(0.0, 0.0)], name="p", id="p", style=style)
+    fake.data[spec.source.uri] = collection(0)
+    store.add(spec)
+    assert layer_of(widget, "p")["paint"]["class_colors"] == [[1, "#ff0000"]]
+    store.restyle("p", class_colors={"1": "#ff0000"})
+    assert layer_of(widget, "p")["paint"]["class_colors"] == [["1", "#ff0000"]]
+
+
 def test_pmtiles_cluster_is_layer_error(fake):
     widget, store, _ = headless()
     spec = LayerSpec.from_vector("https://x.org/a.pmtiles", id="pm", layer="roads", name="pm")

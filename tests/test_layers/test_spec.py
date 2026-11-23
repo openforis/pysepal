@@ -121,11 +121,42 @@ def test_vector_style_class_colors():
         {"color_by": "s", "class_colors": {"a": "not a colour"}},
         {"color_by": "s", "class_colors": {2**53: "#ff0000"}},
         {"color_by": "s", "class_colors": {1.0: "#ff0000"}},
+        {"color_by": "s", "class_colors": [[True, "#ff0000"]]},
+        {"color_by": "s", "class_colors": [["a", "#ff0000"], [1, "#00ff00"]]},
+        {"color_by": "s", "class_colors": [[1.0, "#ff0000"]]},
+        {"color_by": "s", "class_colors": [[1, "#ff0000"], [1, "#00ff00"]]},
+        {"color_by": "s", "class_colors": [[1, "#ff0000", "x"]]},
+        {"color_by": "s", "class_colors": [[[1], "#ff0000"]]},
+        {"color_by": "s", "class_colors": {"a": "#ff0000"}, "class_labels": [[False, "x"]]},
     ],
 )
 def test_vector_style_rejects_bad_classes(kw):
     with pytest.raises(ValidationError):
         VectorStyle(**kw)
+
+
+def test_vector_classes_round_trip_through_json():
+    style = VectorStyle(
+        color_by="n", class_colors={2: "#00ff00", 1: "#ff0000"}, class_labels={1: "One"}
+    )
+    spec = LayerSpec.from_points(POINTS, name="p", style=style)
+    dumped = spec.model_dump(mode="json")["style"]
+    assert dumped["class_colors"] == [[2, "#00ff00"], [1, "#ff0000"]]
+    assert dumped["class_labels"] == [[1, "One"]]
+    again = LayerSpec.model_validate_json(spec.model_dump_json())
+    assert again == spec and again.render_hash == spec.render_hash
+    assert list(again.style.class_colors) == [2, 1]
+
+    def hash_of(classes):
+        return spec.revise(style=VectorStyle(color_by="n", class_colors=classes)).render_hash
+
+    assert hash_of({1: "#ff0000"}) != hash_of({"1": "#ff0000"})
+    assert hash_of({1: "#ff0000", 2: "#00ff00"}) != hash_of({2: "#00ff00", 1: "#ff0000"})
+
+
+def test_vector_classes_accept_pairs():
+    style = VectorStyle(color_by="n", class_colors=[[1, "red"], (2, "blue")])
+    assert style.class_colors == {1: "#ff0000", 2: "#0000ff"}
 
 
 def test_class_colors_fill_by_default():

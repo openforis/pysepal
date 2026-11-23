@@ -22,7 +22,14 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from matplotlib.colors import Colormap, is_color_like, to_hex
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from pysepal.scripts.scratch import scratch_root
 
@@ -293,6 +300,18 @@ class VectorStyle(BaseModel):
     @classmethod
     def _class_keys(cls, value: Any) -> Any:
         # pydantic would turn a bool key into an int, and a float key too
+        if isinstance(value, (list, tuple)):
+            pairs = []
+            for pair in value:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    raise ValueError(f"classes must be (class, value) pairs, got {pair!r}")
+                pairs.append(tuple(pair))
+            try:
+                value = dict(pairs)
+            except TypeError:
+                raise ValueError(f"classes must be str or int, got {pairs!r}") from None
+            if len(value) != len(pairs):
+                raise ValueError("classes must be unique")
         if not isinstance(value, dict):
             return value
         kinds = set()
@@ -313,6 +332,12 @@ class VectorStyle(BaseModel):
     @classmethod
     def _class_colors(cls, value: dict[str | int, str] | None) -> dict[str | int, str] | None:
         return None if value is None else {k: _normalise_color(v) for k, v in value.items()}
+
+    @field_serializer("class_colors", "class_labels", when_used="json")
+    def _classes_as_pairs(self, value: dict[str | int, str] | None) -> list[list] | None:
+        # JSON object keys are strings; pairs keep an int class an int, and the order, in the
+        # render hash and through a round trip
+        return None if value is None else [[k, v] for k, v in value.items()]
 
     @field_validator("popup", "tooltip")
     @classmethod
