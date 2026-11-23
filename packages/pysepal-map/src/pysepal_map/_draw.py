@@ -14,6 +14,7 @@ import json
 import math
 import numbers
 from collections.abc import Callable, Mapping, Sequence
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -26,6 +27,18 @@ SELECT = "select"
 #: No tool: the map pans and clicks as usual.
 STATIC = "static"
 DEFAULT_COLOR = "#3388ff"
+#: The toolbar's English labels: one per drawing tool, ``select`` and ``clear``.
+DRAW_LABELS = MappingProxyType(
+    {
+        "polygon": "Draw a polygon",
+        "rectangle": "Draw a rectangle",
+        "circle": "Draw a circle",
+        "linestring": "Draw a line",
+        "point": "Draw a point",
+        "select": "Select and edit shapes",
+        "clear": "Remove all shapes",
+    }
+)
 #: The geometries Terra Draw draws, and the part each Multi* geometry splits into.
 _KINDS = ("Polygon", "LineString", "Point")
 _MULTI = {"MultiPolygon": "Polygon", "MultiLineString": "LineString", "MultiPoint": "Point"}
@@ -173,8 +186,8 @@ class DrawSession:
     """One owner's hold on a map's drawing tools, from ``Draw.begin`` until it ends.
 
     A session ends when its ``end`` runs or another ``Draw.begin`` does. An
-    ended session stays ended: ``features`` is empty, ``set`` and ``clear``
-    raise ``RuntimeError`` and ``end`` does nothing.
+    ended session stays ended: ``features`` is empty, ``set``, ``clear``,
+    ``start`` and ``stop`` raise ``RuntimeError`` and ``end`` does nothing.
     """
 
     def __init__(self, draw: Draw, on_change: DrawCallback | None) -> None:
@@ -228,6 +241,26 @@ class DrawSession:
         """Ask every view to remove every drawn feature."""
         self.set([])
 
+    def start(self, mode: str) -> None:
+        """Ask for ``mode``, one of ``Draw.modes``, as the active tool.
+
+        The browser holds the active tool, which the toolbar sets. Every view
+        that runs the session applies the request; of the views shown later,
+        only the first to start does. A mode the session does not offer,
+        ``"static"`` included, raises ``ValueError``.
+        """
+        with self._draw._widget._lock:
+            self._require()
+            if mode not in self._draw.modes:
+                raise ValueError(f"{mode!r} is not among the tools offered: {self._draw.modes}")
+            self._request_tool(mode)
+
+    def stop(self) -> None:
+        """Ask for no active tool, as ``start`` asks for one: the map pans and clicks as usual."""
+        with self._draw._widget._lock:
+            self._require()
+            self._request_tool(STATIC)
+
     def end(self) -> None:
         """Clear the drawing and hide the tools in every view; nothing once ended."""
         with self._draw._widget._lock:
@@ -237,6 +270,11 @@ class DrawSession:
     def _require(self) -> None:
         if not self.active:
             raise RuntimeError("this drawing session has ended")
+
+    def _request_tool(self, mode: str) -> None:
+        widget = self._draw._widget
+        seq, session = widget.draw_tool["seq"] + 1, widget.drawing["session"]
+        widget.set_trait("draw_tool", {"seq": seq, "session": session, "mode": mode})
 
 
 class Draw:
@@ -255,11 +293,6 @@ class Draw:
     def modes(self) -> tuple[str, ...]:
         """The tools offered, ``"select"`` last when editing is on; ``()`` with no session."""
         return tuple(self._widget.drawing["modes"])
-
-    @property
-    def mode(self) -> str:
-        """The active tool, or ``"static"``."""
-        return self._widget.drawing["mode"]
 
     @property
     def color(self) -> str:
@@ -298,25 +331,28 @@ class Draw:
         self._hand_over(session, modes=names, features=seeds)
         return session
 
-    def start(self, mode: str) -> None:
-        """Make ``mode``, one of ``modes``, the active tool."""
-        with self._widget._lock:
-            self._require()
-            if mode not in self.modes:
-                raise ValueError(f"{mode!r} is not among the tools offered: {self.modes}")
-            self._write(mode=mode)
-
-    def stop(self) -> None:
-        """Leave the active tool: the map pans and clicks as usual."""
-        with self._widget._lock:
-            self._require()
-            self._write(mode=STATIC)
-
     def set_color(self, color: str) -> None:
         """Draw in ``color``, a MapLibre colour string, from now on."""
         if not isinstance(color, str) or not color:
             raise ValueError(f"color must be a non-empty string, got {color!r}")
         self._write(color=color)
+
+    def set_labels(self, labels: Mapping[str, str]) -> None:
+        """Label the toolbar's buttons that ``labels`` names; the others keep theirs.
+
+        Keys are the keys of ``DRAW_LABELS``: the tools of ``DRAW_MODES``,
+        ``select`` and ``clear``. A label is a non-empty string. Any other key
+        or label raises ``ValueError`` and changes nothing.
+        """
+        if not isinstance(labels, Mapping):
+            raise ValueError(f"labels must be a mapping, got {labels!r}")
+        for key, label in labels.items():
+            if key not in DRAW_LABELS:
+                raise ValueError(f"{key!r} labels no button; the keys are {tuple(DRAW_LABELS)}")
+            if not isinstance(label, str) or not label:
+                raise ValueError(f"the {key!r} label must be a non-empty string, got {label!r}")
+        with self._widget._lock:
+            self._write(labels={**self._widget.drawing["labels"], **labels})
 
     def _hand_over(self, session: DrawSession | None, *, modes: list, features: list) -> None:
         """Give the tools to ``session``, or to nobody, in one message."""
@@ -330,17 +366,11 @@ class Draw:
             number = drawing["session"] + (0 if session is None else 1)
             seq = widget.draw_request["seq"] + 1
             widget.set_trait("draw_request", {"seq": seq, "features": features})
-            widget.set_trait(
-                "drawing", {**drawing, "session": number, "modes": modes, "mode": STATIC}
-            )
+            widget.set_trait("drawing", {**drawing, "session": number, "modes": modes})
 
     def _change_callback(self) -> DrawCallback | None:
         """The active session's ``on_change``; call with the widget lock held."""
         return None if self._session is None else self._session._on_change
-
-    def _require(self) -> None:
-        if self._session is None:
-            raise RuntimeError("no drawing session is active: begin one with draw.begin()")
 
     def _write(self, **changes: Any) -> None:
         widget = self._widget

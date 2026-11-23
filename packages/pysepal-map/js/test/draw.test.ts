@@ -192,43 +192,64 @@ function point(lng: number, lat = 0, extra: Record<string, unknown> = {}) {
   } as DrawFeature;
 }
 
-const ON = (
-  mode = "static",
-  modes = ["polygon", "point", "select"],
-  session = 1
-) => ({
+const LABELS = {
+  polygon: "Draw a polygon",
+  rectangle: "Draw a rectangle",
+  circle: "Draw a circle",
+  linestring: "Draw a line",
+  point: "Draw a point",
+  select: "Select and edit shapes",
+  clear: "Remove all shapes",
+};
+const ON = (modes = ["polygon", "point", "select"], session = 1) => ({
   session,
   modes,
-  mode,
   color: "#3388ff",
+  labels: LABELS,
 });
-const OFF = { session: 1, modes: [], mode: "static", color: "#3388ff" };
+const OFF = { session: 1, modes: [], color: "#3388ff", labels: LABELS };
 const UUID4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** Another view's handle on `model`: anywidget gives each view its own. */
+function proxyOf(model: FakeModel) {
+  return {
+    get: (name: string) => model.get(name),
+    on: (name: string, callback: () => void) => model.on(name, callback),
+    off: (name: string, callback: () => void) => model.off(name, callback),
+  };
+}
 
 function setup(
   values: {
     drawing?: unknown;
     draw_request?: unknown;
     drawn?: unknown;
+    draw_tool?: unknown;
   } = {},
-  reject: FakeEngine["reject"] = () => null
+  reject: FakeEngine["reject"] = () => null,
+  /** The model of a view already built, which this view reaches through a proxy of its own. */
+  shared?: FakeModel
 ) {
   const map = new FakeMap();
-  const model = new FakeModel({
-    drawing: OFF,
-    draw_request: { seq: 0, features: [] },
-    drawn: { request_seq: 0, features: [] },
-    ...values,
-  });
+  const model =
+    shared ??
+    new FakeModel({
+      drawing: OFF,
+      draw_request: { seq: 0, features: [] },
+      drawn: { request_seq: 0, features: [] },
+      draw_tool: { seq: 0, session: 0, mode: "static" },
+      ...values,
+    });
   const engines: FakeEngine[] = [];
   const sent: DrawReport[] = [];
   const changes: boolean[] = [];
   const rendered: { features: DrawFeature[]; color: string }[] = [];
+  const tools: [string[], Record<string, string>, string][] = [];
   let refuse = false;
   const view: ViewDraw = new ViewDraw({
     map,
-    model,
+    model: shared ? proxyOf(shared) : model,
     viewId: "v1",
     side: "main",
     send: (report) => {
@@ -245,6 +266,8 @@ function setup(
     onInteractiveChange: () => changes.push(view.interactive()),
     onRendered: (features, color) =>
       rendered.push(structuredClone({ features, color })),
+    onToolsChange: (modes, labels, active) =>
+      tools.push(structuredClone([modes, labels, active])),
   });
   return {
     map,
@@ -254,6 +277,7 @@ function setup(
     sent,
     changes,
     rendered,
+    tools,
     engine: () => engines[engines.length - 1],
     load: () => map.emit("style.load"),
     refuse: (value: boolean) => (refuse = value),
@@ -273,8 +297,9 @@ describe("starting", () => {
   });
 
   it("waits for the style before it starts", () => {
-    const { load, model, engines } = setup();
-    model.set("drawing", ON("polygon"));
+    const { view, load, model, engines } = setup();
+    model.set("drawing", ON());
+    view.setMode("polygon");
     expect(engines).toHaveLength(0);
     load();
     expect(engines).toHaveLength(1);
@@ -284,7 +309,7 @@ describe("starting", () => {
   it("registers every drawing mode and select, whatever modes offers", () => {
     const { load, model, engine } = setup();
     load();
-    model.set("drawing", ON("static", ["point"]));
+    model.set("drawing", ON(["point"]));
     expect(engine().specs.map((s) => s.name)).toEqual([
       ...DRAW_MODES,
       "select",
@@ -472,18 +497,21 @@ describe("sessions", () => {
       draw_request: { seq: 1, features: [seed] },
     });
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     engine().draw(polygon());
     expect(sent.map((r) => r.cause)).toEqual(["request", "user"]);
     expect(view.inspect().session).toBe(1);
 
-    model.set("drawing", ON("polygon", undefined, 2));
+    model.set("drawing", ON(undefined, 2));
     expect(view.inspect().session).toBe(2);
     expect(engines).toHaveLength(2);
     expect(engines[0].enabled).toBe(false);
     expect(engine().store).toEqual([]);
     expect(view.inspect().committed).toEqual([]);
-    expect(engine().getMode()).toBe("polygon");
+    // A new session starts with no tool.
+    expect(engine().getMode()).toBe("static");
+    expect(view.interactive()).toBe(false);
     expect(sent).toHaveLength(2);
 
     const next = polygon(8);
@@ -501,13 +529,14 @@ describe("sessions", () => {
       ["draw_request", "drawing"],
       ["drawing", "draw_request"],
     ]) {
-      const { load, model, engine, engines, sent } = setup();
+      const { view, load, model, engine, engines, sent } = setup();
       load();
-      model.set("drawing", ON("polygon"));
+      model.set("drawing", ON());
+      view.setMode("polygon");
       engine().draw(polygon());
       const seed = polygon(3);
       const values: Record<string, unknown> = {
-        drawing: ON("static", undefined, 2),
+        drawing: ON(undefined, 2),
         draw_request: { seq: 1, features: [seed] },
       };
       model.setMany(Object.fromEntries(order.map((k) => [k, values[k]])));
@@ -524,12 +553,14 @@ describe("sessions", () => {
   it("modes going empty drops the committed features", () => {
     const { load, model, engine, engines, sent, view } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     engine().draw(polygon());
     model.set("drawing", OFF);
     expect(engines[0].enabled).toBe(false);
     expect(view.inspect().committed).toEqual([]);
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     expect(engines).toHaveLength(2);
     expect(engine().store).toEqual([]);
     expect(sent).toHaveLength(1);
@@ -540,9 +571,10 @@ describe("sessions", () => {
       ["draw_request", "drawing"],
       ["drawing", "draw_request"],
     ]) {
-      const { load, model, engines, sent } = setup();
+      const { view, load, model, engines, sent } = setup();
       load();
-      model.set("drawing", ON("polygon"));
+      model.set("drawing", ON());
+      view.setMode("polygon");
       const values: Record<string, unknown> = {
         drawing: OFF,
         draw_request: { seq: 1, features: [] },
@@ -555,9 +587,10 @@ describe("sessions", () => {
   });
 
   it("a style replacement restores the view's own features", () => {
-    const { load, model, engine, engines, map, sent } = setup();
+    const { view, load, model, engine, engines, map, sent } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     const mine = polygon();
     engine().draw(mine);
     // Another view's edit, accepted meanwhile.
@@ -617,12 +650,13 @@ describe("requests", () => {
 
 describe("user reports", () => {
   it("finish sends one user report on the applied sequence", () => {
-    const { load, model, engine, sent } = setup({
+    const { view, load, model, engine, sent } = setup({
       draw_request: { seq: 4, features: [] },
       drawn: { request_seq: 4, features: [] },
     });
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     const drawn = polygon();
     engine().draw(drawn);
     expect(sent).toEqual([
@@ -642,11 +676,12 @@ describe("user reports", () => {
   it("a user's deletion of a committed feature reports, a helper's does not", () => {
     const kept = polygon();
     const gone = polygon(3);
-    const { load, model, engine, sent } = setup({
+    const { view, load, model, engine, sent } = setup({
       drawn: { request_seq: 0, features: [kept, gone] },
     });
     load();
-    model.set("drawing", ON("select"));
+    model.set("drawing", ON());
+    view.setMode("select");
     engine().store.push(point(0, 0, { selectionPoint: true }));
     engine().remove(engine().store[2].id);
     expect(sent).toEqual([]);
@@ -658,11 +693,12 @@ describe("user reports", () => {
 
   it("selecting and deselecting reports nothing", () => {
     const shown = polygon();
-    const { load, model, engine, sent } = setup({
+    const { view, load, model, engine, sent } = setup({
       drawn: { request_seq: 0, features: [shown] },
     });
     load();
-    model.set("drawing", ON("select"));
+    model.set("drawing", ON());
+    view.setMode("select");
     engine().store[0].properties.selected = true;
     engine().store.push(point(0, 0, { selectionPoint: true, index: 0 }));
     engine().store.push(point(0.5, 0, { midPoint: true }));
@@ -682,9 +718,10 @@ describe("user reports", () => {
       edited: false,
       coordinatePointIds: ["x"],
     });
-    const { load, model, engine, sent } = setup();
+    const { view, load, model, engine, sent } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     const helpers = [
       polygon(5, { currentlyDrawing: true, committedCoordinateCount: 2 }),
       point(1, 1, { closingPoint: true }),
@@ -708,10 +745,35 @@ describe("user reports", () => {
     ]);
   });
 
+  it("clearAll reports an empty user drawing, even when already empty", () => {
+    const { load, model, view, engine, sent, rendered } = setup({
+      draw_request: { seq: 2, features: [polygon()] },
+    });
+    view.clearAll();
+    load();
+    model.set("drawing", ON());
+    view.setMode("polygon");
+    view.clearAll();
+    expect(engine().store).toEqual([]);
+    expect(view.inspect().committed).toEqual([]);
+    expect(rendered.at(-1)!.features).toEqual([]);
+    view.clearAll();
+    expect(sent.map((r) => [r.cause, r.request_seq, r.features])).toEqual([
+      ["request", 2, [expect.objectContaining({ type: "Feature" })]],
+      ["user", 2, []],
+      ["user", 2, []],
+    ]);
+    expect(engine().getMode()).toBe("polygon");
+    model.set("drawing", OFF);
+    view.clearAll();
+    expect(sent).toHaveLength(3);
+  });
+
   it("sends a report the comm refused again on reconnect", () => {
     const { load, model, engine, sent, view, refuse } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     refuse(true);
     const drawn = polygon();
     engine().draw(drawn);
@@ -727,9 +789,10 @@ describe("user reports", () => {
 
 describe("longitudes", () => {
   it("moves a feature by whole turns into [-180, 180] and rounds it again", () => {
-    const { load, model, engine, sent } = setup();
+    const { view, load, model, engine, sent } = setup();
     load();
-    model.set("drawing", ON("point"));
+    model.set("drawing", ON());
+    view.setMode("point");
     engine().draw(point(190.1, 10));
     engine().draw(point(360.1, 10));
     const shifted = polygon(370);
@@ -746,9 +809,10 @@ describe("longitudes", () => {
 
   it("leaves out a feature that crosses the antimeridian, with a warning", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { load, model, engine, sent } = setup();
+    const { view, load, model, engine, sent } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     const across = polygon(179.5);
     engine().draw(polygon());
     engine().draw(across);
@@ -760,12 +824,14 @@ describe("longitudes", () => {
 
 describe("modes", () => {
   it("calls setMode only when the mode changes", () => {
-    const { load, model, engine } = setup();
+    const { view, load, model, engine } = setup();
     load();
-    model.set("drawing", ON("polygon"));
-    model.set("drawing", { ...ON("polygon"), color: "#000000" });
-    model.set("drawing", ON("polygon"));
-    model.set("drawing", ON("select"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
+    model.set("drawing", { ...ON(), color: "#000000" });
+    view.setMode("polygon");
+    model.set("drawing", ON());
+    view.setMode("select");
     expect(engine().log.filter((e) => e.startsWith("setMode"))).toEqual([
       "setMode:polygon",
       "setMode:select",
@@ -773,10 +839,11 @@ describe("modes", () => {
   });
 
   it("updates every mode's styles on a colour change and never restarts", () => {
-    const { load, model, engine, engines } = setup();
+    const { view, load, model, engine, engines } = setup();
     load();
-    model.set("drawing", ON("polygon"));
-    model.set("drawing", { ...ON("polygon"), color: "#00ff00" });
+    model.set("drawing", ON());
+    view.setMode("polygon");
+    model.set("drawing", { ...ON(), color: "#00ff00" });
     expect(engines).toHaveLength(1);
     expect(engine().log).toEqual(["start", "setMode:polygon"]);
     expect(engine().options.map(([mode]) => mode)).toEqual([
@@ -794,23 +861,26 @@ describe("modes", () => {
     load();
     model.set("drawing", ON());
     expect(view.interactive()).toBe(false);
-    model.set("drawing", ON("polygon"));
+    view.setMode("polygon");
     expect(view.interactive()).toBe(true);
-    model.set("drawing", ON("select"));
-    model.set("drawing", ON("static"));
+    view.setMode("select");
+    view.setMode("static");
     expect(view.interactive()).toBe(false);
-    model.set("drawing", ON("point"));
+    view.setMode("point");
     model.set("drawing", OFF);
+    expect(view.interactive()).toBe(false);
+    view.setMode("point");
     expect(view.interactive()).toBe(false);
     // Told on each turn, to close popups or to put the cursor rule back.
     expect(changes).toEqual([true, false, true, false]);
   });
 
   it("stops in static first, then puts navigation back as it was", () => {
-    const { load, model, engine, map } = setup();
+    const { view, load, model, engine, map } = setup();
     map.doubleClickZoom.disable();
     load();
-    model.set("drawing", ON("select"));
+    model.set("drawing", ON());
+    view.setMode("select");
     // Terra Draw holds both while a vertex is dragged.
     map.dragPan.disable();
     map.doubleClickZoom.enable();
@@ -821,11 +891,164 @@ describe("modes", () => {
   });
 });
 
+describe("the active tool", () => {
+  const TOOL = (seq: number, mode: string, session = 1) => ({
+    seq,
+    session,
+    mode,
+  });
+  const setModes = (engine: FakeEngine) =>
+    engine.log.filter((e) => e.startsWith("setMode"));
+
+  it("setMode switches Terra Draw and tells the tools", () => {
+    const { load, model, view, engine, tools } = setup();
+    load();
+    model.set("drawing", ON());
+    view.setMode("polygon");
+    expect(engine().getMode()).toBe("polygon");
+    // Modes the session does not offer are ignored.
+    view.setMode("circle");
+    view.setMode("hexagon");
+    expect(engine().getMode()).toBe("polygon");
+    view.setMode("static");
+    expect(engine().getMode()).toBe("static");
+    const labels = { ...LABELS, clear: "Tout effacer" };
+    model.set("drawing", { ...ON(), labels });
+    view.setMode("point");
+    model.set("drawing", OFF);
+    const modes = ON().modes;
+    expect(tools).toEqual([
+      [modes, LABELS, "static"],
+      [modes, LABELS, "polygon"],
+      [modes, LABELS, "static"],
+      [modes, labels, "static"],
+      [modes, labels, "point"],
+      [[], LABELS, "static"],
+    ]);
+    expect(view.tools()).toEqual({
+      modes: [],
+      labels: LABELS,
+      active: "static",
+    });
+  });
+
+  it("a tool request of the running session applies once", () => {
+    const { load, model, view, engine } = setup();
+    load();
+    model.set("drawing", ON());
+    model.set("draw_tool", TOOL(1, "polygon"));
+    expect(engine().getMode()).toBe("polygon");
+    view.setMode("static");
+    model.set("draw_tool", TOOL(1, "polygon"));
+    expect(engine().getMode()).toBe("static");
+    model.set("draw_tool", TOOL(2, "point"));
+    expect(engine().getMode()).toBe("point");
+    expect(view.tools().active).toBe("point");
+    // Not offered: ignored, though its seq counts as applied.
+    model.set("draw_tool", TOOL(3, "circle"));
+    model.set("draw_tool", TOOL(3, "select"));
+    expect(engine().getMode()).toBe("point");
+    model.set("draw_tool", TOOL(4, "static"));
+    expect(setModes(engine())).toEqual([
+      "setMode:polygon",
+      "setMode:static",
+      "setMode:point",
+      "setMode:static",
+    ]);
+  });
+
+  it("a tool request of another session never applies", () => {
+    const { load, model, view, engine, engines } = setup({
+      drawing: ON(undefined, 2),
+      draw_tool: TOOL(4, "polygon", 1),
+    });
+    load();
+    expect(engines).toHaveLength(1);
+    model.set("draw_tool", TOOL(5, "point", 1));
+    model.set("draw_tool", TOOL(6, "point", 3));
+    expect(setModes(engine())).toEqual([]);
+    // A new session starts with no tool, even after one was picked.
+    view.setMode("polygon");
+    model.set("drawing", ON(undefined, 4));
+    expect(engines).toHaveLength(2);
+    expect(setModes(engine())).toEqual([]);
+    expect(view.tools().active).toBe("static");
+  });
+
+  it("the current session's tool request applies at the first start", () => {
+    const { load, engines } = setup({
+      drawing: ON(),
+      draw_tool: TOOL(1, "polygon"),
+    });
+    load();
+    expect(engines[0].log).toEqual(["start", "setMode:polygon"]);
+    for (const order of [
+      ["draw_tool", "drawing"],
+      ["drawing", "draw_tool"],
+    ]) {
+      const { load, model, engine, engines } = setup();
+      load();
+      model.set("drawing", ON());
+      const values: Record<string, unknown> = {
+        drawing: ON(undefined, 2),
+        draw_tool: TOOL(1, "point", 2),
+      };
+      model.setMany(Object.fromEntries(order.map((k) => [k, values[k]])));
+      expect(engines).toHaveLength(2);
+      expect(engine().log).toEqual(["start", "setMode:point"]);
+    }
+  });
+
+  it("a style replacement keeps the active tool", () => {
+    const { load, model, view, engine, engines, map } = setup();
+    load();
+    model.set("drawing", ON());
+    view.setMode("polygon");
+    const get = vi.spyOn(model, "get");
+    map.emit("styledataloading");
+    expect(view.tools().active).toBe("polygon");
+    map.emit("style.load");
+    expect(engines).toHaveLength(2);
+    expect(engine().getMode()).toBe("polygon");
+    expect(get.mock.calls.map(([name]) => name)).not.toContain("draw_tool");
+  });
+
+  it("a remount does not apply a consumed tool request", () => {
+    const first = setup({ drawing: ON(), draw_tool: TOOL(1, "polygon") });
+    first.load();
+    expect(first.engine().getMode()).toBe("polygon");
+    first.view.dispose();
+    const second = setup({}, undefined, first.model);
+    second.load();
+    expect(second.engine().log).toEqual(["start"]);
+    expect(second.view.tools().active).toBe("static");
+    // A newer request still reaches it.
+    first.model.set("draw_tool", TOOL(2, "point"));
+    expect(second.engine().getMode()).toBe("point");
+  });
+
+  it("two running views both apply a tool request", () => {
+    const one = setup({ drawing: ON() });
+    const two = setup({}, undefined, one.model);
+    one.load();
+    two.load();
+    two.view.setMode("point");
+    one.model.set("draw_tool", TOOL(1, "polygon"));
+    expect(one.engine().getMode()).toBe("polygon");
+    expect(two.engine().getMode()).toBe("polygon");
+    // A view shown after both starts with no tool.
+    const three = setup({}, undefined, one.model);
+    three.load();
+    expect(three.engine().getMode()).toBe("static");
+  });
+});
+
 describe("style replacement", () => {
   it("stops before a full replacement and starts again with its features, silently", () => {
-    const { load, model, engine, engines, map, sent } = setup();
+    const { view, load, model, engine, engines, map, sent } = setup();
     load();
-    model.set("drawing", ON("select"));
+    model.set("drawing", ON());
+    view.setMode("select");
     const mine = polygon();
     engine().draw(mine);
     map.dragPan.disable();
@@ -841,9 +1064,10 @@ describe("style replacement", () => {
 
   it("starts again once a diff removed the adapter's sources", () => {
     for (const event of ["style.load", "styledata"]) {
-      const { load, model, engines, map, engine } = setup();
+      const { view, load, model, engines, map, engine } = setup();
       load();
-      model.set("drawing", ON("polygon"));
+      model.set("drawing", ON());
+      view.setMode("polygon");
       const mine = polygon();
       engine().draw(mine);
       map.emit(event);
@@ -906,11 +1130,12 @@ describe("what Terra Draw renders", () => {
 
   it("is told after a restore, on a user's change, and as Terra Draw stops", () => {
     const saved = polygon();
-    const { load, model, engine, rendered } = setup({
+    const { view, load, model, engine, rendered } = setup({
       drawn: { request_seq: 0, features: [saved] },
     });
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     expect(rendered.at(-1)).toEqual({
       features: mirrorFeatures([saved]),
       color: "#3388ff",
@@ -938,12 +1163,13 @@ describe("what Terra Draw renders", () => {
   });
 
   it("is told the new colour", () => {
-    const { load, model, engine, rendered } = setup();
+    const { view, load, model, engine, rendered } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     const mine = polygon();
     engine().draw(mine);
-    model.set("drawing", { ...ON("polygon"), color: "#00ff00" });
+    model.set("drawing", { ...ON(), color: "#00ff00" });
     expect(rendered.at(-1)).toEqual({
       features: mirrorFeatures([mine]),
       color: "#00ff00",
@@ -955,7 +1181,8 @@ describe("dispose", () => {
   it("stops Terra Draw and lets go of the map and the model", () => {
     const { load, model, engine, map, view } = setup();
     load();
-    model.set("drawing", ON("polygon"));
+    model.set("drawing", ON());
+    view.setMode("polygon");
     view.dispose();
     expect(engine().enabled).toBe(false);
     expect(map.count()).toBe(0);

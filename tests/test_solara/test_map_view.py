@@ -10,6 +10,7 @@ from pysepal.frontend.styles import THEMES
 from pysepal.layers import LayerSpec, Legend, LegendItem, RenderLayer
 from pysepal.mapping import SepalMap
 from pysepal.mapping.inspector import Inspection
+from pysepal.message import msg
 from pysepal.solara.components import map_app, map_view
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.map_view import MapView
@@ -356,8 +357,44 @@ def test_slot_keys_stay_stable_when_the_toolbar_and_inspector_come_and_go():
     m.inspector.deactivate()
     assert "count 1" in corner_text(box, "top-left")
     assert mounts == ["mount"]
-    for role in ("map-draw", "map-inspector"):
-        assert len(role_widgets(box, role)) == 1
+    assert len(role_widgets(box, "map-inspector")) == 1
+    rc.close()
+
+
+def test_map_view_has_no_draw_slot():
+    m = SepalMap(gee=False)
+    m.draw.begin(["polygon"])
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert role_widgets(box, "map-draw") == []
+    assert role_widgets(box, "draw-mode") == role_widgets(box, "draw-clear") == []
+    assert [
+        w for w in _tree(box) if "pysepal-map-toolbar" in (getattr(w, "class_", "") or "")
+    ] == []
+    rc.close()
+
+
+def test_map_view_sets_the_draw_labels():
+    m = SepalMap(gee=False)
+    keys = ("polygon", "rectangle", "circle", "linestring", "point", "select")
+    want = {**{k: msg(f"map_view.draw.{k}") for k in keys}, "clear": msg("map_view.draw.clear_all")}
+    assert m.drawing["labels"] == want
+    m.draw.set_labels({"clear": "x"})
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert m.drawing["labels"]["clear"] == msg("map_view.draw.clear_all")
+    assert m.drawing["labels"] == want
+    rc.close()
+
+
+def test_top_left_stack_clears_the_draw_toolbar():
+    m = SepalMap(gee=False)
+    m.layer_engine.flush()
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert "--pysepal-controls-top-left: 78px" in box.children[0].style_
+    # Two tools and select, then the clear button: four 29 px buttons and a 10 px margin.
+    session = m.draw.begin(["polygon", "point"])
+    assert "--pysepal-controls-top-left: 204px" in box.children[0].style_
+    session.end()
+    assert "--pysepal-controls-top-left: 78px" in box.children[0].style_
     rc.close()
 
 

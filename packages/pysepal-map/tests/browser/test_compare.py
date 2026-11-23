@@ -654,7 +654,7 @@ def test_drawing_across_the_divider(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
     reports, _ = record(widget)
     session = widget.draw.begin(("polygon",))
-    widget.draw.start("polygon")
+    session.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
     wait_for(page_session, lambda: len(reports) == 1, "the session was never acknowledged")
@@ -700,8 +700,8 @@ def test_drawing_across_the_divider(harness, page_session, wait_settled):
 def test_mirror_after_compare_on(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
     _, calls = record(widget)
-    widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
+    session = widget.draw.begin(("polygon",), on_change=calls.append)
+    session.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
     draw_polygon(page_session, el, spread(el, (0.3, 0.3), (0.7, 0.3), (0.6, 0.75)))
@@ -737,8 +737,8 @@ def test_mirror_follows_draw_set(harness, page_session, wait_settled):
 
 def test_mirror_shows_handles_in_select_mode(harness, page_session, wait_settled):
     widget = MapWidget(zoom=3)
-    widget.draw.begin(("polygon",), features=[feature(square(15, -5, 25, 5))])
-    widget.draw.start("select")
+    session = widget.draw.begin(("polygon",), features=[feature(square(15, -5, 25, 5))])
+    session.start("select")
     widget.publish(MapState(compare=True))
     [el] = show(page_session, widget)
     wait_settled(page_session, 1)

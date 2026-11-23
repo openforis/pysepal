@@ -14,6 +14,7 @@ import { MapSync } from "./maplive";
 import { ViewPointer } from "./pointer";
 import { ViewPopups } from "./popups";
 import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
+import { DrawToolbar } from "./toolbar";
 import type { MapState } from "./types";
 import { CAMERA_OPTIONS, ViewCamera, insetsOf, lockRotation } from "./view";
 
@@ -37,6 +38,7 @@ interface Model {
   drawing: unknown;
   draw_request: unknown;
   drawn: unknown;
+  draw_tool: unknown;
   _link: Record<string, unknown>;
 }
 
@@ -157,6 +159,24 @@ function render({ model, el }: RenderProps<Model>) {
     },
     createMarker: (color) => new maplibregl.Marker({ color }),
   });
+  const toolbar = new DrawToolbar({
+    onSelect: (mode) => draw?.setMode(mode),
+    onClear: () => draw?.clearAll(),
+  });
+  let toolbarShown = false;
+  const showTools = (
+    modes: string[],
+    labels: Record<string, string>,
+    active: string
+  ) => {
+    if (modes.length) {
+      toolbar.sync(modes, labels, active);
+      if (!toolbarShown) map.addControl(toolbar, "top-left");
+    } else if (toolbarShown) {
+      map.removeControl(toolbar);
+    }
+    toolbarShown = modes.length > 0;
+  };
   draw = new ViewDraw({
     map,
     model,
@@ -168,7 +188,11 @@ function render({ model, el }: RenderProps<Model>) {
       popups.drawingChanged();
       pointer.drawingChanged();
     },
-    onRendered: (features, color) => compare.setDrawing(features, color),
+    onRendered: (features, color) => {
+      compare.setDrawing(features, color);
+      root.style.setProperty("--psm-draw-color", color);
+    },
+    onToolsChange: showTools,
   });
   root.psmDraw = draw;
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
@@ -202,6 +226,9 @@ function render({ model, el }: RenderProps<Model>) {
     controls.sync(model.get("state") as Partial<MapState>);
   applyControls();
   model.on("change:state", applyControls);
+  // After the controls, so the toolbar sits below them.
+  const { modes, labels, active } = draw.tools();
+  showTools(modes, labels, active);
 
   const resizer = new ResizeObserver(() => {
     // The right map first, so the main map's move paints it at its new size.
@@ -228,6 +255,7 @@ function render({ model, el }: RenderProps<Model>) {
     model.off("change:insets", applyInsets);
     model.off("change:state", applyControls);
     resizer.disconnect();
+    root.style.removeProperty("--psm-draw-color");
     delete root.psmMap;
     delete root.psmInspect;
     delete root.psmStatus;

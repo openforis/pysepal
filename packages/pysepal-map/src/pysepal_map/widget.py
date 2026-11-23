@@ -5,7 +5,7 @@ keeps the rest of the contract, summed up here for whoever drives a widget or
 writes a front end for it.
 
 Traits. ``state``, ``view``, ``view_request``, ``insets``, ``marker``, ``drawing``,
-``draw_request`` and ``drawn`` are read-only: assigning one raises
+``draw_request``, ``drawn`` and ``draw_tool`` are read-only: assigning one raises
 ``traitlets.TraitError``, and only the widget writes them. The comm opens with
 the first request, sequence 1, in ``view_request``.
 
@@ -190,10 +190,10 @@ The click message is sent whether or not a popup opens.
 
 Drawing. ``drawing`` declares the tools: ``session``, ``modes`` (empty while
 no session is active, else drawing modes with ``select`` last when editing is
-on), ``mode`` (``static`` or one of ``modes``) and ``color``. Drawing is
-interactive while ``mode`` is not ``static``. Python holds the tools through
-sessions, one at a time: ``draw.begin`` ends the active session and begins the
-next, numbered in ``session`` from 1 (0 before the first), and
+on), ``color`` and ``labels``, the toolbar's label of each drawing mode, of
+``select`` and of ``clear``, which ``draw.set_labels`` sets. Python holds the
+tools through sessions, one at a time: ``draw.begin`` ends the active session
+and begins the next, numbered in ``session`` from 1 (0 before the first), and
 ``DrawSession.end`` clears the drawing and hides the tools. The browser owns
 the drawn features, like the camera. ``begin``, ``end`` and a session's
 ``set`` and ``clear`` write ``draw_request``, ``{"seq", "features"}``, whose
@@ -204,6 +204,25 @@ report. Python checks the shapes it requests: one closed ring of 4 positions
 or more per polygon, lines of 2 or more, finite positions on the globe and
 JSON properties. It splits Multi* geometries and keeps ids, properties and
 coordinates as given.
+
+The browser holds the active tool too. While ``modes`` is not empty, each view
+shows the draw toolbar in its top-left corner, after the controls already
+there: one ``maplibregl-ctrl-group`` with a ``button.psm-draw-tool`` per mode,
+``data-mode`` naming it and ``aria-pressed`` true on the active one, then a
+``button.psm-draw-clear``. A click on a tool makes it the view's active tool, a
+click on the active one leaves it for ``static``, and the clear button removes
+every drawn feature and sends a ``user`` report, even of a drawing that was
+already empty. Drawing is interactive while a view's active tool is not
+``static``. ``DrawSession.start`` and ``stop`` write ``draw_tool``,
+``{"seq", "session", "mode"}``, whose ``seq`` only grows from 0. A view
+holds its tool apart from Terra Draw's mode, and a new session starts with
+none. A restart in one session, after a style replacement, enters the view's
+tool again and reads no ``draw_tool``. Only a view's first start in a session
+reads it: it applies the request when it names that session and no view of
+the page applied it yet, so a ``start`` made before any view shows reaches the
+first one, and a view shown later, or shown again, starts with no tool. A view
+running the session applies each request for it newer than the last it
+applied, so every running view follows one ``start``.
 
 Each view runs its own Terra Draw 1.39 while ``modes`` is not empty, with every
 drawing mode registered, and prepares each feature before it adds it: it
@@ -271,7 +290,7 @@ import traitlets
 
 from ._callbacks import CallbackQueue, running_loop
 from ._camera import INSET_SIDES, MAX_ZOOM, _bounds_request, _center_request, _insets
-from ._draw import DEFAULT_COLOR, STATIC, Draw, report_features
+from ._draw import DEFAULT_COLOR, DRAW_LABELS, STATIC, Draw, report_features
 from ._events import ClickEvent, FeatureHit
 from .state import GeoJSONSource, LayerStatus, MapState, _finite
 
@@ -456,6 +475,7 @@ class MapWidget(anywidget.AnyWidget):
     drawing = traitlets.Dict(read_only=True).tag(sync=True)
     draw_request = traitlets.Dict(read_only=True).tag(sync=True)
     drawn = traitlets.Dict(read_only=True).tag(sync=True)
+    draw_tool = traitlets.Dict(read_only=True).tag(sync=True)
     cursor = traitlets.Enum(CURSORS, "").tag(sync=True)
     height = traitlets.Unicode("400px").tag(sync=True)
     _link = traitlets.Dict(read_only=True).tag(sync=True)
@@ -554,7 +574,7 @@ class MapWidget(anywidget.AnyWidget):
 
     @traitlets.default("drawing")
     def _default_drawing(self) -> dict:
-        return {"session": 0, "modes": [], "mode": STATIC, "color": DEFAULT_COLOR}
+        return {"session": 0, "modes": [], "color": DEFAULT_COLOR, "labels": dict(DRAW_LABELS)}
 
     @traitlets.default("draw_request")
     def _default_draw_request(self) -> dict:
@@ -563,6 +583,10 @@ class MapWidget(anywidget.AnyWidget):
     @traitlets.default("drawn")
     def _default_drawn(self) -> dict:
         return {"request_seq": 0, "features": []}
+
+    @traitlets.default("draw_tool")
+    def _default_draw_tool(self) -> dict:
+        return {"seq": 0, "session": 0, "mode": STATIC}
 
     @property
     def draw(self) -> Draw:

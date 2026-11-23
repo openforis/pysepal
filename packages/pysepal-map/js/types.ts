@@ -110,13 +110,21 @@ export interface DrawFeature {
 
 /**
  * The `drawing` trait: the session that holds the tools, the tools offered
- * (empty while none does), the active one, the colour.
+ * (empty while none does), the colour, and the toolbar's label of each tool,
+ * of `select` and of `clear`.
  */
 export interface DrawingState {
   session: number;
   modes: string[];
-  mode: string;
   color: string;
+  labels: Record<string, string>;
+}
+
+/** The `draw_tool` trait: a session's request for an active tool; `seq` only grows. */
+export interface DrawToolState {
+  seq: number;
+  session: number;
+  mode: string;
 }
 
 /** The `draw_request` trait: features to show instead; `seq` only grows. */

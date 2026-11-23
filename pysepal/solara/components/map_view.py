@@ -8,13 +8,11 @@ import solara
 
 from pysepal.frontend.styles import THEMES
 from pysepal.layers import derive_legend
+from pysepal.mapping.sepal_map import _draw_labels
 from pysepal.message import msg
 from pysepal.solara.components.layer_panel.hooks import use_layer_store
 from pysepal.solara.components.legend import LegendComponent
-from pysepal.solara.components.map_view_tools import (
-    draw_toolbar,
-    inspector_panel,
-)
+from pysepal.solara.components.map_view_tools import inspector_panel
 
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 CORNERS: tuple[str, ...] = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -27,7 +25,8 @@ _DEFAULT_CONTROLS = {"zoom": True, "fullscreen": True, "scale": True}
 # MapLibre's control CSS: a group sits 10 px below the one above it and a button is 29 px
 # tall, the 1 px rule between the two zoom buttons included.
 _CONTROL_MARGIN = 10
-_TOP_LEFT_GROUPS = (("zoom", 58), ("fullscreen", 29))
+_BUTTON_HEIGHT = 29
+_TOP_LEFT_GROUPS = (("zoom", 2 * _BUTTON_HEIGHT), ("fullscreen", _BUTTON_HEIGHT))
 # The scale bar and attribution sit 36 px up; the coordinates readout above them is 18 px
 # of text (``.psm-coordinates``) and a 10 px margin.
 _BOTTOM_LEFT_BASE = 36
@@ -105,9 +104,16 @@ CSS = """
 
 
 def _top_left_offset(map_) -> int:
-    """The offset of the top-left stack below the top inset, clear of the zoom and fullscreen."""
+    """The offset of the top-left stack below the top inset, clear of the map's controls.
+
+    Those are the zoom, the fullscreen and, while a drawing session offers tools, the draw
+    toolbar: a button per tool and the clear button.
+    """
     controls = map_.state.get("controls") or _DEFAULT_CONTROLS
-    shown = (height for name, height in _TOP_LEFT_GROUPS if controls.get(name))
+    shown = [height for name, height in _TOP_LEFT_GROUPS if controls.get(name)]
+    tools = map_.drawing.get("modes") or ()
+    if tools:
+        shown.append((len(tools) + 1) * _BUTTON_HEIGHT)
     return _CONTROL_MARGIN + sum(height + _CONTROL_MARGIN for height in shown)
 
 
@@ -188,6 +194,10 @@ def MapView(
 
     solara.use_effect(follow_inspector, [inspector])
 
+    # Again on a language switch, which renders the view again with new messages.
+    labels = _draw_labels()
+    solara.use_effect(lambda: map_.draw.set_labels(labels), [map_, tuple(labels.items())])
+
     insets = map_.insets or {}
     variables = {f"--pysepal-inset-{side}": f"{int(insets.get(side, 0))}px" for side in _SIDES}
     variables["--pysepal-controls-top-left"] = f"{_top_left_offset(map_)}px"
@@ -208,7 +218,6 @@ def MapView(
     legends = _legends(map_) if legend else []
     legend_elements = [LegendComponent(legend_data=data, inline=True) for data in legends]
     stacks["bottom-right"].append(_slot("map-legend", legend_elements).key("legend"))
-    stacks["top-left"].append(_slot("map-draw", draw_toolbar(map_)).key("draw"))
     stacks["top-left"].append(_slot("map-inspector", inspector_panel(map_)).key("inspector"))
     for corner in CORNERS:
         stacks[corner].extend(overlays.get(corner, ()))

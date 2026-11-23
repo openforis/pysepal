@@ -209,7 +209,7 @@ def test_draw_polygon_reports_feature(harness, page_session):
     widget = MapWidget(zoom=3)
     reports, calls = record(widget)
     session = widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
+    session.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
     points = spread(el, (0.3, 0.3), (0.5, 0.25), (0.55, 0.65), (0.35, 0.7))
@@ -230,7 +230,7 @@ def test_draw_polygon_reports_feature(harness, page_session):
     widget.cursor = "wait"
     page_session.wait_for_timeout(200)
     assert el.evaluate("el => el.psmMap.getCanvas().style.cursor") != "wait"
-    widget.draw.stop()
+    session.stop()
     page_session.wait_for_function("el => el.psmMap.getCanvas().style.cursor === 'wait'", arg=el)
 
 
@@ -240,8 +240,8 @@ def test_reorder_mid_polygon_through_widget(harness, page_session, wait_settled)
     north = Layer("north", GeoJSONSource(widget.add_payload(payload(square(30, 10, 40, 20)))))
     widget.publish(MapState(layers=(south, north)))
     reports, calls = record(widget)
-    widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
+    session = widget.draw.begin(("polygon",), on_change=calls.append)
+    session.start("polygon")
     [el] = show(page_session, widget)
     wait_settled(page_session, 1)
     wait_drawing(page_session, el, "polygon")
@@ -281,7 +281,7 @@ def test_cancel_and_vertex_delete(harness, page_session):
     [el] = show(page_session, widget)
     wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
 
-    widget.draw.start("polygon")
+    session.start("polygon")
     wait_drawing(page_session, el, "polygon")
     place(page_session, el, spread(el, (0.7, 0.3), (0.8, 0.4)))
     el.evaluate("el => el.psmMap.getCanvas().focus()")
@@ -293,7 +293,7 @@ def test_cancel_and_vertex_delete(harness, page_session):
     page_session.wait_for_timeout(500)
     assert [r["cause"] for r in reports] == ["request"]
 
-    widget.draw.start("select")
+    session.start("select")
     wait_drawing(page_session, el, "select")
     select(page_session, el, (-10, 0))
     click(page_session, el, *pixel(el, (0, 10)), button="right")
@@ -308,7 +308,7 @@ def test_theme_change_mid_polygon(harness, page_session):
     widget = MapWidget(zoom=3)
     _, calls = record(widget)
     session = widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
+    session.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
     points = spread(el, (0.3, 0.3), (0.55, 0.25), (0.45, 0.7))
@@ -337,18 +337,19 @@ def test_redisplay_restores_drawing(harness, page_session):
     widget = MapWidget(zoom=3, height="250px")
     _, calls = record(widget)
     session = widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
+    session.start("polygon")
     [first] = show(page_session, widget)
     wait_drawing(page_session, first, "polygon")
     draw_polygon(page_session, first, spread(first, (0.3, 0.2), (0.6, 0.2), (0.6, 0.8), (0.3, 0.8)))
     wait_for(page_session, lambda: calls, "on_change never ran")
     [drawn] = session.features["features"]
 
+    # The first view took the start: a view shown later begins with no tool.
     _, second = show(page_session, widget, count=2)
-    wait_drawing(page_session, second, "polygon")
+    wait_drawing(page_session, second, "static")
     assert polygons(second) == [drawn]
 
-    widget.draw.start("select")
+    session.start("select")
     wait_drawing(page_session, second, "select")
     corners = drawn["geometry"]["coordinates"][0]
     middle = [sum(c[i] for c in corners[:-1]) / 4 for i in (0, 1)]
@@ -368,7 +369,7 @@ def test_seed_replaces_drawing(harness, page_session):
     widget = MapWidget(zoom=3)
     reports, calls = record(widget)
     session = widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
+    session.start("polygon")
     [el] = show(page_session, widget)
     wait_drawing(page_session, el, "polygon")
     draw_polygon(page_session, el, spread(el, (0.3, 0.3), (0.5, 0.25), (0.45, 0.7)))
@@ -449,8 +450,8 @@ def test_seeds_are_prepared_in_the_browser(harness, page_session):
 
 def test_select_deselect_reports_nothing(harness, page_session):
     widget = MapWidget(zoom=3)
-    widget.draw.begin(("polygon",), features=[feature(square(-10, -10, 10, 10))])
-    widget.draw.start("select")
+    session = widget.draw.begin(("polygon",), features=[feature(square(-10, -10, 10, 10))])
+    session.start("select")
     reports, _ = record(widget)
     [el] = show(page_session, widget)
     wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
@@ -476,7 +477,7 @@ def test_point_in_repeated_world(harness, page_session):
     widget = MapWidget(center=(-170, 10), zoom=4, height="250px")
     _, calls = record(widget)
     session = widget.draw.begin(("point",), edit=False, on_change=calls.append)
-    widget.draw.start("point")
+    session.start("point")
     [first] = show(page_session, widget)
     wait_drawing(page_session, first, "point")
     widget.set_center(190, 10)
@@ -516,7 +517,7 @@ def test_rectangle_edit_survives_redisplay(harness, page_session):
     widget = MapWidget(zoom=3, height="250px")
     _, calls = record(widget)
     session = widget.draw.begin(("rectangle",), on_change=calls.append)
-    widget.draw.start("rectangle")
+    session.start("rectangle")
     [first] = show(page_session, widget)
     wait_drawing(page_session, first, "rectangle")
     a, b = spread(first, (0.3, 0.25), (0.45, 0.65))
@@ -527,7 +528,7 @@ def test_rectangle_edit_survives_redisplay(harness, page_session):
     [drawn] = session.features["features"]
     assert drawn["properties"]["mode"] == "rectangle"
 
-    widget.draw.start("select")
+    session.start("select")
     wait_drawing(page_session, first, "select")
     corners = drawn["geometry"]["coordinates"][0]
     middle = [sum(c[i] for c in corners[:-1]) / 4 for i in (0, 1)]
@@ -541,7 +542,7 @@ def test_rectangle_edit_survives_redisplay(harness, page_session):
     assert len({c[0] for c in ring}) == 2 and len({c[1] for c in ring}) == 2
 
     _, second = show(page_session, widget, count=2)
-    wait_drawing(page_session, second, "select")
+    wait_drawing(page_session, second, "static")
     [again] = polygons(second)
     assert again["id"] == resized["id"]
     assert again["geometry"] == resized["geometry"]
@@ -550,10 +551,10 @@ def test_rectangle_edit_survives_redisplay(harness, page_session):
 def test_edit_after_style_replacement(harness, page_session, browser_errors):
     widget = MapWidget(zoom=3)
     reports, calls = record(widget)
-    widget.draw.begin(
+    session = widget.draw.begin(
         ("polygon",), features=[feature(square(-10, -10, 10, 10))], on_change=calls.append
     )
-    widget.draw.start("select")
+    session.start("select")
     [el] = show(page_session, widget)
     wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
     wait_drawing(page_session, el, "select")
@@ -589,7 +590,7 @@ def test_edit_after_style_replacement(harness, page_session, browser_errors):
 def test_end_mid_drag_restores_navigation(harness, page_session):
     widget = MapWidget(zoom=3)
     session = widget.draw.begin(("polygon",), features=[feature(square(-10, -10, 10, 10))])
-    widget.draw.start("select")
+    session.start("select")
     reports, _ = record(widget)
     [el] = show(page_session, widget)
     wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
@@ -626,9 +627,9 @@ def test_a_new_session_drops_the_old_drawing(harness, page_session):
     widget = MapWidget(zoom=3, height="250px")
     reports, calls = record(widget)
     old = widget.draw.begin(("polygon",), on_change=calls.append)
-    widget.draw.start("polygon")
     display(widget)
     one, two = show(page_session, widget, count=2)
+    old.start("polygon")
     for el in (one, two):
         wait_drawing(page_session, el, "polygon")
     # The views of one widget never follow each other's drawing.
@@ -673,3 +674,131 @@ def test_end_empties_every_view(harness, page_session):
     for el in views:
         wait_session(page_session, el, 2)
         assert state(el)["store"] == []
+
+
+def toolbar(el):
+    """The draw toolbar's buttons, as ``[class, mode, title, aria-label, aria-pressed]``."""
+    return el.evaluate(
+        """el => [...el.querySelectorAll('.psm-draw-toolbar button')].map((b) => [
+            b.className, b.dataset.mode ?? null, b.title, b.getAttribute('aria-label'),
+            b.getAttribute('aria-pressed'),
+        ])"""
+    )
+
+
+def press(page, el, selector):
+    """Click a toolbar button, once nothing covers it."""
+    button = el.query_selector(f".psm-draw-toolbar {selector}")
+    box = button.bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.wait_for_function(
+        "([b, x, y]) => b.contains(document.elementFromPoint(x, y))", arg=[button, x, y]
+    )
+    page.mouse.click(x, y)
+
+
+def test_toolbar_click_draws_without_python(harness, page_session):
+    widget = MapWidget(zoom=3)
+    reports, calls = record(widget)
+    session = widget.draw.begin(("polygon",), on_change=calls.append)
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "static")
+
+    press(page_session, el, "[data-mode=polygon]")
+    wait_drawing(page_session, el, "polygon")
+    assert [b[4] for b in toolbar(el)] == ["true", "false", None]
+    draw_polygon(page_session, el, spread(el, (0.3, 0.3), (0.55, 0.25), (0.45, 0.7)))
+    wait_for(page_session, lambda: calls, "on_change never ran")
+    [drawn] = session.features["features"]
+    assert drawn["geometry"]["type"] == "Polygon" and drawn["properties"] == {"mode": "polygon"}
+    assert [r["cause"] for r in reports] == ["request", "user"]
+
+    # A second click leaves the tool; Python never asked for either.
+    press(page_session, el, "[data-mode=polygon]")
+    wait_drawing(page_session, el, "static")
+    assert [b[4] for b in toolbar(el)] == ["false", "false", None]
+    assert widget.draw_tool["seq"] == 0
+
+
+def test_toolbar_clear_reports_an_empty_user_drawing(harness, page_session):
+    widget = MapWidget(zoom=3)
+    reports, calls = record(widget)
+    session = widget.draw.begin(
+        ("polygon",), features=[feature(square(-10, -10, 10, 10))], on_change=calls.append
+    )
+    [el] = show(page_session, widget)
+    wait_for(page_session, lambda: widget.drawn["request_seq"] == 1, "no acknowledgement")
+
+    press(page_session, el, ".psm-draw-clear")
+    wait_for(page_session, lambda: calls, "the clear never reached Python")
+    assert calls == [EMPTY] and session.features == EMPTY
+    assert state(el)["committed"] == [] and state(el)["store"] == []
+    # Already empty, a clear still tells Python that a user cleared it.
+    press(page_session, el, ".psm-draw-clear")
+    wait_for(page_session, lambda: len(calls) == 2, "the second clear never reached Python")
+    assert calls == [EMPTY, EMPTY]
+    assert [(r["cause"], r["request_seq"]) for r in reports] == [
+        ("request", 1),
+        ("user", 1),
+        ("user", 1),
+    ]
+    assert widget.draw_request["seq"] == 1
+
+
+def test_toolbar_follows_the_session(harness, page_session):
+    widget = MapWidget(zoom=3)
+    widget.draw.set_labels({"polygon": "Forme libre"})
+    [el] = show(page_session, widget)
+    assert toolbar(el) == []
+
+    session = widget.draw.begin(("polygon", "point"))
+    page_session.wait_for_function("el => el.querySelector('.psm-draw-toolbar')", arg=el)
+
+    def tool(mode, title):
+        return ["psm-draw-tool", mode, title, title, "false"]
+
+    assert toolbar(el) == [
+        tool("polygon", "Forme libre"),
+        tool("point", "Draw a point"),
+        tool("select", "Select and edit shapes"),
+        ["psm-draw-clear", None, "Remove all shapes", "Remove all shapes", None],
+    ]
+    # One group below the zoom and fullscreen controls, each button an inline icon.
+    corner = el.evaluate(
+        "el => [...el.querySelector('.maplibregl-ctrl-top-left').children].map((c) => c.className)"
+    )
+    assert len(corner) == 3 and "psm-draw-toolbar" in corner[-1]
+    icons = el.evaluate(
+        """el => [...el.querySelectorAll('.psm-draw-toolbar button')].map((b) => {
+            const box = b.querySelector('svg > path').getBoundingClientRect();
+            return [b.querySelectorAll('svg').length, Math.min(box.width, box.height) > 8,
+                    Math.max(box.width, box.height) <= 20];
+        })"""
+    )
+    assert icons == [[1, True, True]] * 4
+
+    widget.draw.set_labels({"clear": "Tout effacer"})
+    page_session.wait_for_function(
+        "el => el.querySelector('.psm-draw-clear').title === 'Tout effacer'", arg=el
+    )
+    session.end()
+    page_session.wait_for_function("el => !el.querySelector('.psm-draw-toolbar')", arg=el)
+
+
+def test_start_reaches_a_view_shown_later(harness, page_session):
+    widget = MapWidget(zoom=3, height="250px")
+    session = widget.draw.begin(("polygon",))
+    session.start("polygon")
+    [first] = show(page_session, widget)
+    wait_drawing(page_session, first, "polygon")
+    assert [b[4] for b in toolbar(first)] == ["true", "false", None]
+
+    # The first view took the start: the views shown again, or later, begin with no tool.
+    views = show(page_session, widget, count=2)
+    for el in views:
+        wait_drawing(page_session, el, "static")
+        assert [b[4] for b in toolbar(el)] == ["false", "false", None]
+    session.start("select")
+    for el in views:
+        wait_drawing(page_session, el, "select")
+    assert widget.draw_tool == {"seq": 2, "session": 1, "mode": "select"}

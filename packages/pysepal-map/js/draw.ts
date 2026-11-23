@@ -16,6 +16,7 @@ import type {
   DrawingState,
   DrawnState,
   DrawRequestState,
+  DrawToolState,
 } from "./types";
 
 export type { DrawFeature } from "./types";
@@ -481,9 +482,22 @@ export interface DrawMap {
 
 /** The part of the anywidget model the drawing view uses. */
 export interface DrawModel {
-  get(name: "drawing" | "draw_request" | "drawn"): unknown;
+  get(name: "drawing" | "draw_request" | "drawn" | "draw_tool"): unknown;
   on(name: string, callback: () => void): void;
   off(name: string, callback: () => void): void;
+}
+
+const TOOLS = Symbol.for("pysepal-map.tools");
+
+/**
+ * The tool requests a view of the page applied, each to its seq: page state,
+ * shared by every bundle loaded, as `pageRegistry` is. anywidget gives each
+ * view its own model proxy, so the key is the `draw_tool` value, which every
+ * view of one model reads until the next request replaces it.
+ */
+export function consumedTools(): WeakMap<object, number> {
+  const scope = globalThis as { [TOOLS]?: WeakMap<object, number> };
+  return (scope[TOOLS] ??= new WeakMap());
 }
 
 /** What changed a view's drawing: a user, or applying a request. */
@@ -516,6 +530,12 @@ export interface ViewDrawOptions {
    * own too, and after the view changed it.
    */
   onRendered?(features: DrawFeature[], color: string): void;
+  /** The tools offered, their labels or the active one changed. */
+  onToolsChange?(
+    modes: string[],
+    labels: Record<string, string>,
+    active: string
+  ): void;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -530,14 +550,27 @@ const featuresOf = (value: unknown): DrawFeature[] =>
     : [];
 
 function drawingOf(value: unknown): DrawingState {
-  const { session, modes, mode, color } = isRecord(value) ? value : {};
+  const { session, modes, color, labels } = isRecord(value) ? value : {};
   return {
     session: isSeq(session) ? session : 0,
     modes: Array.isArray(modes)
       ? modes.filter((m): m is string => typeof m === "string")
       : [],
-    mode: typeof mode === "string" ? mode : STATIC,
     color: typeof color === "string" ? color : DEFAULT_COLOR,
+    labels: Object.fromEntries(
+      Object.entries(isRecord(labels) ? labels : {}).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string"
+      )
+    ),
+  };
+}
+
+function toolOf(value: unknown): DrawToolState {
+  const { seq, session, mode } = isRecord(value) ? value : {};
+  return {
+    seq: isSeq(seq) ? seq : 0,
+    session: isSeq(session) ? session : 0,
+    mode: typeof mode === "string" ? mode : STATIC,
   };
 }
 
@@ -575,6 +608,13 @@ function drawnOf(value: unknown): DrawnState {
  * drawn feature, sends a report of cause `user` on the request last applied,
  * unless the features are the ones last sent. Nothing Terra Draw fires while
  * the view itself changes it counts as a user's.
+ *
+ * The view holds the user's tool, `active`, apart from Terra Draw's mode:
+ * `setMode` sets it, and a new session starts with none. A restart in one
+ * session enters it again and reads no `draw_tool`. Only a first start in a
+ * session reads `draw_tool`, and applies the request when it names that
+ * session and no view of the page applied it (`consumedTools`). A running
+ * view applies each request for its session newer than the last it applied.
  */
 export class ViewDraw {
   private engine: DrawEngine | null = null;
@@ -597,6 +637,11 @@ export class ViewDraw {
   private refused: DrawReport | null = null;
   /** Set while the view changes Terra Draw itself, whose events then count for nothing. */
   private quiet = 0;
+  /** The user's tool in the session `wanted` names. */
+  private active = STATIC;
+  /** The seq of the last tool request this view applied, or saw at a first start. */
+  private toolSeq = 0;
+  private toldTools: string;
   /** The mode and colour Terra Draw has now. */
   private mode = STATIC;
   private color: string;
@@ -610,17 +655,50 @@ export class ViewDraw {
     const { map, model } = options;
     this.wanted = drawingOf(model.get("drawing"));
     this.color = this.wanted.color;
+    // The host reads the first tools from `tools()` once it placed its controls.
+    this.toldTools = JSON.stringify(this.tools());
     // In place before the first style load, which waits for a frame.
     map.on("styledataloading", this.onStyleLoading);
     map.on("style.load", this.onStyleLoad);
     map.on("styledata", this.onStyleData);
     model.on("change:drawing", this.onDrawing);
     model.on("change:draw_request", this.onRequest);
+    model.on("change:draw_tool", this.onTool);
   }
 
   /** Whether drawing holds clicks, popups, tooltips and the cursor. */
   interactive(): boolean {
-    return this.wanted.modes.length > 0 && this.wanted.mode !== STATIC;
+    return this.wanted.modes.length > 0 && this.active !== STATIC;
+  }
+
+  /** The tools offered, their labels and the active one, as the toolbar shows them. */
+  tools(): { modes: string[]; labels: Record<string, string>; active: string } {
+    const { modes, labels } = this.wanted;
+    return { modes: [...modes], labels: { ...labels }, active: this.active };
+  }
+
+  /** Make `mode` the active tool, or none for `static`; a mode not offered is ignored. */
+  setMode(mode: string): void {
+    if (this.disposed || !this.choose(mode)) return;
+    this.tell();
+    this.tellTools();
+  }
+
+  /**
+   * Remove every drawn feature, as a user would, and report it even when
+   * nothing was drawn: a host may wait for a user report to drop a drawing
+   * of its own.
+   */
+  clearAll(): void {
+    if (this.disposed || !this.wanted.modes.length) return;
+    const engine = this.engine;
+    if (engine) {
+      this.hush(() => engine.clear());
+      this.commit();
+    } else {
+      this.drop();
+    }
+    this.report("user");
   }
 
   /** The comm came back: send again a report it refused meanwhile. */
@@ -642,6 +720,7 @@ export class ViewDraw {
       running: this.engine !== null,
       session: this.session,
       mode: this.mode,
+      active: this.active,
       color: this.color,
       applied: this.applied,
       committed: structuredClone(this.committed),
@@ -659,13 +738,16 @@ export class ViewDraw {
     map.off("styledata", this.onStyleData);
     model.off("change:drawing", this.onDrawing);
     model.off("change:draw_request", this.onRequest);
+    model.off("change:draw_tool", this.onTool);
   }
 
   private readonly onDrawing = () => {
     if (this.disposed) return;
+    const before = this.wanted.session;
     this.wanted = drawingOf(this.options.model.get("drawing"));
     this.failed = false;
-    const { session, modes, mode, color } = this.wanted;
+    const { session, modes, color } = this.wanted;
+    if (!modes.length || session !== before) this.active = STATIC;
     if (!modes.length) {
       // The session ended: its features go with it.
       this.halt();
@@ -675,11 +757,28 @@ export class ViewDraw {
     } else if (session !== this.session) {
       this.halt();
       this.begin();
-    } else {
-      if (color !== this.color) this.recolor(color);
-      this.switchTo(mode);
+    } else if (color !== this.color) {
+      this.recolor(color);
     }
     this.tell();
+    this.tellTools();
+  };
+
+  private readonly onTool = () => {
+    if (this.disposed || !this.started) return;
+    const { model } = this.options;
+    // As in onRequest: a change of `drawing` in the same message may not have
+    // been handled yet, and a first start reads the request itself.
+    const { session, modes } = drawingOf(model.get("drawing"));
+    if (session !== this.session || !modes.length) return;
+    const value = model.get("draw_tool");
+    const tool = toolOf(value);
+    if (tool.session !== session || tool.seq <= this.toolSeq) return;
+    this.toolSeq = tool.seq;
+    if (isRecord(value)) consumedTools().set(value, tool.seq);
+    if (!this.choose(tool.mode)) return;
+    this.tell();
+    this.tellTools();
   };
 
   private readonly onRequest = () => {
@@ -718,6 +817,7 @@ export class ViewDraw {
     }
     if (!this.engine && this.wanted.modes.length) this.begin();
     this.tell();
+    this.tellTools();
   }
 
   private tell(): void {
@@ -749,8 +849,10 @@ export class ViewDraw {
       return;
     }
     const request = requestOf(model.get("draw_request"));
-    const newSession = this.started && this.wanted.session !== this.session;
+    const firstStart = !this.started || this.wanted.session !== this.session;
+    const newSession = this.started && firstStart;
     this.session = this.wanted.session;
+    if (firstStart) this.takeTool();
     if (!this.started) {
       this.started = true;
       const drawn = drawnOf(model.get("drawn"));
@@ -767,7 +869,43 @@ export class ViewDraw {
         this.restore(this.committed, this.applied);
       }
     }
-    this.switchTo(this.wanted.mode);
+    this.switchTo(this.active);
+  }
+
+  /**
+   * Take the session's tool request at a first start, unless a view of the
+   * page did; `begin` enters it once the features are in.
+   */
+  private takeTool(): void {
+    const value = this.options.model.get("draw_tool");
+    const tool = toolOf(value);
+    this.toolSeq = Math.max(this.toolSeq, tool.seq);
+    if (!isRecord(value) || tool.session !== this.session) return;
+    const consumed = consumedTools();
+    if (tool.seq <= (consumed.get(value) ?? 0)) return;
+    consumed.set(value, tool.seq);
+    if (this.offers(tool.mode)) this.active = tool.mode;
+  }
+
+  private offers(mode: string): boolean {
+    const { modes } = this.wanted;
+    return modes.length > 0 && (mode === STATIC || modes.includes(mode));
+  }
+
+  /** Make `mode` the active tool if the session offers it. */
+  private choose(mode: string): boolean {
+    if (!this.offers(mode)) return false;
+    this.active = mode;
+    this.switchTo(mode);
+    return true;
+  }
+
+  private tellTools(): void {
+    const tools = this.tools();
+    const key = JSON.stringify(tools);
+    if (key === this.toldTools) return;
+    this.toldTools = key;
+    this.options.onToolsChange?.(tools.modes, tools.labels, tools.active);
   }
 
   /** Forget the committed features, as a session that ended does. */

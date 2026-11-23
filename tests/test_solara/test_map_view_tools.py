@@ -1,4 +1,4 @@
-"""The draw toolbar, the inspector toggle and the inspector card of MapView."""
+"""The inspector toggle and the inspector card of MapView."""
 
 import pytest
 import solara
@@ -12,52 +12,6 @@ from tests.test_solara._layer_panel_helpers import _attr, all_text, click, role_
 
 def render(m):
     return solara.render(MapView(m), handle_error=False)
-
-
-def mode_buttons(box):
-    return role_widgets(box, "draw-mode")
-
-
-def test_toolbar_hidden_until_enabled():
-    m = SepalMap(gee=False)
-    box, rc = render(m)
-    assert mode_buttons(box) == []
-    assert _attr(role_widgets(box, "map-draw")[0], "data-idle") is not None
-    session = m.draw.begin(["polygon", "point"])
-    assert [_attr(b, "data-mode") for b in mode_buttons(box)] == ["polygon", "point", "select"]
-    assert _attr(role_widgets(box, "map-draw")[0], "data-idle") is None
-    session.end()
-    assert mode_buttons(box) == []
-    rc.close()
-
-
-def test_toolbar_starts_and_stops_modes():
-    m = SepalMap(gee=False)
-    m.draw.begin(["polygon", "circle"], edit=False)
-    box, rc = render(m)
-    click(mode_buttons(box)[0])
-    assert m.draw.mode == "polygon"
-    assert [_attr(b, "data-active") for b in mode_buttons(box)] == ["true", "false"]
-    click(mode_buttons(box)[1])
-    assert m.draw.mode == "circle"
-    click(mode_buttons(box)[1])
-    assert m.draw.mode == "static"
-    assert [_attr(b, "data-active") for b in mode_buttons(box)] == ["false", "false"]
-    rc.close()
-
-
-def test_clear_button_clears_the_active_session():
-    m = SepalMap(gee=False)
-    square = [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]
-    polygon = {"type": "Polygon", "coordinates": [square]}
-    session = m.draw.begin(["polygon"], features=[{"type": "Feature", "geometry": polygon}])
-    seq = m.draw_request["seq"]
-    box, rc = render(m)
-    click(role_widgets(box, "draw-clear")[0])
-    assert m.draw_request["seq"] == seq + 1
-    assert m.draw_request["features"] == []
-    assert session.active and session.features["features"] == []
-    rc.close()
 
 
 def test_inspector_toggle_calls_activate_and_deactivate():

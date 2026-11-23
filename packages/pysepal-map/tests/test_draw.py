@@ -53,6 +53,17 @@ def collection(features):
     return {"type": "FeatureCollection", "features": features}
 
 
+LABELS = {
+    "polygon": "Draw a polygon",
+    "rectangle": "Draw a rectangle",
+    "circle": "Draw a circle",
+    "linestring": "Draw a line",
+    "point": "Draw a point",
+    "select": "Select and edit shapes",
+    "clear": "Remove all shapes",
+}
+
+
 def traits(widget):
     return widget.drawing, widget.draw_request, widget.drawn
 
@@ -61,15 +72,16 @@ def test_drawing_starts_off_and_empty():
     widget = MapWidget()
     assert isinstance(widget.draw, Draw)
     assert DRAW_MODES == ("polygon", "rectangle", "circle", "linestring", "point")
-    assert widget.drawing == {"session": 0, "modes": [], "mode": "static", "color": "#3388ff"}
+    assert widget.drawing == {"session": 0, "modes": [], "color": "#3388ff", "labels": LABELS}
     assert widget.draw_request == {"seq": 0, "features": []}
     assert widget.drawn == {"request_seq": 0, "features": []}
-    assert (widget.draw.modes, widget.draw.mode, widget.draw.color) == ((), "static", "#3388ff")
+    assert widget.draw_tool == {"seq": 0, "session": 0, "mode": "static"}
+    assert (widget.draw.modes, widget.draw.color) == ((), "#3388ff")
     assert widget.draw.features == collection([])
     assert widget.draw._session is None
 
 
-@pytest.mark.parametrize("name", ["drawing", "draw_request", "drawn"])
+@pytest.mark.parametrize("name", ["drawing", "draw_request", "drawn", "draw_tool"])
 def test_drawing_traits_are_read_only(name):
     with pytest.raises(traitlets.TraitError):
         setattr(MapWidget(), name, {})
@@ -102,16 +114,15 @@ def test_begin_offers_the_tools_and_seeds_the_features():
     assert widget.drawing == {
         "session": 1,
         "modes": ["point", "linestring", "select"],
-        "mode": "static",
         "color": "#3388ff",
+        "labels": LABELS,
     }
     assert widget.draw_request == {"seq": 1, "features": seeds}
     assert session.features == widget.draw.features == collection(seeds)
 
-    widget.draw.start("point")
+    session.start("point")
     widget.draw.begin(edit=False)
     assert widget.draw.modes == ("polygon", "rectangle", "circle")
-    assert widget.draw.mode == "static"
     assert widget.drawing["session"] == 2
     assert widget.draw_request == {"seq": 2, "features": []}
 
@@ -186,7 +197,7 @@ def test_end_hides_the_tools_and_drops_late_reports():
     widget = mounted()
     seen = []
     session = widget.draw.begin(on_change=seen.append)
-    widget.draw.start("polygon")
+    session.start("polygon")
     first = drawn(polygon())
     report(widget, [first])
     assert seen == [collection([first])]
@@ -194,7 +205,7 @@ def test_end_hides_the_tools_and_drops_late_reports():
 
     session.end()
     assert session.active is False and widget.draw._session is None
-    assert widget.drawing == {"session": 1, "modes": [], "mode": "static", "color": "#3388ff"}
+    assert widget.drawing == {"session": 1, "modes": [], "color": "#3388ff", "labels": LABELS}
     assert widget.draw_request == {"seq": seq + 1, "features": []}
     assert session.features == widget.draw.features == collection([])
 
@@ -202,7 +213,7 @@ def test_end_hides_the_tools_and_drops_late_reports():
     assert widget.drawn == {"request_seq": seq, "features": [first]}
     assert session.features == collection([])
     assert len(seen) == 1
-    for call in (lambda: widget.draw.start("polygon"), widget.draw.stop):
+    for call in (lambda: session.start("polygon"), session.stop):
         with pytest.raises(RuntimeError):
             call()
     before = traits(widget)
@@ -230,22 +241,60 @@ def test_on_change_runs_for_user_reports_of_the_active_session_only():
     assert second.features == collection([mine])
 
 
-def test_start_requires_an_offered_mode():
+def test_start_and_stop_write_numbered_tool_requests():
     widget = MapWidget()
-    for call in (lambda: widget.draw.start("polygon"), widget.draw.stop):
-        with pytest.raises(RuntimeError):
-            call()
-    widget.draw.begin(("point",), edit=False)
+    session = widget.draw.begin(("point",), edit=False)
+    before = traits(widget)
     for mode in ("polygon", "select", "static"):
         with pytest.raises(ValueError):
-            widget.draw.start(mode)
-    widget.draw.start("point")
-    assert widget.draw.mode == "point"
-    widget.draw.stop()
-    assert widget.draw.mode == "static"
-    widget.draw.begin(("point",))
-    widget.draw.start("select")
-    assert widget.drawing["mode"] == "select"
+            session.start(mode)
+    assert widget.draw_tool == {"seq": 0, "session": 0, "mode": "static"}
+
+    session.start("point")
+    assert widget.draw_tool == {"seq": 1, "session": 1, "mode": "point"}
+    session.stop()
+    assert widget.draw_tool == {"seq": 2, "session": 1, "mode": "static"}
+    assert traits(widget) == before
+
+    second = widget.draw.begin(("point",))
+    assert widget.draw_tool["seq"] == 2
+    second.start("select")
+    assert widget.draw_tool == {"seq": 3, "session": 2, "mode": "select"}
+    second.end()
+    for ended in (session, second):
+        for call in (lambda: ended.start("point"), ended.stop):
+            with pytest.raises(RuntimeError):
+                call()
+    assert widget.draw_tool == {"seq": 3, "session": 2, "mode": "select"}
+
+
+def test_labels_travel_in_drawing():
+    widget = MapWidget()
+    assert widget.drawing["labels"] == LABELS
+    widget.draw.set_labels({"polygon": "Forme libre", "select": "Modifier"})
+    widget.draw.set_labels({"clear": "Tout effacer", "select": "Choisir"})
+    want = {**LABELS, "polygon": "Forme libre", "select": "Choisir", "clear": "Tout effacer"}
+    assert widget.drawing["labels"] == want
+    widget.draw.begin().end()
+    assert widget.drawing["labels"] == want
+
+    before = widget.drawing
+    for bad in ({"hexagon": "x"}, {"static": "x"}, {"point": ""}, {"point": None}, {"point": 3}):
+        with pytest.raises(ValueError):
+            widget.draw.set_labels({"polygon": "kept out", **bad})
+    assert widget.drawing == before
+    assert MapWidget().drawing["labels"] == LABELS
+
+
+def test_drawing_has_no_mode():
+    widget = MapWidget()
+    session = widget.draw.begin()
+    session.start("polygon")
+    assert "mode" not in widget.drawing
+    session.end()
+    assert "mode" not in widget.drawing
+    for name in ("start", "stop", "mode"):
+        assert not hasattr(Draw, name)
 
 
 def test_set_color():

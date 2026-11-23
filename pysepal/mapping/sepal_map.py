@@ -21,7 +21,7 @@ import ee
 import ipyvuetify as v
 import traitlets
 from eeclient.client import EESession
-from pysepal_map import Controls, MapWidget, Side
+from pysepal_map import DRAW_MODES, Controls, MapWidget, Side
 from typing_extensions import Self
 
 from pysepal.frontend.styles import THEMES
@@ -32,6 +32,7 @@ from pysepal.layers.preparation import (
 from pysepal.mapping.basemaps import BASEMAP_NAMES, get_basemap
 from pysepal.mapping.handle import LayerHandle, ZoomResult
 from pysepal.mapping.maplibre_engine import MapLibreEngine
+from pysepal.message import msg
 from pysepal.scripts import decorator as sd
 from pysepal.scripts import utils as su
 
@@ -85,6 +86,12 @@ def _check_ee_inputs(ee_object: ee.ComputedObject, vis_params: dict) -> None:
 
 def _in_zone(spec: LayerSpec, overlay: bool) -> LayerSpec:
     return spec.model_copy(update={"zone": "overlay"}) if overlay else spec
+
+
+def _draw_labels() -> dict[str, str]:
+    """The draw toolbar's labels in the current language, as ``Draw.set_labels`` takes them."""
+    labels = {mode: msg(f"map_view.draw.{mode}") for mode in (*DRAW_MODES, "select")}
+    return {**labels, "clear": msg("map_view.draw.clear_all")}
 
 
 class SepalMap(MapWidget):
@@ -245,6 +252,7 @@ class SepalMap(MapWidget):
                 ),
             )
             self.draw.set_color(THEMES[self.theme == "dark"]["info"])
+            self.draw.set_labels(_draw_labels())
             if inspector:
                 from pysepal.mapping.inspector import MapInspector
 

@@ -1,4 +1,4 @@
-"""The draw toolbar and the inspector toggle and card that ``MapView`` shows over the map."""
+"""The inspector toggle and card that ``MapView`` shows over the map."""
 
 import math
 
@@ -7,66 +7,17 @@ import solara
 
 from pysepal.message import msg
 
-_MODE_ICONS = {
-    "polygon": "mdi-vector-polygon",
-    "rectangle": "mdi-vector-rectangle",
-    "circle": "mdi-circle-outline",
-    "linestring": "mdi-vector-polyline",
-    "point": "mdi-map-marker-outline",
-    "select": "mdi-cursor-default-click-outline",
-}
 
-
-def _tool_button(icon: str, tip: str, role: str, on_click, active: bool = False, **attrs):
+def _tool_button(icon: str, tip: str, role: str, on_click, active: bool = False):
     button = solara.Button(
         icon=True,
         on_click=on_click,
         color="primary" if active else None,
         text=not active,
-        attributes={"data-role": role, "data-active": "true" if active else "false", **attrs},
+        attributes={"data-role": role, "data-active": "true" if active else "false"},
         children=[rv.Icon(size="small", children=[icon])],
     )
     return solara.Tooltip(tip, children=[rv.Html(tag="span", children=[button])])
-
-
-def draw_toolbar(map_) -> list:
-    """One toggle per drawing mode and a clear button; empty while no session is active."""
-    draw = map_.draw
-    if not draw.modes:
-        return []
-
-    def toggle(mode: str):
-        return lambda: draw.stop() if draw.mode == mode else draw.start(mode)
-
-    def clear():
-        # The toolbar holds no session of its own: it clears the one holding the tools.
-        session = draw._session
-        if session is not None and session.active:
-            session.clear()
-
-    buttons = [
-        _tool_button(
-            _MODE_ICONS[mode],
-            msg(f"map_view.draw.{mode}"),
-            "draw-mode",
-            toggle(mode),
-            active=draw.mode == mode,
-            **{"data-mode": mode},
-        )
-        for mode in draw.modes
-    ]
-    buttons.append(
-        _tool_button("mdi-delete-outline", msg("map_view.draw.clear_all"), "draw-clear", clear)
-    )
-    return [
-        rv.Html(
-            tag="div",
-            class_="pysepal-map-toolbar",
-            style_="display: flex; background: rgba(var(--v-theme-surface, 255, 255, 255), 0.9);"
-            " border-radius: 4px",
-            children=buttons,
-        )
-    ]
 
 
 def _layer_section(layer) -> object:

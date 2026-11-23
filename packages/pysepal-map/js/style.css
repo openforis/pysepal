@@ -95,6 +95,23 @@
   filter: invert(1);
 }
 
+/* The draw toolbar draws its icons in the text colour, so the dark theme
+   needs no filter. */
+.psm-draw-toolbar button {
+  color: #333333;
+}
+.psm-draw-toolbar svg {
+  display: block;
+  width: auto;
+  height: 15px;
+  margin: 0 auto;
+}
+/* After the dark rules, which it ties with on hover. */
+.psm-map .psm-draw-toolbar button.psm-draw-tool[aria-pressed="true"] {
+  background-color: var(--psm-draw-color, #3388ff);
+  color: #ffffff;
+}
+
 .psm-coordinates {
   padding: 0 6px;
   font: 11px/18px "Helvetica Neue", Arial, Helvetica, sans-serif;

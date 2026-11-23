@@ -121,20 +121,25 @@ has these methods, the shell calls them:
 
 `SepalMap` has both. A replaced map gets the current insets at once.
 
-### The inspector and the draw toolbar
+### The inspector, and the draw toolbar the map draws
 
-`MapView`, which `MapApp` builds around the map, shows two tools at the top left
-of the map:
+Two tools sit at the top left of the map:
 
-- **The draw toolbar** has one toggle per drawing tool the map offers
-  (`m.draw.begin(...)`) and a button that removes every shape. It is empty
-  while no drawing session is active. `AoiView` begins one for its DRAW method.
+- **The draw toolbar** is the map's own: the browser draws it below the zoom
+  and fullscreen controls while a drawing session offers tools
+  (`m.draw.begin(...)`), with one button per tool and a button that removes
+  every shape. `AoiView` begins a session for its DRAW method. The browser
+  holds the active tool, so each view of the map has its own, and a click
+  never waits for Python. `session.start(mode)` and `session.stop()` ask every
+  view that shows the session for a tool. The labels follow the app's
+  language: `SepalMap` sets them from pysepal's messages, and `MapView` sets
+  them again when the language changes.
 - **The inspector** has a toggle and, after a click, a card with the values of
   every visible layer at that point. It exists only for `SepalMap(inspector=True)`.
   A layer that changed between the click and the read shows "this layer
-  changed, click again".
-
-Both follow the map, so every `MapView` of one map shows the same state.
+  changed, click again". `MapView`, which `MapApp` builds around the map,
+  shows it below the draw toolbar and follows the map, so every `MapView` of
+  one map shows the same state.
 
 ### Compare mode
 
