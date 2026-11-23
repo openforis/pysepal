@@ -2,6 +2,7 @@
 
 import ipywidgets as widgets
 import pytest
+import solara
 from IPython.display import display
 from pysepal_map import MapState, MapWidget
 from test_compare import cameras, sided_layers, wait_for
@@ -373,3 +374,51 @@ def test_a_fit_on_a_hidden_member_moves_the_group_when_shown(harness, page_sessi
         assert contains(shown_b["bounds"], BOX) and contains(others[0]["bounds"], BOX)
     for nth, other in enumerate(others):
         assert same_camera(other, shown_b["center"], shown_b["zoom"]), nth
+
+
+# The maps each page of PageInGroup built, in page order.
+BUILT: list[tuple[MapWidget, MapWidget]] = []
+
+
+@solara.component
+def PageInGroup():
+    """A shown map and a hidden one in group ``g``, built in the page's own kernel."""
+
+    def build():
+        shown, hidden = (MapWidget(height="300px", link_group="g") for _ in range(2))
+        BUILT.append((shown, hidden))
+        return shown
+
+    solara.display(solara.use_memo(build, []))
+
+
+def test_pages_of_one_solara_server_link_apart(
+    solara_server, solara_app, page_session, load_harness
+):
+    BUILT.clear()
+    second = page_session.context.new_page()
+    try:
+        with solara_app(f"{__name__}:PageInGroup"):
+            for page in (page_session, second):
+                page.goto(solara_server.base_url)
+                page.wait_for_function("document.querySelector('.psm-map')?.psmMap")
+                load_harness(page)
+            (shown, hidden), (other_shown, other_hidden) = BUILT
+            assert shown._link["group"] != other_shown._link["group"]
+            for m in (hidden, other_hidden):
+                wait_for(page_session, followed(m, 2), f"never followed: {m.view_request}")
+            before = dict(other_hidden.view_request)
+
+            drag(page_session, middle(page_session), (-150, 80))
+            wait_view(page_session, shown, lambda v: v["cause"] == "user")
+            panned = wait_view(page_session, shown, matches(view_at(page_session)))
+            wait_for(
+                page_session,
+                lambda: near(hidden.view_request["center"], panned["center"]),
+                f"the hidden map never followed the pan: {hidden.view_request}",
+            )
+            assert other_hidden.view_request == before
+    finally:
+        BUILT.clear()
+        second.close()
+        page_session.goto("about:blank")
