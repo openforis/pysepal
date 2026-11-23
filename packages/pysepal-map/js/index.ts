@@ -9,6 +9,7 @@ import { CompareView, RevisionMark, type CompareRoot } from "./compare";
 import { ViewControls } from "./controls";
 import { ViewDraw, terraDraw } from "./draw";
 import { installImages } from "./images";
+import { ViewLink, pageRegistry } from "./link";
 import { MapSync } from "./maplive";
 import { ViewPointer } from "./pointer";
 import { ViewPopups } from "./popups";
@@ -36,6 +37,7 @@ interface Model {
   drawing: unknown;
   draw_request: unknown;
   drawn: unknown;
+  _link: string;
 }
 
 type PsmElement = HTMLElement &
@@ -183,7 +185,9 @@ function render({ model, el }: RenderProps<Model>) {
   // Before the camera starts, which restores its center inside them.
   applyInsets();
   model.on("change:insets", applyInsets);
-  camera.start();
+  // After the camera has restored its view, which the group must not take.
+  const link = new ViewLink({ map, model, registry: pageRegistry() });
+  link.start(camera.start());
   // Python may have expired the view, and reports sent meanwhile be lost.
   const stopLive = onLiveAgain(model, () => {
     presence.reopen();
@@ -208,6 +212,7 @@ function render({ model, el }: RenderProps<Model>) {
 
   return () => {
     stopLive();
+    link.dispose();
     camera.dispose();
     // Before the map goes: it removes Terra Draw's layers.
     draw?.dispose();

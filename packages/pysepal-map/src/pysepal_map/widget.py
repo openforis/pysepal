@@ -58,18 +58,17 @@ carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
 out by ``zoom_out`` down to 0 and jumps there. A fit waits while the view's
 usable area has no size, and runs once it has one.
 
-Linked maps. ``link_views(*maps)`` keeps two or more widgets on one camera. It
-holds an integer per map, the highest request it issued on it or whose
-acknowledgement it forwarded, and forwards a report as ``set_center`` on the
-other maps only when it is a ``user`` report not older than that integer or a
-``request`` report newer than it: an older report is superseded, a ``request``
-at the integer is the echo of the group's own request, and a ``resize`` is
-never forwarded. A programmatic move so reaches the others only once a view of
-its map is mounted and acknowledges it. Each request it issues, and its read of
-the seq, run under that map's lock, never under two at once. A map is in one
-group at most: linking exactly the maps of a live group again returns its
-unlink function and changes nothing, and any other overlap raises
-``ValueError``.
+Linked maps. ``link_views(*maps)`` keeps two or more widgets on one camera
+in the browser. It requests the first map's view on the others, then writes
+``_link``: the group id and each map's request ``seq`` after that. The views
+of a page that share a group jump each other to their center and zoom on
+every move, in the same frame, and Python takes no part; each view still
+reports its own camera, a link's move as ``user`` when a user moved the other
+map. A view that joins takes the camera of the group's maps already shown,
+unless a request newer than its link ``seq`` moved it on mount, which then
+moves them. Views of one widget never move each other. A map is in one group
+at most: linking exactly the maps of a live group again returns its unlink
+function and changes nothing, and any other overlap raises ``ValueError``.
 
 Compare. ``MapState.compare`` turns on a swipe compare: each ``Layer.side``
 (``left``, ``right`` or ``both``) says which half draws it. The ``main`` view
@@ -338,6 +337,7 @@ class MapWidget(anywidget.AnyWidget):
     drawn = traitlets.Dict(read_only=True).tag(sync=True)
     cursor = traitlets.Enum(CURSORS, "").tag(sync=True)
     height = traitlets.Unicode("400px").tag(sync=True)
+    _link = traitlets.Dict(read_only=True).tag(sync=True)
 
     def __init__(
         self,

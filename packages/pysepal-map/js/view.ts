@@ -73,8 +73,15 @@ export interface ViewReport {
 /** The eventData key that marks a move a request made, with its `seq`. */
 const REQUEST = "psmRequest";
 
+/**
+ * The eventData key that marks a move a linked map passed on: `"user"` when
+ * a user moved that map, `"other"` otherwise.
+ */
+export const LINK = "psmLink";
+
 interface MoveEvent {
   [REQUEST]?: unknown;
+  [LINK]?: unknown;
   /** Set by MapLibre on the moves of a user gesture. */
   originalEvent?: unknown;
 }
@@ -219,7 +226,11 @@ export class ViewCamera {
 
   constructor(private readonly options: ViewCameraOptions) {}
 
-  start(): void {
+  /**
+   * Restore the saved camera and apply a newer request; return the `seq` of
+   * the request that moved it past the saved camera, else null.
+   */
+  start(): number | null {
     const { map, model } = this.options;
     this.started = true;
     // The saved center is the middle of the area inside the insets.
@@ -238,7 +249,9 @@ export class ViewCamera {
     map.on("moveend", this.onMoveEnd);
     map.on("resize", this.onResize);
     model.on("change:view_request", this.onRequest);
+    const restored = this.applied;
     this.onRequest();
+    return this.applied > restored ? this.applied : null;
   }
 
   /** Use `insets` from now on; before `start`, they wait for it. */
@@ -338,7 +351,8 @@ export class ViewCamera {
   private readonly onMoveEnd = (event: MoveEvent) => {
     // A request's own move is acknowledged by apply().
     if (event[REQUEST] !== undefined) return;
-    this.owe(this.applied, event.originalEvent ? "user" : "resize");
+    const user = event.originalEvent || event[LINK] === "user";
+    this.owe(this.applied, user ? "user" : "resize");
   };
 
   private readonly onResize = (event: MoveEvent) => {

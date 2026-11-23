@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  LINK,
   REPORT_DELAY_MS,
   ViewCamera,
   type Insets,
@@ -356,6 +357,35 @@ describe("ViewCamera", () => {
       [1, "user"],
       [1, "user"],
     ]);
+  });
+
+  it("reports a linked map's move as a user's only when a user made it", () => {
+    const { camera, map, causes } = setup();
+    camera.start();
+    vi.runAllTimers();
+    map.fire("moveend", { [LINK]: "user" });
+    vi.runAllTimers();
+    map.fire("moveend", { [LINK]: "other" });
+    vi.runAllTimers();
+    expect(causes()).toEqual([
+      [1, "request"],
+      [1, "user"],
+      [1, "resize"],
+    ]);
+  });
+
+  it("returns on start the request that moved it past the saved camera", () => {
+    const saved = setup({ view: SAVED, request: { seq: 3, center: [0, 0] } });
+    expect(saved.camera.start()).toBeNull();
+    const newer = setup({ view: SAVED, request: { seq: 4, center: [0, 0] } });
+    expect(newer.camera.start()).toBe(4);
+    // A fit that waits for a size has not moved it yet.
+    const waiting = setup({
+      request: { seq: 1, bounds: [0, 0, 1, 1] },
+      width: 0,
+      height: 0,
+    });
+    expect(waiting.camera.start()).toBeNull();
   });
 
   it("acknowledges a request that does not move the camera", () => {

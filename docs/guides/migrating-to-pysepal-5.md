@@ -141,7 +141,7 @@ bar: it is the map's declared state.
 | `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                                |
 | `hover_style`, `style_callback`                                                                                                   | no replacement: one layer per class                                                                                               |
 | `SplitMapControl(left_layer=..., right_layer=...)`                                                                                | `m.compare = True` with `side="left"` and `side="right"` on the layer methods (or `handle.side`); other layers stay on both sides |
-| `traitlets.link((m1, "center"), (m2, "center"))` and the same on `zoom`                                                           | `link_views(m1, m2)` from `pysepal.mapping`; a map linked to several others goes in one call, `link_views(aoi_map, m1, m2)`       |
+| `traitlets.link((m1, "center"), (m2, "center"))` and the same on `zoom`                                                           | `link_views(m1, m2)` from `pysepal.mapping`, which the browser keeps in step                                                      |
 
 Notes on the interaction replacements:
 
