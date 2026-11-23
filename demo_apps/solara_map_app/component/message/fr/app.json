@@ -31,7 +31,6 @@
   },
   "layers": {
     "ndvi": "NDVI Sentinel-2",
-    "ndvi_short": "NDVI",
     "radar": "Radar Sentinel-1",
     "pixel_area": "Surface du pixel (m²)",
     "elevation": "Classes d'altitude",

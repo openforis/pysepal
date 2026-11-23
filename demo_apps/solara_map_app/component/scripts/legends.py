@@ -1,36 +1,31 @@
-"""Turn layer definitions and Earth Engine reductions into legend data."""
+"""Legends that say more than a layer's style, for the map to show.
+
+``MapView`` derives a legend from each layer's style: a gradient for a palette,
+a chip for a vector. A layer given its own legend shows that one instead, which
+is how a composite names its channels and a classification shows its areas.
+"""
 
 import ee
 from component.message import msg
-from component.model import LayerLegend, ProcessingOutputs
+from component.model import ProcessingOutputs
 from component.parameter import ELEVATION_CLASSES
 
-from pysepal.solara.components.legend import DiscreteEntry, GradientEntry, LegendData
+from pysepal.layers import Legend, LegendItem
 
 
-def upsert_legends(current: tuple, *new: LayerLegend) -> tuple:
-    """Replace same-id legends in place and append the rest."""
-    by_id = {legend.layer_id: legend for legend in current}
-    by_id.update({legend.layer_id: legend for legend in new})
-    return tuple(by_id.values())
+def attach_legend(sepal_map, layer_id: str, legend: Legend) -> None:
+    """Show ``legend`` for a layer of the map in place of the one its style gives.
+
+    A layer the user removed meanwhile is left alone.
+    """
+    store = sepal_map.layer_store
+    if layer_id in store:
+        store.update(layer_id, store.get(layer_id).revise(legend=legend))
 
 
-def gradient_legend(title: str, vis: dict) -> LegendData:
-    """Build a continuous legend straight from a layer's vis_params."""
-    return LegendData(
-        gradients=[
-            GradientEntry(
-                colors=list(vis["palette"]),
-                labels=[f"{vis['min']:g}", f"{vis['max']:g}"],
-                title=title,
-            )
-        ]
-    )
-
-
-def band_legend(bands) -> LegendData:
+def band_legend(bands) -> Legend:
     """One chip per channel of an RGB composite, labelled with what the channel carries."""
-    return LegendData(items=[DiscreteEntry(msg(label_key), color) for label_key, color in bands])
+    return Legend(items=[LegendItem(label=msg(key), color=color) for key, color in bands])
 
 
 def _area_detail(area_km2: float, total_km2: float) -> str:
@@ -39,10 +34,10 @@ def _area_detail(area_km2: float, total_km2: float) -> str:
     return f"{area_km2:,.0f} km² · {share:.0f}%"
 
 
-async def elevation_class_legend(gee_interface, outputs: ProcessingOutputs) -> LegendData:
+async def elevation_class_legend(gee_interface, outputs: ProcessingOutputs) -> Legend:
     """Reduce the classified image to per-class areas and put them in the legend.
 
-    `DiscreteEntry.detail` is what makes this possible: the numbers ride along
+    `LegendItem.detail` is what makes this possible: the numbers ride along
     with the color chips instead of needing a separate results table.
     """
     grouped = (
@@ -61,12 +56,14 @@ async def elevation_class_legend(gee_interface, outputs: ProcessingOutputs) -> L
     total = sum(area_by_class.values())
 
     items = [
-        DiscreteEntry(
-            msg(label_key), color, detail=_area_detail(area_by_class.get(value, 0.0), total)
+        LegendItem(
+            label=msg(label_key),
+            color=color,
+            detail=_area_detail(area_by_class.get(value, 0.0), total),
         )
         for value, label_key, color in ELEVATION_CLASSES
     ]
     # An entry with no color renders without a chip, which reads as a totals row.
-    items.append(DiscreteEntry(msg("legend.total"), "", detail=_area_detail(total, total)))
+    items.append(LegendItem(label=msg("legend.total"), color="", detail=_area_detail(total, total)))
 
-    return LegendData(items=items)
+    return Legend(items=items)

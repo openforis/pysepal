@@ -39,7 +39,7 @@ def use_sepal_map(gee_interface, theme_state) -> sm.SepalMap:
     def build_map():
         sepal_map = sm.SepalMap(
             zoom=3,
-            center=[0, 0],
+            center=(0, 0),
             gee=True,
             gee_interface=gee_interface,
             fullscreen=True,
@@ -59,8 +59,8 @@ def _aoi_key(aoi_value) -> str:
     return f"{aoi_value.method}:{aoi_value.name}"
 
 
-def use_aoi_scoped_layers(aoi_data, sepal_map, outputs, layer_legends) -> None:
-    """Drop the processed layers, outputs and legends when the AOI changes."""
+def use_aoi_scoped_layers(aoi_data, sepal_map, outputs) -> None:
+    """Drop the processed layers and outputs when the AOI changes."""
     aoi_key = _aoi_key(aoi_data.value)
     previous_aoi_key = solara.use_ref(aoi_key)
 
@@ -73,9 +73,6 @@ def use_aoi_scoped_layers(aoi_data, sepal_map, outputs, layer_legends) -> None:
             sepal_map.remove_layer(layer_id, none_ok=True)
 
         outputs.set(None)
-        layer_legends.set(
-            tuple(entry for entry in layer_legends.value if entry.layer_id not in AOI_LAYER_IDS)
-        )
         previous_aoi_key.current = aoi_key
 
     solara.use_effect(drop_stale_outputs, [aoi_key])

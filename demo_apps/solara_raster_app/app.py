@@ -147,7 +147,7 @@ def RasterPanel():
 
     def build_map():
         return sm.SepalMap(
-            zoom=3, center=[0, 0], gee=False, fullscreen=True, theme_state=theme_state
+            zoom=3, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         )
 
     sepal_map = solara.use_memo(build_map, [])
@@ -219,7 +219,7 @@ def RasterPanel():
         # with no render in progress and no locale threaded in to reach it.
         removed = 0
         for key in ("continuous", "classes", "large"):
-            if sepal_map.find_layer(key, none_ok=True) is not None:
+            if sepal_map.find_layer(key) is not None:
                 sepal_map.remove_layer(key, none_ok=True)
                 removed += 1
         if removed:

@@ -15,14 +15,15 @@ SAMPLE_RASTER_LAYER_ID = "demo_sample_raster"
 SAMPLE_VECTOR_LAYER_ID = "demo_sample_vector"
 AOI_LAYER_IDS = (PIXEL_AREA_LAYER_ID, ELEVATION_CLASS_LAYER_ID)
 
-DEMO_CENTER = [4.75, -74.12]
+# Centers are (lng, lat), the order SepalMap.set_center takes.
+DEMO_CENTER = (-74.12, 4.75)
 NDVI_VIS = {"min": -0.2, "max": 0.9, "palette": ["#d7191c", "#ffffbf", "#1a9641"]}
 PIXEL_AREA_VIS = {"min": 0, "max": 5000, "palette": ["#fff7bc", "#d95f0e"]}
 
 # Sentinel-1 false colour over the Rio Negro / Solimões confluence at Manaus:
 # open water scatters nothing back and reads black, forest and the city read
 # bright, so the composite needs no AOI to be legible.
-RADAR_CENTER = [-3.12, -59.98]
+RADAR_CENTER = (-59.98, -3.12)
 RADAR_VIS = {"bands": ["VV", "VH", "ratio"], "min": [-18, -26, 2], "max": [0, -10, 14]}
 # (catalogue key, chip color) per composite channel, in RGB order, for the legend.
 RADAR_BANDS = (
@@ -45,6 +46,6 @@ ELEVATION_CLASSES = (
 # PMTiles itself, so nothing is proxied through the kernel. The source layer must
 # match a layer id inside the archive ("buildings" here) or nothing is painted.
 PMTILES_URL = "https://r2-public.protomaps.com/protomaps-sample-datasets/nz-buildings-v3.pmtiles"
-PMTILES_CENTER = [-43.5565, 172.6062]
+PMTILES_CENTER = (172.6062, -43.5565)
 PMTILES_SOURCE_LAYER = "buildings"
 PMTILES_STYLE = VectorStyle(stroke="#253494", fill="#41b6c4", fill_opacity=0.6, width=0.5)

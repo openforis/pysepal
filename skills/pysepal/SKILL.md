@@ -274,12 +274,12 @@ new app to see the patterns in action:
 
 - `demo_apps/solara_map_app/` — MapApp shell with `AoiView`
   in the right panel, `NotificationProvider` task tracking, `ExportLauncher`
-  sources, and a `LegendComponent` whose layer selector is driven by the layers
-  on the map. `app.py` holds the shell: `MapAppDemo` owns the UI so `Page`
+  sources, and layer legends that `MapView` shows, two of them set by the app
+  (a composite's channels, the area of each class). `app.py` holds the shell: `MapAppDemo` owns the UI so `Page`
   (Solara, session-authenticated) and `ui.ipynb` (Voila) can share it. The rest
   lives under `component/` — `parameter/` (layer ids, vis params), `model/`
   (dataclasses in reactives), `scripts/` (Earth Engine work, no UI), `tile/`
-  (right-panel sections), `widget/` (map, layer lifecycle, floating legend).
+  (right-panel sections), `widget/` (the map and its layer lifecycle).
 
 ### Dialogs inside MapApp content
 
@@ -852,7 +852,7 @@ ECharts from a CDN at mount, and rebuilds the chart on every update. The guide's
 before re-opening the question when an upstream release touches that component.
 
 A chart follows the size of its container by itself since ipecharts 1.4.2, also
-in a container that changes width or starts hidden (a map `MenuControl`).
+in a container that changes width or starts hidden (a menu over the map).
 Require `ipecharts>=1.4.2` and write no resize code.
 
 Read `docs/guides/ipecharts.md` before creating any

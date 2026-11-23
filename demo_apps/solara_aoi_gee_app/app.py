@@ -134,7 +134,7 @@ def _AoiGeeShell():
     sepal_map = solara.use_memo(
         lambda: sm.SepalMap(
             zoom=3,
-            center=[0, 0],
+            center=(0, 0),
             gee=True,
             gee_interface=gee_interface,
             fullscreen=True,

@@ -8,7 +8,7 @@ import logging
 
 import solara
 from component.message import msg
-from component.model import AppModel, LayerLegend
+from component.model import AppModel
 from component.parameter import (
     DEMO_CENTER,
     NDVI_LAYER_ID,
@@ -24,11 +24,10 @@ from component.parameter import (
     RADAR_VIS,
 )
 from component.scripts import (
+    attach_legend,
     band_legend,
-    gradient_legend,
     ndvi_composite,
     radar_composite,
-    upsert_legends,
 )
 
 from pysepal.layers import LayerSpec, VectorSource
@@ -38,7 +37,7 @@ from pysepal.solara.components.task_button import TaskButtonComponent, use_task_
 logger = logging.getLogger("SEPALUI.map_app")
 
 
-def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
+def use_layer_tools(sepal_map, outputs) -> list:
     """Return the content of the "Layers" panel section."""
 
     async def add_ndvi_layer():
@@ -54,35 +53,21 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
             name=msg("layers.ndvi"),
             key=NDVI_LAYER_ID,
         )
-        sepal_map.center = DEMO_CENTER
-        sepal_map.zoom = 12
-        layer_legends.set(
-            upsert_legends(
-                layer_legends.value,
-                LayerLegend(
-                    NDVI_LAYER_ID,
-                    msg("layers.ndvi"),
-                    gradient_legend(msg("layers.ndvi_short"), NDVI_VIS),
-                ),
-            )
-        )
+        sepal_map.set_center(*DEMO_CENTER, 11)
 
     async def add_radar_layer():
-        """Add the Sentinel-1 composite; same loop rule as the NDVI layer."""
+        """Add the Sentinel-1 composite; same loop rule as the NDVI layer.
+
+        Its style has three bands and no palette, so the layer gets its own legend.
+        """
         await sepal_map.add_ee_layer_async(
             radar_composite(),
             vis_params=RADAR_VIS,
             name=msg("layers.radar"),
             key=RADAR_LAYER_ID,
         )
-        sepal_map.center = RADAR_CENTER
-        sepal_map.zoom = 11
-        layer_legends.set(
-            upsert_legends(
-                layer_legends.value,
-                LayerLegend(RADAR_LAYER_ID, msg("layers.radar"), band_legend(RADAR_BANDS)),
-            )
-        )
+        attach_legend(sepal_map, RADAR_LAYER_ID, band_legend(RADAR_BANDS))
+        sepal_map.set_center(*RADAR_CENTER, 10)
 
     ndvi_task = solara.lab.use_task(
         add_ndvi_layer, dependencies=None, raise_error=False, prefer_threaded=False
@@ -104,14 +89,11 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
             ),
             replace=True,
         )
-        sepal_map.center = PMTILES_CENTER
-        sepal_map.zoom = 14
+        sepal_map.set_center(*PMTILES_CENTER, 13)
 
     def remove_all_layers():
         sepal_map.remove_all()
-        sepal_map.center = DEMO_CENTER
-        sepal_map.zoom = 5
-        layer_legends.set(())
+        sepal_map.set_center(*DEMO_CENTER, 4)
         outputs.set(None)
 
     app_model = solara.use_memo(AppModel, [])

@@ -31,7 +31,6 @@
   },
   "layers": {
     "ndvi": "Sentinel-2 NDVI",
-    "ndvi_short": "NDVI",
     "radar": "Sentinel-1 radar",
     "pixel_area": "Pixel area (m²)",
     "elevation": "Elevation classes",

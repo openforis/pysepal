@@ -30,7 +30,8 @@ def lint(session):
 def test(session):
     """Run all the test using the environment variable of the running machine."""
     _install_map(session)
-    session.install(".[test]")
+    # the demo smoke tests import the demos' own dependencies
+    session.install(".[test,demos]")
     session.run("pip", "list")
 
     # if we are in the sepal-venv, force earthengine api fork

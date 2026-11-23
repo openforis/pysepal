@@ -29,8 +29,8 @@ DEMOS = [
         "map-app",
         "Map App",
         "What a real SEPAL module needs: AOI selection, async processing with "
-        "progress notifications, layer management, a floating legend driven by the "
-        "layers on the map, and Earth Engine / Drive / SEPAL exports. It "
+        "progress notifications, layer management, legends for the layers on the "
+        "map, and Earth Engine / Drive / SEPAL exports. It "
         "authenticates against SEPAL, so it needs credentials in `.env`.",
     ),
     (
