@@ -172,10 +172,14 @@ export class ViewControls {
   private readonly stopObserving: () => void;
 
   constructor(private readonly options: ViewControlsOptions) {
+    // A compare view's right map sits in the canvas container, before the
+    // main map's control container, with corners of its own.
     for (const [position] of CORNERS) {
-      const corner = options.root.querySelector<HTMLElement>(
-        `.maplibregl-ctrl-${position}`
-      );
+      const corner = options.map
+        .getContainer()
+        .querySelector<HTMLElement>(
+          `:scope > .maplibregl-control-container > .maplibregl-ctrl-${position}`
+        );
       if (corner) this.corners.set(position, corner);
     }
     this.stopObserving = (options.observeSize ?? observeSize)(

@@ -112,8 +112,18 @@ class FakeElement {
     return el;
   }
 
-  /** Only `.class` selectors. */
+  /** Only `.class`, or `:scope > .a > .b` for a chain of children. */
   querySelector(selector: string): FakeElement | null {
+    if (selector.startsWith(":scope")) {
+      let found: FakeElement[] = [this];
+      for (const step of selector.split(">").slice(1)) {
+        const token = /^\s*\.([\w-]+)\s*$/.exec(step)![1];
+        found = found.flatMap((el) =>
+          el.children.filter((c) => c.classList.contains(token))
+        );
+      }
+      return found[0] ?? null;
+    }
     const token = /^\.([\w-]+)$/.exec(selector)![1];
     for (const child of this.children) {
       if (child.classList.contains(token)) return child;
@@ -167,6 +177,18 @@ function fakeDocument(api: boolean) {
 
 const POSITIONS = ["top-left", "top-right", "bottom-left", "bottom-right"];
 
+/** A control container with its four corners, as MapLibre builds one. */
+function controlContainer(): FakeElement {
+  const container = new FakeElement();
+  container.className = "maplibregl-control-container";
+  for (const position of POSITIONS) {
+    const corner = new FakeElement();
+    corner.className = `maplibregl-ctrl-${position}`;
+    container.appendChild(corner);
+  }
+  return container;
+}
+
 /** A map that adds and removes controls as MapLibre does, in its corners. */
 class FakeControlMap {
   readonly placed: { control: IControl; position: string }[] = [];
@@ -177,20 +199,18 @@ class FakeControlMap {
   };
   readonly _camera = { renderedState: { width: 400, height: 300 } };
   resizes = 0;
+  /** Where the canvas is, and the right map of a compare view. */
+  readonly canvasContainer = new FakeElement();
+  private readonly controls = controlContainer();
 
   constructor(private readonly container: FakeElement) {
-    const corners = new FakeElement();
-    corners.className = "maplibregl-control-container";
-    container.appendChild(corners);
-    for (const position of POSITIONS) {
-      const corner = new FakeElement();
-      corner.className = `maplibregl-ctrl-${position}`;
-      corners.appendChild(corner);
-    }
+    this.canvasContainer.className = "maplibregl-canvas-container";
+    container.appendChild(this.canvasContainer);
+    container.appendChild(this.controls);
   }
 
   corner(position: string): FakeElement {
-    return this.container.querySelector(`.maplibregl-ctrl-${position}`)!;
+    return this.controls.querySelector(`.maplibregl-ctrl-${position}`)!;
   }
 
   at(position: string): IControl[] {
@@ -280,11 +300,18 @@ function setup({
   api = true,
   doc = fakeDocument(api),
   viewId = "view-1",
+  compare = false,
 } = {}) {
   vi.stubGlobal("document", doc);
   vi.stubGlobal("window", { document: doc });
   const root: FakeElement = doc.element();
   const map = new FakeControlMap(root);
+  // A compare view's right map, in the canvas container: its corners come
+  // before the main map's in tree order.
+  const right = new FakeElement();
+  right.className = "psm-compare-right";
+  right.appendChild(controlContainer());
+  if (compare) map.canvasContainer.appendChild(right);
   const told: Insets[] = [];
   const observer = {
     elements: [] as FakeElement[],
@@ -309,7 +336,7 @@ function setup({
     root.querySelector(".maplibregl-ctrl-shrink")!;
   /** What the observer calls when a corner changes size. */
   const measure = () => observer.callback();
-  return { doc, root, map, controls, told, button, observer, measure };
+  return { doc, root, map, controls, told, button, observer, measure, right };
 }
 
 /** Puts `el` inside a new element marked as the fullscreen root. */
@@ -597,6 +624,23 @@ describe("ViewControls", () => {
     expect(observer.stopped).toBe(true);
     expect(published(ancestor)).toEqual({});
     expect(ancestor.hasAttribute("data-psm-controls")).toBe(false);
+  });
+
+  it("uses the main map's corners, not those of the compare map before them", () => {
+    const { root, map, controls, observer, measure, right } = setup({
+      compare: true,
+    });
+    expect(observer.elements).toEqual(POSITIONS.map((p) => map.corner(p)));
+    controls.setInsets(INSETS);
+    expect(corners(map)).toEqual(placedAt(INSETS));
+    for (const position of POSITIONS) {
+      const corner = right.querySelector(`.maplibregl-ctrl-${position}`)!;
+      expect({ ...corner.style }).toEqual({});
+    }
+
+    setHeights(map, HEIGHTS);
+    measure();
+    expect(published(root)).toEqual(inPx(HEIGHTS));
   });
 
   it("dispose leaves a newer view's variables and mark", () => {

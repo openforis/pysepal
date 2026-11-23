@@ -427,6 +427,31 @@ def test_divider_keyboard(harness, page_session, wait_settled):
     assert cameras(el) == before
 
 
+def test_controls_use_the_main_map_corners(harness, page_session, wait_settled):
+    widget = MapWidget()
+    widget.set_insets(left=60)
+    el = compare_view(page_session, wait_settled, widget)
+    # The right map's corners, empty, come first in tree order.
+    first = "el.querySelector('.maplibregl-ctrl-top-left')"
+    assert el.evaluate(f"el => {first}.closest('.psm-compare-right') !== null")
+    left = el.evaluate(
+        "el => el.querySelector('.maplibregl-ctrl-zoom-in').getBoundingClientRect().left"
+        " - el.getBoundingClientRect().left"
+    )
+    assert left == pytest.approx(60 + 10, abs=1)
+    page_session.wait_for_function(
+        """el => {
+            const corner = el.querySelector(
+                ':scope > .maplibregl-control-container > .maplibregl-ctrl-top-left');
+            return corner.offsetHeight > 0
+                && el.style.getPropertyValue('--psm-controls-top-left')
+                    === `${corner.offsetHeight}px`;
+        }""",
+        arg=el,
+        timeout=10_000,
+    )
+
+
 def test_divider_stays_inside_insets(harness, page_session, wait_settled):
     widget = MapWidget()
     widget.set_insets(left=300)
