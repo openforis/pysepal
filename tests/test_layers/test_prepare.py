@@ -31,7 +31,7 @@ def test_prepare_raster(byte):
 
 def test_prepare_raster_single_band_list(byte):
     render = prepare_sync(LayerSpec.from_raster(byte, bands=1, colormap="viridis"))
-    assert render.tile_kwargs["indexes"] == [1] and render.tile_kwargs["colormap"] == "viridis"
+    assert "indexes=1" in render.url and "colormap=viridis" in render.url
 
 
 def test_prepare_sync_matches_async(byte):
@@ -109,35 +109,6 @@ def test_tile_spec_prepares_with_size_and_zoom(run):
         None,
     )
     assert render.url == source.url and render.render_hash == spec.render_hash
-
-
-def _raise(*args, **kwargs):
-    raise AssertionError("the Leaflet helper must not be called")
-
-
-@pytest.mark.parametrize(
-    "style",
-    [
-        {"bands": [1], "colormap": "viridis", "vmin": 0, "vmax": 255},
-        {"bands": [1], "class_colors": {1: "#ff0000", 2: "#00ff00"}},
-    ],
-)
-def test_raster_url_matches_the_leaflet_layer(rgb, style):
-    from localtileserver import get_leaflet_tile_layer
-
-    render = prepare_sync(LayerSpec.from_raster(rgb, name="r", **style), optimize=False)
-    plain = prepare_sync(LayerSpec.from_raster(rgb, name="r", bands=[1]), optimize=False)
-    assert render.url != plain.url  # the style reached the URL
-    widget = get_leaflet_tile_layer(render.keepalive, **render.tile_kwargs)
-    (south, west), (north, east) = widget.bounds
-    assert render.url == widget.url
-    assert render.bounds == pytest.approx((west, south, east, north))
-
-
-def test_raster_prepare_does_not_build_a_leaflet_layer(rgb, monkeypatch):
-    monkeypatch.setattr("localtileserver.get_leaflet_tile_layer", _raise)
-    monkeypatch.setattr("localtileserver.widgets.get_leaflet_tile_layer", _raise)
-    assert prepare_sync(LayerSpec.from_raster(rgb, name="r"), optimize=False).url
 
 
 def test_raster_prepare_enables_the_loopback_bridge(rgb, monkeypatch):

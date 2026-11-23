@@ -25,7 +25,6 @@ dependencies = [
     # 3.1 is the oldest release it is tested on.
     "ipyvuetify>=3.1,<4",
     "markdown",
-    "ipyleaflet>=0.20.0",  # Layer.pane, Map.panes and PMTilesLayer
     "pysepal-map>=0.3.0",
     # earthengine management
     "earthengine-api>1.6.0",
@@ -44,6 +43,7 @@ dependencies = [
     "localtileserver>=1.0.0", # first version with the colormap registry add_raster needs
     "pygaul>=0.4.2", # GAUL 2024 with iso3_code and gaul0_code columns
     "pygadm>=0.5.0", # use the class implementation
+    "xyzservices", # the basemap providers (it came with ipyleaflet before)
     # miscellaneous
     "babel>=2.17,<3",
     "python-box",
@@ -78,6 +78,7 @@ Download = "https://github.com/openforis/pysepal/archive/v_${metadata:version}.t
 [project.optional-dependencies]
 # demo_apps/ only -- nothing here ships in the wheel. vectortileserver also
 # needs the tippecanoe binary, which pip cannot provide: conda-forge has it.
+# It brings ipyleaflet for the vector demo; pysepal itself no longer needs it.
 demos = [
     "vectortileserver>=0.2.1",
     "ipecharts>=1.4.2", # the charting library the guides standardise on; solara_chart_app only

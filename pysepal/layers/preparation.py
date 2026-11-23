@@ -218,13 +218,12 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
     elif style.min is not None or style.max is not None:
         log.warning("vmin/vmax are ignored when class_colors is set.")
 
-    tile_kwargs = dict(max_zoom=20, max_native_zoom=20, nodata=style.nodata, **color_kwargs)
     url = client.get_tile_url(
-        indexes=tile_kwargs.get("indexes"),
-        colormap=tile_kwargs.get("colormap"),
-        vmin=tile_kwargs.get("vmin"),
-        vmax=tile_kwargs.get("vmax"),
-        nodata=tile_kwargs.get("nodata"),
+        indexes=color_kwargs.get("indexes"),
+        colormap=color_kwargs.get("colormap"),
+        vmin=color_kwargs.get("vmin"),
+        vmax=color_kwargs.get("vmax"),
+        nodata=style.nodata,
         client=True,
     )
     south, north, west, east = client.bounds()
@@ -238,7 +237,6 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
         max_zoom=20,
         raster=str(image),
         keepalive=client,
-        tile_kwargs=tile_kwargs,
     )
 
 

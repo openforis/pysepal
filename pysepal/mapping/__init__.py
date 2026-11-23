@@ -17,14 +17,11 @@ Example:
 
 from pysepal_map import Side as Side
 
-from .geojson_utils import *
 from .handle import LayerGoneError as LayerGoneError
 from .handle import LayerHandle as LayerHandle
 from .handle import ZoomResult as ZoomResult
 from .inspector import *
-from .layer import *
 from .map_btn import *
-from .marker_cluster import *
 from .sepal_map import *
 from .tiling import *
 from .visualization import *
@@ -46,6 +43,9 @@ _REMOVED = {
         "LayerStateControl": "the layer loading state MapView shows",
         "MenuControl": "Solara components in MapView(overlays=...)",
         "LegendControl": "the MapView legend, built from each layer's legend",
+        "EELayer": "m.add_ee_layer(...) or a LayerSpec, and the LayerHandle it returns",
+        "MarkerCluster": "LayerSpec.from_points(...) with VectorStyle(cluster=True)",
+        "get_ipygeojson": "LayerSpec.from_geojson or LayerSpec.from_vector with a VectorStyle",
     },
 }
 

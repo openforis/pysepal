@@ -34,6 +34,10 @@ SKIPPED = (
     "pysepal.mapping.layer_state_control",
     "pysepal.mapping.menu_control",
     "pysepal.mapping.legend_control",
+    "pysepal.mapping.aoi_control",
+    "pysepal.mapping.layer",
+    "pysepal.mapping.marker_cluster",
+    "pysepal.mapping.geojson_utils",
 )
 
 WATCH_START = re.compile(r"^  watch: \{$")

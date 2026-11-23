@@ -53,6 +53,10 @@ def _run(code: str) -> subprocess.CompletedProcess:
         "pysepal.mapping.layer_state_control",
         "pysepal.mapping.menu_control",
         "pysepal.mapping.legend_control",
+        "pysepal.mapping.aoi_control",
+        "pysepal.mapping.layer",
+        "pysepal.mapping.marker_cluster",
+        "pysepal.mapping.geojson_utils",
     ],
 )
 def test_removed_module_import_says_what_to_do(module):
@@ -81,6 +85,9 @@ def test_removed_module_import_says_what_to_do(module):
         ("pysepal.mapping", "LayerStateControl"),
         ("pysepal.mapping", "MenuControl"),
         ("pysepal.mapping", "LegendControl"),
+        ("pysepal.mapping", "EELayer"),
+        ("pysepal.mapping", "MarkerCluster"),
+        ("pysepal.mapping", "get_ipygeojson"),
     ],
 )
 def test_removed_widget_names_say_what_to_do(module, name):
