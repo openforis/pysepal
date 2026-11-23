@@ -120,7 +120,7 @@ def _AoiShell():
 
     sepal_map = solara.use_memo(
         lambda: sm.SepalMap(
-            zoom=3, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
+            zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         ),
         [],
     )

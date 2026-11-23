@@ -147,7 +147,7 @@ def RasterPanel():
 
     def build_map():
         return sm.SepalMap(
-            zoom=3, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
+            zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         )
 
     sepal_map = solara.use_memo(build_map, [])

@@ -38,7 +38,7 @@ def use_sepal_map(gee_interface, theme_state) -> sm.SepalMap:
 
     def build_map():
         sepal_map = sm.SepalMap(
-            zoom=3,
+            zoom=2,
             center=(0, 0),
             gee=True,
             gee_interface=gee_interface,

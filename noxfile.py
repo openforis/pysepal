@@ -30,8 +30,7 @@ def lint(session):
 def test(session):
     """Run all the test using the environment variable of the running machine."""
     _install_map(session)
-    # the demo smoke tests import the demos' own dependencies
-    session.install(".[test,demos]")
+    session.install(".[test]")
     session.run("pip", "list")
 
     # if we are in the sepal-venv, force earthengine api fork
@@ -44,6 +43,19 @@ def test(session):
 
     test_files = session.posargs or ["tests"]
     session.run("pytest", "--color=yes", "--cov", "--cov-report=xml", *test_files)
+
+
+@nox.session(reuse_venv=False)
+def demos(session):
+    """Run the demo apps' smoke tests with the demos' own dependencies.
+
+    Apart from ``test``: vectortileserver brings ipyleaflet, which the main suite must
+    run without, so that a pysepal module importing it fails there.
+    """
+    _install_map(session)
+    session.install(".[test,demos]")
+    test_files = session.posargs or ["tests/test_demo_apps"]
+    session.run("pytest", "--color=yes", *test_files)
 
 
 @nox.session(reuse_venv=False)

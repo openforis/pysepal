@@ -137,7 +137,7 @@ def MapContexts(values: list, on_back):
 
     def build_map():
         return sm.SepalMap(
-            zoom=3,
+            zoom=2,
             center=(0, 0),
             gee=False,
             fullscreen=True,
