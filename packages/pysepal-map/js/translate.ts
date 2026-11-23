@@ -60,9 +60,8 @@ function zoomRange(layer: LayerState): { minzoom?: number; maxzoom?: number } {
   return range;
 }
 
-/** Prefixes of the generated image ids; see images.ts. */
+/** Prefix of the generated pin image ids; see images.ts. */
 export const PIN_PREFIX = "psm-pin:";
-export const COUNT_PREFIX = "psm-count:";
 
 const NOT_CLUSTER: FilterSpecification = ["!=", ["get", "cluster"], true];
 
@@ -165,23 +164,42 @@ function vectorLayers(
     point,
   ] as LayerSpecification[];
   if (cluster) {
-    layers.push({
-      ...common,
-      id: `${source}:cluster`,
-      type: "symbol",
-      filter: ["==", ["get", "cluster"], true],
-      layout: {
-        ...layout,
-        "icon-image": [
-          "concat",
-          `${COUNT_PREFIX}${encodeURIComponent(paint.stroke)}:`,
-          ["to-string", ["get", "point_count_abbreviated"]],
-        ],
-        "icon-allow-overlap": true,
-        "icon-ignore-placement": true,
+    const clusterFilter: FilterSpecification = ["==", ["get", "cluster"], true];
+    const label: ExpressionSpecification = [
+      "to-string",
+      ["get", "point_count_abbreviated"],
+    ];
+    layers.push(
+      {
+        ...common,
+        id: `${source}:cluster`,
+        type: "circle",
+        filter: clusterFilter,
+        paint: {
+          "circle-color": paint.stroke,
+          "circle-radius": ["+", 11, ["*", 2.5, ["-", ["length", label], 1]]],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.5,
+          "circle-opacity": opacity,
+          "circle-stroke-opacity": opacity,
+        },
       },
-      paint: { "icon-opacity": opacity },
-    } as LayerSpecification);
+      {
+        ...common,
+        id: `${source}:count`,
+        type: "symbol",
+        filter: clusterFilter,
+        layout: {
+          ...layout,
+          "text-field": label,
+          "text-font": ["Open Sans Bold"],
+          "text-size": 12,
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+        },
+        paint: { "text-color": "#ffffff", "text-opacity": opacity },
+      }
+    );
   }
   return layers;
 }

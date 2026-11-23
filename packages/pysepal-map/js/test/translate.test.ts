@@ -34,6 +34,7 @@ describe("toOwnedStyle", () => {
       "psm:v1:1:line",
       "psm:v1:1:circle",
       "psm:v1:1:cluster",
+      "psm:v1:1:count",
     ]);
   });
 
@@ -126,7 +127,7 @@ describe("toOwnedStyle", () => {
     );
   });
 
-  it("clusters the source and adds a count layer above the points", () => {
+  it("draws a bubble circle and a count symbol above it", () => {
     const state = withLayers((layers) => {
       layers[0].paint!.stroke = "#ff0000";
       layers[0].opacity = 0.5;
@@ -140,15 +141,48 @@ describe("toOwnedStyle", () => {
       clusterMaxZoom: 12,
     });
     const cluster = byId(state, "psm:v1:1:cluster");
-    expect(cluster.type).toBe("symbol");
-    expect(cluster.filter).toEqual(["==", ["get", "cluster"], true]);
-    expect(cluster.layout["icon-image"]).toEqual([
-      "concat",
-      "psm-count:%23ff0000:",
-      ["to-string", ["get", "point_count_abbreviated"]],
-    ]);
-    expect(cluster.layout["icon-allow-overlap"]).toBe(true);
-    expect(cluster.paint).toEqual({ "icon-opacity": 0.5 });
+    const count = byId(state, "psm:v1:1:count");
+    expect(cluster).toMatchObject({
+      type: "circle",
+      filter: ["==", ["get", "cluster"], true],
+      paint: {
+        "circle-color": "#ff0000",
+        "circle-radius": [
+          "+",
+          11,
+          [
+            "*",
+            2.5,
+            [
+              "-",
+              ["length", ["to-string", ["get", "point_count_abbreviated"]]],
+              1,
+            ],
+          ],
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5,
+        "circle-opacity": 0.5,
+        "circle-stroke-opacity": 0.5,
+      },
+    });
+    expect(count).toMatchObject({
+      type: "symbol",
+      filter: ["==", ["get", "cluster"], true],
+      layout: {
+        visibility: "visible",
+        "text-field": ["to-string", ["get", "point_count_abbreviated"]],
+        "text-font": ["Open Sans Bold"],
+        "text-size": 12,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+      },
+      paint: { "text-color": "#ffffff", "text-opacity": 0.5 },
+    });
+    const ids = toOwnedStyle(state).layers.map((l) => l.id);
+    expect(ids.indexOf("psm:v1:1:count")).toBe(
+      ids.indexOf("psm:v1:1:cluster") + 1
+    );
     const order = toOwnedStyle(state).layers.map((l) => l.id);
     expect(order.indexOf("psm:v1:1:cluster")).toBeGreaterThan(
       order.indexOf("psm:v1:1:circle")

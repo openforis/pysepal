@@ -165,8 +165,8 @@ Notes on the interaction replacements:
   "Go" button, say) becomes `m.on_click` plus a component in `MapView`.
   They apply to vector layers drawn by the browser, not to Earth Engine vectors
   or tile layers.
-- **Clusters hold only points.** The names `cluster`, `cluster_id`,
-  `point_count` and `point_count_abbreviated` are reserved on a clustered layer.
+- **Clusters hold only points.** A property `cluster` that is true is reserved
+  on a clustered layer.
 - **Drawing.** `AoiView` offers DRAW on a `SepalMap` again. A polygon with holes
   cannot be drawn or given to `session.set` (it raises), and drawings across the
   antimeridian are not supported.

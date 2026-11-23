@@ -106,18 +106,14 @@ def _fields(value: Union[bool, list]) -> Optional[tuple]:
     return None if value is False else () if value is True else tuple(value)
 
 
-_CLUSTER_RESERVED = ("cluster", "cluster_id", "point_count", "point_count_abbreviated")
-
-
 def _check_clusterable(data: Optional[dict]) -> None:
-    """Raise ``ValueError`` unless every feature is a point without a reserved property."""
+    """Raise ``ValueError`` unless every feature is a point without ``cluster=true``."""
     for feature in (data or {}).get("features", ()):
         geometry = feature.get("geometry")
         if geometry is None or geometry.get("type") != "Point":
             raise ValueError("clustering needs point features only")
-        for name in _CLUSTER_RESERVED:
-            if name in (feature.get("properties") or {}):
-                raise ValueError(f"property {name} is reserved for clusters")
+        if (feature.get("properties") or {}).get("cluster") is True:
+            raise ValueError("property cluster=true is reserved for clusters")
 
 
 def _paint(spec: LayerSpec, is_dark: bool) -> VectorPaint:

@@ -139,6 +139,28 @@ def test_clusters_render_and_expand(harness, page_session):
     assert not any(m.get("type") == "click" for m in received)
 
 
+def test_cluster_counts_draw_with_local_glyphs(harness, page_session, browser_errors):
+    widget = MapWidget()
+    glyph_requests = []
+    page_session.on("request", lambda r: glyph_requests.append(r.url) if ".pbf" in r.url else None)
+    coords = [(0.001 * i, 0.001 * (i % 3)) for i in range(12)]
+    widget.set_center(0, 0, zoom=9)
+    show(page_session, widget, layer_of(widget, coords))
+
+    assert page_session.evaluate(f"() => 'glyphs' in {ROOT}.psmMap.getStyle()") is False
+    bubbles = features(page_session, widget, "cluster")
+    assert [b["props"]["point_count"] for b in bubbles] == [12]
+    count_id = style_id(widget, "count")
+    assert page_session.evaluate(
+        f"id => {ROOT}.psmMap.queryRenderedFeatures({{ layers: [id] }}).length > 0", count_id
+    )
+    x, y = bubbles[0]["x"], bubbles[0]["y"]
+    centre = [pixel(page_session, x + dx, y + dy) for dx in range(-4, 5) for dy in range(-4, 5)]
+    assert any(p[3] > 200 and all(c > 200 for c in p[:3]) for p in centre)
+    assert glyph_requests == []
+    assert browser_errors == []
+
+
 def test_cluster_boundary(harness, page_session):
     widget = MapWidget()
     pair = [(10.0, 20.0), (10.0000898, 20.0)]

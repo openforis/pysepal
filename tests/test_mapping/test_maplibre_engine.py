@@ -1085,17 +1085,31 @@ def test_cluster_with_polygons_is_layer_error(fake):
     assert ids_of(widget) == []
 
 
-@pytest.mark.parametrize(
-    "name", ["cluster", "cluster_id", "point_count", "point_count_abbreviated"]
-)
-def test_cluster_reserved_property_is_layer_error(fake, name):
+def test_only_a_true_cluster_property_is_reserved(fake):
     widget, store, _ = headless()
-    feature = collection(0)["features"][0] | {"properties": {name: 1}}
-    fake.data["https://data.test/a.geojson"] = {"type": "FeatureCollection", "features": [feature]}
+    feature = collection(0)["features"][0]
+    fake.data["https://data.test/a.geojson"] = {
+        "type": "FeatureCollection",
+        "features": [feature | {"properties": {"cluster": True}}],
+    }
     store.add(with_style(vector_spec("a"), cluster=True))
     view = store.view("a")
-    assert (view.status, view.error) == ("error", f"property {name} is reserved for clusters")
+    assert (view.status, view.error) == ("error", "property cluster=true is reserved for clusters")
     assert ids_of(widget) == []
+
+    for properties in (
+        {"cluster": "yes"},
+        {"cluster_id": 1},
+        {"point_count": 3},
+        {"point_count_abbreviated": "3"},
+    ):
+        fake.data["https://data.test/b.geojson"] = {
+            "type": "FeatureCollection",
+            "features": [feature | {"properties": properties}],
+        }
+        store.add(with_style(vector_spec("b"), cluster=True))
+        assert store.view("b").status != "error", properties
+        store.remove("b")
 
 
 def test_restyle_cluster_reuses_payload_new_instance(fake):

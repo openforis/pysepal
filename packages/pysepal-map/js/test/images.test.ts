@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   installImages,
-  parseCountId,
   parseImageId,
   parsePinId,
   sizeOf,
@@ -21,40 +20,16 @@ describe("image ids", () => {
     expect(parsePinId("other")).toBeNull();
   });
 
-  it("reads the colour and label of a count id", () => {
-    expect(parseCountId("psm-count:%23ff0000:12")).toEqual({
-      color: "#ff0000",
-      label: "12",
-    });
-    expect(parseCountId("psm-count:%23ff0000:1.2k")).toEqual({
-      color: "#ff0000",
-      label: "1.2k",
-    });
-    expect(parseCountId("psm-count:%23ff0000:")).toBeNull();
-    expect(parseCountId("psm-count::5")).toBeNull();
-    expect(parseCountId("psm-count:%23ff0000")).toBeNull();
-    expect(parseCountId("psm-count:%E0%A4%A:5")).toBeNull();
-    expect(parseCountId("psm-pin:%23fff")).toBeNull();
-  });
-
   it("sorts an id into a drawing", () => {
     expect(parseImageId("psm-pin:%23fff")).toEqual({
       kind: "pin",
       color: "#fff",
     });
-    expect(parseImageId("psm-count:%23fff:7")).toEqual({
-      kind: "count",
-      color: "#fff",
-      label: "7",
-    });
     expect(parseImageId("sprite-icon")).toBeNull();
   });
 
-  it("grows a bubble with its label", () => {
-    const size = (label: string) =>
-      sizeOf({ kind: "count", color: "#000", label }).width;
-    expect(size("12")).toBeGreaterThan(size("1"));
-    expect(size("1.2k")).toBeGreaterThan(size("12"));
+  it("generated images are pins only", () => {
+    expect(parseImageId("psm-count:%23f00:5")).toBeNull();
   });
 });
 
@@ -99,12 +74,8 @@ describe("installImages", () => {
     expect(map.images.get("psm-pin:%23ff0000")?.pixelRatio).toBe(2);
     await map.getImages(["psm-pin:%23ff0000"]);
     expect(draw).toHaveBeenCalledTimes(1);
-    const counts = await map.getImages([
-      "psm-count:%23ff0000:5",
-      "psm-count:%23ff0000:6",
-    ]);
-    expect(Object.values(counts).every((image) => image?.width)).toBe(true);
-    expect(draw).toHaveBeenCalledTimes(3);
+    await map.getImages(["psm-pin:%2300ff00"]);
+    expect(draw).toHaveBeenCalledTimes(2);
   });
 
   it("does not draw an image that is already there", async () => {

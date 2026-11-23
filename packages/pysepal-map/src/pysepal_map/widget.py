@@ -20,7 +20,7 @@ raises publishes nothing and changes no counter.
 Style ids. A view owns every source and layer whose id starts with ``psm:``. A
 layer's source is ``psm:<id>:<instance>``, with the id escaped as
 ``encodeURIComponent`` does, and its layers add a part: ``:fill``, ``:line``
-and ``:circle`` (or ``:pin``, for ``VectorPaint(marker="pin")``, and ``:cluster``
+and ``:circle`` (or ``:pin``, for ``VectorPaint(marker="pin")``, and ``:cluster`` and ``:count``
 on a clustered source), or ``:raster``. The basemap's source and layer are
 ``psm:basemap``. A GeoJSON source generates feature ids, unique within it.
 A new instance is a new source, so nothing reported about the
@@ -145,17 +145,15 @@ pin replaces a point's circle by a symbol anchored at its tip, tinted with the
 fill (else the stroke) colour and sized by ``point_radius``. A ``GeoJSONSource`` may
 carry a ``Cluster(radius, max_zoom)``, part of the source, so changing it gives a
 new instance. A clustered source must hold only points: MapLibre's cluster index
-drops lines and polygons, and the property names ``cluster``, ``cluster_id``,
-``point_count`` and ``point_count_abbreviated`` are reserved on it. The view
-draws count bubbles in the stroke colour; a click on one zooms into it and
+drops lines and polygons, and a property ``cluster`` that is true is reserved
+on it. The view draws count bubbles in the stroke colour, with the count as
+white text (local glyphs, nothing is fetched); a click on one zooms into it and
 sends no click or popup, and clusters are never hits or tooltips. The click
 is a bubble's when the top feature of the popup, tooltip and cluster layers
 there is one (the layers that show the ``pointer`` cursor), whatever other
 layer draws above it. A bubble also hides the popups and tooltips of the features it covers. The
-view draws pins and bubbles on a canvas and registers them as images with ids
-``psm-pin:<color>`` and ``psm-count:<color>:<label>`` (colours escaped as
-``encodeURIComponent`` does), so no glyphs are fetched; the label uses the
-browser's sans-serif font. The marker option does nothing on raster layers.
+view draws pins on a canvas and registers them as images with ids
+``psm-pin:<color>`` (the colour escaped as ``encodeURIComponent`` does). The marker option does nothing on raster layers.
 
 Colours by class. ``VectorPaint(color_by=name, class_colors=...)`` colours one
 layer's features by the value of their property ``name``: ``class_colors`` is a

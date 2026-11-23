@@ -270,10 +270,10 @@ describe("reconcile", () => {
       })
     );
     const hide = plan(fake, hidden);
-    expect(hide).toHaveLength(4);
+    expect(hide).toHaveLength(5);
     expect(hide).toEqual(
       expect.arrayContaining(
-        ["fill", "line", "circle", "cluster"].map((part) => ({
+        ["fill", "line", "circle", "cluster", "count"].map((part) => ({
           kind: "setLayout",
           id: `psm:v1:1:${part}`,
           name: "visibility",
@@ -285,7 +285,7 @@ describe("reconcile", () => {
     expectConverged(fake, hidden, payloadOf);
 
     const show = plan(fake, toOwnedStyle(base));
-    expect(show).toHaveLength(4);
+    expect(show).toHaveLength(5);
     for (const op of show) {
       expect(op).toMatchObject({ kind: "setLayout", value: "visible" });
     }

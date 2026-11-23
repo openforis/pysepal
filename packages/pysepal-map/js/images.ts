@@ -1,4 +1,4 @@
-import { COUNT_PREFIX, PIN_PREFIX } from "./translate";
+import { PIN_PREFIX } from "./translate";
 
 /** Pixels of an image, in the shape `map.addImage` takes. */
 export interface Pixels {
@@ -16,9 +16,7 @@ export interface ImageMap {
   ): unknown;
 }
 
-export type Drawing =
-  | { kind: "pin"; color: string }
-  | { kind: "count"; color: string; label: string };
+export type Drawing = { kind: "pin"; color: string };
 
 function decode(text: string): string | null {
   try {
@@ -35,26 +33,11 @@ export function parsePinId(id: string): string | null {
   return color ? color : null;
 }
 
-/** The colour and label of a `psm-count:<color>:<label>` id, or null. */
-export function parseCountId(
-  id: string
-): { color: string; label: string } | null {
-  if (!id.startsWith(COUNT_PREFIX)) return null;
-  const rest = id.slice(COUNT_PREFIX.length);
-  // The colour is escaped, so its first raw colon ends it.
-  const colon = rest.indexOf(":");
-  if (colon < 1) return null;
-  const color = decode(rest.slice(0, colon));
-  const label = rest.slice(colon + 1);
-  return color && label ? { color, label } : null;
-}
-
 /** What an id asks to be drawn, or null for an id that is not ours. */
 export function parseImageId(id: string): Drawing | null {
   const color = parsePinId(id);
   if (color) return { kind: "pin", color };
-  const count = parseCountId(id);
-  return count ? { kind: "count", ...count } : null;
+  return null;
 }
 
 const PIN_WIDTH = 20;
@@ -63,9 +46,7 @@ const RING = 1.5;
 
 /** The CSS-pixel size of the image for a drawing. */
 export function sizeOf(drawing: Drawing): { width: number; height: number } {
-  if (drawing.kind === "pin") return { width: PIN_WIDTH, height: PIN_HEIGHT };
-  const diameter = 22 + 5 * (drawing.label.length - 1);
-  return { width: diameter, height: diameter };
+  return { width: PIN_WIDTH, height: PIN_HEIGHT };
 }
 
 function paintPin(ctx: CanvasRenderingContext2D, color: string): void {
@@ -83,27 +64,6 @@ function paintPin(ctx: CanvasRenderingContext2D, color: string): void {
   ctx.stroke();
 }
 
-function paintCount(
-  ctx: CanvasRenderingContext2D,
-  color: string,
-  label: string,
-  diameter: number
-): void {
-  const middle = diameter / 2;
-  ctx.beginPath();
-  ctx.arc(middle, middle, middle - RING / 2, 0, 2 * Math.PI);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.lineWidth = RING;
-  ctx.strokeStyle = "#ffffff";
-  ctx.stroke();
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 12px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, middle, middle);
-}
-
 /** Draw an image on a canvas, at `ratio` device pixels per CSS pixel. */
 export function drawOnCanvas(drawing: Drawing, ratio: number): Pixels {
   const { width, height } = sizeOf(drawing);
@@ -113,8 +73,7 @@ export function drawOnCanvas(drawing: Drawing, ratio: number): Pixels {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("no 2D canvas for generated images");
   ctx.scale(ratio, ratio);
-  if (drawing.kind === "pin") paintPin(ctx, drawing.color);
-  else paintCount(ctx, drawing.color, drawing.label, width);
+  paintPin(ctx, drawing.color);
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
@@ -124,7 +83,7 @@ export interface ImageOptions {
 }
 
 /**
- * Serve the pin and count images the style asks for. MapLibre waits for the
+ * Serve the pin images the style asks for. MapLibre waits for the
  * resolver before treating an image as missing, so the request that names
  * one gets its pixels at once. Returns a function that removes the resolver.
  */
