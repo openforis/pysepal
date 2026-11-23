@@ -1,9 +1,8 @@
 """The native Solara MapApp shell: a full-screen map with a drawer of steps and a tool panel."""
 
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Union
 
-import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
@@ -110,20 +109,33 @@ def use_prop_change(value, apply: Callable) -> None:
     solara.use_effect(effect, [value])
 
 
+@solara.component_vue("MapFrame.vue")
+def MapFrame(
+    collapsible: bool,
+    event_collapse: Optional[Callable[[Any], None]] = None,
+    children: list = [],
+):
+    """Hold the map, and call ``event_collapse`` on a click on it while ``collapsible``.
+
+    The browser checks ``collapsible``, so a click the drawer does not need, such as
+    each vertex of a drawing, sends nothing to the kernel.
+    """
+
+
 @solara.component
-def MapContainer(map_widget, on_click: Callable[[], None], overlays: Optional[Mapping] = None):
+def MapContainer(
+    map_widget,
+    collapsible: bool,
+    on_collapse: Callable[[], None],
+    overlays: Optional[Mapping] = None,
+):
     """Render the map behind the shell, in a ``MapView`` when it has a layer store."""
     shown = (
         MapView(map_widget, overlays=overlays) if hasattr(map_widget, "layer_store") else map_widget
     )
-    container = rv.Html(
-        tag="div",
-        class_="map-background sepal-mapapp__map",
-        attributes={"id": "map-container"},
-        children=[shown],
+    return MapFrame(
+        collapsible=collapsible, event_collapse=lambda _: on_collapse(), children=[shown]
     )
-    ipyvue.use_event(container, "click", lambda *_: on_click())
-    return container
 
 
 @solara.component
@@ -411,9 +423,12 @@ def MapApp(
             ).key("viewport-bridge")
 
             if has_map:
-                MapContainer(map_widget, on_click=collapse_if_unpinned, overlays=map_overlays).key(
-                    "map"
-                )
+                MapContainer(
+                    map_widget,
+                    collapsible=not pinned and not rail,
+                    on_collapse=collapse_if_unpinned,
+                    overlays=map_overlays,
+                ).key("map")
 
             if step_slots:
                 with rv.Sheet(

@@ -1,5 +1,7 @@
 """Tests for the native Solara MapApp shell, on the installed ipyvuetify major."""
 
+import re
+from pathlib import Path
 from typing import Any, List
 
 import ipyvuetify as v
@@ -7,12 +9,19 @@ import ipywidgets
 import pytest
 import solara
 
+from pysepal.mapping import SepalMap
+from pysepal.message import msg
+from pysepal.solara.components import map_app
 from pysepal.solara.components.map_app import MapApp, ThemeToggle
 from pysepal.solara.components.map_app._ui import step_keys
 from pysepal.solara.components.map_app.drawer import belt_slots, split_belt
 from pysepal.solara.components.map_app.shell import initial_step_index
 from pysepal.solara.components.map_app.step_dialog import clamp
 from pysepal.solara.theme import ThemeState
+from tests.test_solara.test_notifications.test_notification_ui_template import (
+    needs_node,
+    run_vue_script,
+)
 
 
 def walk(widget):
@@ -808,6 +817,112 @@ def test_toggle_follows_the_state_and_skips_auto_when_disabled():
 
     state.set_mode("dark")
     assert button.mode == "dark"
+
+
+def _map_frame(root):
+    """Return the widget of ``MapFrame.vue``, which holds the map."""
+    return next(w for w in walk(root) if hasattr(w, "collapsible"))
+
+
+def _is_rail(root) -> bool:
+    return "sepal-mapapp--rail" in _classes(_with_class(root, "sepal-mapapp")[0]).split()
+
+
+def _pin_button(root):
+    titles = (msg("map_app.pin"), msg("map_app.unpin"))
+    return next(
+        w for w in walk(root) if (getattr(w, "attributes", None) or {}).get("title") in titles
+    )
+
+
+def _click_listeners(root) -> List[Any]:
+    """Return the widgets under ``root`` that send every click to the kernel."""
+    return [w for w in walk(root) if "click" in (getattr(w, "_events", None) or [])]
+
+
+def _wide_unpinned():
+    box, _, _ = _render(main_map=FakeMap(), is_pinned=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+    return box
+
+
+def test_a_map_click_collapses_an_expanded_unpinned_drawer():
+    box = _wide_unpinned()
+    assert _is_rail(box)
+    _toggles(box)[0].click()
+    assert not _is_rail(box)
+    assert _map_frame(box).collapsible is True
+
+    _map_frame(box).vue_collapse(None)
+
+    assert _is_rail(box)
+    assert _map_frame(box).collapsible is False
+
+
+def test_a_pinned_or_railed_drawer_does_not_listen_to_map_clicks():
+    box = _wide_unpinned()
+    frame = _map_frame(box)
+    # unpinned on the rail
+    assert frame.collapsible is False
+
+    _toggles(box)[0].click()
+    _pin_button(box).click()
+    # pinned open
+    assert frame.collapsible is False
+    assert not _click_listeners(frame)
+
+    # a click sent before the browser heard of the pin changes nothing
+    frame.vue_collapse(None)
+    assert not _is_rail(box)
+
+
+def test_the_map_container_keeps_its_id_and_classes():
+    template = (Path(map_app.__file__).parent / "MapFrame.vue").read_text()
+    root = re.search(r"<template>\s*<div([^>]*)>", template).group(1)
+    assert 'id="map-container"' in root
+    assert 'class="map-background sepal-mapapp__map"' in root
+    assert '@click="onClick"' in root
+
+
+def test_drawer_changes_do_not_remount_the_map():
+    m = SepalMap(gee=False)
+    box, rc, _ = _render(main_map=m, is_pinned=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+    frame = _map_frame(box)
+    view = _with_class(box, "pysepal-map-view")[0]
+    changes = [
+        lambda: _toggles(box)[0].click(),  # expand
+        lambda: _pin_button(box).click(),  # pin
+        lambda: _pin_button(box).click(),  # unpin
+        lambda: _map_frame(box).vue_collapse(None),  # a map click collapses it
+    ]
+
+    for change in changes:
+        change()
+        assert _map_frame(box) is frame
+        assert _with_class(box, "pysepal-map-view")[0] is view
+
+    assert _is_rail(box)
+    assert m in walk(view)
+    rc.close()
+
+
+@needs_node
+def test_the_frame_calls_python_only_while_the_drawer_is_collapsible():
+    calls = run_vue_script(
+        Path(map_app.__file__).parent / "MapFrame.vue",
+        """
+        const calls = [];
+        const vm = makeVm({ collapsible: false, collapse: (data) => calls.push(data) });
+        vm.onClick();
+        vm.collapsible = true;
+        vm.onClick();
+        vm.collapsible = false;
+        vm.onClick();
+        return calls;
+        """,
+    )
+    assert calls == [None]
 
 
 def test_drawer_items_still_click_after_the_belt_comes_and_goes():
