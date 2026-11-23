@@ -36,7 +36,7 @@ display(widget)
 
 ## Build
 
-Node 22 or later is needed to build, not to run. MapLibre and its worker, PMTiles, Terra Draw and the seven Font Awesome Free icons of the draw toolbar are bundled into the Python package, so no request leaves the machine at runtime.
+Node 22 or later is needed to build, not to run. MapLibre and its worker, PMTiles, Terra Draw and the seven Font Awesome Free icons of the draw toolbar (polygon `draw-polygon`, rectangle `square`, circle `circle`, line `bezier-curve`, point `location-dot`, select `arrow-pointer`, clear `trash`; `square` and `circle` from the regular set, the others solid) are bundled into the Python package, so no request leaves the machine at runtime.
 
 ```bash
 npm ci && npm run build
