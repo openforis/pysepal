@@ -1208,6 +1208,19 @@ def test_ee_vector_point_restyle_reuses_render(monkeypatch):
     assert gee.calls == 2
 
 
+def test_a_legend_only_update_keeps_the_layer_instance(fake):
+    """The legend is not part of the render, so the browser keeps the source and its tiles."""
+    widget, store, engine = headless()
+    legend = Legend(title="new", items=[LegendItem(label="y", color="#00ff00")])
+    for spec in (tile_spec("t"), vector_spec("v")):
+        store.add(spec)
+        before = layer_of(widget, spec.id)
+        store.update(spec.id, store.get(spec.id).revise(legend=legend))
+        after = layer_of(widget, spec.id)
+        assert (after["instance"], after["source"]) == (before["instance"], before["source"])
+        assert engine.accepted(spec.id)[0].legend == legend
+
+
 def test_accepted_instance_follows_the_published_instance(fake):
     widget, store, engine = headless()
     assert engine.accepted_instance("a") is None
