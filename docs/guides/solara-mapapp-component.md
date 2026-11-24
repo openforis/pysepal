@@ -24,7 +24,8 @@ with the rest of sepalwidgets (see `migrating-to-pysepal-5.md`).
 ```python
 import solara
 
-from pysepal.solara import get_current_theme_state
+from pysepal.mapping import SepalMap
+from pysepal.solara import get_current_theme_state, use_sepal_map
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider
 
@@ -33,7 +34,7 @@ from pysepal.solara.notifications import NotificationProvider
 def Page():
     NotificationProvider()
     theme_state = get_current_theme_state()
-    sepal_map = use_sepal_map(theme_state)  # your own hook; see the demo apps
+    sepal_map = use_sepal_map(lambda: SepalMap(gee=False, theme_state=theme_state), [])
 
     MapApp(
         app_title="My App",
@@ -120,6 +121,14 @@ has these methods, the shell calls them:
   theme.
 
 `SepalMap` has both. A replaced map gets the current insets at once.
+
+Build the map with `pysepal.solara.use_sepal_map(factory, dependencies)` in the
+component that renders `MapApp`, as in the quick start. It builds the map once
+(again when a dependency changes) and closes it on unmount, on a dependency
+change and on a hot reload. Solara closes only the widgets it built from
+elements, so a map built in `solara.use_memo` alone stays alive until the
+kernel closes. The component that builds a map closes it; `MapApp`, `MapView`
+and the other components it is passed to never do.
 
 `MapView`, which `MapApp` builds around the map, stacks the overlays of each
 corner (`map_overlays`) inside the insets and 10 px past the map's controls in

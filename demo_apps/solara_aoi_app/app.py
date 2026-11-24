@@ -47,6 +47,7 @@ from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
 from pysepal.solara.components.aoi import AoiSpec, AoiView
 from pysepal.solara.components.map_app import MapApp
@@ -118,7 +119,7 @@ def _AoiShell():
     theme_state = get_current_theme_state()
     notifications = use_notifications()
 
-    sepal_map = solara.use_memo(
+    sepal_map = use_sepal_map(
         lambda: sm.SepalMap(
             zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         ),

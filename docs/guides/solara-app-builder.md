@@ -286,12 +286,12 @@ def Page():
     model = MyModel(gee_interface=gee_interface, sepal_client=sepal_client)
 
     # Pass to map
-    sepal_map = solara.use_memo(
+    sepal_map = use_sepal_map(
         lambda: sm.SepalMap(gee=True, gee_interface=gee_interface),
         [id(gee_interface)],
     )
 
-    # Pass to tiles/widgets
+    # Pass to tiles/widgets; the map is Page's to close, not theirs
     MyTile(model=model, map_=sepal_map)
 ```
 
@@ -549,7 +549,7 @@ so a persisted spec restores in either deployment.
 from component.message import messages, msg
 
 from pysepal import mapping as sm
-from pysepal.solara import get_current_theme_state
+from pysepal.solara import get_current_theme_state, use_sepal_map
 from pysepal.solara.components.map_app import MapApp
 
 @solara.component
@@ -559,8 +559,8 @@ def Page():
     # Scope-keyed theme state (dark/light mode; auto follows system)
     theme_state = get_current_theme_state()
 
-    # Create map with GEE support (memoized to avoid re-creation)
-    sepal_map = solara.use_memo(
+    # Built once per GEE interface, and closed on unmount, on a rebuild and on a hot reload
+    sepal_map = use_sepal_map(
         lambda: sm.SepalMap(
             gee=True,
             gee_interface=gee_interface,
@@ -585,6 +585,12 @@ def Page():
 and its CSS makes the map fill that container whatever the map's `height`, so
 the map needs no `fullscreen=True` there. Outside `MapApp`, `fullscreen=True`
 (`height="100%"`) makes the map fill a parent that has a height of its own.
+
+Build a map with `use_sepal_map`, never in the render body (a new, empty map
+on every render) or in `solara.use_memo` alone. Solara closes only the widgets
+it built from elements, so a memoized map stays alive, with its link group,
+until the kernel closes. The component that builds a map closes it; the
+components it passes the map to never do.
 
 `MapApp` is a `@solara.component` from `pysepal.solara.components.map_app`. A
 `content` is an element, a widget, or a list of them. To follow the user, pass `on_current_step`, `on_step_open` or

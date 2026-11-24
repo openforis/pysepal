@@ -31,7 +31,7 @@ import solara
 from component.message import messages, msg
 from component.scripts import sample_folder
 from component.tile import ExportPanel, FilesPanel, ProcessPanel, use_layer_tools
-from component.widget import use_aoi_scoped_layers, use_sepal_map
+from component.widget import use_aoi_scoped_layers, use_demo_map
 
 from pysepal.message import msg as pysepal_msg
 from pysepal.solara import (
@@ -73,7 +73,7 @@ def MapAppDemo():
     aoi_loading = solara.use_reactive(False)
     outputs = solara.use_reactive(None)
 
-    sepal_map = use_sepal_map(gee_interface, theme_state)
+    sepal_map = use_demo_map(gee_interface, theme_state)
     use_aoi_scoped_layers(aoi_data, sepal_map, outputs)
     layer_tools = use_layer_tools(sepal_map, outputs)
 

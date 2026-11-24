@@ -187,8 +187,11 @@ Notes on the interaction replacements:
   at the clicked view's scale.
 - **Linked maps.** Give each map the same `link_group`; `None` unlinks. The
   first map shown sets the camera, and a map built later starts where the
-  group is. A re-run cell joins the maps it builds to the group of the old
-  ones, so close the old maps or use a new name.
+  group is. A re-run cell, and a Solara hot reload, which keeps the kernel,
+  join the maps they build to the group of the old ones, so close the old
+  maps or use a new name. In a Solara app, build each map with
+  `pysepal.solara.use_sepal_map`, which closes it on unmount, on a dependency
+  change and on a hot reload.
 
 ```python
 import pandas as pd

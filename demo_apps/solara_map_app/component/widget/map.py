@@ -12,6 +12,7 @@ from component.parameter import (
 
 from pysepal import mapping as sm
 from pysepal.layers import LayerSpec
+from pysepal.solara import use_sepal_map
 
 
 def add_sample_layers(sepal_map: sm.SepalMap) -> None:
@@ -33,7 +34,7 @@ def add_sample_layers(sepal_map: sm.SepalMap) -> None:
     )
 
 
-def use_sepal_map(gee_interface, theme_state) -> sm.SepalMap:
+def use_demo_map(gee_interface, theme_state) -> sm.SepalMap:
     """Return the map, rebuilt only when the session's GEE interface changes."""
 
     def build_map():
@@ -48,7 +49,7 @@ def use_sepal_map(gee_interface, theme_state) -> sm.SepalMap:
         add_sample_layers(sepal_map)
         return sepal_map
 
-    return solara.use_memo(build_map, [id(gee_interface)])
+    return use_sepal_map(build_map, [id(gee_interface)])
 
 
 def _aoi_key(aoi_value) -> str:

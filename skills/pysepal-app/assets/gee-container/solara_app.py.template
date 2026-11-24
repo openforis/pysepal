@@ -10,6 +10,7 @@ from pysepal.solara import (
     setup_sessions,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
     with_sepal_sessions,
 )
 from pysepal.solara.components.map_app import MapApp
@@ -39,7 +40,7 @@ def Page():
     theme_state = get_current_theme_state()
 
     # fullscreen=True is required: MapApp never sizes the map, only overlays it.
-    sepal_map = solara.use_memo(
+    sepal_map = use_sepal_map(
         lambda: sm.SepalMap(
             zoom=3, center=[0, 0], gee=True,
             gee_interface=gee_interface, fullscreen=True, theme_state=theme_state,

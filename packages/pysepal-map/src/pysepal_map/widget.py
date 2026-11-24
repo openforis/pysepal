@@ -93,9 +93,11 @@ before a view reported it. A map that joins a group with a camera, built
 with ``link_group`` or set to it, requests that camera instead of its own
 ``center``, mounted or not; one that joins with an accepted ``view`` while
 the group has none gives the group that view's camera. A group forgets its
-camera with its last member, so a re-run notebook cell builds its new maps
-into the old group, still open, and they ignore their ``center`` until the
-old maps are closed.
+camera with its last member, so a re-run notebook cell or a Solara hot
+reload, which keeps the kernel, builds its new maps into the old group,
+still open, and they ignore their ``center`` until the old maps are closed.
+Under Solara, the component that builds a map closes it in an effect
+cleanup, which also runs on a hot reload.
 
 Compare. ``MapState.compare`` turns on a swipe compare: each ``Layer.side``
 (``left``, ``right`` or ``both``) says which half draws it. The ``main`` view

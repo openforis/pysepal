@@ -199,35 +199,51 @@ Steps and panel sections are plain dicts; a
 `@solara.component` tiles and `solara.Button(..., on_click=...)` go straight in.
 
 ```python
-from pysepal.solara import get_current_theme_state
+from pysepal.mapping import SepalMap
+from pysepal.solara import get_current_gee_interface, get_current_theme_state, use_sepal_map
 from pysepal.solara.components.map_app import MapApp
 
-# Scope-keyed theme state — the shell's built-in toggle and the map follow it
-theme_state = get_current_theme_state()
-sepal_map = SepalMap(fullscreen=True, theme_state=theme_state, gee=True)
 
-MapApp(
-    app_title="My App",
-    app_icon="mdi-earth",
-    main_map=[sepal_map],
-    steps_data=[
-        {"id": 1, "name": "AOI", "icon": "mdi-map",
-         "display": "step",  # or "dialog"
-         "content": AoiStep()},
-    ],
-    theme_state=theme_state,
-    locales=messages.available_locales(),  # the built-in language selector
-    right_panel_config={"title": "Tools", "icon": "mdi-cog", "width": 400},
-    right_panel_content=[
-        {"title": "Section", "icon": "mdi-cog", "content": [LayerControls()],
-         # Static guidance belongs here, not in a solara.Info alert.
-         "description": "Shown under the section title."},
-    ],
-    # Pinned under the scrolling sections, e.g. a persistent action bar.
-    right_panel_footer=[ActionBar()],
-    right_panel_open=True,
-)
+@solara.component
+def Page():
+    # Scope-keyed theme state — the shell's built-in toggle and the map follow it
+    theme_state = get_current_theme_state()
+    gee_interface = get_current_gee_interface()
+    sepal_map = use_sepal_map(
+        lambda: SepalMap(fullscreen=True, theme_state=theme_state, gee_interface=gee_interface),
+        [id(gee_interface)],
+    )
+
+    MapApp(
+        app_title="My App",
+        app_icon="mdi-earth",
+        main_map=[sepal_map],
+        steps_data=[
+            {"id": 1, "name": "AOI", "icon": "mdi-map",
+             "display": "step",  # or "dialog"
+             "content": AoiStep()},
+        ],
+        theme_state=theme_state,
+        locales=messages.available_locales(),  # the built-in language selector
+        right_panel_config={"title": "Tools", "icon": "mdi-cog", "width": 400},
+        right_panel_content=[
+            {"title": "Section", "icon": "mdi-cog", "content": [LayerControls()],
+             # Static guidance belongs here, not in a solara.Info alert.
+             "description": "Shown under the section title."},
+        ],
+        # Pinned under the scrolling sections, e.g. a persistent action bar.
+        right_panel_footer=[ActionBar()],
+        right_panel_open=True,
+    )
 ```
+
+Build a map with `use_sepal_map(factory, dependencies)` in the component that
+owns it. A `SepalMap(...)` in the render body is a new map, with no layers, on
+every render. Solara never closes a map built in `solara.use_memo`: it stays
+alive, in its link group too, until the kernel closes. The hook closes the map
+on unmount, on a dependency change and on a hot reload. The component that
+builds a map closes it; the components it passes the map to (`MapView`,
+`LayerPanel`, `AoiView`) never do.
 
 `fullscreen=True` on the map is what makes it fill the shell. The shell has no
 `model=`, `theme_toggle=` or `language_selector=`: the toggle and the selector
@@ -1058,6 +1074,7 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `prefer_threaded=True` (or missing `prefer_threaded`) on GEE `use_task` hooks
 - [ ] `process_admin()` / `process_asset()` called without `gee_interface=` (creates throwaway instances)
 - [ ] `asyncio.to_thread(gee_interface.` wrapping GEE calls
+- [ ] A `SepalMap(...)` built in a render body or in `solara.use_memo` (use `use_sepal_map`, which closes it)
 - [ ] `add_ee_layer` called from sync `use_effect` handlers, or wrapped in `asyncio.to_thread` (use `await map_.add_ee_layer_async(...)` in `use_task(prefer_threaded=False)`)
 - [ ] A widget, layer store or reactive written from an `asyncio.to_thread` or executor worker (return the result and write after the `await`)
 - [ ] `v.Widget(...)` inside `with rv.Something():` contexts

@@ -50,6 +50,7 @@ from pysepal.solara import (
     setup_sessions,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiSpec, AoiView
@@ -131,7 +132,7 @@ def _AoiGeeShell():
     gee_interface = get_current_gee_interface()
     notifications = use_notifications()
 
-    sepal_map = solara.use_memo(
+    sepal_map = use_sepal_map(
         lambda: sm.SepalMap(
             zoom=2,
             center=(0, 0),

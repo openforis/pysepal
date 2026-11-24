@@ -40,6 +40,7 @@ from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
@@ -167,7 +168,7 @@ def VectorPanel():
             zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         )
 
-    sepal_map = solara.use_memo(build_map, [])
+    sepal_map = use_sepal_map(build_map, [])
 
     async def show(style: VectorStyle, layer_name: str, key: str) -> None:
         """Convert if needed, then draw the archive with ``style``.
