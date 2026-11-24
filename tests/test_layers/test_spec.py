@@ -1,5 +1,6 @@
 """Tests for the LayerSpec models."""
 
+import json
 import threading
 
 import ee
@@ -347,12 +348,74 @@ def test_from_geojson_is_content_addressed(fake_geojson):
     a = LayerSpec.from_geojson(fake_geojson, name="x")
     b = LayerSpec.from_geojson(fake_geojson, name="x")
     assert a.source.uri == b.source.uri and a.data_hash == b.data_hash and a.id != b.id
-    assert a.source.format == "Parquet" and a.source.checksum and a.source.size
+    assert a.source.format == "GeoJSON" and a.source.checksum and a.source.size
+
+
+def _stored(spec) -> dict:
+    return json.loads(uri_to_path(spec.source.uri).read_text())
 
 
 def test_from_geojson_wraps_a_feature(fake_geojson):
     spec = LayerSpec.from_geojson(fake_geojson["features"][0], name="x")
-    assert len(gpd.read_parquet(uri_to_path(spec.source.uri))) == 1
+    assert _stored(spec)["features"] == [fake_geojson["features"][0]]
+
+
+def test_from_geojson_wraps_a_bare_geometry():
+    point = {"type": "Point", "coordinates": [1.0, 2.0]}
+    spec = LayerSpec.from_geojson(point, name="x")
+    assert _stored(spec)["features"] == [{"type": "Feature", "properties": {}, "geometry": point}]
+
+
+def test_from_geojson_keeps_the_data_as_given():
+    """Properties of mixed types, nested values, ids: what geopandas would retype."""
+    from pysepal.layers import prepare_sync
+
+    collection = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": "a-1",
+                "properties": {"v": 1, "tags": [1, "x"], "meta": {"k": 1}, "geometry": "own"},
+                "geometry": {"type": "Point", "coordinates": [1.0, 2.0]},
+            },
+            {
+                "type": "Feature",
+                "id": "b-2",
+                "properties": {"v": "two", "n": None},
+                "geometry": {"type": "Point", "coordinates": [3.0, 4.0]},
+            },
+        ],
+    }
+    spec = LayerSpec.from_geojson(collection, name="x")
+    render = prepare_sync(spec)
+    assert render.data == collection
+    assert render.bounds == (1.0, 2.0, 3.0, 4.0)
+
+
+def test_from_geojson_takes_an_empty_collection():
+    from pysepal.layers import prepare_sync
+
+    empty = {"type": "FeatureCollection", "features": []}
+    render = prepare_sync(LayerSpec.from_geojson(empty, name="x"))
+    assert render.data == empty and render.bounds is None
+
+
+def test_from_geojson_refuses_what_geojson_cannot_hold():
+    with pytest.raises(ValueError, match="not a GeoJSON object"):
+        LayerSpec.from_geojson({"type": "Thing"}, name="x")
+    nan = {"type": "Feature", "properties": {"v": float("nan")}, "geometry": None}
+    with pytest.raises(ValueError, match="NaN"):
+        LayerSpec.from_geojson(nan, name="x")
+
+
+def test_from_geojson_writes_dates_of_a_geodataframe_as_text():
+    import pandas as pd
+    from shapely.geometry import Point
+
+    gdf = gpd.GeoDataFrame({"day": [pd.Timestamp("2024-01-02")]}, geometry=[Point(1, 2)], crs=4326)
+    [feature] = _stored(LayerSpec.from_geojson(gdf, name="x"))["features"]
+    assert feature["properties"]["day"].startswith("2024-01-02")
 
 
 def test_from_geojson_keeps_a_projected_crs(fake_geojson):
@@ -388,7 +451,7 @@ def test_from_geojson_concurrent_identical_writes(fake_geojson):
     for t in threads:
         t.join()
     assert len(specs) == 8 and len({s.source.uri for s in specs}) == 1
-    assert len(gpd.read_parquet(uri_to_path(specs[0].source.uri))) == 1
+    assert _stored(specs[0]) == fake_geojson
     assert len(list(uri_to_path(specs[0].source.uri).parent.glob("*.tmp"))) == 0
 
 
@@ -421,7 +484,7 @@ def _point_inputs():
 @pytest.mark.parametrize("kind", ["gdf", "geojson", "frame", "pairs"])
 def test_from_points_inputs(kind):
     spec = LayerSpec.from_points(_point_inputs()[kind], name="p")
-    back = gpd.read_parquet(uri_to_path(spec.source.uri))
+    back = gpd.read_file(uri_to_path(spec.source.uri))
     assert [(g.x, g.y) for g in back.geometry] == POINTS
     assert [c for c in back.columns if c != "geometry"] == []
 
@@ -439,7 +502,7 @@ def test_from_points_dataframe_columns_become_properties():
 
     frame = pd.DataFrame({"x": [1.0], "y": [2.0], "name": ["a"]})
     spec = LayerSpec.from_points(frame, name="p", lng="x", lat="y")
-    back = gpd.read_parquet(uri_to_path(spec.source.uri))
+    back = gpd.read_file(uri_to_path(spec.source.uri))
     assert list(back["name"]) == ["a"]
 
 
@@ -547,12 +610,12 @@ def test_from_points_rejects_malformed_pairs(data):
 
 def test_from_points_empty_sequence_gives_an_empty_layer():
     spec = LayerSpec.from_points([], name="p")
-    assert len(gpd.read_parquet(uri_to_path(spec.source.uri))) == 0
+    assert len(gpd.read_file(uri_to_path(spec.source.uri))) == 0
 
 
 def test_from_points_bare_point_geometry():
     spec = LayerSpec.from_points({"type": "Point", "coordinates": [1.0, 2.0]}, name="p")
-    back = gpd.read_parquet(uri_to_path(spec.source.uri))
+    back = gpd.read_file(uri_to_path(spec.source.uri))
     assert [(g.x, g.y) for g in back.geometry] == [(1.0, 2.0)]
     with pytest.raises(ValueError, match="Point"):
         LayerSpec.from_points({"type": "LineString", "coordinates": [[0, 0], [1, 1]]}, name="p")

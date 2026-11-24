@@ -9,8 +9,10 @@ import copy
 import dataclasses
 import json
 import logging
+import math
 import os
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import ee
@@ -31,6 +33,7 @@ from .spec import (
     VectorSource,
     VectorStyle,
     _on_page_origin,
+    feature_collection,
     uri_to_path,
 )
 
@@ -178,24 +181,66 @@ def _on_the_globe(west: float, south: float, east: float, north: float) -> tuple
     return float(west), south, float(east), north
 
 
+#: The names a legacy GeoJSON ``crs`` member gives WGS84 in longitude, latitude order.
+_WGS84_NAMES = {
+    "urn:ogc:def:crs:OGC:1.3:CRS84",
+    "urn:ogc:def:crs:OGC::CRS84",
+    "urn:ogc:def:crs:EPSG::4326",
+    "EPSG:4326",
+}
+
+
+def _plain_geojson(source: VectorSource, path: Any) -> tuple[dict, int] | None:
+    """A local GeoJSON file in WGS84 as a FeatureCollection, and its size in bytes.
+
+    Read as JSON, so its properties and ids reach the map as they are; None for a file
+    in another CRS, which GDAL reads.
+    """
+    if source.format != "GeoJSON" or not _is_local(source) or source.layer:
+        return None
+    text = Path(path).read_bytes()
+    data = json.loads(text)
+    crs = data.get("crs")
+    if isinstance(crs, dict) and (crs.get("properties") or {}).get("name") not in _WGS84_NAMES:
+        return None
+    return feature_collection(data), len(text)
+
+
+def _geojson_bounds(collection: dict) -> tuple | None:
+    import shapely
+    from shapely.geometry import shape
+
+    shapes = [shape(f["geometry"]) for f in collection["features"] if f.get("geometry")]
+    if not shapes:
+        return None
+    bounds = [float(v) for v in shapely.total_bounds(shapes)]
+    return _on_the_globe(*bounds) if all(math.isfinite(v) for v in bounds) else None
+
+
 def _read_vector(source: VectorSource) -> tuple[dict, tuple | None]:
     import geopandas as gpd
 
     path = uri_to_path(source.uri) if _is_local(source) else source.uri
-    if source.format == "Parquet":
-        gdf = gpd.read_parquet(path)
+    plain = _plain_geojson(source, path)
+    if plain is not None:
+        data, size = plain
+        bounds = _geojson_bounds(data)
     else:
-        gdf = gpd.read_file(path, layer=source.layer)
-    gdf = gdf.to_crs(4326)
-    text = gdf.to_json()
-    if len(text) > GEOJSON_WARN_BYTES:
+        if source.format == "Parquet":
+            gdf = gpd.read_parquet(path)
+        else:
+            gdf = gpd.read_file(path, layer=source.layer)
+        gdf = gdf.to_crs(4326)
+        text = gdf.to_json(default=str)
+        data, size = json.loads(text), len(text)
+        bounds = None if gdf.empty else _on_the_globe(*gdf.total_bounds)
+    if size > GEOJSON_WARN_BYTES:
         log.warning(
             "GeoJSON for %s is %.0f MB; consider a PMTiles source for large vectors.",
             source.uri,
-            len(text) / 1e6,
+            size / 1e6,
         )
-    bounds = None if gdf.empty else _on_the_globe(*gdf.total_bounds)
-    return json.loads(text), bounds
+    return data, bounds
 
 
 def _vector_render(spec: LayerSpec, payload: tuple[dict, tuple | None]) -> RenderLayer:

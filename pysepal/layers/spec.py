@@ -692,10 +692,14 @@ class LayerSpec(BaseModel):
         zone: Literal["data", "overlay"] = "data",
         attribution: str = "",
     ) -> "LayerSpec":
-        """Build a spec from in-memory vector data, stored as a content-addressed GeoParquet.
+        """Build a spec from in-memory vector data, stored as a content-addressed GeoJSON file.
+
+        A GeoJSON dict is stored as given, its properties and feature ids untouched.
 
         Args:
-            data: a GeoJSON FeatureCollection or Feature (EPSG:4326), or a GeoDataFrame with a CRS.
+            data: a GeoJSON FeatureCollection, Feature or geometry (EPSG:4326), or a
+                GeoDataFrame with a CRS, whose values JSON cannot hold, such as dates,
+                are written as text.
             name: layer name.
             id: layer id, a new UUID by default.
             style: vector style.
@@ -704,21 +708,21 @@ class LayerSpec(BaseModel):
 
         Raises:
             TypeError: for any other ``data``.
-            ValueError: for a GeoDataFrame without a CRS.
+            ValueError: for a GeoDataFrame without a CRS, a dict that is not GeoJSON, or
+                a value GeoJSON cannot hold, such as NaN.
         """
         if isinstance(data, gpd.GeoDataFrame):
             if data.crs is None:
                 raise ValueError("the GeoDataFrame has no CRS")
-            gdf = data
+            collection = json.loads(data.to_crs(4326).to_json(default=str, drop_id=True))
         elif isinstance(data, dict):
-            features = data["features"] if data.get("type") == "FeatureCollection" else [data]
-            gdf = gpd.GeoDataFrame.from_features(features, crs=4326)
+            collection = feature_collection(data)
         else:
             raise TypeError(f"expected a GeoJSON dict or a GeoDataFrame, got {type(data).__name__}")
-        path = _write_parquet(gdf)
+        path = _write_geojson(collection)
         source = VectorSource(
             uri=path.as_uri(),
-            format="Parquet",
+            format="GeoJSON",
             checksum=path.stem,
             size=path.stat().st_size,
         )
@@ -764,16 +768,14 @@ class LayerSpec(BaseModel):
             ValueError: for non-point geometries, missing columns or non-finite coordinates.
             TypeError: for any other ``data``.
         """
+        payload: "gpd.GeoDataFrame | dict"
         if isinstance(data, gpd.GeoDataFrame):
-            gdf = data
+            gdf = payload = data
         elif isinstance(data, dict):
-            if data.get("type") == "FeatureCollection":
-                features = data["features"]
-            elif data.get("type") == "Feature":
-                features = [data]
-            else:  # a bare geometry
-                features = [{"type": "Feature", "properties": {}, "geometry": data}]
-            gdf = gpd.GeoDataFrame.from_features(features, crs=4326)
+            # Checked through the geometries only: the properties are stored as given.
+            payload = feature_collection(data)
+            shapes = [_shape(f.get("geometry")) for f in payload["features"]]
+            gdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(shapes, crs=4326))
         elif isinstance(data, pd.DataFrame):
             missing = [c for c in (lng, lat) if c not in data.columns]
             if missing:
@@ -782,6 +784,7 @@ class LayerSpec(BaseModel):
             ys = pd.to_numeric(data[lat], errors="coerce")
             rest = data.drop(columns=[lng, lat])
             gdf = gpd.GeoDataFrame(rest, geometry=gpd.points_from_xy(xs, ys), crs=4326)
+            payload = gdf
         elif isinstance(data, Sequence) and not isinstance(data, (str, bytes)):
             try:
                 pairs = np.asarray(data, dtype=float)
@@ -792,6 +795,7 @@ class LayerSpec(BaseModel):
             elif pairs.ndim != 2 or pairs.shape[1] != 2:
                 raise ValueError("expected (lng, lat) pairs")
             gdf = gpd.GeoDataFrame(geometry=gpd.points_from_xy(pairs[:, 0], pairs[:, 1]), crs=4326)
+            payload = gdf
         else:
             raise TypeError(
                 "expected a GeoDataFrame, a GeoJSON dict, a DataFrame or (lng, lat) pairs, "
@@ -803,13 +807,47 @@ class LayerSpec(BaseModel):
         if not (np.isfinite(geometry.x) & np.isfinite(geometry.y)).all():
             raise ValueError("coordinates must be finite")
         return cls.from_geojson(
-            gdf,
+            payload,
             name=name,
             id=id,
             style=style or VectorStyle(fill_opacity=1.0),
             zone=zone,
             attribution=attribution,
         )
+
+
+_GEOMETRY_TYPES = (
+    "Point",
+    "MultiPoint",
+    "LineString",
+    "MultiLineString",
+    "Polygon",
+    "MultiPolygon",
+    "GeometryCollection",
+)
+
+
+def feature_collection(data: dict) -> dict:
+    """``data`` as a GeoJSON FeatureCollection: a Feature or a geometry is wrapped in one.
+
+    Raises:
+        ValueError: when ``data`` is no GeoJSON object.
+    """
+    kind = data.get("type")
+    if kind == "FeatureCollection" and isinstance(data.get("features"), list):
+        return data
+    if kind == "Feature":
+        return {"type": "FeatureCollection", "features": [data]}
+    if kind in _GEOMETRY_TYPES:
+        feature = {"type": "Feature", "properties": {}, "geometry": data}
+        return {"type": "FeatureCollection", "features": [feature]}
+    raise ValueError(f"not a GeoJSON object: type {kind!r}")
+
+
+def _shape(geometry: dict | None) -> Any:
+    from shapely.geometry import shape
+
+    return None if geometry is None else shape(geometry)
 
 
 _scratch_folder: Path | None = None
@@ -826,20 +864,22 @@ def _geojson_folder() -> Path:
         return _scratch_folder
 
 
-def _write_parquet(gdf: "gpd.GeoDataFrame") -> Path:
-    """Write ``gdf`` as ``<sha256>.parquet`` once; an existing file is never touched."""
-    folder = _geojson_folder()
-    fd, temp = tempfile.mkstemp(suffix=".tmp", dir=folder)
-    os.close(fd)
+def _write_geojson(collection: dict) -> Path:
+    """Write ``collection`` as ``<sha256>.geojson`` once; an existing file is never touched."""
     try:
-        gdf.to_parquet(temp)
-        digest = hashlib.sha256(Path(temp).read_bytes()).hexdigest()
-        final = folder / f"{digest}.parquet"
-        if not final.exists():
-            try:
-                os.link(temp, final)
-            except FileExistsError:
-                pass
+        text = json.dumps(collection, ensure_ascii=False, allow_nan=False).encode()
+    except ValueError as exc:
+        raise ValueError(f"GeoJSON cannot hold NaN or infinity: {exc}") from exc
+    folder = _geojson_folder()
+    final = folder / f"{hashlib.sha256(text).hexdigest()}.geojson"
+    if final.exists():
+        return final
+    fd, temp = tempfile.mkstemp(suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "wb") as file:
+            file.write(text)
+        # A concurrent writer of the same content leaves the same bytes.
+        os.replace(temp, final)
         return final
     finally:
         Path(temp).unlink(missing_ok=True)
