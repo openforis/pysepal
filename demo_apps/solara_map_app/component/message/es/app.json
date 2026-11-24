@@ -17,9 +17,6 @@
       "title": "Procesar",
       "description": "Deriva dos capas del AOI y publica una leyenda para cada una."
     },
-    "layer_panel": {
-      "description": "Las capas del mapa, de arriba abajo. Arrastre una fila por su asa para reordenarlas; despliéguela para ver su opacidad, su leyenda y su estilo."
-    },
     "add_layers": {
       "title": "Añadir capas",
       "description": "Añada una capa de demostración independiente, una composición radar Sentinel-1 o una capa vectorial PMTiles, o limpie el mapa y sus leyendas. Cada una aparece en el panel de capas, más arriba."

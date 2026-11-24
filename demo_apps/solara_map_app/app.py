@@ -116,7 +116,6 @@ def MapAppDemo():
             "title": pysepal_msg("layer_panel.title"),
             "icon": "mdi-layers",
             "content": LayerPanel(store=sepal_map.layer_store, map_=sepal_map),
-            "description": msg("section.layer_panel.description"),
         },
         {
             "title": msg("section.add_layers.title"),

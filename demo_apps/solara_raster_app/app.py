@@ -268,7 +268,6 @@ def RasterPanel():
                 "title": pysepal_msg("layer_panel.title"),
                 "icon": "mdi-layers",
                 "content": LayerPanel(store=sepal_map.layer_store, map_=sepal_map),
-                "description": msg("layer_panel.description"),
             },
             {
                 "title": msg("errors.title"),

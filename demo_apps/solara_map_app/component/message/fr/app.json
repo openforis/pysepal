@@ -17,9 +17,6 @@
       "title": "Traiter",
       "description": "Dérive deux couches de l'AOI et publie une légende pour chacune."
     },
-    "layer_panel": {
-      "description": "Les couches de la carte, de haut en bas. Faites glisser une ligne par sa poignée pour les réordonner ; dépliez-la pour son opacité, sa légende et son style."
-    },
     "add_layers": {
       "title": "Ajouter des couches",
       "description": "Ajoutez une couche de démonstration autonome, une composition radar Sentinel-1 ou une couche vectorielle PMTiles, ou effacez la carte et ses légendes. Chacune apparaît dans le panneau des couches, plus haut."

@@ -17,9 +17,6 @@
       "title": "Process",
       "description": "Derives two layers from the AOI and publishes a legend for each."
     },
-    "layer_panel": {
-      "description": "The layers on the map, top first. Drag a row by its handle to reorder them; expand it for its opacity, legend and style."
-    },
     "add_layers": {
       "title": "Add layers",
       "description": "Add a standalone demo layer, a Sentinel-1 radar composite or a PMTiles vector layer, or clear the map and its legends. Each one is listed in the layer panel above."
