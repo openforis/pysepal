@@ -428,7 +428,8 @@ def Page():
   `LayerSpec`, or `handle.legend = ...` later); the one its Earth Engine asset's
   visualization gives; one derived from its style. A style's `class_colors`
   give items, a `colormap` or a `palette` a gradient, and a vector's colour a
-  chip. A multiband raster has none.
+  chip. A local raster's gradient reads the range its tiles stretch across, the
+  file's own when `vmin` and `vmax` are unset. A multiband raster has none.
 - **An explicit legend is the app's.** `restyle` keeps it, and
   `handle.legend = None` goes back to the derived one.
 - **An empty `Legend()` shows none.** The card does not list the layer, and the

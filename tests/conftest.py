@@ -412,6 +412,35 @@ def int16_classes(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
+def ramp(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A one-band int16 raster whose values run from 10 to 90.
+
+    Returns:
+        the path to the raster
+    """
+    import numpy as np
+    import rasterio as rio
+    from rasterio.transform import from_origin
+
+    file = tmp_path_factory.mktemp("temp") / "ramp.tif"
+    data = np.repeat(np.linspace(10, 90, 64).astype("int16")[None, :], 64, axis=0)
+    with rio.open(
+        file,
+        "w",
+        driver="GTiff",
+        height=64,
+        width=64,
+        count=1,
+        dtype="int16",
+        crs="EPSG:4326",
+        transform=from_origin(0, 0, 0.01, 0.01),
+    ) as ds:
+        ds.write(data, 1)
+
+    return file
+
+
+@pytest.fixture(scope="session")
 def _tile_cache_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Where prepared rasters are cached for the duration of the run."""
     return tmp_path_factory.mktemp("tile-cache")

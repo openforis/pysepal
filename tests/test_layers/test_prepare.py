@@ -3,17 +3,22 @@
 import asyncio
 import os
 import shutil
+import threading
+from urllib.parse import parse_qs, urlparse
 
 import geopandas as gpd
 import pytest
 
 import pysepal.layers.preparation as preparation
 from pysepal.layers import (
+    Gradient,
     LayerPrepareError,
     LayerSpec,
+    Legend,
     TileSource,
     VectorSource,
     VectorStyle,
+    colormap_stops,
     local_fingerprint,
     prepare,
     prepare_sync,
@@ -28,7 +33,55 @@ def test_prepare_raster(byte):
     )
     w, s, e, n = render.bounds
     assert w < e and s < n and render.render_hash == spec.render_hash
-    assert render.keepalive is not None and render.legend is None
+    assert render.keepalive is not None
+    assert render.legend == Legend(
+        title="byte",
+        gradients=[Gradient(colors=colormap_stops("viridis"), labels=["0", "200"], title="byte")],
+    )
+
+
+def gradient_labels(render) -> list:
+    return [g.labels for g in render.legend.gradients]
+
+
+@pytest.mark.parametrize(
+    "pinned, labels",
+    [({}, ["10", "90"]), ({"vmin": 0}, ["0", "90"]), ({"vmax": 50}, ["10", "50"])],
+)
+def test_an_unpinned_end_is_the_one_the_tiles_stretch_to(ramp, pinned, labels):
+    # the tile server reads the file's own ends for the ones left unset
+    render = prepare_sync(LayerSpec.from_raster(ramp, name="Ramp", colormap="viridis", **pinned))
+    assert gradient_labels(render) == [labels]
+    assert render.legend.title == render.legend.gradients[0].title == "Ramp"
+    # the URL still leaves them to the server
+    query = parse_qs(urlparse(render.url).query)
+    assert {end for end in ("vmin", "vmax") if end in query} == set(pinned)
+
+
+def test_the_stretch_is_read_off_the_calling_thread(ramp, monkeypatch):
+    threads, real = [], preparation._tile_range
+    monkeypatch.setattr(
+        preparation, "_tile_range", lambda *a: threads.append(threading.get_ident()) or real(*a)
+    )
+    render = asyncio.run(prepare(LayerSpec.from_raster(ramp, colormap="viridis")))
+    assert gradient_labels(render) == [["10", "90"]]
+    assert threads and threading.get_ident() not in threads
+
+
+def test_a_byte_raster_left_unpinned_is_not_stretched(byte):
+    # localtileserver rescales a byte band only when given an end: 0-255 is the ramp
+    render = prepare_sync(LayerSpec.from_raster(byte, palette=["#000000", "#ffffff"]))
+    assert gradient_labels(render) == [["0", "255"]]
+    assert render.legend.gradients[0].colors == ["#000000", "#ffffff"]
+
+
+def test_a_raster_without_a_ramp_has_no_render_legend(ramp, rgb):
+    for spec in (
+        LayerSpec.from_raster(ramp, colormap=None),  # greyscale
+        LayerSpec.from_raster(rgb),  # an RGB composite
+        LayerSpec.from_raster(ramp, class_colors={10: "#ff0000", 90: "#0000ff"}),
+    ):
+        assert prepare_sync(spec).legend is None
 
 
 def test_prepare_raster_single_band_list(byte):

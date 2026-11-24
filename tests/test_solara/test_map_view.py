@@ -479,6 +479,21 @@ def test_an_empty_legend_wins_over_the_render_one():
     rc.close()
 
 
+def test_a_local_raster_lists_the_stretch_its_tiles_use(ramp):
+    m = SepalMap(gee=False)
+    m.add_raster(ramp, layer_name="Ramp", key="ramp", colormap="viridis")
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert listed(box) == ["ramp"]
+    (gradient,) = card(box).legend_data["gradients"]
+    assert gradient["labels"] == ["10", "90"]
+    # an explicit legend still wins, and an empty one shows none
+    m.find_layer("ramp").legend = legend_tiles("x").legend
+    assert card(box).legend_data["title"] == "X"
+    m.find_layer("ramp").legend = Legend()
+    assert listed(box) == []
+    rc.close()
+
+
 def test_a_layer_removed_and_added_again_is_new():
     m = SepalMap(gee=False)
     for layer_id in ("a", "b"):

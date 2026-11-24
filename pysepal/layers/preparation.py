@@ -18,7 +18,7 @@ import ee
 from pysepal.frontend import styles as ss
 from pysepal.scripts.gee_interface import GEEInterface
 
-from .legend import legend_from_asset_viz
+from .legend import derive_legend, legend_from_asset_viz
 from .render import RenderLayer
 from .spec import (
     GeeSource,
@@ -202,9 +202,30 @@ def _scalar(value):
     return value[0] if isinstance(value, list) else value
 
 
-def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> RenderLayer:
-    """Build the tile URL on the calling thread, the way ``SepalMap`` attaches rasters."""
-    from localtileserver import TileClient
+def _tile_range(served: str, index: int, vmin, vmax) -> tuple:
+    """The range localtileserver stretches one band across, for the ends left unset too.
+
+    It reads the file's own ends for them, but leaves a byte band given neither end
+    unstretched (``localtileserver/tiler/handler.py``, ``_render_image``).
+    """
+    from localtileserver.tiler import get_reader
+
+    if vmin is not None and vmax is not None:
+        return vmin, vmax
+    with get_reader(served) as reader:
+        if vmin is None and vmax is None and reader.dataset.dtypes[index - 1] == "uint8":
+            return 0, 255
+        stats = reader.statistics(indexes=[index])[f"b{index}"]
+    return (stats.min if vmin is None else vmin, stats.max if vmax is None else vmax)
+
+
+def _raster_colors(
+    spec: LayerSpec, served: str, class_colors: dict | None
+) -> tuple[dict, Legend | None]:
+    """Return the color arguments of the tile URL, and the legend of the ramp they draw.
+
+    Both read the file, so :func:`prepare` runs this off the calling thread.
+    """
     from matplotlib.colors import LinearSegmentedColormap
 
     from pysepal.mapping.raster_style import (
@@ -214,8 +235,7 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
 
     style = spec.style
     image = uri_to_path(spec.source.uri)
-    client = TileClient(served, client_prefix=os.environ.get(CLIENT_PREFIX_ENV_VAR))
-
+    legend = None
     color_kwargs = _class_color_kwargs(class_colors) if class_colors else None
     if class_colors and color_kwargs is None:
         log.warning("localtileserver register_colormap unavailable; %s is drawn as a ramp.", image)
@@ -227,15 +247,30 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
         if colormap is None:
             color_kwargs.pop("colormap", None)
         color_kwargs |= {"vmin": _scalar(style.min), "vmax": _scalar(style.max)}
+        if "colormap" in color_kwargs and not style.class_colors:
+            vmin, vmax = _tile_range(
+                served, color_kwargs["indexes"][0], color_kwargs["vmin"], color_kwargs["vmax"]
+            )
+            stretched = style.model_copy(update={"min": vmin, "max": vmax})
+            legend = derive_legend(stretched, title=spec.name)
     elif style.min is not None or style.max is not None:
         log.warning("vmin/vmax are ignored when class_colors is set.")
+    return color_kwargs, legend
 
+
+def _raster_render(
+    spec: LayerSpec, served: str, color_kwargs: dict, legend: Legend | None
+) -> RenderLayer:
+    """Build the tile URL on the calling thread, the way ``SepalMap`` attaches rasters."""
+    from localtileserver import TileClient
+
+    client = TileClient(served, client_prefix=os.environ.get(CLIENT_PREFIX_ENV_VAR))
     url = client.get_tile_url(
         indexes=color_kwargs.get("indexes"),
         colormap=color_kwargs.get("colormap"),
         vmin=color_kwargs.get("vmin"),
         vmax=color_kwargs.get("vmax"),
-        nodata=style.nodata,
+        nodata=spec.style.nodata,
         client=True,
     )
     south, north, west, east = client.bounds()
@@ -247,8 +282,9 @@ def _raster_render(spec: LayerSpec, served: str, class_colors: dict | None) -> R
         url=url,
         bounds=(west, south, east, north),
         max_zoom=20,
-        raster=str(image),
+        raster=str(uri_to_path(spec.source.uri)),
         keepalive=client,
+        legend=legend,
     )
 
 
@@ -392,7 +428,8 @@ async def prepare(
                 optimize,
                 warp_to_3857,
             )
-            render = _raster_render(spec, served, class_colors)
+            colors = await asyncio.to_thread(_raster_colors, spec, served, class_colors)
+            render = _raster_render(spec, served, *colors)
         else:
             render = _vector_render(spec, await asyncio.to_thread(_read_vector, spec.source))
         options = {"optimize": optimize, "warp_to_3857": warp_to_3857}
@@ -440,7 +477,7 @@ def prepare_sync(
                 optimize,
                 warp_to_3857,
             )
-            render = _raster_render(spec, served, class_colors)
+            render = _raster_render(spec, served, *_raster_colors(spec, served, class_colors))
         else:
             render = _vector_render(spec, _read_vector(spec.source))
         options = {"optimize": optimize, "warp_to_3857": warp_to_3857}
