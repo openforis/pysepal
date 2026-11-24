@@ -31,12 +31,18 @@ def _zoom(name: str, value) -> float:
     return float(value)
 
 
-def _center_request(lng, lat, zoom) -> dict:
+def _animated(request: dict, animate: bool) -> dict:
+    """``request``, with ``animate: True`` when it flies; a jump carries no key."""
+    return {**request, "animate": True} if animate else request
+
+
+def _center_request(lng, lat, zoom, animate: bool = False) -> dict:
     center = [float(_finite("lng", lng)), _latitude("lat", lat)]
-    return {"center": center, "zoom": None if zoom is None else _zoom("zoom", zoom)}
+    request = {"center": center, "zoom": None if zoom is None else _zoom("zoom", zoom)}
+    return _animated(request, animate)
 
 
-def _bounds_request(bounds, padding, max_zoom) -> dict:
+def _bounds_request(bounds, padding, max_zoom, animate: bool = False) -> dict:
     corners = tuple(bounds)
     if len(corners) != 4:
         raise ValueError(f"bounds must be (west, south, east, north), got {bounds!r}")
@@ -49,11 +55,12 @@ def _bounds_request(bounds, padding, max_zoom) -> dict:
     ]
     if box[1] > box[3]:
         raise ValueError(f"south must not be above north, got {bounds!r}")
-    return {
+    request = {
         "bounds": box,
         "padding": _pixels("padding", padding),
         "max_zoom": None if max_zoom is None else _zoom("max_zoom", max_zoom),
     }
+    return _animated(request, animate)
 
 
 def _insets(left, right, top, bottom) -> dict[str, int]:

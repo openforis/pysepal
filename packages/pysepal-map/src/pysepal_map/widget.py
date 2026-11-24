@@ -59,7 +59,12 @@ A center request carries ``center`` and ``zoom``, null to keep the zoom. A fit
 carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
 the view fits the bounds inside ``padding`` px, no further in than
 ``max_zoom``, and jumps there. A padding the usable area cannot hold is
-reduced so that 1 px is left each way. A fit waits while the view's usable
+reduced so that 1 px is left each way. A request with ``animate: true``
+flies there instead (MapLibre's ``flyTo``), and the view reports it when the
+flight ends; a user who moves the map meanwhile ends it, and a newer request
+replaces it. A view jumps to the request it finds on mount, to a fit that
+waited for a usable area, and, as MapLibre does, for a user whose system asks
+for reduced motion. A fit waits while the view's usable
 area has no size, and runs once it has one.
 
 Linked maps. Maps whose ``link_group`` names the same group keep one camera.
@@ -766,16 +771,20 @@ class MapWidget(anywidget.AnyWidget):
         """Remove the highlight marker."""
         self.set_trait("marker", {})
 
-    def set_center(self, lng: float, lat: float, zoom: float | None = None) -> None:
+    def set_center(
+        self, lng: float, lat: float, zoom: float | None = None, *, animate: bool = False
+    ) -> None:
         """Ask every view to center on ``(lng, lat)``; no zoom keeps theirs.
 
         Until a view reports, a new view has no zoom to keep, so no zoom
-        means the last one asked for.
+        means the last one asked for. With ``animate``, the views fly there.
         """
-        self._center(lng, lat, zoom, stamped=True)
+        self._center(lng, lat, zoom, stamped=True, animate=animate)
 
-    def _center(self, lng: float, lat: float, zoom: float | None, stamped: bool) -> None:
-        request = _center_request(lng, lat, zoom)
+    def _center(
+        self, lng: float, lat: float, zoom: float | None, stamped: bool, animate: bool = False
+    ) -> None:
+        request = _center_request(lng, lat, zoom, animate)
         with self._lock:
             if zoom is None:
                 request["zoom"] = self._zoom
@@ -788,15 +797,17 @@ class MapWidget(anywidget.AnyWidget):
         bounds: tuple[float, float, float, float],
         padding: int = 20,
         max_zoom: float | None = None,
+        *,
+        animate: bool = False,
     ) -> None:
         """Ask every view to fit ``(west, south, east, north)``, ``padding`` px in.
 
         The fit stays inside the insets, zooms in no further than
         ``max_zoom`` (in [0, 24]; None is the map's maximum). A west east of
         east crosses the antimeridian. A view without a usable area fits
-        once it has one.
+        once it has one. With ``animate``, the views fly there.
         """
-        self._request(_bounds_request(bounds, padding, max_zoom))
+        self._request(_bounds_request(bounds, padding, max_zoom, animate))
 
     def set_insets(self, *, left: int = 0, right: int = 0, top: int = 0, bottom: int = 0) -> None:
         """Declare how many CSS pixels of each side of the map other UI covers.

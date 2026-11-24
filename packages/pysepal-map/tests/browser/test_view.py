@@ -297,6 +297,37 @@ def test_the_map_keeps_its_place_when_the_insets_change(harness, page_session):
     assert view["cause"] == "resize"
 
 
+def test_an_animated_fit_flies_and_reports_where_it_lands(harness, page_session):
+    widget = MapWidget()
+    display(widget)
+    wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    widget.fit_bounds(BOX, animate=True)
+    page_session.wait_for_function(
+        "el => el.psmCamera.inspect().applied === 2 && el.psmMap.isMoving()", arg=el
+    )
+    assert widget.view["request_seq"] == 1, "nothing is reported in flight"
+    view = wait_view(page_session, widget, lambda v: v["request_seq"] == 2)
+    assert not el.evaluate("el => el.psmMap.isMoving()")
+    assert contains(view["bounds"], BOX)
+
+
+def test_an_animated_fit_jumps_for_reduced_motion(harness, page_session):
+    page_session.emulate_media(reduced_motion="reduce")
+    try:
+        widget = MapWidget()
+        display(widget)
+        wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+        el = view_at(page_session)
+        widget.fit_bounds(BOX, animate=True)
+        page_session.wait_for_function("el => el.psmCamera.inspect().applied === 2", arg=el)
+        assert not el.evaluate("el => el.psmMap.isMoving()")
+        view = wait_view(page_session, widget, lambda v: v["request_seq"] == 2)
+        assert contains(view["bounds"], BOX)
+    finally:
+        page_session.emulate_media(reduced_motion="no-preference")
+
+
 def test_a_resize_paints_before_the_frame_shows(harness, page_session):
     """A resize clears the canvas: the map paints again before the browser shows it."""
     widget = MapWidget()

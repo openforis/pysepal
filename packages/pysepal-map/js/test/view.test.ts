@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  FLIGHT,
   LINK,
   PLACE,
   REPORT_DELAY_MS,
@@ -69,8 +70,50 @@ class FakeCameraMap {
     if (JSON.stringify(this.padding) !== before) this.fire("moveend");
   }
 
+  /** The options of each flight asked for. */
+  flights: any[] = [];
+  /** Where the flight under way lands, and the eventData of its events. */
+  private flight: { options: any; eventData: object } | null = null;
+  /** Like MapLibre for reduced motion: a flight jumps at once. */
+  reducedMotion = false;
+
+  isMoving() {
+    return this.flight !== null;
+  }
+
+  flyTo(options: any, eventData: object = {}) {
+    this.calls.push("flyTo");
+    this.flights.push(options);
+    this.stop();
+    if (this.reducedMotion) {
+      const { center, zoom } = options;
+      this.jumpTo({ center, zoom }, eventData);
+      return;
+    }
+    this.flight = { options, eventData };
+  }
+
+  /** The flight under way lands where it was going. */
+  land() {
+    const flight = this.flight!;
+    this.flight = null;
+    const [lng, lat] = flight.options.center;
+    this.center = { lng, lat };
+    this.zoom = flight.options.zoom;
+    this.fire("moveend", flight.eventData);
+  }
+
+  /** End the flight under way where it is, as a user gesture or a new move does. */
+  stop() {
+    const flight = this.flight;
+    if (!flight) return;
+    this.flight = null;
+    this.fire("moveend", flight.eventData);
+  }
+
   jumpTo(options: any, eventData: object = {}) {
     this.calls.push("jumpTo");
+    this.stop();
     this.jumps.push(options);
     const before = JSON.stringify([this.center, this.zoom, this.padding]);
     if (options.padding) this.padding = { ...options.padding };
@@ -132,6 +175,7 @@ class FakeCameraMap {
   }
 
   userMove(lng: number, lat: number) {
+    this.stop();
     this.center = { lng, lat };
     this.fire("moveend", { originalEvent: new Event("mouseup") });
   }
@@ -689,6 +733,114 @@ describe("ViewCamera", () => {
     expect(seqs()).toEqual([1, 2]);
     // Only the fit measured the host; it never changed size.
     expect(map.resizes).toBe(resizes + 1);
+  });
+
+  const flyTo = (seq: number, more: object = {}) => ({
+    seq,
+    center: [10, 20],
+    zoom: 5,
+    animate: true,
+    ...more,
+  });
+
+  it("flies to an animated request and reports it when it lands", () => {
+    const { camera, map, model, causes, sent } = setup();
+    camera.start();
+    vi.runAllTimers();
+    model.set("view_request", flyTo(2));
+    expect(map.flights).toEqual([
+      { center: [10, 20], zoom: 5, bearing: 0, pitch: 0, ...FLIGHT },
+    ]);
+    // In flight: nothing is reported yet, whatever the delay.
+    vi.runAllTimers();
+    expect(causes()).toEqual([[1, "request"]]);
+    expect(camera.inspect()).toMatchObject({ applied: 2 });
+
+    map.land();
+    vi.runAllTimers();
+    expect(causes()).toEqual([
+      [1, "request"],
+      [2, "request"],
+    ]);
+    expect(sent[1].center).toEqual([10, 20]);
+  });
+
+  it("flies a fit to the camera that fits it", () => {
+    const { camera, map, model, sent } = setup();
+    camera.start();
+    vi.runAllTimers();
+    model.set("view_request", fit(2, { animate: true }));
+    expect(map.flights).toEqual([
+      expect.objectContaining({
+        center: [5, 5],
+        zoom: Math.log2(36),
+        ...FLIGHT,
+      }),
+    ]);
+    map.land();
+    vi.runAllTimers();
+    expect(sent.map((r) => [r.request_seq, r.zoom])).toEqual([
+      [1, 2],
+      [2, Math.log2(36)],
+    ]);
+  });
+
+  it("jumps to the animated request it finds on mount", () => {
+    const { camera, map } = setup({ request: flyTo(1) });
+    camera.start();
+    expect(map.flights).toEqual([]);
+    expect([map.center, map.zoom]).toEqual([{ lng: 10, lat: 20 }, 5]);
+  });
+
+  it("jumps to an animated fit that waited for a usable area", () => {
+    const { camera, map, model } = setup();
+    camera.start();
+    camera.setInsets({ ...NO_INSETS, left: 400 });
+    model.set("view_request", fit(2, { animate: true }));
+    camera.setInsets({ ...NO_INSETS, left: 100 });
+    expect(map.flights).toEqual([]);
+    expect(camera.inspect()).toMatchObject({ applied: 2, pending: null });
+  });
+
+  it("reports a user who takes the map in flight", () => {
+    const { camera, map, model, sent } = setup();
+    camera.start();
+    vi.runAllTimers();
+    model.set("view_request", flyTo(2));
+    map.userMove(4, 4);
+    vi.runAllTimers();
+    expect(sent.map((r) => [r.request_seq, r.center, r.cause])).toEqual([
+      [1, [0, 0], "request"],
+      [2, [4, 4], "user"],
+    ]);
+  });
+
+  it("drops a flight a newer request replaces", () => {
+    const { camera, map, model, sent } = setup();
+    camera.start();
+    vi.runAllTimers();
+    model.set("view_request", flyTo(2));
+    model.set("view_request", { seq: 3, center: [1, 1], zoom: 3 });
+    vi.runAllTimers();
+    expect(sent.map((r) => [r.request_seq, r.center, r.cause])).toEqual([
+      [1, [0, 0], "request"],
+      [3, [1, 1], "request"],
+    ]);
+    expect(map.isMoving()).toBe(false);
+  });
+
+  it("reports at once a flight MapLibre jumps, as for reduced motion", () => {
+    const { camera, map, model, causes } = setup();
+    map.reducedMotion = true;
+    camera.start();
+    vi.runAllTimers();
+    model.set("view_request", flyTo(2));
+    vi.runAllTimers();
+    expect(causes()).toEqual([
+      [1, "request"],
+      [2, "request"],
+    ]);
+    expect(map.center).toEqual({ lng: 10, lat: 20 });
   });
 
   it("stops on dispose", () => {

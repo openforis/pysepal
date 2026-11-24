@@ -46,7 +46,20 @@ export interface ViewRequest {
   padding?: number;
   /** Null fits up to the map's maximum zoom. */
   max_zoom?: number | null;
+  /** Fly there rather than jump. */
+  animate: boolean;
 }
+
+/**
+ * How a request flies: MapLibre's flight, a little faster than its default.
+ * A flight longer than `maxDuration` jumps instead, and MapLibre jumps for a
+ * user whose system asks for reduced motion.
+ */
+export const FLIGHT = {
+  speed: 1.6,
+  maxDuration: 3000,
+  essential: false,
+} as const;
 
 /**
  * What moved the camera: a user gesture or its inertia, applying or
@@ -104,6 +117,8 @@ export interface CameraMap {
   project(lngLat: { lng: number; lat: number }): { x: number; y: number };
   setPadding(padding: Insets): unknown;
   jumpTo(options: object, eventData?: object): unknown;
+  flyTo(options: object, eventData?: object): unknown;
+  isMoving(): boolean;
   resize(eventData?: object): unknown;
   /** MapLibre caps the zoom at NaN for a `maxZoom` key that holds undefined. */
   cameraForBounds(
@@ -172,21 +187,26 @@ const sameInsets = (a: Insets, b: Insets): boolean =>
 
 function requestOf(value: unknown): ViewRequest | null {
   if (!value || typeof value !== "object") return null;
-  const { seq, center, zoom, bounds, padding, max_zoom } = value as Record<
-    string,
-    unknown
-  >;
+  const { seq, center, zoom, bounds, padding, max_zoom, animate } =
+    value as Record<string, unknown>;
   if (!isSeq(seq)) return null;
+  const flies = animate === true;
   if (numbers(bounds, 4)) {
     return {
       seq,
       bounds: bounds as Bounds,
       padding: isNumber(padding) ? padding : 0,
       max_zoom: isNumber(max_zoom) ? max_zoom : null,
+      animate: flies,
     };
   }
   if (numbers(center, 2) && (zoom == null || isNumber(zoom))) {
-    return { seq, center: center as LngLat, zoom: zoom ?? null };
+    return {
+      seq,
+      center: center as LngLat,
+      zoom: zoom ?? null,
+      animate: flies,
+    };
   }
   return null;
 }
@@ -221,6 +241,11 @@ function savedOf(
  * The insets are the map's padding: the camera centers, fits and reports
  * inside the area they leave. When they change, as a panel opens over the
  * map, the map keeps its place on screen and the center moves with the area.
+ *
+ * A request with `animate` flies there once the view runs, and is reported
+ * when the flight ends: a user who takes the map meanwhile ends it, and a
+ * newer request replaces it. The request a view finds on mount, and a fit
+ * that waited for a usable area, jump: nobody saw the map before.
  */
 export class ViewCamera {
   /** The sequence of the last request this view applied. */
@@ -229,6 +254,10 @@ export class ViewCamera {
   private started = false;
   /** A fit waiting for a usable area; only the latest is kept. */
   private pending: ViewRequest | null = null;
+  /** The request whose flight is under way, reported when it ends. */
+  private flying: number | null = null;
+  /** Requests arriving now may fly: the view has applied the one it found. */
+  private live = false;
   /** The sequence a report is owed for, and what moved the camera. */
   private owed: number | null = null;
   private cause: Cause = "resize";
@@ -264,6 +293,7 @@ export class ViewCamera {
     model.on("change:view_request", this.onRequest);
     const restored = this.applied;
     this.onRequest();
+    this.live = true;
     return this.applied > restored ? this.applied : null;
   }
 
@@ -337,10 +367,10 @@ export class ViewCamera {
     this.cancel();
     this.refused = null;
     this.pending = null;
-    this.apply(request);
+    this.apply(request, request.animate && this.live);
   };
 
-  private apply(request: ViewRequest): void {
+  private apply(request: ViewRequest, animate = false): void {
     const { map } = this.options;
     let camera: object | undefined;
     if (request.bounds) {
@@ -367,23 +397,38 @@ export class ViewCamera {
     } else {
       camera = { center: request.center, zoom: request.zoom };
     }
+    const target = { ...camera, bearing: 0, pitch: 0 };
+    const data = { [REQUEST]: request.seq };
+    // Before the call: it ends a flight under way, whose report is then due.
+    this.flying = animate ? request.seq : null;
     try {
-      map.jumpTo(
-        { ...camera, bearing: 0, pitch: 0 },
-        { [REQUEST]: request.seq }
-      );
+      if (animate) map.flyTo({ ...target, ...FLIGHT }, data);
+      else map.jumpTo(target, data);
     } catch (error) {
+      this.flying = null;
       console.error(`pysepal-map: view request ${request.seq} failed`, error);
       return;
     }
     this.applied = request.seq;
+    // A flight reports as it ends; one MapLibre made a jump has ended already.
+    if (this.flying === request.seq && map.isMoving()) return;
+    this.flying = null;
     // A jump that changes nothing need not fire a move, so acknowledge here.
     this.owe(request.seq, "request");
   }
 
   private readonly onMoveEnd = (event: MoveEvent) => {
-    // A request's own move is acknowledged by apply().
-    if (event[REQUEST] !== undefined || event[LINK] === "frame") return;
+    const seq = event[REQUEST];
+    if (seq !== undefined) {
+      // A flight ended, landed or taken over by a user; a jump's move was
+      // acknowledged by apply(), as was a flight a newer request replaced.
+      if (seq === this.flying) {
+        this.flying = null;
+        this.owe(seq as number, "request");
+      }
+      return;
+    }
+    if (event[LINK] === "frame") return;
     const user = event.originalEvent || event[LINK] === "user";
     const link = event[LINK] === "link";
     this.owe(this.applied, user ? "user" : link ? "link" : "resize");
@@ -417,7 +462,9 @@ export class ViewCamera {
 
   private readonly flush = () => {
     this.timer = undefined;
+    // Held while a request flies: its end owes the report again.
     if (this.disposed || this.owed === null || !this.hasSize()) return;
+    if (this.flying !== null) return;
     const seq = this.owed;
     this.owed = null;
     this.transmit(this.report(seq, this.cause));

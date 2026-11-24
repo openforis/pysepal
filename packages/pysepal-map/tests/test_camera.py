@@ -57,6 +57,22 @@ def test_fit_bounds_request_carries_padding_and_max_zoom():
         w.fit_bounds((10, 10, 20, 20), zoom_out=1)
 
 
+def test_a_request_flies_only_when_asked():
+    """A jump carries no ``animate`` key, so its request keeps its shape."""
+    w = MapWidget()
+    assert "animate" not in w.view_request, "the first camera jumps"
+    w.fit_bounds((10, 10, 20, 20))
+    assert "animate" not in w.view_request
+    w.fit_bounds((10, 10, 20, 20), animate=True)
+    assert w.view_request["animate"] is True
+    w.set_center(1, 2, 3)
+    assert "animate" not in w.view_request
+    w.set_center(1, 2, 3, animate=True)
+    assert w.view_request == {"seq": 5, "center": [1.0, 2.0], "zoom": 3.0, "animate": True}
+    with pytest.raises(TypeError):
+        w.fit_bounds((10, 10, 20, 20), 20, None, True)
+
+
 def test_fit_bounds_without_max_zoom_sends_null():
     w = MapWidget()
     w.fit_bounds((10, 10, 20, 20))
