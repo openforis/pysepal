@@ -11,7 +11,7 @@ _TRAITS = ["basemaps", "basemap"]
 
 @solara.component
 def BasemapPicker(map_):
-    """Choose which of the map's basemaps it shows.
+    """Choose which of the map's basemaps it shows; hidden while there is only one.
 
     Args:
         map_: The ``SepalMap`` whose ``basemaps`` are listed and whose ``basemap`` is set.
@@ -31,6 +31,10 @@ def BasemapPicker(map_):
     def pick(name: str) -> None:
         if name:
             map_.basemap = name
+
+    if len(map_.basemaps) < 2:
+        # mounted all the same, to follow the basemaps an app adds later
+        return solara.Div(style="display: none")
 
     return rv.Select(
         label=msg("layer_panel.basemap"),

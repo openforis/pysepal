@@ -34,7 +34,8 @@ def LayerPanel(
 
     Args:
         store: The layer store to show and edit.
-        map_: The ``SepalMap`` whose basemaps the picker switches; no picker when None.
+        map_: The ``SepalMap`` whose basemaps the picker switches; no picker when None or
+            while the map has a single basemap.
         on_export: Called with a Earth Engine layer's spec when its Export button is clicked.
     """
     version = use_layer_store(store)

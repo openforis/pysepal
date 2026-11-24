@@ -125,7 +125,7 @@ def test_shapefile_download_zips_only_sidecars(fake_vector, tmp_path):
 
 
 def test_vuetify_3_sizes(raster_spec):
-    m = SepalMap(gee=False)
+    m = SepalMap(["SEPAL_LIGHT", "OpenStreetMap"], gee=False)
     m.layer_store.add(raster_spec)
     m.layer_store.set_status(raster_spec.id, "error", error="boom")
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
@@ -206,6 +206,8 @@ def test_basemap_picker_lists_the_choices_and_switches_the_map():
 def test_basemap_picker_follows_the_map():
     m = SepalMap(gee=False, theme_state=ThemeState(mode="light"))
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
+    # the theme's basemap alone leaves nothing to pick
+    assert role_widgets(box, "basemap") == []
 
     m.add_basemap("HYBRID")
 
