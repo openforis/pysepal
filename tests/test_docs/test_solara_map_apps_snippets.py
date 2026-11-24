@@ -1,0 +1,148 @@
+"""Every runnable snippet of ``docs/guides/solara-map-apps.md`` renders.
+
+A Python block after a ``<!-- run -->`` line defines a ``Page`` component. Each one runs
+on its own, with Solara's hook rules raising, and ``Page`` renders on a live loop, as
+under a Solara server, with Earth Engine stubbed and no network. The layers it adds
+must be drawn, nothing may log an error, and every map it builds must close with the
+render context: the guide says the owner closes its maps. A block after
+``<!-- fragment -->`` is illustrative and does not run; an unmarked block fails.
+"""
+
+import asyncio
+import linecache
+import logging
+import socket
+from dataclasses import dataclass
+from pathlib import Path
+
+import pytest
+import solara
+import solara.settings
+
+import pysepal.scripts.utils as su
+from pysepal.mapping import SepalMap
+from pysepal.solara.session_manager import SessionManager
+from pysepal.solara.theme import _theme_store
+
+GUIDE = Path(__file__).resolve().parents[2] / "docs" / "guides" / "solara-map-apps.md"
+MARKS = ("<!-- run -->", "<!-- fragment -->")
+
+
+@dataclass
+class Snippet:
+    line: int
+    mark: str
+    code: str
+
+
+def _snippets(text: str) -> list[Snippet]:
+    """The Python blocks of ``text``, each with the mark on the line before it, if any."""
+    lines = text.splitlines()
+    found, i = [], 0
+    while i < len(lines):
+        fence = lines[i].strip()
+        if not fence.startswith("```"):
+            i += 1
+            continue
+        start, indent = i, len(lines[i]) - len(lines[i].lstrip())
+        i += 1
+        while i < len(lines) and lines[i].strip() != "```":
+            i += 1
+        if fence == "```python":
+            before = next((ln.strip() for ln in reversed(lines[:start]) if ln.strip()), "")
+            body = "\n".join(ln[indent:] for ln in lines[start + 1 : i])
+            found.append(Snippet(start + 1, before if before in MARKS else "", body))
+        i += 1
+    return found
+
+
+SNIPPETS = _snippets(GUIDE.read_text(encoding="utf-8")) if GUIDE.is_file() else []
+RUNNABLE = [s for s in SNIPPETS if s.mark == "<!-- run -->"]
+
+
+class _FakeGee:
+    """An Earth Engine interface that is never called: the snippets only render."""
+
+
+def _no_network(*args, **kwargs):
+    raise OSError("the guide's snippets must render without the network")
+
+
+@pytest.fixture
+def offline(monkeypatch):
+    """Stub Earth Engine and the network, and collect every map built."""
+    monkeypatch.setattr(SessionManager, "get_gee_interface", lambda self: _FakeGee())
+    monkeypatch.setattr(su, "init_ee", lambda: None)
+    monkeypatch.setattr(socket.socket, "connect", _no_network)
+    monkeypatch.delenv("LOCALTILESERVER_CLIENT_PREFIX", raising=False)
+
+    built = []
+    init = SepalMap.__init__
+
+    def recording_init(self, *args, **kwargs):
+        built.append(self)
+        init(self, *args, **kwargs)
+
+    monkeypatch.setattr(SepalMap, "__init__", recording_init)
+    SessionManager._instance = None
+    _theme_store.clear()
+    yield built
+    SessionManager._instance = None
+    _theme_store.clear()
+
+
+def test_the_guide_has_runnable_snippets():
+    assert GUIDE.is_file(), f"{GUIDE} is missing"
+    assert RUNNABLE, "no snippet is marked <!-- run -->"
+
+
+def test_every_python_block_is_marked():
+    unmarked = [s.line for s in SNIPPETS if not s.mark]
+    assert unmarked == [], f"mark these blocks <!-- run --> or <!-- fragment -->: lines {unmarked}"
+
+
+def _undrawn(maps: list) -> list[str]:
+    """The layers of ``maps`` that the engine has not drawn, or that failed."""
+    return [
+        layer_id
+        for m in maps
+        for layer_id in m.layer_store.ids
+        if m.layer_engine.accepted(layer_id) is None
+        or m.layer_store.view(layer_id).status == "error"
+    ]
+
+
+async def _settle(maps: list, timeout: float = 10.0) -> list[str]:
+    """Keep the loop running until every layer is drawn, or ``timeout``; what is left."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while _undrawn(maps) and loop.time() < deadline:
+        await asyncio.sleep(0.01)
+    return _undrawn(maps)
+
+
+@pytest.mark.parametrize("snippet", RUNNABLE, ids=[f"line{s.line}" for s in RUNNABLE])
+def test_the_snippet_renders(snippet, offline, monkeypatch, caplog):
+    # the source, for Solara's hook check, which reads it when @solara.component runs
+    filename = f"{GUIDE}:{snippet.line}"
+    lines = snippet.code.splitlines(keepends=True)
+    monkeypatch.setitem(linecache.cache, filename, (len(snippet.code), None, lines, filename))
+    monkeypatch.setattr(solara.settings.main, "check_hooks", "raise")
+    caplog.set_level(logging.ERROR)
+
+    namespace = {"__name__": f"solara_map_apps_line{snippet.line}"}
+    exec(compile(snippet.code, filename, "exec"), namespace)
+    assert "Page" in namespace, "a runnable snippet defines Page"
+
+    async def render():
+        root, rc = solara.render(namespace["Page"](), handle_error=False)
+        try:
+            assert rc.find(SepalMap).widgets, "the page shows its map"
+            assert await _settle(offline) == [], "every layer the snippet adds is drawn"
+        finally:
+            rc.close()
+
+    asyncio.run(render())
+    assert offline, "the snippet builds a map"
+    assert [m for m in offline if m.comm is not None] == [], "the owner closes every map"
+    assert [r.getMessage() for r in caplog.records] == [], "nothing logs an error"

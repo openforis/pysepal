@@ -322,8 +322,8 @@ section rather than copying the skeleton below.
 
         # Built once per GEE interface; Page closes it on unmount and on a hot reload.
         map_ = use_sepal_map(
-            lambda: SepalMap(gee_interface=gee_interface, fullscreen=True, theme_state=theme_state),
-            [id(gee_interface)],
+            lambda: SepalMap(gee_interface=gee_interface, theme_state=theme_state),
+            [gee_interface],
         )
 
         # Drawer entries. `display` is "step" (inline) or "dialog" (modal).

@@ -39,13 +39,12 @@ def Page():
     gee_interface = get_current_gee_interface()
     theme_state = get_current_theme_state()
 
-    # fullscreen=True is required: MapApp never sizes the map, only overlays it.
     sepal_map = use_sepal_map(
         lambda: sm.SepalMap(
-            zoom=3, center=[0, 0], gee=True,
-            gee_interface=gee_interface, fullscreen=True, theme_state=theme_state,
+            zoom=3, center=(0, 0), gee=True,
+            gee_interface=gee_interface, theme_state=theme_state,
         ),
-        [id(gee_interface)],
+        [gee_interface],
     )
 
     steps_data = [

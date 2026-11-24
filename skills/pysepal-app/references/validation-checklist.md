@@ -12,6 +12,8 @@ Run this checklist before presenting the finished scaffold.
 - Nothing imports `pysepal.sepalwidgets`.
 - Map apps use `MapApp(...)` from `pysepal.solara.components.map_app`, with no
   `.element`, `model=`, `theme_toggle=` or `language_selector=`.
+- Each map is built with `use_sepal_map` in the component that owns it, and the
+  map code follows `docs/guides/solara-map-apps.md`.
 - The app's own `rv.*`, `solara.v` and `.vue` code is Vuetify 3, with no
   `IPYVUETIFY_V3` branch.
 - The app requires `pysepal>=5` and does not pin `ipyvuetify<3`.

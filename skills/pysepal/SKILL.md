@@ -210,8 +210,8 @@ def Page():
     theme_state = get_current_theme_state()
     gee_interface = get_current_gee_interface()
     sepal_map = use_sepal_map(
-        lambda: SepalMap(fullscreen=True, theme_state=theme_state, gee_interface=gee_interface),
-        [id(gee_interface)],
+        lambda: SepalMap(theme_state=theme_state, gee_interface=gee_interface),
+        [gee_interface],
     )
 
     MapApp(
@@ -245,7 +245,8 @@ on unmount, on a dependency change and on a hot reload. The component that
 builds a map closes it; the components it passes the map to (`MapView`,
 `LayerPanel`, `AoiView`) never do.
 
-`fullscreen=True` on the map is what makes it fill the shell. The shell has no
+The shell's CSS makes the map fill the window whatever its `height`, so
+`fullscreen=True` changes nothing inside `MapApp`. The shell has no
 `model=`, `theme_toggle=` or `language_selector=`: the toggle and the selector
 are built in. It owns its state, so a value passed on every render does not undo
 what the user did; only a change of the value is an instruction. To follow or
@@ -282,6 +283,33 @@ again.
 
 `SepalMap` takes the theme through `theme_state=`; `theme_toggle=` was removed
 in 5.0.
+
+### Maps in Solara apps
+
+Read `docs/guides/solara-map-apps.md` before writing map code: each rule there
+gives its reason and its Solara source. The five that matter most:
+
+1. **Build each map with `use_sepal_map(factory, dependencies)` in the
+   component that owns it, and pass it down.** Never in the render body, at
+   module level, in `use_state` or in `solara.use_memo` alone. Dependencies are
+   the objects (`[gee_interface]`), never `id(obj)`.
+2. **Keep map callbacks short.** `on_click`, `on_view`, `on_status` and a draw
+   session's `on_change` run under the kernel lock: set a reactive. Register
+   them in an effect and remove them in its cleanup; begin a `m.draw.begin(...)`
+   session the same way and `end()` it there.
+3. **Run slow work in `use_task(..., prefer_threaded=False)`** with
+   `await m.add_ee_layer_async(...)` or `add_raster_async`. A pool worker
+   (`asyncio.to_thread`) computes and returns; the task writes the map after
+   the `await`.
+4. **Show a map with `MapApp`, which sizes it, or `MapView(m, overlays=...)`**,
+   as tall as the map's `height` (with `fullscreen=True`, a parent that has a
+   height). Give each layer its legend (`legend=` on the add methods,
+   `handle.legend`); `MapView` shows one card per view area, so mount no
+   `LegendComponent` over the map.
+5. **Keep state per kernel.** The theme is `theme_state` or
+   `get_current_theme_state()` (`set_mode("dark")`), never `v.theme.dark`;
+   `link_group` is per kernel. Under Solara call `setup_solara_server()`, which
+   serves the map bundle once per page, and deploy with `--production`.
 
 ### Reference templates
 
@@ -1038,6 +1066,7 @@ current list — do not rely on this table.
 | `solara-app-builder.md`      | Scaffolding or restructuring an app                                               |
 | `solara-export.md`           | Adding export to EE asset / Drive / SEPAL workspace                               |
 | `solara-mapapp-component.md` | Every `MapApp` argument; moving from the removed `MapApp.element`                 |
+| `solara-map-apps.md`         | Any map code: building, sharing, closing, events, layout, legends, tests, deploy  |
 | `migrating-to-pysepal-5.md`  | Replacing a removed widget; Vuetify 3 spellings; the `pysepal<5` pin              |
 | `solara-migration.md`        | Converting ipyvuetify widget to Solara                                            |
 | `ipyvuetify-widgets.md`      | Writing a `component_vue` / `v.VuetifyTemplate`: template rules, data, events     |
@@ -1077,6 +1106,11 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] A `SepalMap(...)` built in a render body or in `solara.use_memo` (use `use_sepal_map`, which closes it)
 - [ ] `add_ee_layer` called from sync `use_effect` handlers, or wrapped in `asyncio.to_thread` (use `await map_.add_ee_layer_async(...)` in `use_task(prefer_threaded=False)`)
 - [ ] A widget, layer store or reactive written from an `asyncio.to_thread` or executor worker (return the result and write after the `await`)
+- [ ] `id(obj)` in a hook's dependencies, e.g. `use_sepal_map(..., [id(gee_interface)])` (pass the object)
+- [ ] `m.on_click` / `m.on_view` / `m.draw.begin` called in a render body instead of an effect with a cleanup, or a map callback doing slow work
+- [ ] An app's own `LegendComponent` over a map (`MapView` shows each layer's legend; pass `legend=`)
+- [ ] `v.theme.dark` or `ipyvuetify.theme` set to change a map's theme (use `ThemeToggle` or `get_current_theme_state().set_mode(...)`)
+- [ ] A Solara entry point without `setup_solara_server()` (every map then sends its 2 MB bundle)
 - [ ] `v.Widget(...)` inside `with rv.Something():` contexts
 - [ ] Missing `loading` parameter on `AssetSelectComponent`
 - [ ] Separate cancel button below action button (use `TaskButtonComponent` instead)

@@ -128,7 +128,8 @@ component that renders `MapApp`, as in the quick start. It builds the map once
 change and on a hot reload. Solara closes only the widgets it built from
 elements, so a map built in `solara.use_memo` alone stays alive until the
 kernel closes. The component that builds a map closes it; `MapApp`, `MapView`
-and the other components it is passed to never do.
+and the other components it is passed to never do. The other rules for map
+code are in [Best practices for map apps](./solara-map-apps.md).
 
 `MapView`, which `MapApp` builds around the map, stacks the overlays of each
 corner (`map_overlays`) inside the insets and 10 px past the map's controls in

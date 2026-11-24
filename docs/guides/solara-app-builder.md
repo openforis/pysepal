@@ -276,6 +276,15 @@ def Page():
 ### Passing interfaces to sub-components
 
 ```python
+from pysepal import mapping as sm
+from pysepal.solara import (
+    get_current_gee_interface,
+    get_current_sepal_client,
+    use_sepal_map,
+    with_sepal_sessions,
+)
+
+
 @solara.component
 @with_sepal_sessions(module_name="my_app")
 def Page():
@@ -288,7 +297,7 @@ def Page():
     # Pass to map
     sepal_map = use_sepal_map(
         lambda: sm.SepalMap(gee=True, gee_interface=gee_interface),
-        [id(gee_interface)],
+        [gee_interface],
     )
 
     # Pass to tiles/widgets; the map is Page's to close, not theirs
@@ -566,7 +575,7 @@ def Page():
             gee_interface=gee_interface,
             theme_state=theme_state,
         ),
-        [id(gee_interface)],
+        [gee_interface],
     )
 
     # The shell. Its drawer holds the theme toggle and the language selector.
@@ -590,7 +599,8 @@ Build a map with `use_sepal_map`, never in the render body (a new, empty map
 on every render) or in `solara.use_memo` alone. Solara closes only the widgets
 it built from elements, so a memoized map stays alive, with its link group,
 until the kernel closes. The component that builds a map closes it; the
-components it passes the map to never do.
+components it passes the map to never do. The rules for map code, with their
+reasons, are in [Best practices for map apps](./solara-map-apps.md).
 
 `MapApp` is a `@solara.component` from `pysepal.solara.components.map_app`. A
 `content` is an element, a widget, or a list of them. To follow the user, pass `on_current_step`, `on_step_open` or

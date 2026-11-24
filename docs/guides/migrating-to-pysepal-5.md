@@ -24,7 +24,9 @@ widget layer, `pysepal.sepalwidgets`, which worked only on ipyvuetify 1
   must depend on it. `xyzservices` is now a direct dependency.
 - The `theme_toggle` argument of `SepalMap`: the `ThemeToggle` it took no
   longer exists. Pass `theme_state=` instead; the Solara `MapApp` binds it for
-  you.
+  you. A map without `theme_state` follows `get_current_theme_state()`, the
+  kernel's theme, not `v.theme.dark`: drive it with `ThemeToggle` or
+  `get_current_theme_state().set_mode("dark")`.
 - The `catch_errors` and `loading_button` decorators in
   `pysepal.scripts.decorator`, and their old aliases in `pysepal.scripts.utils`.
 - The `module_factory` command and the `pysepal/templates` scaffolds it copied.
