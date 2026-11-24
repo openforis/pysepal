@@ -316,7 +316,7 @@ class SepalMap(MapWidget):
         if self.layer_engine is not None:
             _close_part("layer engine", self.layer_engine.close)
         if self._widget_ready:
-            super().close()
+            _close_part("widget", super().close)
 
     # -- theme ------------------------------------------------------------------------------
 

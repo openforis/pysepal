@@ -425,6 +425,22 @@ def test_close_reaches_the_widget_close_when_a_part_raises(part, monkeypatch, ca
     assert part == "theme" or not observers
 
 
+def test_close_logs_a_failing_widget_close(monkeypatch, caplog) -> None:
+    m = SepalMap(gee=False)
+
+    def broken(self) -> None:
+        raise RuntimeError("widget broke")
+
+    monkeypatch.setattr(MapWidget, "close", broken)
+    with caplog.at_level("ERROR", logger="sepalui.mapping"):
+        m.close()
+
+    assert "widget broke" in caplog.text
+    assert m.layer_engine._closed
+    monkeypatch.undo()
+    m.close()
+
+
 @pytest.fixture
 def square_gdf() -> gpd.GeoDataFrame:
     """A small square around the Vatican."""

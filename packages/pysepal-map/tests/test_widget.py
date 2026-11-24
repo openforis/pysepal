@@ -10,6 +10,7 @@ import sys
 import threading
 import weakref
 
+import anywidget
 import ipywidgets
 import ipywidgets.widgets.widget as widget_registry
 import pytest
@@ -863,6 +864,23 @@ def test_a_closed_widget_leaves_a_given_layout_open():
 
     assert layout.comm is not None
     layout.close()
+
+
+def test_close_logs_a_failing_widget_close(monkeypatch, caplog):
+    widget = MapWidget()
+    layout = widget._trait_values["layout"]
+
+    def broken(self):
+        raise RuntimeError("comm broke")
+
+    monkeypatch.setattr(anywidget.AnyWidget, "close", broken)
+    with caplog.at_level("ERROR", logger="pysepal_map"):
+        widget.close()
+
+    assert "comm broke" in caplog.text
+    assert widget._closed and layout.comm is None
+    monkeypatch.undo()
+    widget.close()
 
 
 @pytest.mark.parametrize("part", ["views", "link group", "callbacks", "layout"])

@@ -818,11 +818,9 @@ class MapWidget(anywidget.AnyWidget):
         _close_part("callbacks", self._callbacks.close)
         # _trait_values, not self.layout: reading an unset trait would build one
         layout = self._trait_values.get("layout") if self._owns_layout else None
-        try:
-            super().close()
-        finally:
-            if layout is not None:
-                _close_part("layout", layout.close)
+        _close_part("widget", super().close)
+        if layout is not None:
+            _close_part("layout", layout.close)
 
     def _request(self, request: dict, stamped: bool = True) -> None:
         # Under the lock, so requests from several threads go out in seq order.
