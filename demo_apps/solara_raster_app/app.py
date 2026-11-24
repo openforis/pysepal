@@ -4,7 +4,8 @@ Three buttons, one per path through :meth:`~pysepal.mapping.SepalMap.add_raster`
 a continuous colormap, exact per-class colors, and a raster large enough that
 preparing it has to happen off the event loop. A fourth points at a file that is
 not there, to show a failed task: its error toast stays until it is closed or
-another task starts.
+another task starts. The layer panel lists what the buttons added, to reorder, hide,
+restyle or remove it.
 
 Set ``PYSEPAL_DEMO_RASTER_DIR`` to a directory holding ``aa_test_congo.tif`` and
 ``hansen_bolivia.tif`` to run against real class maps; without it the demo
@@ -27,6 +28,7 @@ import solara
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
+from pysepal.message import msg as pysepal_msg
 from pysepal.scripts.scratch import scratch_root
 from pysepal.solara import (
     get_current_theme_state,
@@ -34,6 +36,7 @@ from pysepal.solara import (
     setup_theme_colors,
     use_sepal_map,
 )
+from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 from pysepal.solara.notifications import NotificationProvider, use_notifications
@@ -260,6 +263,12 @@ def RasterPanel():
                 "description": msg(
                     "section.description", source=source, env_var=RASTER_DIR_ENV_VAR
                 ),
+            },
+            {
+                "title": pysepal_msg("layer_panel.title"),
+                "icon": "mdi-layers",
+                "content": LayerPanel(store=sepal_map.layer_store, map_=sepal_map),
+                "description": msg("layer_panel.description"),
             },
             {
                 "title": msg("errors.title"),

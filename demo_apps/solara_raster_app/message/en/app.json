@@ -10,6 +10,9 @@
     "title": "Local rasters",
     "description": "Drawing {source}. A continuous ramp stretched across sparse class codes renders them near-black; class_colors draws each one exactly. Set {env_var} to use real products."
   },
+  "layer_panel": {
+    "description": "The rasters on the map, top first. Drag a row by its handle to reorder them; expand it for its opacity, legend and style."
+  },
   "errors": {
     "title": "A failed task",
     "description": "This button points at a raster that is not there, so its task fails. The error toast stays until you close it or start another task, and the log keeps the failure."

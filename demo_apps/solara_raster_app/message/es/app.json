@@ -10,6 +10,9 @@
     "title": "Rásteres locales",
     "description": "Dibujando {source}. Una rampa continua estirada sobre códigos de clase dispersos los muestra casi negros; class_colors dibuja cada uno con su color exacto. Defina {env_var} para usar productos reales."
   },
+  "layer_panel": {
+    "description": "Los rásteres del mapa, de arriba abajo. Arrastre una fila por su asa para reordenarlos; despliéguela para ver su opacidad, su leyenda y su estilo."
+  },
   "errors": {
     "title": "Una tarea fallida",
     "description": "Este botón apunta a un ráster que no existe, así que su tarea falla. El aviso de error queda abierto hasta que lo cierre o inicie otra tarea, y el registro conserva el fallo."

@@ -10,6 +10,9 @@
     "title": "Rasters locaux",
     "description": "Affichage de {source}. Une rampe continue étirée sur des codes de classe épars les rend presque noirs ; class_colors dessine chacun avec sa couleur exacte. Définissez {env_var} pour utiliser de vrais produits."
   },
+  "layer_panel": {
+    "description": "Les rasters de la carte, de haut en bas. Faites glisser une ligne par sa poignée pour les réordonner ; dépliez-la pour son opacité, sa légende et son style."
+  },
   "errors": {
     "title": "Une tâche en échec",
     "description": "Ce bouton pointe vers un raster absent, donc sa tâche échoue. Le message d'erreur reste affiché jusqu'à ce que vous le fermiez ou lanciez une autre tâche, et le journal garde l'échec."
