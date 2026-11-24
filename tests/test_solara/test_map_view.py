@@ -609,8 +609,7 @@ def test_a_card_hides_when_its_area_has_no_room():
     narrow = container_block("pysepal-legend (width < 120px)")
     assert f"{slot} .sepal-legend__body {{ display: none; }}" in narrow
     assert f"{slot} .sepal-legend {{ pointer-events: none; }}" in narrow
-    # the pill: the icon and the shown layer's name, without the chevron
-    assert f"{slot} .sepal-legend__chevron {{ display: none; }}" in narrow
+    # the pill: the icon and the shown layer's name
     assert f"{slot} .sepal-legend__bar-title {{ display: inline; }}" in narrow
     assert ":last-child" not in narrow
     gone = container_block("pysepal-legend (width < 40px)")

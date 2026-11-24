@@ -4,14 +4,11 @@
     <div v-if="!isCollapsed" class="sepal-legend__body">
       <!-- Layer selector (only with 2+ options). The native select lies,
            transparent, over the row that shows its choice: the name can then
-           end in an ellipsis beside a count, while the keyboard, the popup and
-           screen readers still get a plain select. -->
+           end in an ellipsis, while the keyboard, the popup and screen readers
+           still get a plain select. -->
       <div v-if="showSelector" class="sepal-legend__selector">
         <span class="sepal-legend__selector-text" aria-hidden="true">{{
           displayTitle
-        }}</span>
-        <span v-if="countText" class="sepal-legend__count" aria-hidden="true">{{
-          countText
         }}</span>
         <select
           class="sepal-legend__select"
@@ -105,23 +102,17 @@
       @click="toggleCollapse"
       @keydown.enter="toggleCollapse"
       @keydown.space.prevent="toggleCollapse"
-      :title="isCollapsed ? strings.show : strings.hide"
-      :aria-label="isCollapsed ? strings.show : strings.hide"
+      :title="barLabel"
+      :aria-label="barLabel"
       :aria-expanded="String(!isCollapsed)"
     >
-      <!-- px: the named icon sizes scale with the font; the icons take the
+      <!-- px: the named icon sizes scale with the font; the icon takes the
            bar's themed text colour -->
-      <v-icon :size="16">mdi-map-legend</v-icon>
-      <!-- Rendered while expanded too, hidden by a class a host can override. -->
-      <span
-        v-if="displayTitle"
-        class="sepal-legend__bar-title"
-        :class="barTitleClasses"
-        >{{ displayTitle }}</span
-      >
-      <v-icon :size="12" class="sepal-legend__chevron">{{
-        isCollapsed ? "mdi-chevron-up" : "mdi-chevron-down"
-      }}</v-icon>
+      <v-icon :size="16">mdi-menu</v-icon>
+      <!-- Hidden: a host shows it where the card has no room to open. -->
+      <span v-if="displayTitle" class="sepal-legend__bar-title">{{
+        displayTitle
+      }}</span>
     </div>
   </div>
 </template>
@@ -227,12 +218,9 @@ module.exports = {
     showTitle() {
       return !this.showSelector && !!this.displayTitle;
     },
-    countText() {
-      if (!this.showSelector || this.selectedIndex < 0) return "";
-      return this.selectedIndex + 1 + "/" + this.options.length;
-    },
-    barTitleClasses() {
-      return { "sepal-legend__bar-title--off": !this.isCollapsed };
+    barLabel() {
+      var action = this.isCollapsed ? this.strings.show : this.strings.hide;
+      return this.displayTitle ? action + ": " + this.displayTitle : action;
     },
   },
   watch: {
@@ -350,7 +338,7 @@ module.exports = {
 
 .sepal-legend__bar {
   border-radius: 16px;
-  padding: 2px 10px;
+  padding: 3px 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -361,16 +349,13 @@ module.exports = {
 }
 
 .sepal-legend__bar-title {
+  display: none;
   font-size: 12px;
   max-width: 160px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.sepal-legend__bar-title--off {
-  display: none;
 }
 
 .sepal-legend__title {
@@ -496,12 +481,6 @@ module.exports = {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.sepal-legend__count {
-  flex-shrink: 0;
-  font-size: 11px;
-  opacity: 0.6;
-  font-variant-numeric: tabular-nums;
 }
 /* The select is invisible, so its keyboard focus shows on the row. */
 .sepal-legend__selector:has(> .sepal-legend__select:focus-visible) {

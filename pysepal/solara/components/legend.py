@@ -110,9 +110,9 @@ def LegendComponent(
     """Map legend card with a toggle bar under it.
 
     Supports gradient bars and discrete color chips. The card's title row names
-    the shown layer: a dropdown with the layer's name and its rank (``2/4``)
-    when two or more options are given, else the title as plain text. A long
-    legend scrolls inside the card, and the collapsed bar keeps the name.
+    the shown layer: a dropdown with the layer's name when two or more options
+    are given, else the title as plain text. A long legend scrolls inside the
+    card. The bar under it is a menu icon that opens and closes the card.
 
     Args:
         legend_data: Serialized LegendData (use dataclasses.asdict).

@@ -134,7 +134,6 @@ CSS = """
    outranks Legend.vue's scoped rules, which ipyvue suffixes with an attribute. */
 @container pysepal-legend (width < 120px) {
   .pysepal-map-root > .pysepal-map-legend .sepal-legend__body { display: none; }
-  .pysepal-map-root > .pysepal-map-legend .sepal-legend__chevron { display: none; }
   .pysepal-map-root > .pysepal-map-legend .sepal-legend__bar-title { display: inline; }
   .pysepal-map-root > .pysepal-map-legend .sepal-legend { pointer-events: none; }
 }

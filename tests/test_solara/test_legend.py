@@ -91,11 +91,13 @@ def test_template_has_no_vue2_only_syntax():
     assert not re.search(r"^\s*props:", content, re.MULTILINE)
 
 
-def test_bar_icons_have_pixel_sizes_and_no_theme_props():
-    """Named icon sizes scale with the font; the icons take the bar's themed text colour."""
+def test_the_bar_is_one_menu_icon_with_a_pixel_size_and_no_theme_props():
+    """Named icon sizes scale with the font; the icon takes the bar's themed text colour."""
     markup = re.sub(r"<!--.*?-->", "", _TEMPLATE.read_text().split("<script>")[0], flags=re.DOTALL)
-    icons = re.findall(r"<v-icon\b([^>]*)>", markup)
-    assert icons == [' :size="16"', ' :size="12" class="sepal-legend__chevron"']
+    icons = re.findall(r"<v-icon\b([^>]*)>([^<]*)<", markup)
+    assert icons == [(' :size="16"', "mdi-menu")]
+    # the name is the host's to show, where the card cannot open
+    assert "display: none" in _rule(".sepal-legend__bar-title")
 
 
 @needs_node
@@ -203,19 +205,19 @@ def test_map_placement_renders_in_flow():
 
 
 @needs_node
-def test_title_and_count_with_several_layers():
+def test_title_with_several_layers():
     shown = run_vue_script(
         _TEMPLATE,
         f"""
         const vm = makeVm({{ selector_options: {_OPTIONS!r}, selected: "loss", title: "ignored" }});
-        return [vm.showSelector, vm.showTitle, vm.displayTitle, vm.countText];
+        return [vm.showSelector, vm.showTitle, vm.displayTitle];
         """,
     )
-    assert shown == [True, False, "Tree cover loss", "2/3"]
+    assert shown == [True, False, "Tree cover loss"]
 
     selector = _markup().split('class="sepal-legend__selector"')[1].split("</select>")[0]
     assert "{{ displayTitle }}" in selector
-    assert "{{ countText }}" in selector
+    assert "countText" not in _TEMPLATE.read_text()
     assert "text-overflow: ellipsis" in _rule(".sepal-legend__selector-text")
 
 
@@ -244,27 +246,29 @@ def test_single_layer_shows_its_title():
 
 
 @needs_node
-def test_collapsed_bar_shows_the_title():
+def test_the_bar_label_names_the_layer():
     shown = run_vue_script(
         _TEMPLATE,
         f"""
-        return [true, false].map((collapsed) => {{
-          const vm = makeVm({{ collapsed, selector_options: {_OPTIONS!r}, selected: "gain" }});
+        const labels = {{ show: "Show legend", hide: "Hide legend" }};
+        const named = [true, false].map((collapsed) => {{
+          const vm = makeVm({{ collapsed, labels, selector_options: {_OPTIONS!r}, selected: "gain" }});
           options.created.call(vm);
-          return vm.barTitleClasses;
+          return vm.barLabel;
         }});
+        const bare = makeVm({{ collapsed: true, labels }});
+        options.created.call(bare);
+        return [...named, bare.barLabel];
         """,
     )
-    off = "sepal-legend__bar-title--off"
-    assert shown == [{off: False}, {off: True}]
+    assert shown == ["Show legend: Gain", "Hide legend: Gain", "Show legend"]
+    bar = _markup().split('class="sepal-legend__bar"')[1].split(">")[0]
+    assert ':title="barLabel"' in bar and ':aria-label="barLabel"' in bar
 
-    # Rendered while expanded too, so a host can show it, e.g. in a map area too narrow to open.
+    # Hidden, so a host can show it, e.g. in a map area too narrow to open.
     bar = _markup().split('class="sepal-legend__bar"')[1]
     assert "{{ displayTitle }}" in bar.split("sepal-legend__bar-title")[1]
-    assert "display: none" in _rule(f".{off}")
     assert "text-overflow: ellipsis" in _rule(".sepal-legend__bar-title")
-    # A host can hide the chevron by its class.
-    assert 'class="sepal-legend__chevron"' in bar
 
 
 def test_labels_default_to_messages():
@@ -283,7 +287,7 @@ def test_labels_default_to_messages():
     for english in expected.values():
         assert english not in _markup()
     for key in ("choose", "show", "hide"):
-        assert f"strings.{key}" in _markup()
+        assert f"strings.{key}" in _TEMPLATE.read_text()
 
 
 def test_title_reaches_the_widget():
