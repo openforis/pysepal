@@ -305,11 +305,11 @@ def MapView(
     # The built-in slots stay mounted, empty while idle: one coming or going would
     # otherwise shift the app overlays after it, and reacton would remount them.
     stacks = {corner: [] for corner in CORNERS}
-    pending = sum(store.view(i).status == "pending" for i in store.ids) if status else 0
+    pending = status and any(store.view(i).status == "pending" for i in store.ids)
     loading = []
     if pending:
         spinner = rv.ProgressCircular(indeterminate=True, size=16, width=2)
-        loading = [spinner, f"{msg('map_view.loading')} ({pending})"]
+        loading = [spinner, msg("map_view.loading")]
     stacks["top-right"].append(_slot("map-status", loading, "pysepal-map-status").key("status"))
     stacks["top-left"].append(_slot("map-inspector", inspector_panel(map_)).key("inspector"))
     for corner in CORNERS:

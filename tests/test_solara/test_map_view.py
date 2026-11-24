@@ -338,7 +338,7 @@ def test_a_legend_added_from_a_pool_worker_is_built_in_the_kernel(kernel_context
         box, rc = solara.render(MapView(m), handle_error=False)
         await asyncio.to_thread(m.layer_store.add, legend_tiles("a"))
         await m.layer_engine.wait_idle()
-        assert "Loading layers (1)" in corner_text(box, "top-right")  # until the view draws it
+        assert "Loading layers" in corner_text(box, "top-right")  # until the view draws it
         await wait_until(lambda: listed(box) == ["a"])
         assert card(box).comm.kernel is context.kernel
         assert orphans(box) == []
@@ -684,7 +684,7 @@ def test_stacks_follow_the_insets():
     rc.close()
 
 
-def test_status_counts_pending_layers():
+def test_status_shows_while_any_layer_is_pending():
     m = SepalMap(gee=False)
     m.layer_engine.close()
     m.layer_store.add(tiles("a"))
@@ -692,9 +692,9 @@ def test_status_counts_pending_layers():
     m.layer_store.set_status("a", "pending")
     m.layer_store.set_status("b", "pending")
     box, rc = solara.render(MapView(m), handle_error=False)
-    assert "Loading layers (2)" in corner_text(box, "top-right")
+    assert corner_text(box, "top-right").strip() == "Loading layers"
     m.layer_store.set_status("a", "ready")
-    assert "Loading layers (1)" in corner_text(box, "top-right")
+    assert corner_text(box, "top-right").strip() == "Loading layers"
     m.layer_store.set_status("b", "ready")
     assert corner_text(box, "top-right").strip() == ""
     rc.close()
@@ -834,7 +834,7 @@ def test_app_overlay_keeps_its_state_when_the_status_comes_and_goes():
     )
     rc.find(v.Btn, children=["count 0"]).widget.click()
     m.layer_store.set_status("a", "pending")
-    assert "Loading layers (1)" in corner_text(box, "top-right")
+    assert "Loading layers" in corner_text(box, "top-right")
     m.layer_store.set_status("a", "ready")
     assert "count 1" in corner_text(box, "top-right")
     assert mounts == ["mount"]
