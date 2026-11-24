@@ -75,9 +75,12 @@ def test_corner_heights_follow_the_controls(solara_test, page_session):
 
     scale = wait_corner(page_session, "bottom-left", "")
     widget.publish(MapState(controls=Controls(fullscreen=False, coordinates=True)))
-    # The readout keeps its place while the pointer is off the map.
-    readout = wait_corner(page_session, "bottom-left", scale)
-    assert int(readout[:-2]) > int(scale[:-2])
+    page_session.locator(".psm-coordinates").wait_for(state="attached")
+    # One row: the readout sits beside the scale and the attribution, so the
+    # corner, and what clears it, keeps its height; the readout keeps its place
+    # while the pointer is off the map.
+    readout = wait_corner(page_session, "bottom-left", "")
+    assert readout == scale
     box = page_session.locator(".psm-map canvas").bounding_box()
     center = [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2]
     # Solara can briefly lay a progress spinner over the page as a test starts.
