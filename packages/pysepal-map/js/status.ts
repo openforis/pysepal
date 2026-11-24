@@ -62,8 +62,12 @@ interface Entry {
   content: boolean;
   /** The source failed as a whole; nothing clears it but a new instance. */
   sourceError?: string;
-  /** Failed tiles by canonical key, cleared only when that tile loads. */
+  /** Tiles that failed since the map was last idle, by canonical key. */
   failedTiles: Map<string, string>;
+  /** A tile loaded since the map was last idle. */
+  tileLoaded: boolean;
+  /** Every tile of the last load failed; the next tile that loads clears it. */
+  tileError?: string;
   style?: { revision: number; message: string };
   /** The last report sent, to send each change once. */
   last?: string;
@@ -81,6 +85,11 @@ const tileKey = (tile: TileLike): string =>
 
 /**
  * Reports the status of each owned source of one view and side to Python.
+ *
+ * A tile that fails is held until the map is idle: if other tiles of the
+ * source loaded meanwhile, the failure was partial, as a transient 429 or
+ * 5xx that MapLibre does not retry, and is dropped. Only a load in which
+ * every tile failed reports an error, until a tile loads again.
  *
  * The view registers a source before adding it and retires it before
  * removing it. MapLibre stops forwarding a source's events once it is
@@ -122,9 +131,10 @@ export class StatusReporter {
     if (entry.geojson && event.sourceDataType === "content") {
       entry.content = true;
     }
-    // A failed tile clears only when that same tile later loads.
     if (event.tile?.state === "loaded") {
       entry.failedTiles.delete(tileKey(event.tile));
+      entry.tileLoaded = true;
+      entry.tileError = undefined;
     }
     if (event.isSourceLoaded) this.markLoaded(entry);
     this.update(event.sourceId!);
@@ -143,12 +153,16 @@ export class StatusReporter {
   }
 
   /**
-   * The map is idle, so every source finished loading. This never clears
-   * an error: an errored tile counts as loaded in MapLibre.
+   * The map is idle, so every source finished loading, an errored tile
+   * counting as loaded in MapLibre: decide the tiles that failed meanwhile.
    */
   idle(): void {
     for (const [id, entry] of this.entries) {
       if (!this.isCurrent(id, entry)) continue;
+      const [failed] = entry.failedTiles.values();
+      if (failed !== undefined && !entry.tileLoaded) entry.tileError = failed;
+      entry.failedTiles.clear();
+      entry.tileLoaded = false;
       this.markLoaded(entry);
       this.update(id);
     }
@@ -244,6 +258,7 @@ export class StatusReporter {
       loaded: false,
       content: false,
       failedTiles: new Map(),
+      tileLoaded: false,
     };
   }
 
@@ -274,7 +289,7 @@ export class StatusReporter {
       side: this.options.side,
       ...entry.ref,
     };
-    const failed = entry.sourceError ?? entry.failedTiles.values().next().value;
+    const failed = entry.sourceError ?? entry.tileError;
     if (failed !== undefined) {
       return { ...base, status: "error", error: failed };
     }
@@ -286,7 +301,10 @@ export class StatusReporter {
         style_revision: entry.style.revision,
       };
     }
-    return { ...base, status: entry.loaded ? "ready" : "loading", error: null };
+    // Tiles that failed while none loaded wait for the idle that decides them.
+    const undecided = entry.failedTiles.size > 0 && !entry.tileLoaded;
+    const status = entry.loaded && !undecided ? "ready" : "loading";
+    return { ...base, status, error: null };
   }
 
   private update(id: string, replay = false): void {

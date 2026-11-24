@@ -135,18 +135,57 @@ describe("StatusReporter", () => {
     );
   });
 
-  it("clears a tile error only when that tile loads on a retry", () => {
+  it("drops the tile failures of a load in which other tiles loaded", () => {
     const { add, loaded, reporter, statuses } = setup();
     add("psm:r:1", { id: "r", token: 0, instance: 1 });
+    loaded("psm:r:1", { tile: tile("1/1/0", "loaded") });
+    // A transient 429 that MapLibre will not retry while the tile is in view.
+    reporter.sourceError({
+      sourceId: "psm:r:1",
+      error: new Error("AJAXError: Too Many Requests (429)"),
+      tile: tile("1/0/0"),
+      isSourceLoaded: true,
+    });
+    reporter.idle();
+    expect(statuses()).toEqual([
+      ["r", 1, "loading"],
+      ["r", 1, "ready"],
+    ]);
+
+    // A later load at another zoom: one tile fails, after one loaded.
+    loaded("psm:r:1", { tile: tile("2/1/1", "loaded") });
     reporter.sourceError({
       sourceId: "psm:r:1",
       error: new Error("boom"),
-      tile: tile("1/0/0"),
+      tile: tile("2/0/1"),
     });
+    reporter.idle();
+    expect(statuses().at(-1)).toEqual(["r", 1, "ready"]);
+    expect(statuses().filter(([, , s]) => s === "error")).toEqual([]);
+  });
+
+  it("reports a load whose tiles all failed until a tile loads", () => {
+    const { add, loaded, reporter, statuses } = setup();
+    add("psm:r:1", { id: "r", token: 0, instance: 1 });
     loaded("psm:r:1", { tile: tile("1/1/0", "loaded") });
-    loaded("psm:r:1", { tile: tile("1/0/0", "errored") });
+    reporter.idle();
+    for (const key of ["2/0/0", "2/0/1"]) {
+      reporter.sourceError({
+        sourceId: "psm:r:1",
+        error: new Error("AJAXError: Forbidden (403)"),
+        tile: tile(key),
+        isSourceLoaded: true,
+      });
+    }
+    // Undecided until the map is idle.
+    expect(statuses().at(-1)).toEqual(["r", 1, "loading"]);
+    reporter.idle();
     expect(statuses().at(-1)).toEqual(["r", 1, "error"]);
-    loaded("psm:r:1", { tile: tile("1/0/0", "loaded") });
+    expect(reporter.inspect()[0].error).toBe("AJAXError: Forbidden (403)");
+    reporter.idle();
+    expect(statuses().at(-1)).toEqual(["r", 1, "error"]);
+
+    loaded("psm:r:1", { tile: tile("3/0/0", "loaded") });
     expect(statuses().at(-1)).toEqual(["r", 1, "ready"]);
   });
 
@@ -293,6 +332,7 @@ describe("StatusReporter", () => {
       error: new Error("tile"),
       tile: tile("1/0/0"),
     });
+    reporter.idle();
     expect(sent.at(-1)).toMatchObject({ status: "error", error: "tile" });
     expect(sent.at(-1)).not.toHaveProperty("style_revision");
   });

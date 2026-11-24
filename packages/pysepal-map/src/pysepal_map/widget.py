@@ -34,7 +34,9 @@ with a ``type``: ``view_open`` on mount and every 20 s, ``view_close``,
 ``pull`` with the GeoJSON digests it lacks, ``status`` on one layer instance,
 ``click``, ``view_report`` with its camera and ``draw_report`` with its drawn
 features. A ``status`` on a rejected style operation also carries its
-``style_revision``, which counts only for the current publish.
+``style_revision``, which counts only for the current publish. A layer whose
+tiles fail is in ``error`` only when every tile of a load failed, until a tile
+loads again; failed tiles beside loaded ones do not count.
 Python answers each pulled digest with a ``data`` message that carries the
 UTF-8 GeoJSON as one buffer, or ``missing: true`` once a publish dropped it, and
 sends ``status_request`` to ask one view and side to send its statuses again.

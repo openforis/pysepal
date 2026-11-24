@@ -59,7 +59,26 @@ def point():
     return json.dumps({"type": "FeatureCollection", "features": [feature]}).encode()
 
 
-def test_a_failed_tile_reports_error_until_the_layer_is_replaced(tiles, page_session):
+def test_a_tile_failing_beside_loaded_ones_leaves_the_layer_ready(tiles, page_session):
+    """A transient failure MapLibre does not retry is no error of the layer."""
+    widget = MapWidget()
+    widget.publish(MapState())
+    display(widget)
+    wait_revision(page_session, 1)
+    el = view(page_session)
+
+    el.evaluate("el => { psmHarness.gate(el).holding = true; }")
+    tiles.fail_one("a")
+    widget.publish(MapState(layers=(Layer("r", RasterSource((tiles.url("a"),))),)))
+    assert browser_statuses(el) == [["r", 1, "ready"]]
+    assert list(tiles.failed) == ["a"] and tiles.served
+    held = el.evaluate("el => psmHarness.gate(el).held.map(r => r.status)")
+    assert "error" not in held
+    el.evaluate("el => psmHarness.gate(el).release()")
+    wait_status(page_session, widget, is_("r", "ready", 1))
+
+
+def test_a_load_whose_tiles_all_fail_reports_error_until_the_layer_is_replaced(tiles, page_session):
     widget = MapWidget()
     widget.publish(MapState())
     box = widgets.Box([widget])
@@ -69,7 +88,7 @@ def test_a_failed_tile_reports_error_until_the_layer_is_replaced(tiles, page_ses
 
     # Hold the reports at their origin: Python counts the layer as loading.
     el.evaluate("el => { psmHarness.gate(el).holding = true; }")
-    tiles.fail_one("a")
+    tiles.fail_all("a")
     widget.publish(MapState(layers=(Layer("r", RasterSource((tiles.url("a"),))),)))
     page_session.wait_for_function(
         "el => psmHarness.gate(el).held.some(r => r.status === 'error')", arg=el
@@ -79,9 +98,9 @@ def test_a_failed_tile_reports_error_until_the_layer_is_replaced(tiles, page_ses
     wait_status(page_session, widget, is_("r", "error", 1))
     assert "500" in widget.layer_status["r"].error
 
-    # The other tiles load and the map goes idle; the failure still stands.
+    # The map is idle; the failure still stands.
     assert browser_statuses(el) == [["r", 1, "error"]]
-    assert tiles.served
+    assert not tiles.served
     assert widget.layer_status["r"].status == "error"
 
     widget.publish(MapState(layers=(Layer("r", RasterSource((tiles.url("b"),))),)))

@@ -379,7 +379,8 @@ class Tiles:
 
     Every tile is a green PNG, or of the colour ``color`` gives its set. In a
     set marked with ``fail_one``, the first tile it is asked for answers 500,
-    and so does every retry of it.
+    and so does every retry of it; in one marked with ``fail_all``, every tile.
+    ``failed`` holds the first failed tile of each set.
     """
 
     PREFIX: ClassVar[str] = "/psm-test-tiles/"
@@ -387,6 +388,7 @@ class Tiles:
     origin: str
     colors: dict = field(default_factory=dict)
     failing: set = field(default_factory=set)
+    failing_all: set = field(default_factory=set)
     failed: dict = field(default_factory=dict)
     served: list = field(default_factory=list)
 
@@ -398,6 +400,9 @@ class Tiles:
 
     def fail_one(self, name):
         self.failing.add(name)
+
+    def fail_all(self, name):
+        self.failing_all.add(name)
 
     def zooms(self, name):
         """The zoom of each tile of a set served so far."""
@@ -411,7 +416,9 @@ class Tiles:
     def handle(self, route):
         url = route.request.url
         name = url.split(self.PREFIX, 1)[1].split("/", 1)[0]
-        if name in self.failing and self.failed.setdefault(name, url) == url:
+        one = name in self.failing and self.failed.setdefault(name, url) == url
+        if one or name in self.failing_all:
+            self.failed.setdefault(name, url)
             route.fulfill(status=500, body="deliberate failure")
         else:
             self.served.append(url)
