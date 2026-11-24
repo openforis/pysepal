@@ -130,6 +130,11 @@ def docs(session):
             "layer_state_control",
             "menu_control",
             "legend_control",
+            "layers_control",
+            "aoi_control",
+            "layer",
+            "marker_cluster",
+            "geojson_utils",
         )
     ]
     session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal", *stubs)
