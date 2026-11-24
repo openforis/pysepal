@@ -34,6 +34,16 @@ def test_gee_source_round_trips_without_ee_calls():
     assert LayerSpec.model_validate_json(spec.model_dump_json()).source.expr == expr
 
 
+def test_gee_source_names_a_subclass_by_its_earth_engine_kind(monkeypatch):
+    class Items(ee.FeatureCollection):  # pygaul.Items is one
+        pass
+
+    monkeypatch.setattr(ee.serializer, "toJSON", lambda obj: "{}")
+    assert GeeSource.from_ee(Items.__new__(Items)).kind == "FeatureCollection"
+    with pytest.raises(TypeError, match="Number"):
+        GeeSource.from_ee(ee.Number.__new__(ee.Number))
+
+
 def test_restyle_keeps_data_hash(byte):
     spec = LayerSpec.from_raster(byte)
     new = spec.revise(style=RasterStyle(colormap="magma"))
