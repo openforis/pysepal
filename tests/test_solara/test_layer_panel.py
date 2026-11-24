@@ -203,14 +203,21 @@ def _tiles(layer_id: str, zone: str = "data") -> LayerSpec:
     return LayerSpec.from_tiles(url, name=layer_id, id=layer_id, zone=zone)
 
 
-def test_overlay_layers_are_listed_first():
-    """The AOI is drawn above every data layer, so its row comes first."""
+@pytest.mark.parametrize("aoi_first", [True, False])
+def test_overlay_layers_are_listed_first(aoi_first):
+    """The AOI is drawn above every data layer, whenever it was added, so its row comes first."""
     store = LayerStore()
-    store.add(_tiles("a"))
-    store.add(_tiles("o", zone="overlay"))
+    added = [_tiles("o", zone="overlay"), _tiles("a"), _tiles("b")]
+    for spec in added if aoi_first else added[::-1]:
+        store.add(spec)
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    assert row_ids(box) == ["o", "a"]
-    assert shown_rows(box) == ["o", "a"]
+    data = ["b", "a"] if aoi_first else ["a", "b"]
+    assert row_ids(box) == ["o", *data]
+    assert shown_rows(box) == ["o", *data]
+
+    # a data layer added later still goes below it
+    store.add(_tiles("c"))
+    assert row_ids(box) == ["o", "c", *data]
     [sortable] = [w for w in walk(box) if hasattr(w, "vue_move")]
     assert sortable.locked == ["o"], "it keeps its place"
 
@@ -224,19 +231,20 @@ def test_an_overlay_alone_is_listed():
 
 def test_a_data_row_stays_below_the_overlay_rows():
     store = LayerStore()
-    for layer_id, zone in [("b", "data"), ("a", "data"), ("p", "overlay"), ("o", "overlay")]:
+    # the overlays first, as an app that draws its AOI before any result
+    for layer_id, zone in [("p", "overlay"), ("o", "overlay"), ("b", "data"), ("a", "data")]:
         store.add(_tiles(layer_id, zone))
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    assert row_ids(box) == ["o", "p", "a", "b"] and store.ids == ["o", "p", "a", "b"]
+    assert row_ids(box) == ["o", "p", "a", "b"] == store.drawing_order()
 
     move(box, "b", 2)
-    assert store.ids == ["o", "p", "b", "a"] and row_ids(box) == ["o", "p", "b", "a"]
+    assert store.drawing_order() == ["o", "p", "b", "a"] == row_ids(box)
 
     move(box, "a", 0)
-    assert store.ids == ["o", "p", "a", "b"], "the top of the data rows, at most"
+    assert store.drawing_order() == ["o", "p", "a", "b"], "the top of the data rows, at most"
 
     move(box, "o", 3)
-    assert store.ids == ["o", "p", "a", "b"], "an overlay row keeps its place"
+    assert store.drawing_order() == ["o", "p", "a", "b"], "an overlay row keeps its place"
 
 
 def test_row_remove_button_drops_the_row(raster_spec, raster_spec_b):

@@ -60,7 +60,7 @@ def LayerPanel(
 
     solara.use_effect(follow_state, [map_])
 
-    ids = store.ids  # the overlay zone first
+    ids = store.drawing_order()  # the overlay zone first
 
     def on_move(layer_id: str, to: int) -> None:
         # ``to`` counts every row; the data rows come after the overlay ones
