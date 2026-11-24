@@ -1,6 +1,7 @@
 """Test the SepalMap object."""
 
 import asyncio
+import functools
 import inspect
 import math
 import random
@@ -1127,6 +1128,28 @@ async def test_add_ee_layer_autocenter_async() -> None:
     await m.add_ee_layer_async(ee_object, autocenter=True, name="test_layer")
 
     assert m.view_request["bounds"] == [1, 2, 3, 4]
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+async def test_add_ee_layer_autocenter_from_a_worker_thread() -> None:
+    """Off the loop's thread the engine takes the layer later: the fit does not wait for it."""
+    m = SepalMap()
+    m.gee_interface.get_bounds = MagicMock(return_value=(1, 2, 3, 4))
+    m.gee_interface.get_map_id = MagicMock(
+        return_value={"tile_fetcher": MagicMock(url_format="http://test/{z}/{x}/{y}")}
+    )
+    add = functools.partial(m.add_ee_layer, autocenter=True, name="test_layer")
+
+    for _ in range(5):
+        before = m.view_request["seq"]
+        await asyncio.to_thread(add, ee.Geometry.Rectangle([1, 2, 3, 4]))
+        assert m.view_request["seq"] == before + 1
+        assert m.view_request["bounds"] == [1, 2, 3, 4]
+    await m.layer_engine.wait_idle()
+    assert m.layer_store.ids == ["test_layer"]
+    m.close()
 
 
 @pytest.mark.gee

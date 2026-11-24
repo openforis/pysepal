@@ -214,6 +214,8 @@ class MapLibreEngine:
         self._inbox: list[StoreEvent] = []
         self._inbox_loop: Optional[asyncio.AbstractEventLoop] = None
         self._lock = threading.Lock()
+        # the bounds cache, which a sync wrapper on a worker thread reads too
+        self._bounds_lock = threading.Lock()
         self._warned_thread = False
         self._closed = False
         self._stopped = False
@@ -309,22 +311,38 @@ class MapLibreEngine:
         known = self._known_bounds(layer_id)
         if not isinstance(known, _Entry):
             return known
+        return self.render_bounds(known.spec, known.render)
+
+    def render_bounds(self, spec: LayerSpec, render: RenderLayer) -> BoundsResult:
+        """Return the bounds of a render, as :meth:`bounds` does for a layer.
+
+        For a layer just written, which the engine takes only once the store's event
+        reaches the map's loop: off that loop's thread, :meth:`bounds` still answers
+        ``"preparing"``.
+
+        Returns:
+            ``(west, south, east, north)``, or ``"failed"`` or ``"no_bounds"``.
+        """
+        known = self._render_known(render)
+        if known is not None:
+            return known
         try:
-            answer = self.gee_interface.get_bounds(known.render.ee_object)
-            return self._bounds_found(known, answer)
+            answer = self.gee_interface.get_bounds(render.ee_object)
+            return self._bounds_found(spec, render, answer)
         except Exception as exc:
-            return self._bounds_failed(known, exc)
+            return self._bounds_failed(spec, render, exc)
 
     async def bounds_async(self, layer_id: str) -> BoundsResult:
         """Return what :meth:`bounds` does, looking Earth Engine bounds up asynchronously."""
         known = self._known_bounds(layer_id)
         if not isinstance(known, _Entry):
             return known
+        spec, render = known.spec, known.render
         try:
-            answer = await self.gee_interface.get_bounds_async(known.render.ee_object)
-            return self._bounds_found(known, answer)
+            answer = await self.gee_interface.get_bounds_async(render.ee_object)
+            return self._bounds_found(spec, render, answer)
         except Exception as exc:
-            return self._bounds_failed(known, exc)
+            return self._bounds_failed(spec, render, exc)
 
     def flush(self) -> None:
         """Publish the state now, in place of the draw pending for this tick."""
@@ -868,7 +886,11 @@ class MapLibreEngine:
             if failed is not None and failed[0] == self._tokens.get(layer_id):
                 return "failed"
             return "preparing"
-        render = entry.render
+        known = self._render_known(entry.render)
+        return entry if known is None else known
+
+    def _render_known(self, render: RenderLayer) -> Optional[BoundsResult]:
+        """The bounds of a render known without a lookup, or None to look them up."""
         if render.bounds is not None:
             west, south, east, north = (float(v) for v in render.bounds)
             return west, south, east, north
@@ -876,27 +898,30 @@ class MapLibreEngine:
             return "no_bounds"
         if self.gee_interface is None:
             return "failed"
-        cached = self._bounds.get(render.render_hash)
-        if cached is None:
-            return entry
-        self._bounds.move_to_end(render.render_hash)
+        with self._bounds_lock:
+            cached = self._bounds.get(render.render_hash)
+            if cached is not None:
+                self._bounds.move_to_end(render.render_hash)
         return cached
 
-    def _remember_bounds(self, entry: _Entry, result: BoundsResult) -> BoundsResult:
-        self._bounds[entry.render.render_hash] = result
-        self._bounds.move_to_end(entry.render.render_hash)
-        while len(self._bounds) > _CACHE_SIZE:
-            self._bounds.popitem(last=False)
+    def _remember_bounds(self, render: RenderLayer, result: BoundsResult) -> BoundsResult:
+        with self._bounds_lock:
+            self._bounds[render.render_hash] = result
+            self._bounds.move_to_end(render.render_hash)
+            while len(self._bounds) > _CACHE_SIZE:
+                self._bounds.popitem(last=False)
         return result
 
-    def _bounds_found(self, entry: _Entry, answer) -> BoundsResult:
+    def _bounds_found(self, spec: LayerSpec, render: RenderLayer, answer) -> BoundsResult:
         west, south, east, north = (float(v) for v in answer)
         if west <= -179.9 and east >= 179.9 and south <= -89.9 and north >= 89.9:
-            return self._remember_bounds(entry, "no_bounds")
-        return self._remember_bounds(entry, (west, south, east, north))
+            return self._remember_bounds(render, "no_bounds")
+        return self._remember_bounds(render, (west, south, east, north))
 
-    def _bounds_failed(self, entry: _Entry, error: Exception) -> BoundsResult:
+    def _bounds_failed(
+        self, spec: LayerSpec, render: RenderLayer, error: Exception
+    ) -> BoundsResult:
         if isinstance(error, ee.EEException) and not _transient(error):
-            return self._remember_bounds(entry, "no_bounds")
-        log.warning("The bounds of layer %s are unavailable: %s", entry.spec.id, error)
+            return self._remember_bounds(render, "no_bounds")
+        log.warning("The bounds of layer %s are unavailable: %s", spec.id, error)
         return "failed"

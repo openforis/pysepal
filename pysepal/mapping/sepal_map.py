@@ -802,7 +802,10 @@ class SepalMap(MapWidget):
         render = prepare_sync(spec, gee_interface=self.gee_interface)
         handle = self._commit(spec, render, shown=shown, opacity=opacity, side=side)
         if autocenter and handle is not None:
-            self.zoom_layer(spec.id)
+            # From the render: off the loop's thread the engine takes the layer later.
+            bounds = self.layer_engine.render_bounds(spec, render)
+            if not isinstance(bounds, str):
+                self.zoom_bounds(bounds)
         return handle
 
     async def add_ee_layer_async(
