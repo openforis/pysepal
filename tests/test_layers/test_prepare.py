@@ -35,8 +35,7 @@ def test_prepare_raster(byte):
     assert w < e and s < n and render.render_hash == spec.render_hash
     assert render.keepalive is not None
     assert render.legend == Legend(
-        title="byte",
-        gradients=[Gradient(colors=colormap_stops("viridis"), labels=["0", "200"], title="byte")],
+        gradients=[Gradient(colors=colormap_stops("viridis"), labels=["0", "200"])]
     )
 
 
@@ -52,7 +51,6 @@ def test_an_unpinned_end_is_the_one_the_tiles_stretch_to(ramp, pinned, labels):
     # the tile server reads the file's own ends for the ones left unset
     render = prepare_sync(LayerSpec.from_raster(ramp, name="Ramp", colormap="viridis", **pinned))
     assert gradient_labels(render) == [labels]
-    assert render.legend.title == render.legend.gradients[0].title == "Ramp"
     # the URL still leaves them to the server
     query = parse_qs(urlparse(render.url).query)
     assert {end for end in ("vmin", "vmax") if end in query} == set(pinned)

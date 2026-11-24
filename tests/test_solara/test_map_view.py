@@ -494,6 +494,20 @@ def test_a_local_raster_lists_the_stretch_its_tiles_use(ramp):
     rc.close()
 
 
+def test_a_renamed_raster_never_shows_another_layers_name(ramp):
+    # the engine caches renders by data and style, so both layers share one render
+    m = SepalMap(gee=False)
+    m.add_raster(ramp, layer_name="First", key="a", colormap="viridis")
+    m.add_raster(ramp, layer_name="Second", key="b", colormap="viridis")
+    m.layer_store.update("a", m.layer_store.get("a").model_copy(update={"name": "Renamed"}))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "all", "a")
+    assert card(box).title == "Renamed"
+    shown = card(box).legend_data
+    assert {shown["title"], *(g["title"] for g in shown["gradients"])} <= {"", "Renamed"}
+    rc.close()
+
+
 def test_a_layer_removed_and_added_again_is_new():
     m = SepalMap(gee=False)
     for layer_id in ("a", "b"):

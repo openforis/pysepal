@@ -252,7 +252,9 @@ def _raster_colors(
                 served, color_kwargs["indexes"][0], color_kwargs["vmin"], color_kwargs["vmax"]
             )
             stretched = style.model_copy(update={"min": vmin, "max": vmax})
-            legend = derive_legend(stretched, title=spec.name)
+            # Untitled: the engine caches renders by data and style, so layers of any name
+            # share this one; the card names the layer.
+            legend = derive_legend(stretched)
     elif style.min is not None or style.max is not None:
         log.warning("vmin/vmax are ignored when class_colors is set.")
     return color_kwargs, legend
