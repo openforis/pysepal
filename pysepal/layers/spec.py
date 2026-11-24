@@ -144,7 +144,9 @@ class GeeSource(BaseModel):
         # by class, not name: a subclass such as pygaul.Items is a FeatureCollection
         kind = next((k for k in get_args(GeeKind) if isinstance(obj, getattr(ee, k))), None)
         if kind is None:
-            raise TypeError(f"cannot draw a {type(obj).__name__}: expected one of {get_args(GeeKind)}")
+            raise TypeError(
+                f"cannot draw a {type(obj).__name__}: expected one of {get_args(GeeKind)}"
+            )
         return cls(expr=json.loads(ee.serializer.toJSON(obj)), kind=kind)
 
     def to_ee(self) -> ee.ComputedObject:

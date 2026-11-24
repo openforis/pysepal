@@ -33,8 +33,7 @@ one of these:
   the empty prefix below still shows its rasters.
 
 Without either, the browser blocks every tile while the tile server logs `200`
-for each: the map stays empty and the console logs `AJAXError: Failed to fetch
-(0)` per tile.
+for each: the map stays empty and the console logs `AJAXError: Failed to fetch (0)` per tile.
 
 The bridge cannot serve solara-server. Its widget is one per process and shows
 only where `IPython.display` puts it, which under Solara is no page at all, so
@@ -416,20 +415,20 @@ app portable from configuration 2 to configuration 3.
 
 ## What Has Been Verified
 
-| Claim                                                                  | How                                                                                                                                   |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| An autodetected prefix 404s under standalone Voila                     | Ran it — the 404 above is from that log                                                                                               |
-| An empty `LOCALTILESERVER_CLIENT_PREFIX` fixes it                      | Ran it under ipyleaflet and again under MapLibre — raster renders, zero proxy 404s                                                    |
-| Under MapLibre the bridge carries the loopback tiles under Voila       | Ran it: plain Voila with the empty prefix shows a local raster, with no request to the tile port on the network |
-| ...but never under solara-server                                       | Ran it: stock `solara run`, first page and after a reload: no `window.__jupyter_loopback__`, `Failed to fetch (0)` per tile, `200` in the server log |
+| Claim                                                                  | How                                                                                                                                                             |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An autodetected prefix 404s under standalone Voila                     | Ran it — the 404 above is from that log                                                                                                                         |
+| An empty `LOCALTILESERVER_CLIENT_PREFIX` fixes it                      | Ran it under ipyleaflet and again under MapLibre — raster renders, zero proxy 404s                                                                              |
+| Under MapLibre the bridge carries the loopback tiles under Voila       | Ran it: plain Voila with the empty prefix shows a local raster, with no request to the tile port on the network                                                 |
+| ...but never under solara-server                                       | Ran it: stock `solara run`, first page and after a reload: no `window.__jupyter_loopback__`, `Failed to fetch (0)` per tile, `200` in the server log            |
 | pysepal's route carries them under solara-server                       | Ran it: stock `solara run`, first page and after a reload: the raster draws from `/_pysepal/tiles/{port}`; `tests/test_layers/test_tile_route.py` pins the 404s |
-| `vectortileserver` needs no configuration when the browser is local    | Ran it under ipyleaflet — PMTiles render with nothing set; not rerun under MapLibre                                                   |
-| ...but not when it is remote                                           | Reported from a SEPAL sandbox: empty map, rasters fine                                                                                |
-| SEPAL's `/proxy/{port}` route carries a vector tile port too           | Ran it on the sandbox — 200, and 206 with `Content-Range` for a range request                                                         |
-| A set variable wins outright, so autodetect never runs                 | Ran `get_default_client_params` across unset / set / empty                                                                            |
-| SEPAL-hosted Voila works on the prefix SEPAL sets                      | **Not run.** Follows from that precedence                                                                                             |
-| The prefix-less loopback path avoids both jupyter-loopback bugs        | Read `widget.js`; the localhost branch returns `"broken"`                                                                             |
-| Configuration 2 / 3 routes, and the bridge carrying a _remote_ browser | **Not run.** Read from source only — verify before relying on it                                                                      |
+| `vectortileserver` needs no configuration when the browser is local    | Ran it under ipyleaflet — PMTiles render with nothing set; not rerun under MapLibre                                                                             |
+| ...but not when it is remote                                           | Reported from a SEPAL sandbox: empty map, rasters fine                                                                                                          |
+| SEPAL's `/proxy/{port}` route carries a vector tile port too           | Ran it on the sandbox — 200, and 206 with `Content-Range` for a range request                                                                                   |
+| A set variable wins outright, so autodetect never runs                 | Ran `get_default_client_params` across unset / set / empty                                                                                                      |
+| SEPAL-hosted Voila works on the prefix SEPAL sets                      | **Not run.** Follows from that precedence                                                                                                                       |
+| The prefix-less loopback path avoids both jupyter-loopback bugs        | Read `widget.js`; the localhost branch returns `"broken"`                                                                                                       |
+| Configuration 2 / 3 routes, and the bridge carrying a _remote_ browser | **Not run.** Read from source only — verify before relying on it                                                                                                |
 
 Every run had the browser on the same machine as the kernel. Under ipyleaflet the
 tiles could reach `127.0.0.1` directly; under MapLibre the bridge carried them under
