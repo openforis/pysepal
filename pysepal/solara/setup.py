@@ -5,7 +5,11 @@ that are typically needed across all pysepal-based applications.
 """
 
 import atexit
+import hashlib
+import importlib.resources
+import json
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Union
@@ -16,6 +20,7 @@ import solara.server.settings
 from pysepal.frontend.styles import apply_palette
 from pysepal.scripts.scratch import scratch_dir
 
+from ._topology import is_serving_connections
 from .asset_merger import merge_asset_files
 
 logger = logging.getLogger("sepalui.solara.setup")
@@ -29,6 +34,41 @@ DEFAULT_CULL_TIMEOUT = "5m"
 # ahead of the Solara override sheet. The Voila runtime loads the same file via
 # frontend.styles.get_custom_css().
 SHARED_BASE_CSS = Path(__file__).parent.parent / "frontend" / "css" / "base.css"
+
+#: The folder of the merged assets that serves the map's JS and CSS.
+MAP_BUNDLE_FOLDER = "pysepal-map"
+
+# Prefixed with `const bundle = {folder, js, css}`. The bundle exports only
+# `render`: anywidget awaits an `initialize` under a 2 s model timeout, which a
+# slow first download of the bundle would miss.
+_MAP_LOADER = """\
+const root = (globalThis.solara && globalThis.solara.rootPath) || "";
+const url = (file) =>
+  new URL(`${root}/static/assets/${bundle.folder}/${file}`, location.href).href;
+
+function load() {
+  const css = new Promise((resolve) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = url(bundle.css);
+    link.onload = link.onerror = () => resolve();
+    document.head.append(link);
+  });
+  return Promise.all([import(url(bundle.js)), css]).then(([module]) => module.default);
+}
+
+const key = Symbol.for(`pysepal-map.bundle:${bundle.js}`);
+const widget = (globalThis[key] ??= load());
+
+export default {
+  async render(props) {
+    const map = await widget;
+    if (map.initialize) throw new Error("pysepal: the map loader does not run initialize");
+    if (props.signal && props.signal.aborted) return;
+    return map.render(props);
+  },
+};
+"""
 
 
 def setup_theme_colors():
@@ -53,6 +93,7 @@ def setup_solara_server(
     - FontAwesome 6.7.2
     - pysepal common assets (CSS, JS)
     - A kernel cull timeout of 5 minutes, so a page can reconnect after a dropped connection
+    - The map's JS and CSS as static files, which a page loads once for all its maps
 
     Solara serves extra assets from one location, so the CSS and JS of pysepal
     and of every extra location are merged into one folder. That folder is
@@ -79,6 +120,7 @@ def setup_solara_server(
     new = tuple(dict.fromkeys(p for p in requested if p not in _merged_locations))
     if _merged_root is not None and not new and _merged_is_current(sepal_common_assets):
         logger.debug(f"Solara assets already merged at: {_merged_root / 'assets'}")
+        _serve_map_bundle(_merged_root / "assets")
         return
 
     logger.debug("Setting up Solara server configuration for sepal_ui application")
@@ -100,8 +142,39 @@ def setup_solara_server(
     merged_assets_dir = _merged_root / "assets"
     solara.server.settings.assets.extra_locations = [str(merged_assets_dir)]
     logger.debug(f"Asset location set to merged directory: {merged_assets_dir}")
+    _serve_map_bundle(merged_assets_dir)
 
     logger.info("Solara server configuration completed successfully")
+
+
+def _serve_map_bundle(merged_assets_dir: Path) -> None:
+    """Serve the map's JS and CSS as files, and send each map only a loader.
+
+    anywidget imports an inline ``_esm`` from a new blob URL for every widget, so
+    every map would send and evaluate the whole 2 MB bundle. The loader imports it
+    by URL instead, which the browser fetches and evaluates once per page and
+    caches. The ``?v=`` hash keeps a cached copy from outliving a release.
+
+    Solara only: Voila and Jupyter serve no such file. Hot reload
+    (``ANYWIDGET_HMR=1``) keeps the inline bundle, which anywidget watches.
+    """
+    if os.getenv("ANYWIDGET_HMR") == "1" or not is_serving_connections():
+        return
+    from pysepal_map import MapWidget
+
+    source = importlib.resources.files("pysepal_map").joinpath("static")
+    target = merged_assets_dir / MAP_BUNDLE_FOLDER
+    target.mkdir(parents=True, exist_ok=True)
+    bundle = {"folder": MAP_BUNDLE_FOLDER}
+    for key, name in (("js", "widget.js"), ("css", "widget.css")):
+        content = source.joinpath(name).read_bytes()
+        served = target / name
+        if not served.is_file() or served.read_bytes() != content:
+            served.write_bytes(content)
+        digest = hashlib.md5(content, usedforsecurity=False).hexdigest()
+        bundle[key] = f"{name}?v={digest[:12]}"
+    MapWidget._esm = f"const bundle = {json.dumps(bundle)};\n{_MAP_LOADER}"
+    MapWidget._css = ""
 
 
 def _merged_is_current(sepal_common_assets: Path) -> bool:
