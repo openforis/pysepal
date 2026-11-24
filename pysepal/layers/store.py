@@ -128,9 +128,14 @@ class LayerStore:
 
     @property
     def pending_events(self) -> int:
-        """The number of events handed to an open loop that the subscribers have not had yet."""
+        """The number of events handed to a running loop that the subscribers have not had yet.
+
+        Events left on a loop that stopped without closing are not counted: nothing delivers
+        them until the next write, so a wait on them would never end.
+        """
         with self._lock:
-            return len(self._queue) if _open(self._drain_loop) else 0
+            loop = self._drain_loop
+            return len(self._queue) if loop is not None and loop.is_running() else 0
 
     def _resolve_loop(self) -> Optional[asyncio.AbstractEventLoop]:
         loop = self.loop

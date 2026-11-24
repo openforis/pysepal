@@ -134,3 +134,29 @@ def test_an_owner_is_held_weakly():
     del owner
     gc.collect()
     assert reference() is None
+
+
+def test_events_left_on_a_stopped_loop_are_not_pending(raster_spec):
+    """A loop stopped before its drain ran never delivers them, so nothing should wait on them."""
+    store = LayerStore()
+    loop = asyncio.new_event_loop()
+    subscribed, written = threading.Event(), threading.Event()
+
+    def block():
+        store.subscribe(lambda event: None)  # captures the running loop
+        subscribed.set()
+        loop.stop()  # ends with this batch: the drain the write schedules never runs
+        written.wait(5)
+
+    loop.call_soon(block)
+    thread = threading.Thread(target=loop.run_forever)
+    thread.start()
+    subscribed.wait(5)
+    store.add(raster_spec)
+    written.set()
+    thread.join(5)
+    try:
+        assert not loop.is_running() and not loop.is_closed()
+        assert store.pending_events == 0
+    finally:
+        loop.close()
