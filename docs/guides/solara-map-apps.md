@@ -24,8 +24,8 @@ The snippets leave out the entry point (`setup_solara_server()`,
 
 ## The rules in short
 
-1. Build each map with `use_sepal_map` in the component that owns it, and pass
-   it down.
+1. Build each map with `use_sepal_map` in the component that owns it, one that
+   stays mounted, and pass it down.
 2. Keep per-user objects per kernel, never at module level.
 3. Keep map callbacks short, and register them in an effect.
 4. Run slow work in `use_task(prefer_threaded=False)`, with the `*_async`
@@ -49,14 +49,20 @@ The snippets leave out the entry point (`setup_solara_server()`,
 - **Never build a map at module level.** Solara runs the app module once, in a
   kernel it closes before the first user connects (`solara/server/app.py`,
   `AppScript.init`), and every user would share that object.
-- **Never hold a map in `use_state`.** A hot reload pickles the state to restore
-  it, and loses what does not pickle (`solara/server/app.py`, `reload`).
+- **Never hold a map in `use_state`.** A hot reload pickles the page's state to
+  restore it, and one value that fails to pickle loses all of it
+  (`solara/server/app.py`, `reload`).
 - **Pass objects as dependencies, not `id(obj)`.** Reacton compares dependencies
   with `is`, then `==` (`reacton/utils.py`, `equals`), so `id()` adds nothing,
   and it can match a new object that took the address of a collected one.
 - **Pass the map down; only its owner closes it.** `MapView`, `LayerPanel`,
   `AoiView` and `MapApp` show the map they are given and never close it. One map
   can show in several views.
+- **Build the map in a component that stays mounted.** The owner's unmount
+  closes the map, so a map built under a condition, or in a lazy tab
+  (`solara.lab.Tabs(lazy=True)`), loses its layers when the user leaves it.
+  Build it above them, or hold the `LayerStore` in a longer-lived owner and pass
+  it as `layer_store=`.
 - **Add the first layers in the factory.** They are added once, with the map.
 
 <!-- run -->

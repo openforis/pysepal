@@ -300,8 +300,9 @@ Complete Map Application Example
 
 The full worked example lives at
 ``demo_apps/solara_map_app/app.py``. It wires an ``AoiView``,
-async processing with progress notifications, layer management, a floating map
-legend and the export dialog into one ``MapApp`` shell — read it alongside this
+async processing with progress notifications, layer management, the map's
+legend card (one per view area, with a dropdown of its layers) and the export
+dialog into one ``MapApp`` shell — read it alongside this
 section rather than copying the skeleton below.
 
 ``MapApp`` takes the map, the drawer steps and the right panel:

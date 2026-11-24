@@ -541,12 +541,13 @@ class MapWidget(anywidget.AnyWidget):
     ):
         """Create an empty map of the given CSS height, at ``center`` and ``zoom``.
 
-        ``center`` is ``(lng, lat)``. ``loop`` is the session loop: callbacks
-        run there, and so does the timer that expires silent views. It
-        defaults to the loop running now, else the one running when the
-        first message from a view arrives. A Solara render can run with no
-        loop running, so pass the session loop there. ``link_group`` is the
-        first :attr:`link_group`; a group that has a camera replaces
+        ``center`` is ``(lng, lat)``. ``loop`` is the loop callbacks run on,
+        and the timer that expires silent views. It defaults to the loop
+        running now, else the one running when the first message from a
+        view arrives, and a message that finds it closed, as after a
+        reconnect, adopts the loop running then. Leave it unset under
+        Solara; pass one only for a host other than Solara. ``link_group``
+        is the first :attr:`link_group`; a group that has a camera replaces
         ``center`` and ``zoom`` with it.
         """
         # Set before anything can raise, since close() reads them.

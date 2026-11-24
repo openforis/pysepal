@@ -26,8 +26,8 @@ swap ``legend_data`` as the selection changes::
         event_set_selected=selected.set,
     )
 
-See ``demo_apps/solara_map_app/component/widget/legend.py`` for a
-working example.
+Over a ``MapView`` let the view show the legends: see section 8 of
+``docs/guides/solara-map-apps.md``.
 """
 
 from collections.abc import Mapping

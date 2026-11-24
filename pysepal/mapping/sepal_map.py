@@ -207,7 +207,7 @@ class SepalMap(MapWidget):
             center: the first camera center, as ``(lng, lat)``.
             zoom: the first zoom level. MapLibre counts a 512 px world at zoom 0.
             height: the CSS height of the map.
-            loop: the session loop; the widget and the engine run their callbacks there.
+            loop: the loop the widget and the engine run their callbacks on. Leave it unset under Solara: the widget adopts the loop of the first message from a view, and the new one after a reconnect. Pass one only for a host other than Solara.
             inspector: build the map's value inspector as ``m.inspector``.
             coordinates: show the pointer's coordinates.
             link_group: the group of maps this one keeps one camera with (see :attr:`link_group`). A group that has a camera replaces ``center`` and ``zoom`` with it.
