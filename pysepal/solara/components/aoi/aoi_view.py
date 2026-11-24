@@ -535,7 +535,7 @@ def AoiView(
 
             clear_ref.current = clear
 
-    solara.use_effect(_register_clear, [id(map_) if map_ else None, id(aoi_draw)])
+    solara.use_effect(_register_clear, [map_ if map_ else None, aoi_draw])
 
     # Track the current task in the notification system
     task_tracker_ref = solara.use_ref(None)
@@ -841,7 +841,7 @@ def AoiView(
 
         return cleanup
 
-    solara.use_effect(_cleanup, [id(map_) if map_ else None])
+    solara.use_effect(_cleanup, [map_ if map_ else None])
 
     def _watch_drawing():
         if aoi_draw is None:
@@ -864,7 +864,7 @@ def AoiView(
 
         return stop
 
-    solara.use_effect(_watch_drawing, [id(aoi_draw) if aoi_draw else None])
+    solara.use_effect(_watch_drawing, [aoi_draw if aoi_draw else None])
 
     draw_tick.value  # read, so a change of the drawing renders again
     # The selectors publish None until their form is complete.

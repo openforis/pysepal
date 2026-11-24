@@ -141,7 +141,7 @@ def _AoiGeeShell():
             fullscreen=True,
             theme_state=theme_state,
         ),
-        [id(gee_interface)],
+        [gee_interface],
     )
 
     aoi = solara.use_reactive(None)

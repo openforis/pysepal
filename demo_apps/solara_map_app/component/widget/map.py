@@ -49,7 +49,7 @@ def use_demo_map(gee_interface, theme_state) -> sm.SepalMap:
         add_sample_layers(sepal_map)
         return sepal_map
 
-    return use_sepal_map(build_map, [id(gee_interface)])
+    return use_sepal_map(build_map, [gee_interface])
 
 
 def _aoi_key(aoi_value) -> str:

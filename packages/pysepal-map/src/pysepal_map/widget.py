@@ -456,7 +456,12 @@ def _stamp() -> int:
 
 
 def _current_kernel() -> object | None:
-    """The kernel running now, found as Solara's ``Comm`` finds it, or None."""
+    """The kernel running now, found as Solara's ``Comm`` finds it, or None.
+
+    Under Solara this relies on its patch of ``Kernel.instance()`` and
+    ``Kernel.initialized()`` (``solara/server/patch.py``), which is not public API.
+    pysepal's tests fail if two kernel contexts stop giving different kernels.
+    """
     try:
         import ipykernel.kernelbase
     except ImportError:

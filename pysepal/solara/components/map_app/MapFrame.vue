@@ -1,9 +1,5 @@
 <template>
-  <div
-    id="map-container"
-    class="map-background sepal-mapapp__map"
-    @click="onClick"
-  >
+  <div class="map-background sepal-mapapp__map" @click="onClick">
     <jupyter-widget v-for="child in children" :key="child" :widget="child" />
   </div>
 </template>

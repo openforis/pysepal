@@ -51,18 +51,27 @@ function load() {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = url(bundle.css);
-    link.onload = link.onerror = () => resolve();
+    link.onload = () => resolve();
+    link.onerror = () => {
+      console.warn(`pysepal: the map stylesheet did not load: ${link.href}`);
+      resolve();
+    };
     document.head.append(link);
   });
   return Promise.all([import(url(bundle.js)), css]).then(([module]) => module.default);
 }
 
 const key = Symbol.for(`pysepal-map.bundle:${bundle.js}`);
-const widget = (globalThis[key] ??= load());
+// a failed load must not stay cached, or one network blip fails every later map
+const widget = () =>
+  (globalThis[key] ??= load().catch((error) => {
+    delete globalThis[key];
+    throw error;
+  }));
 
 export default {
   async render(props) {
-    const map = await widget;
+    const map = await widget();
     if (map.initialize) throw new Error("pysepal: the map loader does not run initialize");
     if (props.signal && props.signal.aborted) return;
     return map.render(props);

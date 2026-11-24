@@ -374,6 +374,9 @@ def MapApp(
     def push_insets():
         if map_widget is None or not hasattr(map_widget, "set_insets"):
             return
+        if not width:
+            # no size reported yet: a phone would get the wide insets first
+            return
         if narrow:
             # the map already sits below the belt and above the bottom band
             map_widget.set_insets()
@@ -382,14 +385,14 @@ def MapApp(
             map_widget.set_insets(left=drawer_px, right=right_px)
 
     solara.use_effect(
-        push_insets, [id(map_widget), drawer_px, right_px, narrow, has_panel, panel_open]
+        push_insets, [map_widget, width > 0, drawer_px, right_px, narrow, has_panel, panel_open]
     )
 
     def bind_theme():
         if map_widget is not None and hasattr(map_widget, "bind_theme_state"):
             map_widget.bind_theme_state(state)
 
-    solara.use_effect(bind_theme, [id(map_widget), id(state)])
+    solara.use_effect(bind_theme, [map_widget, state])
 
     def collapse_if_unpinned():
         if not pinned and not rail:

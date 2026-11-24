@@ -876,10 +876,10 @@ def test_a_pinned_or_railed_drawer_does_not_listen_to_map_clicks():
     assert not _is_rail(box)
 
 
-def test_the_map_container_keeps_its_id_and_classes():
+def test_the_map_container_keeps_its_classes():
     template = (Path(map_app.__file__).parent / "MapFrame.vue").read_text()
     root = re.search(r"<template>\s*<div([^>]*)>", template).group(1)
-    assert 'id="map-container"' in root
+    assert "id=" not in root
     assert 'class="map-background sepal-mapapp__map"' in root
     assert '@click="onClick"' in root
 
@@ -935,3 +935,58 @@ def test_drawer_items_still_click_after_the_belt_comes_and_goes():
 
     assert calls["current"] == [1]
     assert _visible(_step_container(box))
+
+
+def test_no_insets_before_the_first_size():
+    fake = FakeMap()
+    box, _, _ = _render(main_map=fake)
+
+    assert fake.inset_calls == []
+
+    _bridge(box).vue_window_size({"w": 400, "h": 800})
+    assert fake.inset_calls == [ZERO_INSETS]
+
+
+_BRIDGE_VUE = Path(map_app.__file__).parent / "ViewportBridge.vue"
+
+_BRIDGE_JS = """
+const frames = [];
+const listeners = {};
+const dispatched = [];
+globalThis.window = {
+  innerWidth: 1000, innerHeight: 800,
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+  removeEventListener() {},
+  requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; },
+  cancelAnimationFrame() {},
+  dispatchEvent: (event) => dispatched.push(event.type),
+};
+globalThis.document = {
+  documentElement: { style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" } },
+  body: { classList: { add() {}, remove() {} } },
+};
+const reports = [];
+const vm = makeVm({
+  window_size: (size) => reports.push(size), css_vars: {}, body_class: "", $nextTick: (fn) => fn(),
+});
+const flush = () => { frames.splice(0).forEach((fn) => fn()); };
+options.mounted.call(vm);
+flush();
+for (let i = 0; i < 5; i++) listeners.resize();
+flush();
+window.innerWidth = 500;
+listeners.resize();
+listeners.resize();
+flush();
+vm.applyVars({ "--sepal-top-reserved": "48px" });
+flush();
+return { reports, dispatched };
+"""
+
+
+@needs_node
+def test_viewport_bridge_reports_only_changes():
+    result = run_vue_script(_BRIDGE_VUE, _BRIDGE_JS)
+
+    assert result["reports"] == [{"w": 1000, "h": 800}, {"w": 500, "h": 800}]
+    assert result["dispatched"] == []

@@ -5,6 +5,8 @@ import hashlib
 import importlib.resources
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -181,3 +183,40 @@ def test_voila_jupyter_and_hot_reload_keep_the_inline_bundle(map_bundle, solara_
 
     assert (MapWidget._esm, MapWidget._css) == inline
     assert not (merged_css().parent / setup.MAP_BUNDLE_FOLDER).exists()
+
+
+_LOADER_JS = """
+const bundle = {folder: "pysepal-map", js: "widget.js?v=1", css: "widget.css?v=1"};
+const warnings = [];
+console.warn = (message) => warnings.push(String(message));
+globalThis.location = {href: "file:///"};
+globalThis.document = {
+  createElement: () => ({}),
+  head: {append(link) { setTimeout(() => link.onerror(), 0); }},
+};
+(async () => {
+  __LOADER__
+  const cacheKey = Symbol.for("pysepal-map.bundle:widget.js?v=1");
+  const outcomes = [];
+  for (let i = 0; i < 2; i++) {
+    try { await loader.render({}); outcomes.push("resolved"); }
+    catch (error) { outcomes.push(cacheKey in globalThis ? "cached" : "retryable"); }
+  }
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  process.stdout.write(JSON.stringify({outcomes, warnings}));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_failed_bundle_import_is_retried_and_a_missing_stylesheet_warns():
+    program = _LOADER_JS.replace(
+        "__LOADER__", setup._MAP_LOADER.replace("export default", "const loader =", 1)
+    )
+
+    run = subprocess.run(["node", "-e", program], capture_output=True, text=True, check=True)
+
+    result = json.loads(run.stdout)
+    assert result["outcomes"] == ["retryable", "retryable"]
+    assert len(result["warnings"]) == 2
+    assert all("widget.css" in message for message in result["warnings"])
