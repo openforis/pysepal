@@ -552,15 +552,13 @@ def test_placement_css_centres_each_area():
         "left": "calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2)",
         "right": "calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2)",
     }
-    clear = {
-        "all": "max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px))",
-        "left": "var(--psm-controls-bottom-left, 0px)",
-        "right": "var(--psm-controls-bottom-right, 0px)",
-    }
     for area in ("all", "left", "right"):
         rule = flat(legend_rule(area))
         assert f"left: {centre[area]};" in rule
-        assert f"bottom: calc(var(--pysepal-inset-bottom) + {clear[area]} + 10px);" in rule
+        assert "bottom:" not in rule
+    # every card clears the taller bottom corner, so the two halves' cards share one baseline
+    clear = "max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px))"
+    assert f"bottom: calc(var(--pysepal-inset-bottom) + {clear} + 10px);" in flat(base)
     # a long legend scrolls inside the card, which the slot caps
     assert "flex-direction: column" in base
     assert "max-height: 40%" in base

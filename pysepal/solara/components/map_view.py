@@ -92,10 +92,15 @@ CSS = """
 }
 /* One legend card per area, centred on it: the whole map, or each half of a compare, whose
    divider the widget publishes as --psm-divider-x. Each slot is its area less 10 px a side; the
-   card is no wider than the slot, and its body scrolls in a slot capped at 40 % of the map. */
+   card is no wider than the slot, and its body scrolls in a slot capped at 40 % of the map.
+   Every slot clears the taller bottom corner, so the two halves' cards share one baseline. */
 .pysepal-map-legend {
   position: absolute;
   z-index: 3;
+  bottom: calc(
+    var(--pysepal-inset-bottom)
+      + max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px)) + 10px
+  );
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -110,20 +115,14 @@ CSS = """
   left: calc(
     var(--pysepal-inset-left) + (100% - var(--pysepal-inset-left) - var(--pysepal-inset-right)) / 2
   );
-  bottom: calc(
-    var(--pysepal-inset-bottom)
-      + max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px)) + 10px
-  );
   width: calc(100% - var(--pysepal-inset-left) - var(--pysepal-inset-right) - 20px);
 }
 .pysepal-map-legend[data-area="left"] {
   left: calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2);
-  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-left, 0px) + 10px);
   width: calc(var(--psm-divider-x, 50%) - var(--pysepal-inset-left) - 20px);
 }
 .pysepal-map-legend[data-area="right"] {
   left: calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2);
-  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-right, 0px) + 10px);
   width: calc(100% - var(--pysepal-inset-right) - var(--psm-divider-x, 50%) - 20px);
 }
 /* An area under 140 px shows the card's bar only, with the layer's name, and the bar cannot
