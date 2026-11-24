@@ -546,8 +546,8 @@ def test_the_page_shows_its_cities():
   `setup_solara_server()` serves files only under a Solara server. On SEPAL,
   Voila loads an app's widget JavaScript from the app's own environment.
 - **Give local tiles a route the browser can reach.** SEPAL sets
-  `LOCALTILESERVER_CLIENT_PREFIX=/api/sandbox/jupyter/proxy/{port}`; under your
-  own Solara server, mount a route.
+  `LOCALTILESERVER_CLIENT_PREFIX=/api/sandbox/jupyter/proxy/{port}`; under a
+  Solara server with no prefix set, pysepal mounts its own route.
   `LayerSpec.from_vector(url, format="PMTiles", layer=..., style=...)` keeps a
   root-relative PMTiles URL, such as a proxied `vectortileserver` one, as the
   browser's. See [Local tile servers](./local-tile-servers.md).
