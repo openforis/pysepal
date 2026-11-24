@@ -863,3 +863,34 @@ def test_a_closed_widget_leaves_a_given_layout_open():
 
     assert layout.comm is not None
     layout.close()
+
+
+@pytest.mark.parametrize("part", ["views", "link group", "callbacks", "layout"])
+def test_close_reaches_the_widget_close_when_a_part_raises(part, monkeypatch, caplog):
+    """Solara closes a kernel's widgets in one loop: a raise would leak the kernel."""
+    widget = MapWidget(link_group=f"close-{part}")
+    layout = widget._trait_values["layout"]
+    leave = widget._leave_group
+    owner, name = {
+        "views": (widget, "_cancel_expiry"),
+        "link group": (widget, "_leave_group"),
+        "callbacks": (widget._callbacks, "close"),
+        "layout": (layout, "close"),
+    }[part]
+
+    def broken():
+        raise RuntimeError(f"{part} broke")
+
+    monkeypatch.setattr(owner, name, broken)
+    with caplog.at_level("ERROR", logger="pysepal_map"):
+        widget.close()
+
+    assert f"{part} broke" in caplog.text
+    assert widget.comm is None and widget._closed
+    assert part == "callbacks" or widget._callbacks._closed
+    assert part == "link group" or widget._link_name is None
+    assert part == "layout" or layout.comm is None
+    leave()
+    if part == "layout":
+        monkeypatch.undo()
+        layout.close()

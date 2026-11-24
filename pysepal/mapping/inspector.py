@@ -11,6 +11,7 @@ import traitlets
 from pysepal_map import ClickEvent
 
 from pysepal.layers import RenderLayer, local_fingerprint, uri_to_path
+from pysepal.mapping.maplibre_engine import _cancel_task
 from pysepal.mapping.sepal_map import _METERS_PER_PX
 
 if TYPE_CHECKING:
@@ -231,9 +232,9 @@ class MapInspector(traitlets.HasTraits):
         self.deactivate()
 
     def _cancel(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            self._task = None
+        task, self._task = self._task, None
+        if task is not None:
+            _cancel_task(task)
 
     def _on_click(self, event: ClickEvent) -> None:
         if not self.active:

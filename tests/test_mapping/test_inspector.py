@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -540,6 +541,42 @@ async def test_click_pairs_before_the_task_runs(amap):
     await settle()
     # paired at the click, the row reads the clicked instance; pairing in the task would say "changed"
     assert [x.status for x in inspector.inspection.layers] == ["ready"]
+
+
+def test_inspector_cancel_from_another_thread(monkeypatch):
+    """A Solara tab close runs on a pool thread; the inspection runs on the session loop."""
+
+    async def hang(map_, event, rows=None):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("pysepal.mapping.inspector.inspect_point", hang)
+    loop = asyncio.new_event_loop()
+    # in debug mode a loop call from another thread raises instead of racing
+    loop.set_debug(True)
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    amap = FakeMap()
+
+    async def start():
+        inspector = started(amap)
+        amap.click(click())
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return inspector
+
+    try:
+        inspector = asyncio.run_coroutine_threadsafe(start(), loop).result(5)
+        task = inspector._task
+        assert task is not None and not task.done()
+
+        inspector.close()
+
+        asyncio.run_coroutine_threadsafe(asyncio.wait({task}), loop).result(5)
+        assert task.cancelled() and not inspector.active
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(5)
+        loop.close()
 
 
 def test_sepal_map_builds_and_closes_the_inspector():

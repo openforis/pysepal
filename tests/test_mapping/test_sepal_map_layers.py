@@ -2,7 +2,6 @@
 
 import asyncio
 
-import ipyvuetify as v
 import pytest
 
 import pysepal.mapping.sepal_map as sepal_map_module
@@ -16,7 +15,7 @@ from pysepal.layers import (
 )
 from pysepal.mapping import LayerHandle
 from pysepal.mapping.sepal_map import SepalMap
-from pysepal.solara.theme import ThemeState
+from pysepal.solara.theme import ThemeState, get_current_theme_state
 from tests.test_solara._harness import wait_until
 
 
@@ -46,8 +45,8 @@ def test_prefilled_store_attaches_with_stored_visibility(raster_spec, raster_spe
 
 
 def test_prefilled_store_takes_the_bound_theme(fake_vector):
-    # the opposite of the process-wide theme, which the map follows until it binds its own
-    dark = not v.theme.dark
+    # the opposite of the kernel's theme, which the map follows until it binds its own
+    dark = not get_current_theme_state().dark
     store = LayerStore()
     store.add(LayerSpec.from_vector(fake_vector, id="v"))
     m = SepalMap(

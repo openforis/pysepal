@@ -321,6 +321,18 @@ _STATIC = Path(__file__).parent / "static"
 logger = logging.getLogger("pysepal_map")
 
 
+def _close_part(part: str, close: Callable[[], None]) -> None:
+    """Run one step of a close, and log its failure instead of raising it.
+
+    Solara closes a kernel's widgets in one loop with no guard
+    (``Widget.close_all``): a raise would stop it and leak the kernel.
+    """
+    try:
+        close()
+    except Exception:
+        logger.exception("pysepal-map: closing the map's %s failed", part)
+
+
 def _asset(name: str) -> str | Path:
     """A bundled asset for anywidget: its text, or its path while hot reload is on.
 
@@ -787,22 +799,25 @@ class MapWidget(anywidget.AnyWidget):
     def close(self) -> None:
         """Close the widget and the layout it built, and leave its link group.
 
-        Later messages from its views do nothing.
+        Later messages from its views do nothing. A part that fails to close
+        is logged, and the rest still closes.
         """
         with self._lock:
             self._closed = True
-            self._cancel_expiry()
+            _close_part("view expiry", self._cancel_expiry)
             self._views.clear()
             self._late.clear()
             self._reports.clear()
             self._status = {}
-        self._leave_group()
-        self._callbacks.close()
+        _close_part("link group", self._leave_group)
+        _close_part("callbacks", self._callbacks.close)
         # _trait_values, not self.layout: reading an unset trait would build one
         layout = self._trait_values.get("layout") if self._owns_layout else None
-        super().close()
-        if layout is not None:
-            layout.close()
+        try:
+            super().close()
+        finally:
+            if layout is not None:
+                _close_part("layout", layout.close)
 
     def _request(self, request: dict, stamped: bool = True) -> None:
         # Under the lock, so requests from several threads go out in seq order.

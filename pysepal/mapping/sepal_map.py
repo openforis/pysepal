@@ -6,7 +6,7 @@ import os
 from pysepal.mapping.gdal_env import GDAL_ENV_VARS, prune_foreign_gdal_env
 from pysepal.mapping.visualization import validate_ee_object
 from pysepal.scripts.gee_interface import GEEInterface
-from pysepal.solara.theme import ThemeState
+from pysepal.solara.theme import ThemeState, resolve_theme_state
 
 if any(var in os.environ for var in GDAL_ENV_VARS):
     prune_foreign_gdal_env()
@@ -15,10 +15,9 @@ import asyncio
 import logging
 import math
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Union
 
 import ee
-import ipyvuetify as v
 import traitlets
 from eeclient.client import EESession
 from pysepal_map import DRAW_MODES, Controls, MapWidget, Side
@@ -92,6 +91,18 @@ def _draw_labels() -> dict[str, str]:
     """The draw toolbar's labels in the current language, as ``Draw.set_labels`` takes them."""
     labels = {mode: msg(f"map_view.draw.{mode}") for mode in (*DRAW_MODES, "select")}
     return {**labels, "clear": msg("map_view.draw.clear_all")}
+
+
+def _close_part(part: str, close: Callable[[], None]) -> None:
+    """Run one step of a close, and log its failure instead of raising it.
+
+    Solara closes a kernel's widgets in one loop with no guard
+    (``Widget.close_all``): a raise would stop it and leak the kernel.
+    """
+    try:
+        close()
+    except Exception:
+        log.exception("closing the map's %s failed", part)
 
 
 class SepalMap(MapWidget):
@@ -176,7 +187,7 @@ class SepalMap(MapWidget):
         Args:
             basemaps: the basemaps a user can pick from, the first one shown. Defaults to the SEPAL background of the theme.
             gee: whether or not to use the ee binding. If False none of the earthengine display functionalities can be used. default to True
-            theme_state: the theme state the map follows. Defaults to the global ipyvuetify theme.
+            theme_state: the theme state the map follows. Defaults to the current kernel's theme, which ``resolve_theme_state()`` returns.
             gee_session (optional): a custom EESession object to do gee requests. default to None (deprecated in favor of gee_interface)
             gee_interface: a shared GEEInterface instance. If provided, takes precedence over gee_session
             fullscreen: make the map fill its container (``height="100%"``).
@@ -231,7 +242,7 @@ class SepalMap(MapWidget):
                     self.gee_interface = GEEInterface(session=gee_session)
                 su.init_ee()
 
-            source = theme_state if theme_state is not None else v.theme
+            source = resolve_theme_state(theme_state)
             self.set_trait("theme", "dark" if self._theme_is_dark(source) else "light")
             choices = tuple(basemaps) or (f"SEPAL_{self.theme.upper()}",)
             self._set_basemaps(choices, choices[0])
@@ -283,21 +294,24 @@ class SepalMap(MapWidget):
         raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def close(self) -> None:
-        """Close the map: its pending async adds commit nothing, the store keeps its layers."""
-        self._unbind_theme_source()
+        """Close the map: its pending async adds commit nothing, the store keeps its layers.
+
+        A part that fails to close is logged, and the rest still closes.
+        """
         self._map_closed = True
+        _close_part("theme binding", self._unbind_theme_source)
         if self.inspector is not None:
-            self.inspector.close()
+            _close_part("inspector", self.inspector.close)
         if self.layer_engine is not None:
-            self.layer_engine.close()
+            _close_part("layer engine", self.layer_engine.close)
         if self._widget_ready:
             super().close()
 
     # -- theme ------------------------------------------------------------------------------
 
     def bind_theme_state(self, theme_state: Optional[ThemeState]) -> None:
-        """Follow the ``dark`` trait of a theme state, or the global ipyvuetify theme for None."""
-        self._bind_theme_source(theme_state if theme_state is not None else v.theme)
+        """Follow the ``dark`` trait of a theme state, or the current kernel's theme for None."""
+        self._bind_theme_source(resolve_theme_state(theme_state))
 
     def _bind_theme_source(self, source) -> None:
         if source is self._theme_source or self._map_closed:
@@ -311,8 +325,9 @@ class SepalMap(MapWidget):
         """Stop following the current theme source, if any.
 
         traitlets keeps ``_on_theme_change``, and a bound method holds the map.
-        A source outliving the map -- ``v.theme`` is process-global -- would
-        otherwise keep it, its layers and its Earth Engine objects reachable.
+        A source outliving the map -- the kernel's theme outlives every map built
+        in it -- would otherwise keep it, its layers and its Earth Engine objects
+        reachable.
         """
         previous, self._theme_source = self._theme_source, None
         if previous is None:

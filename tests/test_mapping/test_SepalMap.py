@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import ee
 import geopandas as gpd
-import ipyvuetify as v
 import pytest
 import traitlets
 from pysepal_map import MapWidget
@@ -25,7 +24,8 @@ from pysepal.mapping.maplibre_engine import MapLibreEngine
 from pysepal.mapping.sepal_map import SepalMap
 from pysepal.mapping.visualization import get_viz_params
 from pysepal.scripts.gee_interface import GEEInterface
-from pysepal.solara.theme import ThemeState
+from pysepal.solara.theme import ThemeState, get_current_theme_state
+from tests._kernel_contexts import kernel_contexts  # noqa: F401
 from tests.test_solara._harness import wait_until
 
 # create a seed so that we can check values
@@ -178,8 +178,8 @@ def test_default_basemap_follows_the_theme() -> None:
         assert (m.basemaps, m.basemap) == ((name,), name)
         assert m.state["basemap"]["tiles"] == list(get_basemap(name).tiles)
 
-    # the global theme when no state is given
-    name = "SEPAL_DARK" if v.theme.dark else "SEPAL_LIGHT"
+    # the kernel's theme when no state is given
+    name = "SEPAL_DARK" if get_current_theme_state().dark else "SEPAL_LIGHT"
     assert SepalMap(gee=False).basemaps == (name,)
 
 
@@ -347,16 +347,38 @@ def test_a_closed_map_stops_following_its_theme_state() -> None:
     assert m.theme == "light"
 
 
-def test_a_closed_map_stops_following_the_global_vuetify_theme() -> None:
-    """The default source is ``v.theme``, process-global and never collected.
-
-    A map that keeps observing it is retained for the life of the process,
-    which the per-kernel theme store does not help with.
-    """
+def test_a_closed_map_stops_following_the_kernel_theme() -> None:
+    """The default source is the kernel's theme, which outlives every map built in it."""
     m = SepalMap(gee=False)
     m.close()
 
-    assert not [h for h in _dark_observers(v.theme) if getattr(h, "__self__", None) is m]
+    theme = get_current_theme_state()
+    assert not [h for h in _dark_observers(theme) if getattr(h, "__self__", None) is m]
+
+
+def test_a_map_without_theme_state_follows_the_kernel_theme(kernel_contexts) -> None:  # noqa: F811
+    """Solara gives each kernel its own theme; ``ipyvuetify.theme`` is one for the process."""
+    first, second = kernel_contexts(), kernel_contexts()
+    with second:
+        get_current_theme_state().set_mode("dark")
+        b = SepalMap(gee=False)
+    with first:
+        theme = get_current_theme_state()
+        a = SepalMap(gee=False)
+    assert (a.theme, b.theme) == ("light", "dark")
+
+    theme.set_mode("dark")
+    assert (a.theme, b.theme) == ("dark", "dark")
+    with second:
+        get_current_theme_state().set_mode("light")
+    assert (a.theme, b.theme) == ("dark", "light")
+
+    with first:
+        a.bind_theme_state(ThemeState(mode="light"))
+        a.bind_theme_state(None)
+    assert a._theme_source is theme and a.theme == "dark"
+    a.close()
+    b.close()
 
 
 def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
@@ -366,6 +388,33 @@ def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
     m.close()
 
     assert not [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is m]
+
+
+# -- close ------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("part", ["theme", "inspector", "engine"])
+def test_close_reaches_the_widget_close_when_a_part_raises(part, monkeypatch, caplog) -> None:
+    """Solara closes a kernel's widgets in one loop: a raise would leak the kernel."""
+    theme_state = ThemeState(mode="light")
+    m = SepalMap(gee=False, inspector=True, theme_state=theme_state)
+    m.inspector.activate()
+    owner = {"theme": m, "inspector": m.inspector, "engine": m.layer_engine}[part]
+    name = "_unbind_theme_source" if part == "theme" else "close"
+
+    def broken() -> None:
+        raise RuntimeError(f"{part} broke")
+
+    monkeypatch.setattr(owner, name, broken)
+    with caplog.at_level("ERROR", logger="sepalui.mapping"):
+        m.close()
+
+    assert f"{part} broke" in caplog.text
+    assert m.comm is None and m._callbacks._closed
+    assert part == "inspector" or not m.inspector.active
+    assert part == "engine" or m.layer_engine._closed
+    observers = [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is m]
+    assert part == "theme" or not observers
 
 
 @pytest.fixture

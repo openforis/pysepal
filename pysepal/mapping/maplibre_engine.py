@@ -87,6 +87,20 @@ def _off_thread(loop: Optional[asyncio.AbstractEventLoop]) -> bool:
     return loop is not None and loop.is_running() and _running_loop() is not loop
 
 
+def _cancel_task(task: asyncio.Future) -> None:
+    """Cancel ``task`` from any thread: ``Task.cancel`` is safe only on its own loop's."""
+    loop = task.get_loop()
+    if loop.is_closed():
+        return
+    if not _off_thread(loop):
+        task.cancel()
+        return
+    try:
+        loop.call_soon_threadsafe(task.cancel)
+    except RuntimeError:
+        pass  # closed since the check: nothing runs the task any more
+
+
 def _transient(error: Exception) -> bool:
     """Whether an ee-client error is an auth, quota or server status it gave up retrying."""
     code = getattr(error, "code", None)
@@ -364,12 +378,7 @@ class MapLibreEngine:
         if self._handle is not None:
             self._handle.cancel()
         for task in self._tasks:
-            if task.get_loop().is_closed():
-                continue
-            if _off_thread(task.get_loop()):
-                self._call_soon_threadsafe(task.get_loop(), task.cancel)
-            else:
-                task.cancel()
+            _cancel_task(task)
         self._handle = self._handle_loop = None
         self._accepted.clear()
         self._cache.clear()
