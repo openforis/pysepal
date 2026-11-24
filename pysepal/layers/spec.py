@@ -76,14 +76,28 @@ def _normalise_color(value: str) -> str:
     return to_hex(value, keep_alpha=False).lower()
 
 
+def colormap_name(name: str) -> str:
+    """Return Matplotlib's name for a colormap given in any case, e.g. ``"Reds"`` for ``"reds"``.
+
+    Raises:
+        ValueError: when Matplotlib has no such colormap.
+    """
+    if name in matplotlib.colormaps:
+        return name
+    found = next((n for n in matplotlib.colormaps if n.lower() == name.lower()), None)
+    if found is None:
+        raise ValueError(f"unknown colormap {name!r}")
+    return found
+
+
 def colormap_stops(name: str, n: int = 16) -> list[str]:
     """Sample a Matplotlib colormap into ``n`` lowercase ``#rrggbb`` stops.
 
     Args:
-        name: Matplotlib colormap name.
+        name: Matplotlib colormap name, in any case.
         n: number of stops.
     """
-    cmap = matplotlib.colormaps[name]
+    cmap = matplotlib.colormaps[colormap_name(name)]
     return [to_hex(cmap(x)).lower() for x in np.linspace(0, 1, n)]
 
 
@@ -270,6 +284,11 @@ class RasterStyle(BaseModel):
     @classmethod
     def _palette_colors(cls, value: list[str] | None) -> list[str] | None:
         return None if value is None else [_normalise_color(c) for c in value]
+
+    @field_validator("colormap")
+    @classmethod
+    def _colormap(cls, value: str | None) -> str | None:
+        return None if value is None else colormap_name(value)
 
     @field_validator("class_colors")
     @classmethod

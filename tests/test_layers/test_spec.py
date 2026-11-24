@@ -556,3 +556,10 @@ def test_from_points_bare_point_geometry():
     assert [(g.x, g.y) for g in back.geometry] == [(1.0, 2.0)]
     with pytest.raises(ValueError, match="Point"):
         LayerSpec.from_points({"type": "LineString", "coordinates": [[0, 0], [1, 1]]}, name="p")
+
+
+def test_a_colormap_name_resolves_whatever_its_case():
+    assert RasterStyle(colormap="reds").colormap == "Reds"
+    assert colormap_stops("reds") == colormap_stops("Reds")
+    with pytest.raises(ValidationError, match="unknown colormap 'nope'"):
+        RasterStyle(colormap="nope")

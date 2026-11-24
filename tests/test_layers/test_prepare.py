@@ -199,3 +199,15 @@ def test_client_prefix_constant_lives_in_preparation():
     from pysepal.mapping.sepal_map import CLIENT_PREFIX_ENV_VAR
 
     assert CLIENT_PREFIX_ENV_VAR is preparation.CLIENT_PREFIX_ENV_VAR
+
+
+@pytest.mark.parametrize(("name", "drawn"), [("Reds", "reds"), ("reds", "reds"), ("berlin", None)])
+def test_local_tiles_take_the_colormap_by_their_own_name(byte, name, drawn):
+    render = prepare_sync(LayerSpec.from_raster(byte, name="b", colormap=name), optimize=False)
+    query = parse_qs(urlparse(render.url).query)
+    # rio-tiler names its colormaps in lower case; one it lacks is registered from its colors
+    if drawn:
+        assert query["colormap"] == [drawn]
+    else:
+        assert query["colormap"][0].startswith("custom:")
+    assert render.legend.gradients

@@ -220,6 +220,14 @@ def _tile_range(served: str, index: int, vmin, vmax) -> tuple:
     return (stats.min if vmin is None else vmin, stats.max if vmax is None else vmax)
 
 
+def _tile_colormap(name: str):
+    """A colormap as localtileserver takes it: rio-tiler's lower-case name, else its colors."""
+    import matplotlib
+    from rio_tiler.colormap import cmap
+
+    return name.lower() if name.lower() in cmap.list() else matplotlib.colormaps[name]
+
+
 def _raster_colors(
     spec: LayerSpec, served: str, class_colors: dict | None
 ) -> tuple[dict, Legend | None]:
@@ -244,6 +252,8 @@ def _raster_colors(
         colormap = style.colormap
         if style.palette:
             colormap = LinearSegmentedColormap.from_list("palette", style.palette)
+        elif colormap:
+            colormap = _tile_colormap(colormap)
         color_kwargs = _continuous_color_kwargs(image, style.bands, colormap or "inferno")
         if colormap is None:
             color_kwargs.pop("colormap", None)
