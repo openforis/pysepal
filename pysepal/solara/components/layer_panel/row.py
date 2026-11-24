@@ -247,7 +247,7 @@ def LayerRow(
         _slot(
             "remove",
             _icon_button(
-                "mdi-close",
+                "mdi-trash-can-outline",
                 "remove",
                 layer_id,
                 lambda: store.remove(layer_id),

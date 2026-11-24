@@ -305,6 +305,14 @@ def test_remove_is_always_on_the_row(raster_spec):
     assert role_widgets(box, "remove")
 
 
+def test_remove_is_a_trash_can(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    [icon] = of_kind(find_by_role(box, "remove", raster_spec.id), "Icon")
+    assert icon.children == ["mdi-trash-can-outline"]
+
+
 def test_visibility_toggle_with_settings_open(raster_spec):
     store = LayerStore()
     store.add(raster_spec)
