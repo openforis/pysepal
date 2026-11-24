@@ -431,6 +431,8 @@ def Page():
   chip. A multiband raster has none.
 - **An explicit legend is the app's.** `restyle` keeps it, and
   `handle.legend = None` goes back to the derived one.
+- **An empty `Legend()` shows none.** The card does not list the layer, and the
+  user's pick stays.
 - **`MapView(m, legend=False)` shows no card.**
 
 <!-- run -->

@@ -154,7 +154,7 @@ CSS = """
 def _legends(map_) -> dict[str, list[dict]]:
     """Each area's legends: ``{id, name, legend}`` per visible data layer it draws, top first.
 
-    A layer without a legend, e.g. a multiband raster, is left out.
+    A layer without a legend, e.g. a multiband raster, or with an empty one, is left out.
     """
     lists: dict[str, list[dict]] = {area: [] for area in _AREAS}
     store, engine = map_.layer_store, map_.layer_engine
@@ -171,10 +171,11 @@ def _legends(map_) -> dict[str, list[dict]]:
         spec, render = accepted
         if spec.zone == "overlay":
             continue
-        legend = spec.legend or render.legend
+        # An empty Legend() is the app's "none": it must not fall through to the others.
+        legend = spec.legend if spec.legend is not None else render.legend
         if legend is None:
             legend = derive_legend(spec.style, title=spec.name, default_color=primary)
-        if legend is None:
+        if legend is None or not (legend.gradients or legend.items):
             continue
         entry = {"id": layer_id, "name": spec.name, "legend": legend.model_dump()}
         for area, sides in _AREAS.items():
@@ -267,20 +268,31 @@ def MapView(
     collapsed, set_collapsed = solara.use_state({})
     # The layers the store holds at mount are not new: the card starts on the top one,
     # whichever the engine draws last.
-    seen = solara.use_ref({"left": set(store.ids), "right": set(store.ids)})
-    areas = (("left", "right") if map_.state.get("compare") else ("all",)) if lists else ()
+    seen = solara.use_ref({"left": frozenset(store.ids), "right": frozenset(store.ids)})
+    compare = bool(map_.state.get("compare"))
+    areas = (("left", "right") if compare else ("all",)) if lists else ()
     fresh, slots = {}, []
     # The memo predates a removal the engine has not drawn yet.
     drawn = {
         area: [e for e in entries if e["id"] in store] for area, entries in (lists or {}).items()
+    }
+    listed = {area: {e["id"] for e in entries} for area, entries in drawn.items()}
+    # What each keeper has seen once this render shows, committed by the effect: reacton can
+    # render twice before the effects, and both renders must find the same layers new. A
+    # removed layer is forgotten; a hidden one stays seen. The whole map's card lists both
+    # halves' layers, so none is new to the left half, nor, while it shows, to the right one.
+    in_store = set(store.ids)
+    next_seen = {
+        "left": frozenset((seen.current["left"] & in_store) | listed.get("all", set())),
+        "right": frozenset(
+            (seen.current["right"] & in_store) | listed.get("right" if compare else "all", set())
+        ),
     }
     for area in areas:
         keeper = _KEEPER[area]
         entries = drawn[area]
         ids = [entry["id"] for entry in entries]
         new = [layer_id for layer_id in ids if layer_id not in seen.current[keeper]]
-        # The whole map's card would list the right half's layers too: none is new to it.
-        seen.current[keeper].update(e["id"] for e in drawn["all" if keeper == "left" else area])
         if new:
             fresh[keeper] = new[0]
         current = selected.get(keeper)
@@ -311,10 +323,11 @@ def MapView(
 
     # A new layer stays the area's pick once it is no longer new, as if the user picked it.
     def keep_fresh():
+        seen.current = next_seen
         if fresh:
             set_selected(lambda previous: {**previous, **fresh})
 
-    solara.use_effect(keep_fresh, [tuple(fresh.items())])
+    solara.use_effect(keep_fresh, [tuple(fresh.items()), next_seen["left"], next_seen["right"]])
 
     # The widget sets the corner heights inline on the fullscreen root, so the root binds no
     # style: Vue would then rewrite it.

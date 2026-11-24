@@ -1,6 +1,7 @@
 """MapView places the map, the legend of what it draws, a loading status and app overlays."""
 
 import asyncio
+import dataclasses
 import re
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from pysepal.mapping import SepalMap
 from pysepal.mapping.inspector import Inspection
 from pysepal.message import msg
 from pysepal.solara.components import map_app, map_view
+from pysepal.solara.components.layer_panel.hooks import use_layer_store
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.map_view import MapView
 from pysepal.solara.theme import ThemeState
@@ -440,6 +442,103 @@ def test_turning_compare_off_keeps_the_left_pick():
     assert picked(box, "right") == "s"
     m.compare = False
     assert picked(box) == "a"
+    rc.close()
+
+
+def test_an_empty_legend_is_not_listed_and_keeps_the_pick(fake_vector):
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "all", "a")
+    m.layer_store.add(tiles("muted", legend=Legend()))
+    assert listed(box) == ["b", "a"]
+    assert picked(box) == "a"
+    # an empty legend wins over the one the style would give
+    vector = LayerSpec.from_vector(fake_vector, id="v", name="Vec")
+    m.layer_store.add(vector.model_copy(update={"legend": Legend()}))
+    assert listed(box) == ["b", "a"]
+    assert picked(box) == "a"
+    # the next layer that has a legend is still new
+    m.layer_store.add(legend_tiles("c"))
+    assert picked(box) == "c"
+    rc.close()
+
+
+def test_an_empty_legend_wins_over_the_render_one():
+    m = SepalMap(gee=False)
+    m.layer_store.add(tiles("asset"))
+    m.layer_store.add(tiles("muted", legend=Legend()))
+    # as an Earth Engine asset's visualization gives its render a legend
+    asset = Legend(title="Asset", items=[LegendItem(label="x", color="#333333")])
+    for layer_id in ("asset", "muted"):
+        accepted = m.layer_engine._accepted[layer_id]
+        accepted.render = dataclasses.replace(accepted.render, legend=asset)
+    box, rc = solara.render(MapView(m), handle_error=False)
+    assert listed(box) == ["asset"]
+    rc.close()
+
+
+def test_a_layer_removed_and_added_again_is_new():
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    m.layer_store.add(legend_tiles("result"))
+    assert picked(box) == "result"
+    pick(box, "all", "a")
+    # as a process run again: its result goes, and comes back under the same id
+    m.layer_store.remove("result")
+    assert picked(box) == "a"
+    m.layer_store.add(legend_tiles("result"))
+    assert picked(box) == "result"
+    rc.close()
+
+
+def test_what_the_whole_map_lists_is_not_new_to_the_right_half():
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b", "c"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    m.compare = True
+    pick(box, "right", "a")
+    m.compare = False
+    m.layer_store.add(legend_tiles("x"))
+    assert picked(box) == "x"
+    pick(box, "all", "b")
+    m.compare = True
+    assert picked(box, "left") == "b"
+    assert picked(box, "right") == "a"
+    rc.close()
+
+
+def test_a_new_layer_survives_a_second_render_before_the_effects():
+    """Reacton renders again before the effects when a component sets state while rendering."""
+
+    @solara.component
+    def Count(store, set_count):
+        use_layer_store(store)
+        set_count(len(store.ids))
+        return solara.Text("")
+
+    @solara.component
+    def Page(m):
+        count, set_count = solara.use_state(0)
+        with solara.Column() as main:
+            Count(m.layer_store, set_count)
+            # a new dict each render: the view renders again with its parent
+            MapView(m, overlays={"top-left": [solara.Text(str(count))]})
+        return main
+
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "b"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(Page(m), handle_error=False)
+    pick(box, "all", "a")
+    with rc:  # one batch, as in an event handler
+        m.layer_store.add(legend_tiles("c"))
+    assert listed(box) == ["c", "b", "a"]
+    assert picked(box) == "c"
     rc.close()
 
 
