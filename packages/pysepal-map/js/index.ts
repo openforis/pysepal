@@ -80,6 +80,8 @@ function render({ model, el }: RenderProps<Model>) {
     ...CAMERA_OPTIONS,
     // ViewControls adds it, with the right map's attributions in compare.
     attributionControl: false,
+    // The root's resize observer resizes it, and paints it at once.
+    trackResize: false,
   });
   lockRotation(map);
   const removeImages = installImages(map);
@@ -235,6 +237,9 @@ function render({ model, el }: RenderProps<Model>) {
     // The right map first, so the main map's move paints it at its new size.
     compare.resize();
     map.resize();
+    // A resize clears the canvas, and MapLibre paints on the next frame: the
+    // browser would show this one blank, each step of a window resize.
+    map.redraw();
   });
   resizer.observe(root);
 

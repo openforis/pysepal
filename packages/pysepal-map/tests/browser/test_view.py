@@ -297,6 +297,34 @@ def test_the_map_keeps_its_place_when_the_insets_change(harness, page_session):
     assert view["cause"] == "resize"
 
 
+def test_a_resize_paints_before_the_frame_shows(harness, page_session):
+    """A resize clears the canvas: the map paints again before the browser shows it."""
+    widget = MapWidget()
+    display(widget)
+    wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    page_session.wait_for_function("el => el.psmMap.loaded()", arg=el)
+    # Resize observers run in the order they were made, after the frame's animation
+    # callbacks: this one runs after the view's, before the frame is painted.
+    renders = el.evaluate(
+        """el => new Promise((resolve) => {
+            const map = el.psmMap;
+            const before = map.getCanvas().width;
+            let renders = 0;
+            map.on('render', () => renders++);
+            // only the renders after the resize, which cleared the canvas
+            map.on('resize', () => { renders = 0; });
+            new ResizeObserver((entries, observer) => {
+                if (map.getCanvas().width === before) return;
+                observer.disconnect();
+                resolve(renders);
+            }).observe(el);
+            el.style.width = `${el.clientWidth - 50}px`;
+        })"""
+    )
+    assert renders > 0
+
+
 def test_the_camera_stays_north_up_and_flat(harness, page_session):
     widget = MapWidget(center=(0, 0), zoom=3)
     box = widgets.VBox([widget])
