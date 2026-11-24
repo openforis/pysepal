@@ -12,10 +12,13 @@ from .hooks import use_layer_store
 from .row import LayerRow
 from .sortable import SortableList
 
+#: The zones, in the order the map draws them, top first.
+_ZONES = ("overlay", "data")
 
-def _data_ids(store: LayerStore) -> list[str]:
-    """The ids of the data zone, top first."""
-    return [layer_id for layer_id in store.ids if store.get(layer_id).zone == "data"]
+
+def _zone_ids(store: LayerStore, zone: str) -> list[str]:
+    """The ids of one zone, top first."""
+    return [layer_id for layer_id in store.ids if store.get(layer_id).zone == zone]
 
 
 @solara.component
@@ -24,9 +27,10 @@ def LayerPanel(
     map_=None,
     on_export: Optional[Callable[[LayerSpec], None]] = None,
 ):
-    """List the data layers of a store, reorderable, with per-layer controls.
+    """List the layers of a store, reorderable, with per-layer controls.
 
-    The overlay zone (the AOI and its preview) is not listed.
+    The overlay zone (the AOI and its preview) comes first, as the map draws it above
+    every data layer; a row moves within its own zone.
 
     Use it as a MapApp section, e.g.
     ``{"title": msg("layer_panel.title"), "icon": "mdi-layers", "content": LayerPanel(store)}``.
@@ -58,17 +62,15 @@ def LayerPanel(
 
     solara.use_effect(follow_state, [map_])
 
-    ids = _data_ids(store)
+    def zone_list(zone: str, ids: list[str]):
+        def on_move(layer_id: str, to: int) -> None:
+            # ``to`` counts this zone's rows; the store also counts the other zone's ids
+            rows = _zone_ids(store, zone)
+            if layer_id in rows:
+                target = rows[max(0, min(to, len(rows) - 1))]
+                store.move(layer_id, store.ids.index(target))
 
-    def on_move(layer_id: str, to: int) -> None:
-        # ``to`` counts the rows; the store also counts the overlay ids between them
-        rows = _data_ids(store)
-        if layer_id in rows:
-            target = rows[max(0, min(to, len(rows) - 1))]
-            store.move(layer_id, store.ids.index(target))
-
-    if ids:
-        content = SortableList(
+        return SortableList(
             ids=ids,
             children=[
                 LayerRow(store, layer_id, map_, on_export, is_dark, version, compare).key(layer_id)
@@ -76,8 +78,11 @@ def LayerPanel(
             ],
             on_move=on_move,
             handle_label=msg("layer_panel.reorder"),
-        )
-    else:
-        content = solara.Text(msg("layer_panel.empty"), classes=["pysepal-layer-panel__empty"])
+        ).key(zone)
 
-    return solara.Column(classes=["pysepal-layer-panel"], children=[content])
+    zones = [(zone, _zone_ids(store, zone)) for zone in _ZONES]
+    content = [zone_list(zone, ids) for zone, ids in zones if ids]
+    if not content:
+        content = [solara.Text(msg("layer_panel.empty"), classes=["pysepal-layer-panel__empty"])]
+
+    return solara.Column(classes=["pysepal-layer-panel"], children=content)

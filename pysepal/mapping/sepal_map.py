@@ -787,7 +787,7 @@ class SepalMap(MapWidget):
             key: the unequivocal key of the layer, its id in :attr:`layer_store`. By default a normalized str of the layer name. A layer already using this key is replaced in place, keeping its position, visibility and opacity.
             use_map_vis: whether or not to use the map visualization parameters. default to True
             autocenter: whether or not to center the map on the layer. default to False
-            overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed by no layer panel. For a reference layer such as the AOI. Default to False.
+            overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed first in the layer panel. For a reference layer such as the AOI. Default to False.
             side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
             legend: the legend of the layer, shown in place of the one the asset or the style gives and kept when the layer is restyled; an empty ``Legend()`` shows none. Change it later through :attr:`LayerHandle.legend`.
 
@@ -843,7 +843,7 @@ class SepalMap(MapWidget):
             use_map_vis: whether or not to use the map visualization parameters. default to True
             autocenter: whether or not to center the map on the layer. default to False
             attribution: the attribution shown in the map corner while the layer is visible
-            overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed by no layer panel. For a reference layer such as the AOI. Default to False.
+            overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed first in the layer panel. For a reference layer such as the AOI. Default to False.
             side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
             legend: the legend of the layer, shown in place of the one the asset or the style gives and kept when the layer is restyled; an empty ``Legend()`` shows none. Change it later through :attr:`LayerHandle.legend`.
 

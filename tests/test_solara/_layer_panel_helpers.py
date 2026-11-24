@@ -28,9 +28,8 @@ def all_widgets(box: Any) -> List[Any]:
 
 
 def row_ids(box: Any) -> List[str]:
-    """Layer ids of the rendered rows, in display order."""
-    sortable = next(w for w in walk(box) if hasattr(w, "vue_move"))
-    return list(sortable.ids)
+    """Layer ids of the rendered rows, in display order, every zone's list in turn."""
+    return [i for w in walk(box) if hasattr(w, "vue_move") for i in w.ids]
 
 
 def role_widgets(box: Any, role: str) -> List[Any]:

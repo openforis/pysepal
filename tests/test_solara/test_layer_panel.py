@@ -194,8 +194,9 @@ def test_the_panel_lists_only_layers_whatever_the_basemaps(raster_spec):
 
 
 def move(box, layer_id: str, to: int) -> None:
-    """Drop a row at index ``to``, as the sortable list reports it."""
-    next(w for w in walk(box) if hasattr(w, "vue_move")).vue_move({"id": layer_id, "to": to})
+    """Drop a row at index ``to`` of its zone's list, as the sortable list reports it."""
+    lists = [w for w in walk(box) if hasattr(w, "vue_move") and layer_id in w.ids]
+    lists[0].vue_move({"id": layer_id, "to": to})
 
 
 def _tiles(layer_id: str, zone: str = "data") -> LayerSpec:
@@ -203,26 +204,40 @@ def _tiles(layer_id: str, zone: str = "data") -> LayerSpec:
     return LayerSpec.from_tiles(url, name=layer_id, id=layer_id, zone=zone)
 
 
-def test_overlay_layers_are_not_listed():
+def test_overlay_layers_are_listed_first():
+    """The AOI is drawn above every data layer, so its row comes first."""
     store = LayerStore()
     store.add(_tiles("a"))
     store.add(_tiles("o", zone="overlay"))
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    assert row_ids(box) == ["a"]
+    assert row_ids(box) == ["o", "a"]
+    assert shown_rows(box) == ["o", "a"]
+    lists = [list(w.ids) for w in walk(box) if hasattr(w, "vue_move")]
+    assert lists == [["o"], ["a"]], "one list per zone"
 
 
-def test_a_move_skips_the_overlay_ids():
+def test_an_overlay_alone_is_listed():
     store = LayerStore()
-    for layer_id, zone in [("b", "data"), ("a", "data"), ("o", "overlay")]:
+    store.add(_tiles("o", zone="overlay"))
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    assert row_ids(box) == ["o"]
+
+
+def test_a_row_moves_within_its_zone():
+    store = LayerStore()
+    for layer_id, zone in [("b", "data"), ("a", "data"), ("p", "overlay"), ("o", "overlay")]:
         store.add(_tiles(layer_id, zone))
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
-    assert row_ids(box) == ["a", "b"] and store.ids == ["o", "a", "b"]
+    assert row_ids(box) == ["o", "p", "a", "b"] and store.ids == ["o", "p", "a", "b"]
 
     move(box, "b", 0)
-    assert store.ids == ["o", "b", "a"] and row_ids(box) == ["b", "a"]
+    assert store.ids == ["o", "p", "b", "a"] and row_ids(box) == ["o", "p", "b", "a"]
 
     move(box, "b", 1)
-    assert store.ids == ["o", "a", "b"] and row_ids(box) == ["a", "b"]
+    assert store.ids == ["o", "p", "a", "b"]
+
+    move(box, "o", 1)
+    assert store.ids == ["p", "o", "a", "b"] and row_ids(box) == ["p", "o", "a", "b"]
 
 
 def test_row_remove_button_drops_the_row(raster_spec, raster_spec_b):
@@ -442,8 +457,10 @@ def test_a_publish_that_keeps_compare_does_not_render_the_panel(
     raster_spec, raster_spec_b, monkeypatch
 ):
     renders = []
-    data_ids = panel._data_ids
-    monkeypatch.setattr(panel, "_data_ids", lambda store: renders.append(1) or data_ids(store))
+    zone_ids = panel._zone_ids
+    monkeypatch.setattr(
+        panel, "_zone_ids", lambda store, zone: renders.append(1) or zone_ids(store, zone)
+    )
     m, box = _compare_panel(raster_spec, raster_spec_b)
     m.compare = True
     count = len(renders)
