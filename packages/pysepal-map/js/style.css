@@ -112,6 +112,17 @@
   color: #ffffff;
 }
 
+/* MapLibre stacks each control it adds above the last; the attribution, replaced
+   whenever its text changes, would climb above the scale. */
+.psm-map .maplibregl-ctrl-bottom-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.psm-map .maplibregl-ctrl-bottom-left > .maplibregl-ctrl-attrib {
+  order: 1;
+}
+
 /* It keeps its place while empty: the corner's measured height places a host's
    overlays, which would otherwise move each time the pointer leaves the map. */
 .psm-coordinates {

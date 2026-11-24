@@ -262,7 +262,7 @@ export class ViewControls {
       compact: true,
       customAttribution,
     });
-    map.addControl(control, "bottom-right");
+    map.addControl(control, "bottom-left");
     this.attribution = { control, key };
   }
 

@@ -404,12 +404,19 @@ const sided = (
   visible = true
 ) => ({ id, side, attribution, visible } as unknown as LayerState);
 
+const isAttribution = (control: IControl) =>
+  control instanceof AttributionControl;
+
+/** The one attribution control, bottom-left: the host's own overlays take the right. */
 const attribution = (map: FakeControlMap) => {
-  const [control, ...others] = map.at("bottom-right");
-  expect(others).toEqual([]);
-  expect(control).toBeInstanceOf(AttributionControl);
-  return control as AttributionControl;
+  const found = map.placed.filter((p) => isAttribution(p.control));
+  expect(found.map((p) => p.position)).toEqual(["bottom-left"]);
+  return found[0].control as AttributionControl;
 };
+
+/** The bottom-left controls other than the attribution. */
+const bottomLeft = (map: FakeControlMap) =>
+  map.at("bottom-left").filter((control) => !isAttribution(control));
 
 const MODES = [
   ["the Fullscreen API", true],
@@ -422,17 +429,17 @@ describe("ViewControls", () => {
   it("adds a metric scale control bottom-left when scale is true, and removes it when false", () => {
     const { map, controls } = setup();
     controls.sync(state());
-    const [scale, ...others] = map.at("bottom-left");
+    const [scale, ...others] = bottomLeft(map);
     expect(scale).toBeInstanceOf(ScaleControl);
     expect((scale as ScaleControl).options.unit).toBe("metric");
     expect(others).toEqual([]);
-    expect(map.corner("bottom-left").children).toHaveLength(1);
+    expect(map.corner("bottom-left").children).toHaveLength(2);
 
     controls.sync(state({ scale: false }));
-    expect(map.at("bottom-left")).toEqual([]);
-    expect(map.corner("bottom-left").children).toHaveLength(0);
+    expect(bottomLeft(map)).toEqual([]);
+    expect(map.corner("bottom-left").children).toHaveLength(1);
     controls.sync(state({ scale: true, coordinates: false }));
-    expect(map.at("bottom-left")).toHaveLength(1);
+    expect(bottomLeft(map)).toHaveLength(1);
   });
 
   it("keeps the zoom and fullscreen controls top-left", () => {
@@ -442,7 +449,7 @@ describe("ViewControls", () => {
     controls.sync(state({ zoom: false, fullscreen: false }));
     expect(map.placed.map((p) => p.position)).toEqual([
       "bottom-left",
-      "bottom-right",
+      "bottom-left",
     ]);
   });
 
@@ -680,7 +687,7 @@ describe("ViewControls", () => {
       compact: true,
       customAttribution: [MAPLIBRE],
     });
-    expect(map.corner("bottom-right").children).toHaveLength(1);
+    expect(map.corner("bottom-right").children).toHaveLength(0);
   });
 
   it("adds the attributions only the right map shows while compare is on", () => {
@@ -704,7 +711,7 @@ describe("ViewControls", () => {
       compact: true,
       customAttribution: [MAPLIBRE, "R-attr"],
     });
-    expect(map.corner("bottom-right").children).toHaveLength(1);
+    expect(map.corner("bottom-right").children).toHaveLength(0);
 
     // The same text keeps the control.
     controls.sync({
@@ -718,7 +725,7 @@ describe("ViewControls", () => {
     const again = attribution(map);
     expect(again).not.toBe(on);
     expect(again.options.customAttribution).toEqual([MAPLIBRE]);
-    expect(map.corner("bottom-right").children).toHaveLength(1);
+    expect(map.corner("bottom-right").children).toHaveLength(0);
   });
 
   it("toggles the dark theme class", () => {
