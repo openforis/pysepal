@@ -13,16 +13,6 @@ from component.parameter import ELEVATION_CLASSES
 from pysepal.layers import Legend, LegendItem
 
 
-def attach_legend(sepal_map, layer_id: str, legend: Legend) -> None:
-    """Show ``legend`` for a layer of the map in place of the one its style gives.
-
-    A layer the user removed meanwhile is left alone.
-    """
-    store = sepal_map.layer_store
-    if layer_id in store:
-        store.update(layer_id, store.get(layer_id).revise(legend=legend))
-
-
 def band_legend(bands) -> Legend:
     """One chip per channel of an RGB composite, labelled with what the channel carries."""
     return Legend(items=[LegendItem(label=msg(key), color=color) for key, color in bands])

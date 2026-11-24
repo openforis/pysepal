@@ -24,7 +24,6 @@ from component.parameter import (
     RADAR_VIS,
 )
 from component.scripts import (
-    attach_legend,
     band_legend,
     ndvi_composite,
     radar_composite,
@@ -65,8 +64,8 @@ def use_layer_tools(sepal_map, outputs) -> list:
             vis_params=RADAR_VIS,
             name=msg("layers.radar"),
             key=RADAR_LAYER_ID,
+            legend=band_legend(RADAR_BANDS),
         )
-        attach_legend(sepal_map, RADAR_LAYER_ID, band_legend(RADAR_BANDS))
         sepal_map.set_center(*RADAR_CENTER, 10)
 
     ndvi_task = solara.lab.use_task(

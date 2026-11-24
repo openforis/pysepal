@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pysepal_map import Side
 
-from pysepal.layers import LayerSpec, LayerStore
+from pysepal.layers import LayerSpec, LayerStore, Legend
 
 if TYPE_CHECKING:
     from .sepal_map import SepalMap
@@ -91,6 +91,22 @@ class LayerHandle:
         """Set the half of a compare map that draws the layer."""
         self._check()
         self.store.set_side(self.id, value)
+
+    @property
+    def legend(self) -> Legend | None:
+        """The legend the app gave the layer, or None when the map derives one.
+
+        An explicit legend is the app's, so :meth:`restyle` keeps it even when the colours
+        change; only a derived legend follows the style. Set an empty ``Legend()`` to show
+        none, or ``None`` to go back to the derived one.
+        """
+        return self.spec.legend
+
+    @legend.setter
+    def legend(self, value: Legend | None) -> None:
+        """Set the legend of the layer."""
+        self._check()
+        self.store.update(self.id, self.store.get(self.id).revise(legend=value))
 
     @property
     def status(self) -> str:

@@ -24,7 +24,14 @@ from pysepal_map import DRAW_MODES, Controls, MapWidget, Side
 from typing_extensions import Self
 
 from pysepal.frontend.styles import THEMES
-from pysepal.layers import LayerSpec, LayerStore, RenderLayer, prepare, prepare_sync
+from pysepal.layers import (
+    LayerSpec,
+    LayerStore,
+    Legend,
+    RenderLayer,
+    prepare,
+    prepare_sync,
+)
 from pysepal.layers.preparation import (
     CLIENT_PREFIX_ENV_VAR,  # noqa: F401  (public re-export)
 )
@@ -85,6 +92,10 @@ def _check_ee_inputs(ee_object: ee.ComputedObject, vis_params: dict) -> None:
 
 def _in_zone(spec: LayerSpec, overlay: bool) -> LayerSpec:
     return spec.model_copy(update={"zone": "overlay"}) if overlay else spec
+
+
+def _with_legend(spec: LayerSpec, legend: Legend | None) -> LayerSpec:
+    return spec if legend is None else spec.model_copy(update={"legend": legend})
 
 
 def _draw_labels() -> dict[str, str]:
@@ -546,6 +557,7 @@ class SepalMap(MapWidget):
         optimize: bool = True,
         warp_to_3857: bool = False,
         side: Side = "both",
+        legend: Legend | None = None,
     ) -> LayerHandle:
         """Adds a local raster dataset to the map.
 
@@ -568,6 +580,7 @@ class SepalMap(MapWidget):
             optimize: prepare a tiled COG with overviews before serving. On by default because rio-tiler otherwise reads full-resolution pixels for every tile. Turn it off for a large raster you do not want copied into the tile cache, or one that already has ``.ovr`` sidecars.
             warp_to_3857: reproject to Web Mercator while preparing, so tiles are cut in the CRS they are served in instead of being warped per request. Needs ``optimize=True``. Off by default because it doubles the preparation work for a raster that is already close to 3857.
             side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
+            legend: the legend of the layer, shown in place of the one the asset or the style gives and kept when the layer is restyled; an empty ``Legend()`` shows none. Change it later through :attr:`LayerHandle.legend`.
 
         Returns:
             a handle to the layer.
@@ -583,6 +596,7 @@ class SepalMap(MapWidget):
         spec = self._raster_spec(
             image, bands, layer_name, colormap, key, class_colors, vmin, vmax, nodata
         )
+        spec = _with_legend(spec, legend)
         render = prepare_sync(spec, optimize=optimize, warp_to_3857=warp_to_3857)
         return self._commit(spec, render, opacity=opacity, side=side, fit=fit_bounds)
 
@@ -602,10 +616,11 @@ class SepalMap(MapWidget):
         optimize: bool = True,
         warp_to_3857: bool = False,
         side: Side = "both",
+        legend: Legend | None = None,
     ) -> Optional[LayerHandle]:
         """Add a local raster without blocking the event loop.
 
-        Same arguments as :meth:`add_raster`. Preparing a raster rewrites every
+        Same arguments as :meth:`add_raster`, ``legend`` included. Preparing a raster rewrites every
         one of its pixels into a tiled COG; that runs in a worker thread here,
         leaving only the commit to the store on the loop.
 
@@ -620,6 +635,7 @@ class SepalMap(MapWidget):
         spec = self._raster_spec(
             image, bands, layer_name, colormap, key, class_colors, vmin, vmax, nodata
         )
+        spec = _with_legend(spec, legend)
         return await self._commit_async(
             spec,
             opacity=opacity,
@@ -752,6 +768,7 @@ class SepalMap(MapWidget):
         autocenter: bool = False,
         overlay: bool = False,
         side: Side = "both",
+        legend: Legend | None = None,
     ) -> LayerHandle:
         """Customized add_layer method designed for EE objects.
 
@@ -772,6 +789,7 @@ class SepalMap(MapWidget):
             autocenter: whether or not to center the map on the layer. default to False
             overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed by no layer panel. For a reference layer such as the AOI. Default to False.
             side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
+            legend: the legend of the layer, shown in place of the one the asset or the style gives and kept when the layer is restyled; an empty ``Legend()`` shows none. Change it later through :attr:`LayerHandle.legend`.
 
         Returns:
             a handle to the layer.
@@ -780,7 +798,7 @@ class SepalMap(MapWidget):
             LayerPrepareError: when Earth Engine cannot render the layer.
         """
         spec = self._ee_spec(ee_object, vis_params, name, key, viz_name, use_map_vis)
-        spec = _in_zone(spec, overlay)
+        spec = _with_legend(_in_zone(spec, overlay), legend)
         render = prepare_sync(spec, gee_interface=self.gee_interface)
         handle = self._commit(spec, render, shown=shown, opacity=opacity, side=side)
         if autocenter and handle is not None:
@@ -801,6 +819,7 @@ class SepalMap(MapWidget):
         attribution: str = "Google Earth Engine",
         overlay: bool = False,
         side: Side = "both",
+        legend: Legend | None = None,
     ) -> Optional[LayerHandle]:
         """Customized add_layer method designed for EE objects.
 
@@ -823,6 +842,7 @@ class SepalMap(MapWidget):
             attribution: the attribution shown in the map corner while the layer is visible
             overlay: put the layer in the overlay zone of :attr:`layer_store`, drawn above every data layer and listed by no layer panel. For a reference layer such as the AOI. Default to False.
             side: the half of a compare map that draws a new layer, ``"left"``, ``"right"`` or ``"both"``; a replaced layer keeps its side. Ignored outside compare.
+            legend: the legend of the layer, shown in place of the one the asset or the style gives and kept when the layer is restyled; an empty ``Legend()`` shows none. Change it later through :attr:`LayerHandle.legend`.
 
         Returns:
             a handle to the layer, or None when a newer action on the same key superseded
@@ -832,7 +852,7 @@ class SepalMap(MapWidget):
             LayerPrepareError: when Earth Engine cannot render the layer.
         """
         spec = self._ee_spec(ee_object, vis_params, name, key, viz_name, use_map_vis, attribution)
-        spec = _in_zone(spec, overlay)
+        spec = _with_legend(_in_zone(spec, overlay), legend)
         handle = await self._commit_async(
             spec, shown=shown, opacity=opacity, side=side, gee_interface=self.gee_interface
         )

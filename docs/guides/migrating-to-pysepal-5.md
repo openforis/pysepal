@@ -269,7 +269,10 @@ over the map. `MapApp` builds all three for you.
   centred at the bottom of the map, or of each half while the map compares. It
   lists the visible layers of its area that have a legend, built from each
   layer's legend, and shows one at a time: the top one, the one picked in its
-  dropdown, or a layer the app has just added. A status badge at the top right counts the
+  dropdown, or a layer the app has just added. Give a layer its own legend with
+  `legend=` on `add_raster` and `add_ee_layer` (and their async twins), or later with
+  `handle.legend = Legend(...)`; `None` goes back to the derived one. An explicit
+  legend is yours, so `restyle` keeps it. A status badge at the top right counts the
   layers still loading. Overlays you add are placed
   in the corner you name, inside the map's insets.
 

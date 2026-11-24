@@ -2,7 +2,7 @@
 
 import pytest
 
-from pysepal.layers import LayerStore
+from pysepal.layers import LayerStore, Legend, LegendItem
 from pysepal.mapping import LayerGoneError, LayerHandle
 
 
@@ -135,3 +135,39 @@ def test_zoom_takes_padding_by_keyword(fake_map, vector_spec):
         handle.zoom(2)
     handle.zoom(padding=2)
     assert fake_map.zoom_calls == [(vector_spec.id, 2)]
+
+
+def test_legend_setter_writes_the_spec_and_none_clears_it(fake_map, vector_spec):
+    fake_map.layer_store.add(vector_spec)
+    h = LayerHandle(fake_map, vector_spec.id)
+    own = Legend(title="own", items=[LegendItem(label="a", color="#ff0000")])
+    assert h.legend is None
+
+    h.legend = own
+    assert h.legend == own
+    assert fake_map.layer_store.get(h.id).legend == own
+
+    h.legend = None
+    assert h.legend is None
+
+
+def test_legend_on_a_removed_layer_raises(fake_map, vector_spec):
+    fake_map.layer_store.add(vector_spec)
+    h = LayerHandle(fake_map, vector_spec.id)
+    h.remove()
+    with pytest.raises(LayerGoneError):
+        h.legend = Legend()
+    with pytest.raises(LayerGoneError):
+        h.legend
+
+
+def test_a_restyle_keeps_an_explicit_legend(fake_map, vector_spec):
+    fake_map.layer_store.add(vector_spec)
+    h = LayerHandle(fake_map, vector_spec.id)
+    own = Legend(title="own", items=[LegendItem(label="a", color="#ff0000")])
+    h.legend = own
+
+    h.restyle(stroke="#00ff00")
+
+    assert h.legend == own
+    assert h.spec.style.stroke == "#00ff00"

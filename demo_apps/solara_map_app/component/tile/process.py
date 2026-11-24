@@ -10,7 +10,7 @@ from component.parameter import (
     PIXEL_AREA_LAYER_ID,
     PIXEL_AREA_VIS,
 )
-from component.scripts import attach_legend, build_outputs, elevation_class_legend
+from component.scripts import build_outputs, elevation_class_legend
 
 from pysepal.solara.notifications import use_notifications
 
@@ -38,7 +38,7 @@ def ProcessPanel(aoi_data, outputs, sepal_map, gee_interface):
                 name=msg("layers.pixel_area"),
                 key=PIXEL_AREA_LAYER_ID,
             )
-            await sepal_map.add_ee_layer_async(
+            elevation = await sepal_map.add_ee_layer_async(
                 built.elevation_class,
                 vis_params={
                     "min": 1,
@@ -55,7 +55,8 @@ def ProcessPanel(aoi_data, outputs, sepal_map, gee_interface):
             task.set_progress(0.9)
 
             task.step(msg("tasks.publishing"))
-            attach_legend(sepal_map, ELEVATION_CLASS_LAYER_ID, class_legend)
+            if elevation is not None and elevation.alive:
+                elevation.legend = class_legend
             outputs.set(built)
 
         notifications.success(msg("toasts.process_done"))

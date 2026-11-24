@@ -17,7 +17,15 @@ from shapely.geometry import box
 
 import pysepal.mapping.sepal_map as sepal_map_module
 from pysepal.frontend import styles as ss
-from pysepal.layers import GeeSource, LayerSpec, LayerStore, RenderLayer, VectorStyle
+from pysepal.layers import (
+    GeeSource,
+    LayerSpec,
+    LayerStore,
+    Legend,
+    LegendItem,
+    RenderLayer,
+    VectorStyle,
+)
 from pysepal.mapping import LayerHandle
 from pysepal.mapping.basemaps import BASEMAP_NAMES, get_basemap, tile_urls, xyz_tiles
 from pysepal.mapping.maplibre_engine import MapLibreEngine
@@ -462,6 +470,46 @@ def test_add_raster_returns_a_handle_drawn_in_state(rgb: Path) -> None:
     assert layer["kind"] == "raster" and layer["zone"] == "data"
     assert layer["source"]["tiles"] == list(tile_urls(render.url))
     assert m.find_layer("rgb") == h
+
+
+def test_add_raster_puts_its_legend_on_the_spec(rgb: Path) -> None:
+    m = SepalMap(gee=False)
+    own = Legend(title="own", items=[LegendItem(label="a", color="#ff0000")])
+
+    h = m.add_raster(rgb, layer_name="rgb", legend=own)
+
+    assert h.legend == own
+    assert m.layer_store.get("rgb").legend == own
+
+
+def test_add_raster_async_puts_its_legend_on_the_spec(rgb: Path) -> None:
+    m = SepalMap(gee=False)
+    own = Legend(title="own")
+
+    h = asyncio.run(m.add_raster_async(rgb, layer_name="rgb", legend=own))
+
+    assert h.legend == own
+
+
+@pytest.mark.asyncio
+async def test_add_ee_layer_puts_its_legend_on_the_spec(gee_spec, monkeypatch) -> None:
+    def render(spec):
+        url = "https://ee.test/{z}/{x}/{y}"
+        return RenderLayer(render_hash=spec.render_hash, kind="raster-xyz", url=url)
+
+    async def prepare(spec, **kw):
+        return render(spec)
+
+    monkeypatch.setattr(sepal_map_module, "prepare", prepare)
+    monkeypatch.setattr(sepal_map_module, "prepare_sync", lambda spec, **kw: render(spec))
+    monkeypatch.setattr(SepalMap, "_ee_spec", lambda self, *args, **kwargs: gee_spec)
+    own = Legend(title="own")
+    m = SepalMap(gee=False)
+    m.gee_interface = None
+
+    assert (await m.add_ee_layer_async(None, legend=own)).legend == own
+    assert m.add_ee_layer(None, legend=Legend(title="sync")).legend == Legend(title="sync")
+    assert m.add_ee_layer(None).legend is None
 
 
 def test_add_raster(rgb: Path, byte: Path) -> None:
