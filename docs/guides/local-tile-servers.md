@@ -25,16 +25,21 @@ can no longer load the loopback URL directly; the tiles reach it only through
 one of these:
 
 - **A same-origin route** — the prefix SEPAL sets, `jupyter-server-proxy` in
-  JupyterLab, or a route you mount (configurations 2 and 3). The fetch never
-  leaves the page's origin.
-- **The comm bridge** — pysepal turns jupyter-loopback's bridge on for every
-  local raster. It catches the fetches to the tile port and tunnels them over the
-  kernel websocket, so a plain `voila notebook.ipynb` with the empty prefix
-  below, or a stock `solara run`, still shows its rasters.
+  JupyterLab, the route pysepal mounts under solara-server, or one you mount
+  (configurations 2 and 3). The fetch never leaves the page's origin.
+- **The comm bridge** — outside solara-server, pysepal turns jupyter-loopback's
+  bridge on for every local raster. It catches the fetches to the tile port and
+  tunnels them over the kernel websocket, so a plain `voila notebook.ipynb` with
+  the empty prefix below still shows its rasters.
 
-Turn the bridge off (`LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK=1`) without a
-same-origin route and the browser blocks every tile: the map stays empty and the
-console logs `AJAXError: Failed to fetch (0)` for each one.
+Without either, the browser blocks every tile while the tile server logs `200`
+for each: the map stays empty and the console logs `AJAXError: Failed to fetch
+(0)` per tile.
+
+The bridge cannot serve solara-server. Its widget is one per process and shows
+only where `IPython.display` puts it, which under Solara is no page at all, so
+`window.__jupyter_loopback__` never exists there. That is why pysepal mounts its
+own route there instead (configuration 2).
 
 ## What Decides the Answer
 
@@ -47,7 +52,7 @@ app is written in — a pysepal app built from `solara.component` can be served 
 | Configuration                           | Process model                                           | Carries the bytes                         |
 | --------------------------------------- | ------------------------------------------------------- | ----------------------------------------- |
 | Served by Voila/Jupyter, user sandbox   | One container per user; kernel is its own process       | A prefix the host serves (SEPAL sets one) |
-| Served by solara-server, own container  | One container, one Solara process, one user             | A same-origin route you mount             |
+| Served by solara-server, own container  | One container, one Solara process, one user             | pysepal's route, or one you mount         |
 | Served by solara-server, `app-launcher` | One shared container, many authenticated users, proxied | Same, **with per-session authorization**  |
 
 **What is the browser actually asking for?** This decides whether the tile server
@@ -208,19 +213,30 @@ Voila via their `ui.ipynb`. The vector demo needs the `demos` extra plus
 
 ## Configuration 2: Served by solara-server, Own Container
 
-**Do not use the bridge here.** The page origin _is_ the Solara server, so tiles
-can travel over ordinary same-origin HTTP. That removes the comm bridge, the
-widget, the ESM, and all the ordering rules about mounting before the map. Without
-a mounted route — a stock `solara run` — the rasters are on the loopback URL, and
-under MapLibre only the bridge carries them.
+The page origin _is_ the Solara server, so tiles travel over ordinary
+same-origin HTTP. **For rasters, pysepal does this for you**: with
+`LOCALTILESERVER_CLIENT_PREFIX` unset, the first local raster puts a route at
+`{root_path}/_pysepal/tiles/{port}/...` in front of Solara's own routes and points
+the tile URLs at it. A stock `solara run` needs nothing else, and pysepal leaves
+the bridge off.
 
-Which route you need follows from the payload question above: PMTiles can be
-served as a file, rasters must be proxied to the tile server.
+The route forwards only tile paths (`api/tiles/{z}/{x}/{y}.png`), only to the
+tile servers pysepal started, and only for the files pysepal prepared:
+`localtileserver` opens whatever path or URL a request names in `filename`, so
+anything less would hand the page a file reader. It does **not** authorize per
+session, which configuration 3 needs.
+
+A set prefix wins: SEPAL's, or your own route's below, and pysepal's route is
+not used.
+
+Which route you mount yourself follows from the payload question above: PMTiles
+can be served as a file, rasters must be proxied to the tile server.
 
 ### Mount the route
 
-Stock `solara run` will not take extra routes — `solara/server/starlette.py` ends
-with catch-all routes that swallow everything. Solara documents the alternative
+Solara's `starlette.py` ends with catch-all routes that swallow any route added
+after them; pysepal's goes in front of them at run time. Solara documents the
+alternative
 under
 [Deploying / self-hosted → Embedding in an existing Starlette application](https://solara.dev/documentation/getting_started/deploying/self-hosted):
 point `SOLARA_APP` at your app file and compose the routes yourself.
@@ -404,8 +420,9 @@ app portable from configuration 2 to configuration 3.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | An autodetected prefix 404s under standalone Voila                     | Ran it — the 404 above is from that log                                                                                               |
 | An empty `LOCALTILESERVER_CLIENT_PREFIX` fixes it                      | Ran it under ipyleaflet and again under MapLibre — raster renders, zero proxy 404s                                                    |
-| Under MapLibre the bridge carries the loopback tiles                   | Ran it: plain Voila with the empty prefix and stock `solara run` show a local raster, with no request to the tile port on the network |
-| ...and with the bridge off, nothing else does                          | Ran it: `solara run` with `LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK=1` — empty map, `AJAXError: Failed to fetch (0)` per tile         |
+| Under MapLibre the bridge carries the loopback tiles under Voila       | Ran it: plain Voila with the empty prefix shows a local raster, with no request to the tile port on the network |
+| ...but never under solara-server                                       | Ran it: stock `solara run`, first page and after a reload: no `window.__jupyter_loopback__`, `Failed to fetch (0)` per tile, `200` in the server log |
+| pysepal's route carries them under solara-server                       | Ran it: stock `solara run`, first page and after a reload: the raster draws from `/_pysepal/tiles/{port}`; `tests/test_layers/test_tile_route.py` pins the 404s |
 | `vectortileserver` needs no configuration when the browser is local    | Ran it under ipyleaflet — PMTiles render with nothing set; not rerun under MapLibre                                                   |
 | ...but not when it is remote                                           | Reported from a SEPAL sandbox: empty map, rasters fine                                                                                |
 | SEPAL's `/proxy/{port}` route carries a vector tile port too           | Ran it on the sandbox — 200, and 206 with `Content-Range` for a range request                                                         |
@@ -415,6 +432,7 @@ app portable from configuration 2 to configuration 3.
 | Configuration 2 / 3 routes, and the bridge carrying a _remote_ browser | **Not run.** Read from source only — verify before relying on it                                                                      |
 
 Every run had the browser on the same machine as the kernel. Under ipyleaflet the
-tiles could reach `127.0.0.1` directly; under MapLibre the bridge carried them.
+tiles could reach `127.0.0.1` directly; under MapLibre the bridge carried them under
+Voila, and pysepal's route under solara-server.
 That it also carries them when the browser is elsewhere — the SEPAL sandbox case
 — follows from the `widget.js` branch above but has not been exercised end to end.

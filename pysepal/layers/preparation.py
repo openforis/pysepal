@@ -11,13 +11,14 @@ import json
 import logging
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import ee
 
 from pysepal.frontend import styles as ss
 from pysepal.scripts.gee_interface import GEEInterface
 
+from . import tile_route
 from .legend import derive_legend, legend_from_asset_viz
 from .render import RenderLayer
 from .spec import (
@@ -266,7 +267,9 @@ def _raster_render(
     """Build the tile URL on the calling thread, the way ``SepalMap`` attaches rasters."""
     from localtileserver import TileClient
 
-    client = TileClient(served, client_prefix=os.environ.get(CLIENT_PREFIX_ENV_VAR))
+    prefix = os.environ.get(CLIENT_PREFIX_ENV_VAR)
+    routed = None if prefix is not None else tile_route.client_prefix()
+    client = TileClient(served, client_prefix=routed or prefix)
     url = client.get_tile_url(
         indexes=color_kwargs.get("indexes"),
         colormap=color_kwargs.get("colormap"),
@@ -276,8 +279,11 @@ def _raster_render(
         client=True,
     )
     south, north, west, east = client.bounds()
-    # webview frontends cannot reach the server by a root-relative path
-    client.enable_jupyter_loopback()
+    if routed:
+        tile_route.allow(client.server_port, parse_qs(urlparse(url).query)["filename"][0])
+    else:
+        # webview frontends cannot reach the server by a root-relative path
+        client.enable_jupyter_loopback()
     return RenderLayer(
         render_hash=spec.render_hash,
         kind="raster-xyz",
