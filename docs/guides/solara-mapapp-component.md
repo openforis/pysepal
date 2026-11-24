@@ -116,7 +116,8 @@ has these methods, the shell calls them:
   and of the open panel, which overlap the map. In a narrow window all insets
   are 0: the map already sits below the top bar and above the docked panel.
   `SepalMap` fits and centers inside what the insets leave, and moves its
-  controls out from under the drawer and the panel.
+  controls out from under the drawer and the panel. The map itself stays where
+  it is when the drawer or the panel opens or closes.
 - `bind_theme_state(theme_state)`: the map's basemap and its controls follow the
   theme.
 
@@ -146,7 +147,10 @@ controls there (`MapView(legend=False)` turns it off):
   the card shows the top one, and it shows the pick again when the layer comes
   back.
 - The card follows the map's insets, so it stays centred between the drawer
-  and the panel, and in fullscreen it centres on the whole screen.
+  and the panel, and in fullscreen it centres on the whole screen. Its bar sits
+  on the same line as the attribution; an open card on a narrow map can cover
+  the scale and the attribution until it is closed. In a compare, the cards sit
+  above the bottom controls.
 - A long legend scrolls inside the card, which takes at most 40 % of the map's
   height. In an area narrower than 140 px only the card's bar shows, with the
   layer's name, and in one narrower than 60 px nothing.

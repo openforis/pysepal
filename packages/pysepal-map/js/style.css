@@ -112,21 +112,27 @@
   color: #ffffff;
 }
 
-/* One row, so the corner is no taller than its tallest control and a host's
-   overlays clear no more than that; a narrow map wraps it upwards. The order is
-   fixed: MapLibre inserts each control first, and replaces the attribution
-   whenever its text changes. The readout comes last, as its width follows the
-   pointer. */
+/* The scale, and the readout beside it, sit on the attribution, all aligned
+   left. The places are fixed: MapLibre inserts each control first, and
+   replaces the attribution whenever its text changes. */
 .psm-map .maplibregl-ctrl-bottom-left {
-  display: flex;
-  flex-wrap: wrap-reverse;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-items: start;
+  align-items: end;
 }
-.psm-map .maplibregl-ctrl-bottom-left > .maplibregl-ctrl-attrib {
-  order: -1;
+.psm-map .maplibregl-ctrl-bottom-left > .maplibregl-ctrl-scale {
+  grid-area: 1 / 1;
+  margin-bottom: 6px;
 }
 .psm-map .maplibregl-ctrl-bottom-left > .psm-coordinates {
-  order: 1;
+  grid-area: 1 / 2;
+  margin-bottom: 6px;
+}
+/* The compact attribution's own margin is 10px all round. */
+.psm-map .maplibregl-ctrl-bottom-left > .maplibregl-ctrl-attrib {
+  grid-area: 2 / 1 / 3 / 3;
+  margin-top: 0;
 }
 
 /* It keeps its place while empty: the corner's measured height places a host's

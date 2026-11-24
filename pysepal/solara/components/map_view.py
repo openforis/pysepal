@@ -96,7 +96,9 @@ CSS = """
 /* One legend card per area, centred on it: the whole map, or each half of a compare, whose
    divider the widget publishes as --psm-divider-x. Each slot is its area less 10 px a side; the
    card is no wider than the slot, and its body scrolls in a slot capped at 40 % of the map.
-   Every slot clears the taller bottom corner, so the two halves' cards share one baseline. */
+   The whole map's card sits on the controls' baseline, between the bottom corners; open on a
+   narrow map, it may cover them. A compare's halves are narrower: their cards clear the taller
+   bottom corner, and share one baseline. */
 .pysepal-map-legend {
   position: absolute;
   z-index: 3;
@@ -119,6 +121,7 @@ CSS = """
     var(--pysepal-inset-left) + (100% - var(--pysepal-inset-left) - var(--pysepal-inset-right)) / 2
   );
   width: calc(100% - var(--pysepal-inset-left) - var(--pysepal-inset-right) - 20px);
+  bottom: calc(var(--pysepal-inset-bottom) + 10px);
 }
 .pysepal-map-legend[data-area="left"] {
   left: calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2);

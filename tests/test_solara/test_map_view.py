@@ -595,10 +595,12 @@ def test_placement_css_centres_each_area():
         "right": "calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2)",
     }
     for area in ("all", "left", "right"):
-        rule = flat(legend_rule(area))
-        assert f"left: {centre[area]};" in rule
-        assert "bottom:" not in rule
-    # every card clears the taller bottom corner, so the two halves' cards share one baseline
+        assert f"left: {centre[area]};" in flat(legend_rule(area))
+    # the whole map's card sits on the controls' baseline
+    assert "bottom: calc(var(--pysepal-inset-bottom) + 10px);" in flat(legend_rule("all"))
+    # a compare's cards clear the taller bottom corner, so the two halves share one baseline
+    for area in ("left", "right"):
+        assert "bottom:" not in legend_rule(area)
     clear = "max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px))"
     assert f"bottom: calc(var(--pysepal-inset-bottom) + {clear} + 10px);" in flat(base)
     # a long legend scrolls inside the card, which the slot caps
