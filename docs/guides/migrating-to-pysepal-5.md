@@ -90,8 +90,8 @@ other components, build the store yourself and pass it with
   panel), the newer one wins. `add_raster_async` then returns `None`.
 - **Overlay layers come first.** A layer in the overlay zone of the store
   (`LayerSpec(zone="overlay")`, or `add_ee_layer(..., overlay=True)`) is drawn
-  above every data layer, and the panel lists it above them; a row moves
-  within its own zone. The AOI and its preview are drawn that way.
+  above every data layer, and the panel lists it above them, where it keeps
+  its place. The AOI and its preview are drawn that way.
 - **The store drives visibility and opacity.** Set them on the handle a
   wrapper or `find_layer` returns (`handle.visible = True`,
   `handle.opacity = 0.5`), or call `m.layer_store.set_visible(key, True)` and

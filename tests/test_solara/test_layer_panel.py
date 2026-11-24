@@ -194,9 +194,8 @@ def test_the_panel_lists_only_layers_whatever_the_basemaps(raster_spec):
 
 
 def move(box, layer_id: str, to: int) -> None:
-    """Drop a row at index ``to`` of its zone's list, as the sortable list reports it."""
-    lists = [w for w in walk(box) if hasattr(w, "vue_move") and layer_id in w.ids]
-    lists[0].vue_move({"id": layer_id, "to": to})
+    """Drop a row at index ``to``, as the sortable list reports it."""
+    next(w for w in walk(box) if hasattr(w, "vue_move")).vue_move({"id": layer_id, "to": to})
 
 
 def _tiles(layer_id: str, zone: str = "data") -> LayerSpec:
@@ -212,8 +211,8 @@ def test_overlay_layers_are_listed_first():
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
     assert row_ids(box) == ["o", "a"]
     assert shown_rows(box) == ["o", "a"]
-    lists = [list(w.ids) for w in walk(box) if hasattr(w, "vue_move")]
-    assert lists == [["o"], ["a"]], "one list per zone"
+    [sortable] = [w for w in walk(box) if hasattr(w, "vue_move")]
+    assert sortable.locked == ["o"], "it keeps its place"
 
 
 def test_an_overlay_alone_is_listed():
@@ -223,21 +222,21 @@ def test_an_overlay_alone_is_listed():
     assert row_ids(box) == ["o"]
 
 
-def test_a_row_moves_within_its_zone():
+def test_a_data_row_stays_below_the_overlay_rows():
     store = LayerStore()
     for layer_id, zone in [("b", "data"), ("a", "data"), ("p", "overlay"), ("o", "overlay")]:
         store.add(_tiles(layer_id, zone))
     box, _ = solara.render(LayerPanel(store=store), handle_error=False)
     assert row_ids(box) == ["o", "p", "a", "b"] and store.ids == ["o", "p", "a", "b"]
 
-    move(box, "b", 0)
+    move(box, "b", 2)
     assert store.ids == ["o", "p", "b", "a"] and row_ids(box) == ["o", "p", "b", "a"]
 
-    move(box, "b", 1)
-    assert store.ids == ["o", "p", "a", "b"]
+    move(box, "a", 0)
+    assert store.ids == ["o", "p", "a", "b"], "the top of the data rows, at most"
 
-    move(box, "o", 1)
-    assert store.ids == ["p", "o", "a", "b"] and row_ids(box) == ["p", "o", "a", "b"]
+    move(box, "o", 3)
+    assert store.ids == ["o", "p", "a", "b"], "an overlay row keeps its place"
 
 
 def test_row_remove_button_drops_the_row(raster_spec, raster_spec_b):

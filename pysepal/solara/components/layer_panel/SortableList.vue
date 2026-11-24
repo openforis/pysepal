@@ -17,11 +17,15 @@
     >
       <span
         class="pysepal-sortable__handle"
+        :class="{ 'pysepal-sortable__handle--locked': isLocked(index) }"
         role="button"
-        tabindex="0"
-        aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-        :aria-label="handle_label || null"
-        :title="handle_label || null"
+        :tabindex="isLocked(index) ? -1 : 0"
+        :aria-disabled="isLocked(index) ? 'true' : null"
+        :aria-keyshortcuts="
+          isLocked(index) ? null : 'Alt+ArrowUp Alt+ArrowDown'
+        "
+        :aria-label="(!isLocked(index) && handle_label) || null"
+        :title="(!isLocked(index) && handle_label) || null"
         @pointerdown="onPointerDown(index, $event)"
         @keydown="onHandleKey(index, $event)"
       >
@@ -75,6 +79,15 @@ module.exports = {
     clearTimeout(this.settleTimer);
   },
   methods: {
+    isLocked(index) {
+      return (this.locked || []).includes(this.ids[index]);
+    },
+    // The locked rows lead the list and keep their place: no row goes above them.
+    firstFree() {
+      let index = 0;
+      while (index < this.ids.length && this.isLocked(index)) index += 1;
+      return index;
+    },
     rows() {
       return Array.from(this.$el.children).filter((e) =>
         e.classList.contains("pysepal-sortable__row")
@@ -115,12 +128,14 @@ module.exports = {
         return;
       event.preventDefault();
       const to = index + (event.key === "ArrowUp" ? -1 : 1);
-      if (this.drag || to < 0 || to >= this.ids.length) return;
+      if (this.isLocked(index)) return;
+      if (this.drag || to < this.firstFree() || to >= this.ids.length) return;
       this.refocus = this.ids[index];
       this.move({ id: this.ids[index], to });
     },
     onPointerDown(index, event) {
       if (this.drag || event.button !== 0 || !event.isPrimary) return;
+      if (this.isLocked(index)) return;
       event.preventDefault();
       this.reset();
       const handle = event.currentTarget;
@@ -167,7 +182,10 @@ module.exports = {
       const listTop = this.$el.getBoundingClientRect().top;
       const center =
         drag.mids[drag.index] + (event.clientY - listTop) - drag.grabY;
-      const to = this.targetIndex(drag.mids, drag.index, center);
+      const to = Math.max(
+        this.firstFree(),
+        this.targetIndex(drag.mids, drag.index, center)
+      );
       if (to !== drag.to) {
         drag.to = to;
         this.shifts = this.shiftsFor(drag.tops, drag.heights, drag.index, to);
@@ -317,6 +335,13 @@ module.exports = {
   > .pysepal-sortable__row
   > .pysepal-sortable__handle:focus-visible {
   opacity: 1;
+}
+/* After the hover rule, which it ties with. */
+.pysepal-sortable
+  > .pysepal-sortable__row
+  > .pysepal-sortable__handle.pysepal-sortable__handle--locked {
+  cursor: default;
+  opacity: 0.2;
 }
 .pysepal-sortable
   > .pysepal-sortable__row

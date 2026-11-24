@@ -161,6 +161,45 @@ def test_alt_arrows_move_the_row_by_one():
 
 
 @needs_node
+def test_locked_rows_keep_their_place():
+    result = run_vue_script(
+        _VUE,
+        """
+        const emitted = [];
+        const vm = makeVm({ ids: ["o", "a", "b"], locked: ["o"], move: (p) => emitted.push(p) });
+        vm.drag = null;
+        const key = (index, key) =>
+          vm.onHandleKey(index, { key, altKey: true, preventDefault() {} });
+        key(1, "ArrowUp");
+        key(0, "ArrowDown");
+        key(2, "ArrowUp");
+        let pressed = false;
+        vm.onPointerDown(0, { button: 0, isPrimary: true, preventDefault() { pressed = true; } });
+        return {
+          emitted,
+          pressed,
+          drag: vm.drag,
+          firstFree: vm.firstFree(),
+          locked: [0, 1, 2].map((i) => vm.isLocked(i)),
+        };
+        """,
+    )
+    assert result["emitted"] == [{"id": "b", "to": 1}]
+    assert result["pressed"] is False and result["drag"] is None
+    assert result["firstFree"] == 1
+    assert result["locked"] == [True, False, False]
+
+
+def test_a_locked_handle_is_dimmed_and_out_of_the_tab_order():
+    template = _VUE.read_text()
+    handle = template.split('class="pysepal-sortable__handle"')[1].split(">")[0]
+    assert ':tabindex="isLocked(index) ? -1 : 0"' in handle
+    assert "pysepal-sortable__handle--locked" in handle
+    rule = re.search(r"\.pysepal-sortable__handle--locked \{([^}]*)\}", template)
+    assert rule and "opacity: 0.2" in rule.group(1) and "cursor: default" in rule.group(1)
+
+
+@needs_node
 def test_the_held_cursor_covers_the_whole_page():
     grabbing = run_vue_script(_VUE, "return options.sortable.grabbing;")
     source = _VUE.read_text()
