@@ -21,7 +21,7 @@ def use_theme_mode(theme_state: ThemeState) -> str:
         theme_state.observe(handler, "mode")
         return lambda: theme_state.unobserve(handler, "mode")
 
-    solara.use_effect(observe, [id(theme_state)])
+    solara.use_effect(observe, [theme_state])
     return mode
 
 
