@@ -14,8 +14,13 @@ const workerAsText = {
       path: file,
       namespace: "psm-worker",
     }));
+    // The worker runs from a blob URL, where its map comment would point
+    // DevTools at a file the page root does not serve.
     b.onLoad({ filter: /.*/, namespace: "psm-worker" }, async (args) => ({
-      contents: await readFile(args.path, "utf8"),
+      contents: (await readFile(args.path, "utf8")).replace(
+        /\n\/\/# sourceMappingURL=\S+\s*$/,
+        "\n"
+      ),
       loader: "text",
     }));
   },
