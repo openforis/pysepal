@@ -186,6 +186,23 @@ def test_tile_spec_prepares_with_size_and_zoom(run):
     assert render.url == source.url and render.render_hash == spec.render_hash
 
 
+def test_a_raster_past_the_poles_gets_bounds_on_the_globe(tmp_path):
+    """A grid-registered global raster runs half a pixel past each pole."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    path = tmp_path / "global.tif"
+    profile = {"driver": "GTiff", "height": 181, "width": 361, "count": 1, "dtype": "uint8"}
+    transform = from_origin(-180.5, 90.5, 1.0, 1.0)
+    with rasterio.open(path, "w", crs="EPSG:4326", transform=transform, **profile) as ds:
+        ds.write(np.ones((181, 361), dtype="uint8"), 1)
+    render = prepare_sync(LayerSpec.from_raster(path, name="g"), optimize=False)
+    west, south, east, north = render.bounds
+    assert (south, north) == (-90.0, 90.0)
+    assert west == pytest.approx(-180.5) and east == pytest.approx(180.5)
+
+
 def test_raster_prepare_enables_the_loopback_bridge(rgb, monkeypatch):
     from localtileserver import TileClient
 

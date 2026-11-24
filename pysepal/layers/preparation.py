@@ -168,6 +168,16 @@ def _remote_pmtiles(spec: LayerSpec) -> RenderLayer | None:
     )
 
 
+def _on_the_globe(west: float, south: float, east: float, north: float) -> tuple:
+    """``(west, south, east, north)`` with the latitudes clamped to [-90, 90].
+
+    A grid-registered global raster's extent runs half a pixel past each pole, and the
+    map refuses bounds beyond them.
+    """
+    south, north = (max(-90.0, min(90.0, float(v))) for v in (south, north))
+    return float(west), south, float(east), north
+
+
 def _read_vector(source: VectorSource) -> tuple[dict, tuple | None]:
     import geopandas as gpd
 
@@ -184,7 +194,7 @@ def _read_vector(source: VectorSource) -> tuple[dict, tuple | None]:
             source.uri,
             len(text) / 1e6,
         )
-    bounds = None if gdf.empty else tuple(float(v) for v in gdf.total_bounds)
+    bounds = None if gdf.empty else _on_the_globe(*gdf.total_bounds)
     return json.loads(text), bounds
 
 
@@ -299,7 +309,7 @@ def _raster_render(
         render_hash=spec.render_hash,
         kind="raster-xyz",
         url=url,
-        bounds=(west, south, east, north),
+        bounds=_on_the_globe(west, south, east, north),
         max_zoom=20,
         raster=str(uri_to_path(spec.source.uri)),
         keepalive=client,
