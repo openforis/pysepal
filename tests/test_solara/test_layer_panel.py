@@ -12,10 +12,8 @@ import solara
 
 from pysepal.layers import LayerSpec, LayerStore
 from pysepal.mapping import SepalMap
-from pysepal.mapping.basemaps import basemap_label
 from pysepal.solara.components.layer_panel import LayerPanel, download, panel, row
 from pysepal.solara.components.layer_panel.download import download_payload
-from pysepal.solara.theme import ThemeState
 from tests.test_solara._harness import wait_until, walk
 from tests.test_solara._layer_panel_helpers import (
     HEADER_ROLES,
@@ -31,7 +29,6 @@ from tests.test_solara._layer_panel_helpers import (
     header_roles,
     of_kind,
     open_settings,
-    pick_basemap,
     role_widgets,
     row_ids,
     shown_rows,
@@ -125,11 +122,10 @@ def test_shapefile_download_zips_only_sidecars(fake_vector, tmp_path):
 
 
 def test_vuetify_3_sizes(raster_spec):
-    m = SepalMap(["SEPAL_LIGHT", "OpenStreetMap"], gee=False)
+    m = SepalMap(gee=False)
     m.layer_store.add(raster_spec)
     m.layer_store.set_status(raster_spec.id, "error", error="boom")
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
-    assert role_widgets(box, "basemap")[0].density == "compact"
     icons = of_kind(box, "Icon")
     assert len(icons) == 5 and {icon.size for icon in icons} == {row.ICON_SIZE}
     buttons = [w for role in HEADER_ROLES for w in role_widgets(box, role)]
@@ -190,30 +186,11 @@ def test_the_handles_are_labelled(raster_spec):
     assert "Alt+Up" in sortable.handle_label
 
 
-def test_basemap_picker_lists_the_choices_and_switches_the_map():
-    m = SepalMap(["SEPAL_DARK", "OpenStreetMap"], gee=False)
+def test_the_panel_lists_only_layers_whatever_the_basemaps(raster_spec):
+    m = SepalMap(["SEPAL_LIGHT", "OpenStreetMap"], gee=False)
+    m.layer_store.add(raster_spec)
     box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
-    picker = role_widgets(box, "basemap")[0]
-    assert picker.items == [
-        {"title": basemap_label(name), "value": name} for name in ("SEPAL_DARK", "OpenStreetMap")
-    ]
-    assert picker.v_model == "SEPAL_DARK"
-
-    pick_basemap(box, "OpenStreetMap")
-    assert m.basemap == "OpenStreetMap"
-
-
-def test_basemap_picker_follows_the_map():
-    m = SepalMap(gee=False, theme_state=ThemeState(mode="light"))
-    box, _ = solara.render(LayerPanel(store=m.layer_store, map_=m), handle_error=False)
-    # the theme's basemap alone leaves nothing to pick
-    assert role_widgets(box, "basemap") == []
-
-    m.add_basemap("HYBRID")
-
-    picker = role_widgets(box, "basemap")[0]
-    assert [item["value"] for item in picker.items] == ["SEPAL_LIGHT", "HYBRID"]
-    assert picker.v_model == "HYBRID"
+    assert of_kind(box, "Select") == []
 
 
 def move(box, layer_id: str, to: int) -> None:

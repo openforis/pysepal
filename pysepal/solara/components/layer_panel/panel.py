@@ -8,7 +8,6 @@ from pysepal.layers import LayerSpec, LayerStore
 from pysepal.message import msg
 from pysepal.solara.theme import use_theme_dark
 
-from .basemap import BasemapPicker
 from .hooks import use_layer_store
 from .row import LayerRow
 from .sortable import SortableList
@@ -34,8 +33,8 @@ def LayerPanel(
 
     Args:
         store: The layer store to show and edit.
-        map_: The ``SepalMap`` whose basemaps the picker switches; no picker when None or
-            while the map has a single basemap.
+        map_: The ``SepalMap`` the rows zoom and whose compare they follow; without it the
+            rows have no zoom button and no side choice.
         on_export: Called with a Earth Engine layer's spec when its Export button is clicked.
     """
     version = use_layer_store(store)
@@ -81,5 +80,4 @@ def LayerPanel(
     else:
         content = solara.Text(msg("layer_panel.empty"), classes=["pysepal-layer-panel__empty"])
 
-    children = [BasemapPicker(map_)] if map_ is not None else []
-    return solara.Column(classes=["pysepal-layer-panel"], children=[*children, content])
+    return solara.Column(classes=["pysepal-layer-panel"], children=[content])

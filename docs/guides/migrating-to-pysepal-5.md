@@ -104,8 +104,9 @@ other components, build the store yourself and pass it with
   stroke) or palette entry loses its alpha. Use a 6-digit colour, and
   `fill_opacity` for a see-through fill.
 - **No layer or basemap switcher on the map.** Without the old in-map control,
-  users switch layers and basemaps only where the app shows a `LayerPanel`. In
-  a `MapApp`, add it as a right panel section:
+  users switch layers only where the app shows a `LayerPanel`, and the basemap
+  only where the app sets `m.basemap`. In a `MapApp`, add the panel as a right
+  panel section:
 
   ```python
   from pysepal.solara.components.layer_panel import LayerPanel
