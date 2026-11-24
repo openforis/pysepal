@@ -4,7 +4,8 @@ A Python block after a ``<!-- run -->`` line defines a ``Page`` component. Each 
 on its own, with Solara's hook rules raising, and ``Page`` renders on a live loop, as
 under a Solara server, with Earth Engine stubbed and no network. The layers it adds
 must be drawn, nothing may log an error, and every map it builds must close with the
-render context: the guide says the owner closes its maps. A block after
+render context: the guide says the owner closes its maps. The pool-worker snippet's
+button is also clicked, and what it adds must reach the map and the legend. A block after
 ``<!-- fragment -->`` is illustrative and does not run; an unmarked block fails.
 """
 
@@ -15,12 +16,14 @@ import socket
 from dataclasses import dataclass
 from pathlib import Path
 
+import ipyvuetify as v
 import pytest
 import solara
 import solara.settings
 
 import pysepal.scripts.utils as su
 from pysepal.mapping import SepalMap
+from pysepal.solara.components import map_view
 from pysepal.solara.session_manager import SessionManager
 from pysepal.solara.theme import _theme_store
 
@@ -121,18 +124,23 @@ async def _settle(maps: list, timeout: float = 10.0) -> list[str]:
     return _undrawn(maps)
 
 
-@pytest.mark.parametrize("snippet", RUNNABLE, ids=[f"line{s.line}" for s in RUNNABLE])
-def test_the_snippet_renders(snippet, offline, monkeypatch, caplog):
+def _load(snippet: Snippet, monkeypatch) -> dict:
+    """Run a snippet's code, with Solara's hook rules raising; its namespace."""
     # the source, for Solara's hook check, which reads it when @solara.component runs
     filename = f"{GUIDE}:{snippet.line}"
     lines = snippet.code.splitlines(keepends=True)
     monkeypatch.setitem(linecache.cache, filename, (len(snippet.code), None, lines, filename))
     monkeypatch.setattr(solara.settings.main, "check_hooks", "raise")
-    caplog.set_level(logging.ERROR)
-
     namespace = {"__name__": f"solara_map_apps_line{snippet.line}"}
     exec(compile(snippet.code, filename, "exec"), namespace)
     assert "Page" in namespace, "a runnable snippet defines Page"
+    return namespace
+
+
+@pytest.mark.parametrize("snippet", RUNNABLE, ids=[f"line{s.line}" for s in RUNNABLE])
+def test_the_snippet_renders(snippet, offline, monkeypatch, caplog):
+    caplog.set_level(logging.ERROR)
+    namespace = _load(snippet, monkeypatch)
 
     async def render():
         root, rc = solara.render(namespace["Page"](), handle_error=False)
@@ -145,4 +153,32 @@ def test_the_snippet_renders(snippet, offline, monkeypatch, caplog):
     asyncio.run(render())
     assert offline, "the snippet builds a map"
     assert [m for m in offline if m.comm is not None] == [], "the owner closes every map"
+    assert [r.getMessage() for r in caplog.records] == [], "nothing logs an error"
+
+
+def test_the_pool_worker_snippet_draws_what_its_button_adds(offline, monkeypatch, caplog):
+    """The spec built on a pool worker reaches the store on the loop, the map and the legend."""
+    [snippet] = [s for s in RUNNABLE if "asyncio.to_thread(sample_sites" in s.code]
+    caplog.set_level(logging.ERROR)
+    namespace = _load(snippet, monkeypatch)
+
+    async def run():
+        root, rc = solara.render(namespace["Page"](), handle_error=False)
+        try:
+            [m] = offline
+            [button] = rc.find(v.Btn).widgets
+            button.fire_event("click", {})
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 10
+            while "sites" not in m.layer_store.ids and loop.time() < deadline:
+                await asyncio.sleep(0.01)
+            assert await _settle(offline) == [], "the sites are drawn"
+            await m.layer_engine.wait_idle()  # the publish the legend reads
+            assert m.layer_store.ids == ["sites"]
+            listed = [entry["id"] for entry in map_view._legends(m)["all"]]
+            assert listed == ["sites"], "the legend lists them"
+        finally:
+            rc.close()
+
+    asyncio.run(run())
     assert [r.getMessage() for r in caplog.records] == [], "nothing logs an error"
