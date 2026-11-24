@@ -524,6 +524,19 @@ def test_a_layer_removed_and_added_again_is_new():
     rc.close()
 
 
+def test_a_layer_removed_and_added_again_in_one_batch_is_new():
+    m = SepalMap(gee=False)
+    for layer_id in ("a", "result"):
+        m.layer_store.add(legend_tiles(layer_id))
+    box, rc = solara.render(MapView(m), handle_error=False)
+    pick(box, "all", "a")
+    with rc:  # one event handler: no render between the two writes
+        m.layer_store.remove("result")
+        m.layer_store.add(legend_tiles("result"))
+    assert picked(box) == "result"
+    rc.close()
+
+
 def test_what_the_whole_map_lists_is_not_new_to_the_right_half():
     m = SepalMap(gee=False)
     for layer_id in ("a", "b", "c"):

@@ -251,6 +251,19 @@ def MapView(
         status: Show a loading status while layers are pending, top-right.
     """
     store = map_.layer_store
+    # Added since the legend effect last committed: a layer removed and added again between
+    # two renders never leaves ``seen``, yet it is new. Subscribed first, so the render a
+    # write triggers already finds it.
+    added = solara.use_ref(set())
+
+    def follow_adds():
+        def on_event(event: StoreEvent) -> None:
+            if event.kind == "added":
+                added.current.add(event.layer_id)
+
+        return store.subscribe(on_event)
+
+    solara.use_effect(follow_adds, [store])
     use_layer_store(store)
     _use_layer_error_toasts(store)
     _, set_version = solara.use_state(0)
@@ -313,6 +326,8 @@ def MapView(
     # The layers the store holds at mount are not new: the card starts on the top one,
     # whichever the engine draws last.
     seen = solara.use_ref({"left": frozenset(store.ids), "right": frozenset(store.ids)})
+    just_added = frozenset(added.current)
+    unseen = {keeper: seen.current[keeper] - just_added for keeper in ("left", "right")}
     compare = bool(map_.state.get("compare"))
     areas = (("left", "right") if compare else ("all",)) if lists else ()
     fresh, slots = {}, []
@@ -327,16 +342,16 @@ def MapView(
     # halves' layers, so none is new to the left half, nor, while it shows, to the right one.
     in_store = set(store.ids)
     next_seen = {
-        "left": frozenset((seen.current["left"] & in_store) | listed.get("all", set())),
+        "left": frozenset((unseen["left"] & in_store) | listed.get("all", set())),
         "right": frozenset(
-            (seen.current["right"] & in_store) | listed.get("right" if compare else "all", set())
+            (unseen["right"] & in_store) | listed.get("right" if compare else "all", set())
         ),
     }
     for area in areas:
         keeper = _KEEPER[area]
         entries = drawn[area]
         ids = [entry["id"] for entry in entries]
-        new = [layer_id for layer_id in ids if layer_id not in seen.current[keeper]]
+        new = [layer_id for layer_id in ids if layer_id not in unseen[keeper]]
         if new:
             fresh[keeper] = new[0]
         current = selected.get(keeper)
@@ -368,10 +383,13 @@ def MapView(
     # A new layer stays the area's pick once it is no longer new, as if the user picked it.
     def keep_fresh():
         seen.current = next_seen
+        added.current -= just_added
         if fresh:
             set_selected(lambda previous: {**previous, **fresh})
 
-    solara.use_effect(keep_fresh, [tuple(fresh.items()), next_seen["left"], next_seen["right"]])
+    solara.use_effect(
+        keep_fresh, [tuple(fresh.items()), next_seen["left"], next_seen["right"], just_added]
+    )
 
     # The widget sets the corner heights inline on the fullscreen root, so the root binds no
     # style: Vue would then rewrite it.
