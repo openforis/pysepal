@@ -12,8 +12,9 @@ accepted spec, never the store's newer one.
 
 The engine has no loop of its own. At every schedule it follows the first live
 loop of the ``loop`` it was given, the widget's and the one running now; with
-none, it prepares with ``prepare_sync`` and draws at once. Store writes belong
-on that loop: an event that arrives on another thread is handed over to it.
+none, it prepares with ``prepare_sync`` and draws at once. The store calls it on
+the store's loop; an event that still arrives on another thread, from a store that
+does not know that loop, is handed over to it.
 Statuses go through the store's
 :class:`~pysepal.mapping._layer_status.LayerStatusBoard`, shared with every
 other engine drawing the store.
@@ -339,7 +340,8 @@ class MapLibreEngine:
                 for task in self._tasks
                 if not task.done() and (task.get_loop() is here or task.get_loop().is_running())
             ]
-            if not (tasks or self._handle or self._dirty or self._inbox):
+            queued = self._inbox or self.store.pending_events
+            if not (tasks or self._handle or self._dirty or queued):
                 return
             if loop is not here and (loop is None or not loop.is_running()):
                 return  # no loop that runs could make progress
@@ -446,8 +448,8 @@ class MapLibreEngine:
         if warn and not self._warned_thread:
             self._warned_thread = True
             log.warning(
-                "The layer store was written from another thread than its loop's. The map "
-                "follows, but the writer must hand its writes to the loop first."
+                "A layer store event arrived on another thread than the map's loop. The map "
+                "follows; LayerStore.follow_loop(widget) gives the store that loop."
             )
         with self._lock:
             self._inbox.append(event)

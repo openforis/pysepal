@@ -1,5 +1,6 @@
 """Tests for the LayerPanel, its rows and the basemap picker."""
 
+import asyncio
 import io
 import shutil
 import threading
@@ -19,6 +20,7 @@ from tests.test_solara._harness import wait_until, walk
 from tests.test_solara._layer_panel_helpers import (
     HEADER_ROLES,
     all_text,
+    all_widgets,
     button_icon,
     click,
     export_button,
@@ -287,6 +289,31 @@ def test_removal_from_another_thread(raster_spec, raster_spec_b):
     thread.join()
     assert shown_rows(box) == [raster_spec_b.id]
     rc.close()
+
+
+def test_a_layer_added_from_a_pool_worker_gets_its_row_in_the_kernel(
+    kernel_contexts, kernel_comms, raster_spec, raster_spec_b
+):
+    """A pool worker has no kernel context: a row built there would never reach the browser."""
+    context = kernel_contexts()
+    store = LayerStore()
+    store.add(raster_spec)
+    store.set_status(raster_spec.id, "ready")
+
+    async def page():
+        box, rc = solara.render(LayerPanel(store=store), handle_error=False)
+        await asyncio.to_thread(store.add, raster_spec_b)  # pending: its row shows a spinner
+        await wait_until(lambda: raster_spec_b.id in shown_rows(box))
+        assert find_visibility_toggle(box, raster_spec_b.id).comm.kernel is context.kernel
+        assert spinner_count(box) == 1
+        orphans = [
+            w for w in all_widgets(box) if w.comm is None or w.comm.kernel is not context.kernel
+        ]
+        assert orphans == []
+        rc.close()
+
+    with context:
+        asyncio.run(page())
 
 
 def test_remove_is_always_on_the_row(raster_spec):

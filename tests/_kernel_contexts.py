@@ -37,6 +37,23 @@ def kernel_contexts(monkeypatch, tmp_path):
             return get_current_context().widgets if has_current_context() else self.unscoped
 
     monkeypatch.setattr(widget_module, "_instances", PerKernelWidgets(widget_module._instances))
+
+    # Likewise for ipyvue's .vue templates: a template built in a context closes with it.
+    import ipyvue  # noqa: F401
+
+    template_module = sys.modules["ipyvue.Template"]
+
+    class PerKernelTemplates(UserDict):
+        def __init__(self, unscoped):
+            self.unscoped = unscoped
+
+        @property
+        def data(self):
+            return get_current_context().templates if has_current_context() else self.unscoped
+
+    monkeypatch.setattr(
+        template_module, "template_registry", PerKernelTemplates(template_module.template_registry)
+    )
     contexts = []
     event_loop = asyncio.new_event_loop()
 
@@ -51,3 +68,29 @@ def kernel_contexts(monkeypatch, tmp_path):
     for context in reversed(contexts):
         context.close()
     event_loop.close()
+
+
+@pytest.fixture
+def kernel_comms(monkeypatch):
+    """Give each widget's comm the kernel of the context it was built in, as a Solara server does.
+
+    Off any context, as on a pool worker, the comm gets no kernel: the widget never reaches
+    the browser.
+    """
+    import ipykernel.kernelbase
+    from solara.server.kernel_context import get_current_context, has_current_context
+
+    kernel_class = ipykernel.kernelbase.Kernel
+    original_instance = kernel_class.instance.__func__
+    original_initialized = kernel_class.initialized.__func__
+
+    def instance(cls, *args, **kwargs):
+        if has_current_context():
+            return get_current_context().kernel
+        return original_instance(cls, *args, **kwargs)
+
+    def initialized(cls):
+        return has_current_context() or original_initialized(cls)
+
+    monkeypatch.setattr(kernel_class, "instance", classmethod(instance))
+    monkeypatch.setattr(kernel_class, "initialized", classmethod(initialized))

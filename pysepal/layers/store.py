@@ -1,9 +1,13 @@
 """Observable store holding the layers of a map, the single source of truth."""
 
+import asyncio
 import logging
+import threading
+import weakref
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Literal, get_args
+from typing import Any, Literal, Optional, get_args
 
 from pysepal_map import Side
 
@@ -17,6 +21,17 @@ EventKind = Literal[
     "added", "removed", "updated", "moved", "visibility", "opacity", "side", "status"
 ]
 Status = Literal["pending", "ready", "error"]
+
+
+def _running_loop() -> Optional[asyncio.AbstractEventLoop]:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+
+def _open(loop: Optional[asyncio.AbstractEventLoop]) -> Optional[asyncio.AbstractEventLoop]:
+    return loop if loop is not None and not loop.is_closed() else None
 
 
 def _check_side(side: object) -> None:
@@ -51,6 +66,11 @@ class LayerStore:
     Index 0 is the top layer. Every write that touches an id bumps its generation, so an
     async writer can ``reserve`` an id before awaiting and pass the token back as
     ``expect_generation``; a newer write makes the stale one a no-op.
+
+    The subscribers run on the store's :attr:`loop`. A write made on another thread, such
+    as an ``asyncio.to_thread`` worker, changes the store at once, and its events reach the
+    subscribers later on the loop, in order; they read the store as it is then. With no
+    loop known, or on the loop, the subscribers run at once.
     """
 
     def __init__(self) -> None:
@@ -61,9 +81,17 @@ class LayerStore:
         self._generations: dict[str, int] = {}
         self._reserved: dict[str, str] = {}
         self._subscribers: list[Callable[[StoreEvent], None]] = []
+        self._owners: list[weakref.ref] = []
+        self._captured: Optional[asyncio.AbstractEventLoop] = None
+        # events waiting for the subscribers, and the loop a drain is scheduled on
+        self._queue: deque[StoreEvent] = deque()
+        self._drain_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._lock = threading.Lock()
+        self._delivering = 0
 
     def subscribe(self, callback: Callable[[StoreEvent], None]) -> Callable[[], None]:
         """Register ``callback`` and return a function that unregisters it."""
+        self._resolve_loop()
         self._subscribers.append(callback)
 
         def unsubscribe() -> None:
@@ -72,13 +100,90 @@ class LayerStore:
 
         return unsubscribe
 
+    def follow_loop(self, owner: object) -> None:
+        """Run the subscribers on ``owner.loop`` while it is open, ahead of the captured loop.
+
+        The owner is held weakly and its ``loop`` read at every event, so an owner that
+        adopts a new loop, after a reconnect for instance, takes the store along.
+
+        Args:
+            owner: an object with a ``loop`` attribute, such as a map.
+        """
+        self._owners = [ref for ref in self._owners if ref() is not None]
+        self._owners.append(weakref.ref(owner))
+
+    @property
+    def loop(self) -> Optional[asyncio.AbstractEventLoop]:
+        """The loop the subscribers run on, or None.
+
+        It is the first open loop of the owners given to :meth:`follow_loop`, else the one
+        captured: the loop running at the first subscription or write made on one, taken
+        again the same way once it closes.
+        """
+        for ref in self._owners:
+            loop = _open(getattr(ref(), "loop", None))
+            if loop is not None:
+                return loop
+        return _open(self._captured)
+
+    @property
+    def pending_events(self) -> int:
+        """The number of events handed to an open loop that the subscribers have not had yet."""
+        with self._lock:
+            return len(self._queue) if _open(self._drain_loop) else 0
+
+    def _resolve_loop(self) -> Optional[asyncio.AbstractEventLoop]:
+        loop = self.loop
+        if loop is None:
+            loop = self._captured = _running_loop()
+        return loop
+
     def _emit(self, kind: EventKind, layer_id: str) -> None:
         event = StoreEvent(kind, layer_id)
-        for callback in list(self._subscribers):
-            try:
-                callback(event)
-            except Exception:
-                log.exception("Layer store subscriber failed on %s", event)
+        loop = self._resolve_loop()
+        if loop is not None and loop.is_running() and _running_loop() is not loop:
+            # Off a kernel's thread, as on a pool worker, the widgets a subscriber builds
+            # have no kernel and never reach the browser.
+            self._hand_over(loop, event)
+        elif self._delivering:
+            self._deliver(event)  # a subscriber wrote: everyone hears it first, as before
+        else:
+            with self._lock:
+                self._queue.append(event)
+            self._drain()
+
+    def _hand_over(self, loop: asyncio.AbstractEventLoop, event: StoreEvent) -> None:
+        with self._lock:
+            self._queue.append(event)
+            if self._drain_loop is loop:
+                return
+            self._drain_loop = loop
+        try:
+            loop.call_soon_threadsafe(self._drain)
+        except RuntimeError:  # closed meanwhile: the next write delivers the queue
+            with self._lock:
+                self._drain_loop = None
+
+    def _drain(self) -> None:
+        with self._lock:
+            self._drain_loop = None
+        while True:
+            with self._lock:
+                if not self._queue:
+                    return
+                event = self._queue.popleft()
+            self._deliver(event)
+
+    def _deliver(self, event: StoreEvent) -> None:
+        self._delivering += 1
+        try:
+            for callback in list(self._subscribers):
+                try:
+                    callback(event)
+                except Exception:
+                    log.exception("Layer store subscriber failed on %s", event)
+        finally:
+            self._delivering -= 1
 
     def _bump(self, layer_id: str) -> None:
         # A newer write supersedes any pending reservation for the id.

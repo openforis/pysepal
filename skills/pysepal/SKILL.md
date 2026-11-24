@@ -593,7 +593,8 @@ Use `use_task` + `asyncio.to_thread` instead. Read
 in Solara Components" for the pattern.
 
 An `asyncio.to_thread` worker has no kernel context. Do not call `msg()` or
-`notify()` in it. Return the result and publish after the `await`. See
+`notify()` in it, nor write a widget, a layer store or a reactive. Return the
+result and publish after the `await`. See
 "Translations" § "Workers and the locale".
 
 ## Vuetify 3
@@ -941,10 +942,15 @@ start/cancel/start cycle hits a second loop → RuntimeError.
 
 - Set `prefer_threaded=False` on the `use_task` — this runs the coroutine on
   Solara's stable kernel event loop instead of a throwaway per-task loop
-- Move `add_ee_layer` into the async task via `asyncio.to_thread`:
+- Move the layer into that task with the async method, which renders in Earth
+  Engine without blocking the loop:
   ```python
-  await asyncio.to_thread(map_.add_ee_layer, fc, vis, "aoi", autocenter=True)
+  await map_.add_ee_layer_async(fc, vis, "aoi", autocenter=True)
   ```
+- Never pass a map, a layer store or a reactive to `asyncio.to_thread` or an
+  executor. A pool worker has no kernel context: widgets built there never reach
+  the browser. Compute there and return the result; write the map after the
+  `await`.
 
 ### Excessive "Closing GEEInterface..." log messages
 
@@ -1052,7 +1058,8 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `prefer_threaded=True` (or missing `prefer_threaded`) on GEE `use_task` hooks
 - [ ] `process_admin()` / `process_asset()` called without `gee_interface=` (creates throwaway instances)
 - [ ] `asyncio.to_thread(gee_interface.` wrapping GEE calls
-- [ ] `add_ee_layer` called from sync `use_effect` handlers
+- [ ] `add_ee_layer` called from sync `use_effect` handlers, or wrapped in `asyncio.to_thread` (use `await map_.add_ee_layer_async(...)` in `use_task(prefer_threaded=False)`)
+- [ ] A widget, layer store or reactive written from an `asyncio.to_thread` or executor worker (return the result and write after the `await`)
 - [ ] `v.Widget(...)` inside `with rv.Something():` contexts
 - [ ] Missing `loading` parameter on `AssetSelectComponent`
 - [ ] Separate cancel button below action button (use `TaskButtonComponent` instead)

@@ -22,6 +22,11 @@ def _tree(widget: Any) -> Iterator[Any]:
             yield from _tree(child)
 
 
+def all_widgets(box: Any) -> List[Any]:
+    """Every widget in the tree, tooltip activators included."""
+    return list(_tree(box))
+
+
 def row_ids(box: Any) -> List[str]:
     """Layer ids of the rendered rows, in display order."""
     sortable = next(w for w in walk(box) if hasattr(w, "vue_move"))

@@ -746,10 +746,31 @@ async def test_write_from_another_thread_is_handed_to_the_loop(fake, caplog):
         thread.start()
         thread.join()
         await engine.wait_idle()
-    warnings = [r for r in caplog.records if "thread" in r.getMessage()]
-    assert len(warnings) == 1
+    # the store hands the events to its loop, so the engine has nothing to warn about
+    assert not [r for r in caplog.records if "thread" in r.getMessage()]
     assert ids_of(widget) == ["b", "a"]
     assert {call_loop for _, call_loop in fake.calls} == {loop}
+
+
+def test_an_event_from_a_store_without_the_loop_is_handed_over(fake, caplog):
+    """A store that never saw the engine's loop calls it on the writer's thread."""
+    loop = asyncio.new_event_loop()
+    runner = threading.Thread(target=loop.run_forever)
+    runner.start()
+    try:
+        widget, store = MapWidget(), LayerStore()
+        engine = MapLibreEngine(widget, store, loop=loop)
+        assert store.loop is None
+        with caplog.at_level(logging.WARNING, logger="sepalui.mapping"):
+            store.add(tile_spec("a"))
+            asyncio.run_coroutine_threadsafe(engine.wait_idle(), loop).result(5)
+        assert len([r for r in caplog.records if "thread" in r.getMessage()]) == 1
+        assert ids_of(widget) == ["a"]
+        assert {call_loop for _, call_loop in fake.calls} == {loop}
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        runner.join()
+        loop.close()
 
 
 # ---------------------------------------------------------------------------

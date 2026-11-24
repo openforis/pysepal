@@ -6,7 +6,7 @@ from pysepal.solara import dev_auth as _dev_auth
 from pysepal.solara.components.inputs.gee_assets import _listings
 from pysepal.solara.session_manager import SessionManager
 from pysepal.solara.theme import _theme_store
-from tests._kernel_contexts import kernel_contexts  # noqa: F401
+from tests._kernel_contexts import kernel_comms, kernel_contexts  # noqa: F401
 
 
 @pytest.fixture

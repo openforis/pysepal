@@ -1,5 +1,6 @@
 """MapView places the map, the legend of what it draws, a loading status and app overlays."""
 
+import asyncio
 import re
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from pysepal.solara.components import map_app, map_view
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.map_view import MapView
 from pysepal.solara.theme import ThemeState
+from tests.test_solara._harness import wait_until
 from tests.test_solara._layer_panel_helpers import _attr, _tree, all_text, role_widgets
 
 
@@ -319,6 +321,30 @@ def test_a_new_layer_is_shown_at_once():
     m.layer_store.set_visible("b", True)
     assert picked(box) == "a"
     rc.close()
+
+
+def test_a_legend_added_from_a_pool_worker_is_built_in_the_kernel(kernel_contexts, kernel_comms):
+    """A pool worker has no kernel context: a legend built there would never reach the browser."""
+    context = kernel_contexts()
+
+    def orphans(box) -> list:
+        return [w for w in _tree(box) if w.comm is None or w.comm.kernel is not context.kernel]
+
+    async def page():
+        m = SepalMap(gee=False)
+        m._handle_custom_msg({"type": "view_open", "view_id": "a", "side": "main"}, [])
+        box, rc = solara.render(MapView(m), handle_error=False)
+        await asyncio.to_thread(m.layer_store.add, legend_tiles("a"))
+        await m.layer_engine.wait_idle()
+        assert "Loading layers (1)" in corner_text(box, "top-right")  # until the view draws it
+        await wait_until(lambda: listed(box) == ["a"])
+        assert card(box).comm.kernel is context.kernel
+        assert orphans(box) == []
+        rc.close()
+        m.close()
+
+    with context:
+        asyncio.run(page())
 
 
 def test_fallback_when_the_selected_layer_hides():

@@ -220,6 +220,7 @@ class SepalMap(MapWidget):
         )
         try:
             self.layer_store = layer_store if layer_store is not None else LayerStore()
+            self.layer_store.follow_loop(self)
             self.gee = gee
             if gee:
                 if gee_interface:
