@@ -215,15 +215,17 @@ Voila via their `ui.ipynb`. The vector demo needs the `demos` extra plus
 The page origin _is_ the Solara server, so tiles travel over ordinary
 same-origin HTTP. **For rasters, pysepal does this for you**: with
 `LOCALTILESERVER_CLIENT_PREFIX` unset, the first local raster puts a route at
-`{root_path}/_pysepal/tiles/{port}/...` in front of Solara's own routes and points
-the tile URLs at it. A stock `solara run` needs nothing else, and pysepal leaves
-the bridge off.
+`{root_path}/_pysepal/tiles/{token}/{port}/...` in front of Solara's own routes
+and points the tile URLs at it. A stock `solara run` needs nothing else. Under
+solara-server pysepal never turns the bridge on, prefix or not.
 
-The route forwards only tile paths (`api/tiles/{z}/{x}/{y}.png`), only to the
-tile servers pysepal started, and only for the files pysepal prepared:
-`localtileserver` opens whatever path or URL a request names in `filename`, so
-anything less would hand the page a file reader. It does **not** authorize per
-session, which configuration 3 needs.
+The route forwards only tile paths (`api/tiles/{z}/{x}/{y}.png`), and only for
+the tile server and file a token was granted for: `localtileserver` opens
+whatever path or URL a request names in `filename`, so anything less would hand
+the page a file reader. Each raster gets its own random token, which only the
+page that drew it receives, and the grant ends when the layer's tile client is
+released. A page that knows another user's file path still cannot read it, so
+the route is also safe where users share one process (configuration 3).
 
 A set prefix wins: SEPAL's, or your own route's below, and pysepal's route is
 not used.
@@ -341,9 +343,11 @@ page asks for port `PA` — a small range, trivially scanned — and reads A's t
 data.
 
 Turn the comm bridge off here (`*_DISABLE_JUPYTER_LOOPBACK=1`) rather than
-leaving it as a fallback. For the raster route, take the upstream port from
-server-side state — the ports this app started, keyed by session — rather than
-from the URL, or you have rebuilt the same primitive over HTTP.
+leaving it as a fallback. pysepal's own raster route (configuration 2) is safe
+here: it forwards only what a per-raster token grants. If you mount your own,
+take the upstream port and file from server-side state — what this app started,
+keyed by session — rather than from the URL, or you have rebuilt the same
+primitive over HTTP.
 
 ### Serve the archive, not the tile server
 

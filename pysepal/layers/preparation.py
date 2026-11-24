@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 import ee
 
@@ -290,9 +290,10 @@ def _raster_render(
     )
     south, north, west, east = client.bounds()
     if routed:
-        tile_route.allow(client.server_port, parse_qs(urlparse(url).query)["filename"][0])
-    else:
-        # webview frontends cannot reach the server by a root-relative path
+        tile_route.allow(url, client)
+    elif not tile_route.serving():
+        # webview frontends cannot reach the server by a root-relative path; under
+        # solara-server the bridge reaches no page, and the prefix's route serves it.
         client.enable_jupyter_loopback()
     return RenderLayer(
         render_hash=spec.render_hash,
