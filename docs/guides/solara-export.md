@@ -277,7 +277,7 @@ band catalog or warn users in the source description.
 When an app renders a styled `ee.Image` on the map and then exports the
 underlying classification (e.g. with `SepalMap.add_ee_layer(image, vis_params)`),
 the exported Earth Engine asset will not carry that styling — `vis_params`
-lives on the `EELayer`, not on the image. SEPAL's convention is to encode
+lives on the map layer, not on the image. SEPAL's convention is to encode
 styling as image properties named `visualization_<index>_<key>`; SepalMap
 reads them on display, and Earth Engine asset exports preserve them, so any
 downstream consumer (another SEPAL recipe, the Code Editor) sees the styling

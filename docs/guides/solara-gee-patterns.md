@@ -393,13 +393,13 @@ for cancellation and unmount behavior.
 AoiView's `methods` parameter controls which selection methods are available.
 Some need something the deployment may not have.
 
-| Method       | Requires           | Works in GEE/container apps | Works in local/Voila   |
-| ------------ | ------------------ | --------------------------- | ---------------------- |
-| `ADMIN0/1/2` | GEE (GAUL) or GADM | Yes                         | Yes                    |
-| `DRAW`       | Map + DrawControl  | Yes                         | Yes                    |
-| `ASSET`      | GEE asset access   | Yes                         | Yes (with credentials) |
-| `SHAPE`      | The user's files   | Yes, with a session         | Yes                    |
-| `POINTS`     | The user's files   | Yes, with a session         | Yes                    |
+| Method       | Requires             | Works in GEE/container apps | Works in local/Voila   |
+| ------------ | -------------------- | --------------------------- | ---------------------- |
+| `ADMIN0/1/2` | GEE (GAUL) or GADM   | Yes                         | Yes                    |
+| `DRAW`       | Map + `m.draw.begin` | Yes                         | Yes                    |
+| `ASSET`      | GEE asset access     | Yes                         | Yes (with credentials) |
+| `SHAPE`      | The user's files     | Yes, with a session         | Yes                    |
+| `POINTS`     | The user's files     | Yes, with a session         | Yes                    |
 
 ### GEE / Container apps (multi-user, Docker)
 

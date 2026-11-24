@@ -13,10 +13,15 @@ widget layer, `pysepal.sepalwidgets`, which worked only on ipyvuetify 1
   - `pysepal.aoi.AoiTile`, `pysepal.aoi.AoiView` and `select_methods`;
   - `pysepal.planetapi.PlanetView`, `InfoView` and `InfoCard`;
   - `pysepal.mapping.AoiControl` (`from pysepal.mapping import *` no longer
-    exports it);
+    exports it) and `AoiModel.ipygeojson` / `AoiModel.get_ipygeojson`, which
+    built an ipyleaflet layer (use `LayerSpec.from_geojson` on
+    `model.gdf.__geo_interface__`, or `m.layer_store`);
   - `pysepal.mapping.LayersControl` and the `pysepal.mapping.layers_control`
     module (see [LayersControl → LayerPanel](#layerscontrol--layerpanel));
   - `pysepal.scripts.thread_controller`.
+- **ipyleaflet.** It is no longer a dependency, and pysepal no longer installs
+  the jupyter-leaflet labextension. An app that imports `ipyleaflet` itself
+  must depend on it. `xyzservices` is now a direct dependency.
 - The `theme_toggle` argument of `SepalMap`: the `ThemeToggle` it took no
   longer exists. Pass `theme_state=` instead; the Solara `MapApp` binds it for
   you.
@@ -29,7 +34,10 @@ An old import now fails with a message that points here:
 
 - `import pysepal.sepalwidgets`, `import pysepal.mapping.layers_control` and
   the modules of the removed map controls (see
-  [Map controls](#map-controls)) raise an `ImportError`;
+  [Map controls](#map-controls)): `aoi_control`, `draw_control`,
+  `fullscreen_control`, `geojson_utils`, `inspector_control`, `layer`,
+  `layer_state_control`, `legend_control`, `marker_cluster`, `menu_control` and
+  `zoom_control`, raise an `ImportError`;
 - `pysepal.aoi.AoiView` and the other removed names raise an `AttributeError`
   that names the replacement.
 
@@ -136,6 +144,9 @@ bar: it is the map's declared state.
 | `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`                                                 | `SepalMap(inspector=True)`, shown by `MapView`                                                                                                                 |
 | `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                                                                |
 | mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                                                   |
+| `EELayer` (`pysepal.mapping.layer`)                                                                                               | `m.add_ee_layer(...)`, or a `LayerSpec` and the `LayerHandle` it returns                                                                                       |
+| `get_ipygeojson` (`pysepal.mapping.geojson_utils`), `AoiModel.ipygeojson`, `AoiModel.get_ipygeojson`                              | `LayerSpec.from_geojson(...)` or `LayerSpec.from_vector(...)` with a `VectorStyle`                                                                             |
+| vectortileserver's `create_leaflet_layer`, an ipyleaflet `PMTilesLayer`                                                           | `LayerSpec.from_vector(url, layer=..., format="PMTiles")` with its URL; `format=` overrides the suffix guess, and a root-relative URL stays a browser URL      |
 | `Marker`, `AwesomeIcon`, `MarkerCluster`, `LayerGroup` of clusters                                                                | `LayerSpec.from_points(...)` with `VectorStyle(marker="pin", cluster=True)`; one layer holds every category with `VectorStyle(color_by=..., class_colors=...)` |
 | `Popup` with HTML, `on_hover` labels                                                                                              | `VectorStyle(popup=[...])`, `VectorStyle(tooltip={...})`                                                                                                       |
 | `Popup` holding widgets                                                                                                           | `m.on_click(cb)` and a Solara component in `MapView(overlays=...)`                                                                                             |
@@ -204,30 +215,30 @@ insets) is declared in its synced state. The camera belongs to the browser:
 holds where the camera is once a view reported. A removed member raises an
 `AttributeError` that names its replacement.
 
-| Before                                                                                          | Now                                                                                                                                                                |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ipyleaflet keyword arguments (`min_zoom`, `scroll_wheel_zoom`, `layout`, ...), `map_id`         | `SepalMap(basemaps, *, gee, theme_state, gee_session, gee_interface, fullscreen, fullscreen_control, layer_store, center, zoom, height, loop)`                     |
-| positional options, `SepalMap([], False)`                                                       | everything after `basemaps` is keyword-only; `SepalMap([], False)` raises `TypeError`                                                                              |
-| `center=[lat, lng]`                                                                             | `center=(lng, lat)`                                                                                                                                                |
-| `m.center`, `m.zoom`                                                                            | `m.view` to read the camera, `m.set_center(lng, lat, zoom)` to move it                                                                                             |
-| `m.set_center(lon, lat, zoom=-1)`                                                               | `m.set_center(lng, lat, zoom=None)`: the keyword is `lng`, and no zoom keeps the current one                                                                       |
-| Leaflet zoom levels (a 256 px world at zoom 0)                                                  | MapLibre counts a 512 px world at zoom 0: the same number shows the world twice as large. `get_scale()` is 78271.517 m per CSS pixel at zoom 0 on the equator      |
-| `zoom_bounds` on a point zooms to the map maximum                                               | it stops at zoom 18 (`zoom_bounds(bounds, max_zoom=...)`).                                                                                                         |
-| `zoom_out=` on `zoom_bounds`, `zoom_ee_object`, `zoom_raster`, `zoom_layer`, `LayerHandle.zoom` | gone: pass `padding=` in px, by keyword (a positional call raises `TypeError`); a padding the map cannot hold is reduced                                           |
-| `m.centerObject(item)`, once an alias of `zoom_ee_object`                                       | `centerObject(item, zoom)` takes the GEE console's zoom and centers on the object; without a zoom it fits the object                                               |
-| `m.layers`, `m.add_layer(layer)`, ipyleaflet layers                                             | `m.layer_store.add(LayerSpec.from_tiles(...))`, or another `LayerSpec` factory                                                                                     |
-| `m.add_control`, `m.remove_control`, `m.controls`, `WidgetControl`                              | Solara components in `MapView(overlays=...)`                                                                                                                       |
-| `m.viewport_inset_left`, `_right`, `_bottom`                                                    | `m.set_insets(left=..., right=..., top=..., bottom=...)`; `MapApp` sets them                                                                                       |
-| `m.canvas_width_px`, `m.canvas_height_px`                                                       | nothing: the browser fits the camera to the map element itself                                                                                                     |
-| the `base` argument of `find_layer`, `remove_layer` and `remove_all`                            | gone: the basemaps are not layers. `m.basemaps` holds the choices and `m.basemap` the one shown; `remove_layer(key, none_ok=True)` takes `none_ok` by keyword only |
-| `add_basemap(name)` adds a base layer                                                           | it adds `name` to `m.basemaps` and shows it                                                                                                                        |
-| `find_layer(key)` raises `ValueError`, or takes an index                                        | it returns a `LayerHandle`, or `None`. A string is an id, then a name, overlay layers first; there is no index                                                     |
-| the wrappers return an ipyleaflet layer                                                         | they return a live `LayerHandle` (`visible`, `opacity`, `restyle()`, `zoom()`, `remove()`); an `*_async` one returns `None` when superseded or after `m.close()`   |
-| `zoom_raster(layer)` with an ipyleaflet layer                                                   | `zoom_raster` takes a handle, a layer id or a raster path                                                                                                          |
-| `basemap_tiles`, `xyz_to_leaflet` in `pysepal.mapping.basemaps`                                 | `BASEMAP_NAMES`, `get_basemap(name)` and `basemap_label(name)`; `get_basemap_list()` leaves out the providers MapLibre cannot draw                                 |
-| `create_wms_preview_layer` returns a `WMSLayer`                                                 | it returns a `LayerSpec` in the overlay zone, for `m.layer_store.add`                                                                                              |
-| `remove_wms_preview_layer(map_, name=...)` finds the preview by its name                        | `remove_wms_preview_layer(map_, layer_id=...)` removes it from the store by id (default `"aoi_preview"`)                                                           |
-| `SepalMap(fullscreen=True)` adds a CSS class                                                    | it sets `height="100%"`, so the map fills its container                                                                                                            |
+| Before                                                                                          | Now                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ipyleaflet keyword arguments (`min_zoom`, `scroll_wheel_zoom`, `layout`, ...), `map_id`         | `SepalMap(basemaps, *, gee, theme_state, gee_session, gee_interface, fullscreen, fullscreen_control, layer_store, center, zoom, height, loop)`                                |
+| positional options, `SepalMap([], False)`                                                       | everything after `basemaps` is keyword-only; `SepalMap([], False)` raises `TypeError`                                                                                         |
+| `center=[lat, lng]`                                                                             | `center=(lng, lat)`                                                                                                                                                           |
+| `m.center`, `m.zoom`                                                                            | `m.view` to read the camera, `m.set_center(lng, lat, zoom)` to move it                                                                                                        |
+| `m.set_center(lon, lat, zoom=-1)`                                                               | `m.set_center(lng, lat, zoom=None)`: the keyword is `lng`, and no zoom keeps the current one                                                                                  |
+| Leaflet zoom levels (a 256 px world at zoom 0)                                                  | MapLibre counts a 512 px world at zoom 0: the same number shows the world twice as large. `get_scale()` is 78271.517 m per CSS pixel at zoom 0 on the equator                 |
+| `zoom_bounds` on a point zooms to the map maximum                                               | it stops at zoom 18 (`zoom_bounds(bounds, max_zoom=...)`).                                                                                                                    |
+| `zoom_out=` on `zoom_bounds`, `zoom_ee_object`, `zoom_raster`, `zoom_layer`, `LayerHandle.zoom` | gone: pass `padding=` in px, by keyword (a positional call raises `TypeError`); a padding the map cannot hold is reduced                                                      |
+| `m.centerObject(item)`, once an alias of `zoom_ee_object`                                       | `centerObject(item, zoom)` takes the GEE console's zoom and centers on the object; without a zoom it fits the object                                                          |
+| `m.layers`, `m.add_layer(layer)`, ipyleaflet layers                                             | `m.layer_store.add(LayerSpec.from_tiles(...))`, or another `LayerSpec` factory                                                                                                |
+| `m.add_control`, `m.remove_control`, `m.controls`, `WidgetControl`                              | Solara components in `MapView(overlays=...)`                                                                                                                                  |
+| `m.viewport_inset_left`, `_right`, `_bottom`                                                    | `m.set_insets(left=..., right=..., top=..., bottom=...)`; `MapApp` sets them                                                                                                  |
+| `m.canvas_width_px`, `m.canvas_height_px`                                                       | nothing: the browser fits the camera to the map element itself                                                                                                                |
+| the `base` argument of `find_layer`, `remove_layer` and `remove_all`                            | gone: the basemaps are not layers. `m.basemaps` holds the choices and `m.basemap` the one shown; `remove_layer(key, none_ok=True)` takes `none_ok` by keyword only            |
+| `add_basemap(name)` adds a base layer                                                           | it adds `name` to `m.basemaps` and shows it                                                                                                                                   |
+| `find_layer(key)` raises `ValueError`, or takes an index                                        | it returns a `LayerHandle`, or `None`. A string is an id, then a name, overlay layers first; there is no index                                                                |
+| the wrappers return an ipyleaflet layer                                                         | they return a live `LayerHandle` (`visible`, `opacity`, `restyle()`, `zoom()`, `remove()`); an `*_async` one returns `None` when superseded or after `m.close()`              |
+| `zoom_raster(layer)` with an ipyleaflet layer                                                   | `zoom_raster` takes a handle, a layer id or a raster path                                                                                                                     |
+| `basemap_tiles`, `xyz_to_leaflet` in `pysepal.mapping.basemaps`                                 | `BASEMAP_NAMES`, `get_basemap(name)` and `basemap_label(name)`; `get_basemap_list()` leaves out the providers MapLibre cannot draw                                            |
+| `create_wms_preview_layer` returns a `WMSLayer`                                                 | it returns a `LayerSpec` in the overlay zone, for `m.layer_store.add`                                                                                                         |
+| `remove_wms_preview_layer(map_, name=...)` finds the preview by its name                        | `remove_wms_preview_layer(map_, layer_id=...)` removes it from the store by id (default `"aoi_preview"`)                                                                      |
+| `SepalMap(fullscreen=True)` adds a CSS class                                                    | it sets `height="100%"`, so the map fills its container (the `.full-screen-map`, `.aoi_map`, `.results_map` and `.pysepal-map-theme-*` classes are gone with the Leaflet CSS) |
 
 **Known limitation: local raster tiles.** MapLibre fetches tiles where ipyleaflet
 loaded them as images, so a local raster's tile URL on another origin than the
