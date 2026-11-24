@@ -1,5 +1,7 @@
 """The map with the Solara overlays that sit over it: legend, loading status, app overlays."""
 
+import re
+import weakref
 from collections.abc import Mapping, Sequence
 from typing import Literal, Optional
 
@@ -7,12 +9,13 @@ import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.frontend.styles import THEMES
-from pysepal.layers import derive_legend
+from pysepal.layers import LayerStore, StoreEvent, derive_legend
 from pysepal.mapping.sepal_map import _draw_labels
 from pysepal.message import msg
 from pysepal.solara.components.layer_panel.hooks import use_layer_store
 from pysepal.solara.components.legend import LegendComponent
 from pysepal.solara.components.map_view_tools import inspector_panel
+from pysepal.solara.notifications import use_notifications
 
 Corner = Literal["top-left", "top-right", "bottom-left", "bottom-right"]
 CORNERS: tuple[str, ...] = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -150,6 +153,45 @@ CSS = """
 """
 
 
+# A tile error ends with the tile's URL, which only clutters a toast.
+_TRAILING_URL = re.compile(r":\s*(?:https?://|/)\S*$")
+
+# Per store, so two views of one store toast an error once: the render hash each id was
+# toasted for.
+_toasted: "weakref.WeakKeyDictionary[LayerStore, dict[str, str]]" = weakref.WeakKeyDictionary()
+
+
+def _use_layer_error_toasts(store: LayerStore) -> None:
+    """Toast a layer's error once per instance of the layer.
+
+    A failing layer reports again with each tile, so a repeat waits for a new style or for
+    the layer to be added again.
+    """
+    notifications = use_notifications(required=False)
+
+    def follow():
+        toasted = _toasted.setdefault(store, {})
+
+        def on_event(event: StoreEvent) -> None:
+            layer_id = event.layer_id
+            if layer_id not in store:
+                toasted.pop(layer_id, None)
+                return
+            view = store.view(layer_id)
+            if view.status != "error":
+                return
+            spec = store.get(layer_id)
+            if toasted.get(layer_id) == spec.render_hash:
+                return
+            toasted[layer_id] = spec.render_hash
+            error = _TRAILING_URL.sub("", view.error)
+            notifications.error(msg("map_view.layer_error", name=spec.name, error=error))
+
+        return store.subscribe(on_event)
+
+    solara.use_effect(follow, [store, notifications])
+
+
 def _legends(map_) -> dict[str, list[dict]]:
     """Each area's legends: ``{id, name, legend}`` per visible data layer it draws, top first.
 
@@ -197,6 +239,9 @@ def MapView(
     the target of the widget's fullscreen control, so the overlays stay over the map in
     fullscreen, where the insets are zero.
 
+    Under a ``NotificationProvider``, a layer that fails to load is reported once as an error
+    toast; its row in the layer panel keeps the full message.
+
     Args:
         map_: The ``SepalMap``.
         overlays: Elements or widgets to stack in each corner, after the built-in ones.
@@ -208,6 +253,7 @@ def MapView(
     """
     store = map_.layer_store
     use_layer_store(store)
+    _use_layer_error_toasts(store)
     _, set_version = solara.use_state(0)
 
     def follow_map():

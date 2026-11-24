@@ -1,6 +1,7 @@
 {
   "map_view": {
     "loading": "Loading layers",
+    "layer_error": "{name} could not be loaded: {error}",
     "draw": {
       "polygon": "Draw a polygon",
       "rectangle": "Draw a rectangle",

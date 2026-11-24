@@ -889,3 +889,46 @@ def test_map_view_sets_the_draw_labels():
     assert m.drawing["labels"]["clear"] == msg("map_view.draw.clear_all")
     assert m.drawing["labels"] == want
     rc.close()
+
+
+class _Toasts:
+    """Stands in for the notifier: records the error toasts."""
+
+    def __init__(self):
+        self.errors = []
+
+    def error(self, message, **kwargs):
+        self.errors.append(message)
+
+
+def test_a_layer_error_is_toasted_once_per_layer_instance(monkeypatch):
+    toasts = _Toasts()
+    monkeypatch.setattr(map_view, "use_notifications", lambda required=True: toasts)
+    m = SepalMap(gee=False)
+    m.layer_engine.close()
+    store = m.layer_store
+    store.add(tiles("a"))
+    _, rc = solara.render(MapView(m), handle_error=False)
+    _, rc2 = solara.render(MapView(m), handle_error=False)  # a second view of the store
+
+    # the tile URL stays in the row's tooltip and the console
+    store.set_status("a", "error", error="AJAXError: Failed to fetch (0): http://h:1/8/1/2.png?a=b")
+    assert toasts.errors == [
+        msg("map_view.layer_error", name="a", error="AJAXError: Failed to fetch (0)")
+    ]
+
+    # its tiles keep failing, each with its own message
+    store.set_status("a", "pending")
+    store.set_status("a", "error", error="AJAXError: Not Found (404): /_pysepal/tiles/1/8/1/3.png")
+    store.set_visible("a", False)
+    assert len(toasts.errors) == 1
+
+    # a new style is a new instance, and so is the layer added again
+    store.restyle("a", colormap="magma")
+    store.set_status("a", "error", error="boom")
+    store.remove("a")
+    store.add(tiles("a"))
+    store.set_status("a", "error", error="boom")
+    assert len(toasts.errors) == 3
+    rc.close()
+    rc2.close()
