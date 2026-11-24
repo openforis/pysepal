@@ -192,6 +192,7 @@ class SepalMap(MapWidget):
         inspector: bool = False,
         coordinates: bool = False,
         link_group: Optional[str] = None,
+        animate: bool = True,
     ) -> None:
         """Build a map that draws a layer store.
 
@@ -211,6 +212,7 @@ class SepalMap(MapWidget):
             inspector: build the map's value inspector as ``m.inspector``.
             coordinates: show the pointer's coordinates.
             link_group: the group of maps this one keeps one camera with (see :attr:`link_group`). A group that has a camera replaces ``center`` and ``zoom`` with it.
+            animate: fly to what the zoom methods (``zoom_layer``, ``zoom_bounds``, ``zoom_raster``, ``zoom_ee_object``, ``centerObject``) and the layer panel's zoom button aim at, rather than jump. Change it later as :attr:`animate`; each zoom method also takes ``animate=``.
 
         Raises:
             ValueError: if both gee_session and gee_interface are provided, or a basemap is unknown
@@ -229,6 +231,8 @@ class SepalMap(MapWidget):
         )
 
         self._zooms_started = 0
+        #: Whether the zoom methods fly to their target rather than jump.
+        self.animate = animate
         self.inspector = None
         self._home = (tuple(center), zoom)
         # MapWidget sets what its close() reads before anything in it can raise
@@ -425,8 +429,16 @@ class SepalMap(MapWidget):
 
     # -- camera -----------------------------------------------------------------------------
 
+    def _animated(self, animate: Optional[bool]) -> bool:
+        return self.animate if animate is None else animate
+
     def zoom_bounds(
-        self, bounds: Sequence[float], *, padding: int = 20, max_zoom: float = 18
+        self,
+        bounds: Sequence[float],
+        *,
+        padding: int = 20,
+        max_zoom: float = 18,
+        animate: Optional[bool] = None,
     ) -> Self:
         """Fit the camera to the given bounds.
 
@@ -434,33 +446,47 @@ class SepalMap(MapWidget):
             bounds: coordinates corners as minx, miny, maxx, maxy in EPSG:4326
             padding: px kept free around the bounds; one the map cannot hold is reduced.
             max_zoom: the closest zoom of the fit, so that a point is not shown at zoom 24.
+            animate: fly there rather than jump; None follows :attr:`animate`.
         """
-        self.fit_bounds(tuple(bounds), padding=padding, max_zoom=max_zoom)
+        self.fit_bounds(
+            tuple(bounds), padding=padding, max_zoom=max_zoom, animate=self._animated(animate)
+        )
         return self
 
     @sd.need_ee
-    def zoom_ee_object(self, item: ee.ComputedObject, *, padding: int = 20) -> Self:
+    def zoom_ee_object(
+        self, item: ee.ComputedObject, *, padding: int = 20, animate: Optional[bool] = None
+    ) -> Self:
         """Fit the camera to an Earth Engine object.
 
         Args:
             item: the geometry to zoom on
             padding: px kept free around the object
+            animate: fly there rather than jump; None follows :attr:`animate`.
         """
-        return self.zoom_bounds(self.gee_interface.get_bounds(item), padding=padding)
+        bounds = self.gee_interface.get_bounds(item)
+        return self.zoom_bounds(bounds, padding=padding, animate=animate)
 
-    def zoom_raster(self, layer: Union[LayerHandle, str, Path], *, padding: int = 20) -> Self:
+    def zoom_raster(
+        self,
+        layer: Union[LayerHandle, str, Path],
+        *,
+        padding: int = 20,
+        animate: Optional[bool] = None,
+    ) -> Self:
         """Fit the camera to a raster: a layer of the map, by handle or id, or a file.
 
         Args:
             layer: a handle or an id of :attr:`layer_store`, which uses the bounds of its render, or the path of a raster file.
             padding: px kept free around the raster
+            animate: fly there rather than jump; None follows :attr:`animate`.
         """
         if isinstance(layer, LayerHandle):
             self._check_handle(layer)
-            self.zoom_layer(layer.id, padding=padding)
+            self.zoom_layer(layer.id, padding=padding, animate=animate)
             return self
         if isinstance(layer, str) and layer in self.layer_store:
-            self.zoom_layer(layer, padding=padding)
+            self.zoom_layer(layer, padding=padding, animate=animate)
             return self
 
         import rioxarray
@@ -473,10 +499,14 @@ class SepalMap(MapWidget):
         if da.rio.crs != CRS.from_string(epsg_4326):
             da = da.rio.reproject(epsg_4326)
 
-        return self.zoom_bounds(da.rio.bounds(), padding=padding)
+        return self.zoom_bounds(da.rio.bounds(), padding=padding, animate=animate)
 
-    def zoom_layer(self, layer_id: str, *, padding: int = 20) -> ZoomResult:
+    def zoom_layer(
+        self, layer_id: str, *, padding: int = 20, animate: Optional[bool] = None
+    ) -> ZoomResult:
         """Fit the camera to a layer, with the bounds its render knows.
+
+        ``animate`` flies there rather than jumps; None follows :attr:`animate`.
 
         Returns:
             ``"moved"``, or why it did not: ``"missing"``, ``"preparing"``, ``"failed"`` or ``"no_bounds"``.
@@ -484,10 +514,12 @@ class SepalMap(MapWidget):
         result = self.layer_engine.bounds(layer_id)
         if isinstance(result, str):
             return result
-        self.zoom_bounds(result, padding=padding)
+        self.zoom_bounds(result, padding=padding, animate=animate)
         return "moved"
 
-    async def zoom_layer_async(self, layer_id: str, *, padding: int = 20) -> ZoomResult:
+    async def zoom_layer_async(
+        self, layer_id: str, *, padding: int = 20, animate: Optional[bool] = None
+    ) -> ZoomResult:
         """Fit the camera to a layer, looking Earth Engine bounds up without blocking.
 
         A camera command issued meanwhile wins: a newer zoom, ``fit_bounds`` or
@@ -511,21 +543,29 @@ class SepalMap(MapWidget):
             return "superseded"
         if isinstance(result, str):
             return result
-        self.zoom_bounds(result, padding=padding)
+        self.zoom_bounds(result, padding=padding, animate=animate)
         return "moved"
 
     @sd.need_ee
-    def centerObject(self, item: ee.ComputedObject, zoom: Optional[float] = None) -> Self:
+    def centerObject(
+        self,
+        item: ee.ComputedObject,
+        zoom: Optional[float] = None,
+        *,
+        animate: Optional[bool] = None,
+    ) -> Self:
         """Center the map on an Earth Engine object, as the Code Editor does.
 
         Args:
             item: the object to center on
             zoom: the zoom to use; without one, the map zooms to fit the object
+            animate: fly there rather than jump; None follows :attr:`animate`.
         """
         if zoom is None:
-            return self.zoom_ee_object(item)
+            return self.zoom_ee_object(item, animate=animate)
         west, south, east, north = self.gee_interface.get_bounds(item)
-        self.set_center((west + east) / 2, (south + north) / 2, zoom)
+        center = ((west + east) / 2, (south + north) / 2)
+        self.set_center(*center, zoom, animate=self._animated(animate))
         return self
 
     def get_scale(self) -> float:

@@ -1,6 +1,6 @@
 """Live handles to layers held by a map's ``LayerStore``."""
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 from pysepal_map import Side
 
@@ -125,15 +125,15 @@ class LayerHandle:
         self._check()
         return self.store.restyle(self.id, **changes)
 
-    def zoom(self, *, padding: int = 20) -> ZoomResult:
-        """Move the camera to the layer."""
+    def zoom(self, *, padding: int = 20, animate: Optional[bool] = None) -> ZoomResult:
+        """Move the camera to the layer, flying there as the map's ``animate`` says."""
         self._check()
-        return self._map.zoom_layer(self.id, padding=padding)
+        return self._map.zoom_layer(self.id, padding=padding, animate=animate)
 
-    async def zoom_async(self, *, padding: int = 20) -> ZoomResult:
+    async def zoom_async(self, *, padding: int = 20, animate: Optional[bool] = None) -> ZoomResult:
         """Move the camera to the layer without blocking."""
         self._check()
-        return await self._map.zoom_layer_async(self.id, padding=padding)
+        return await self._map.zoom_layer_async(self.id, padding=padding, animate=animate)
 
     def remove(self) -> None:
         """Remove the layer from the map."""

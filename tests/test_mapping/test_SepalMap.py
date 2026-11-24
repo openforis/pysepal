@@ -659,6 +659,34 @@ def test_zoom_bounds_passes_padding() -> None:
     assert (m.view_request["padding"], m.view_request["max_zoom"]) == (40, 18)
 
 
+def test_zooms_fly_as_the_map_says(byte: Path) -> None:
+    m = SepalMap(gee=False)
+    assert m.animate is True
+    assert "animate" not in m.view_request, "the first camera jumps"
+
+    m.zoom_bounds((10, 10, 20, 20))
+    assert m.view_request["animate"] is True
+    m.zoom_bounds((10, 10, 20, 20), animate=False)
+    assert "animate" not in m.view_request
+
+    h = m.add_raster(byte, fit_bounds=False)
+    assert h.zoom() == "moved" and m.view_request["animate"] is True
+    m.zoom_raster(h, animate=False)
+    assert "animate" not in m.view_request
+
+    m.animate = False
+    m.zoom_layer(h.id)
+    assert "animate" not in m.view_request
+    m.zoom_layer(h.id, animate=True)
+    assert m.view_request["animate"] is True
+
+    # a plain set_center jumps, whatever the map says
+    m.animate = True
+    m.set_center(0, 0)
+    assert "animate" not in m.view_request
+    assert SepalMap(gee=False, animate=False).animate is False
+
+
 def test_zoom_methods_take_padding_by_keyword() -> None:
     m = SepalMap(gee=False)
     with pytest.raises(TypeError):

@@ -11,14 +11,17 @@ class FakeMap:
         """Create the fake."""
         self.layer_store = LayerStore()
         self.zoom_calls = []
+        self.animated = []
         self.answer = "moved"
 
-    def zoom_layer(self, layer_id, *, padding=20):
+    def zoom_layer(self, layer_id, *, padding=20, animate=None):
         self.zoom_calls.append((layer_id, padding))
+        self.animated.append(animate)
         return self.answer
 
-    async def zoom_layer_async(self, layer_id, *, padding=20):
+    async def zoom_layer_async(self, layer_id, *, padding=20, animate=None):
         self.zoom_calls.append((layer_id, padding))
+        self.animated.append(animate)
         return self.answer
 
 
@@ -93,6 +96,8 @@ def test_zoom_delegates_and_reports(fake_map, vector_spec):
     fake_map.answer = "no_bounds"
     assert LayerHandle(fake_map, vector_spec.id).zoom() == "no_bounds"
     assert fake_map.zoom_calls == [(vector_spec.id, 20)]
+    LayerHandle(fake_map, vector_spec.id).zoom(animate=False)
+    assert fake_map.animated == [None, False], "None follows the map's animate"
 
 
 @pytest.mark.asyncio
