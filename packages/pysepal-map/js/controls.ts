@@ -134,8 +134,11 @@ export interface ViewControlsOptions {
   root: HTMLElement;
   /** The view's id, which marks the element holding its corner heights. */
   viewId: string;
-  /** Called with the insets the view uses each time they may have changed. */
-  onInsets(insets: Insets): void;
+  /**
+   * Called with the insets the view uses each time they may have changed;
+   * `keepPlace` is false when the view enters or leaves fullscreen.
+   */
+  onInsets(insets: Insets, keepPlace: boolean): void;
   /**
    * Calls `callback` each time one of `elements` changes size, until the
    * returned function is called. A `ResizeObserver` by default.
@@ -273,7 +276,7 @@ export class ViewControls {
     control.on("fullscreenstart", () => {
       this.fullscreen = control.target;
       this.fullscreen.setAttribute(FULLSCREEN, "");
-      this.apply();
+      this.apply(false);
     });
     control.on("fullscreenend", () => this.leaveFullscreen());
     return control;
@@ -283,10 +286,10 @@ export class ViewControls {
     if (!this.fullscreen) return;
     this.fullscreen.removeAttribute(FULLSCREEN);
     this.fullscreen = null;
-    this.apply();
+    this.apply(false);
   }
 
-  private apply(): void {
+  private apply(keepPlace = true): void {
     const insets = this.fullscreen ? NO_INSETS : this.insets;
     for (const [position, vertical, horizontal] of CORNERS) {
       const corner = this.corners.get(position);
@@ -294,7 +297,7 @@ export class ViewControls {
       corner.style[vertical] = `${insets[vertical]}px`;
       corner.style[horizontal] = `${insets[horizontal]}px`;
     }
-    this.options.onInsets(insets);
+    this.options.onInsets(insets, keepPlace);
   }
 
   // The target is resolved each time: the view may join the page, or move,

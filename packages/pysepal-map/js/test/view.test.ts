@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   LINK,
+  PLACE,
   REPORT_DELAY_MS,
   ViewCamera,
   type Insets,
@@ -51,6 +52,16 @@ class FakeCameraMap {
     };
   }
 
+  project({ lng, lat }: { lng: number; lat: number }) {
+    const { left, right, top, bottom } = this.padding;
+    const middleX = left + (this.width - left - right) / 2;
+    const middleY = top + (this.height - top - bottom) / 2;
+    return {
+      x: middleX + ((lng - this.center.lng) * this.width) / 2,
+      y: middleY - ((lat - this.center.lat) * this.height) / 2,
+    };
+  }
+
   setPadding(padding: Insets) {
     this.calls.push("setPadding");
     const before = JSON.stringify(this.padding);
@@ -61,13 +72,14 @@ class FakeCameraMap {
   jumpTo(options: any, eventData: object = {}) {
     this.calls.push("jumpTo");
     this.jumps.push(options);
-    const before = JSON.stringify([this.center, this.zoom]);
+    const before = JSON.stringify([this.center, this.zoom, this.padding]);
+    if (options.padding) this.padding = { ...options.padding };
     if (options.center) {
       const [lng, lat] = options.center;
       this.center = { lng, lat };
     }
     if (options.zoom !== undefined) this.zoom = options.zoom;
-    if (JSON.stringify([this.center, this.zoom]) !== before) {
+    if (JSON.stringify([this.center, this.zoom, this.padding]) !== before) {
       this.fire("moveend", eventData);
     }
   }
@@ -546,6 +558,54 @@ describe("ViewCamera", () => {
       [1, "request"],
       [1, "resize"],
     ]);
+  });
+
+  it("keeps the map in place on screen when the insets change", () => {
+    const { camera, map, sent } = setup();
+    camera.start();
+    vi.runAllTimers();
+    const spot = { lng: 0.4, lat: -0.3 };
+    const before = map.project(spot);
+    const inPlace = () => {
+      const { x, y } = map.project(spot);
+      expect(x).toBeCloseTo(before.x, 9);
+      expect(y).toBeCloseTo(before.y, 9);
+    };
+    camera.setInsets(LEFT_300);
+    inPlace();
+    expect(map.padding).toEqual(LEFT_300);
+    // The new area's middle, 350 px in, was 150 px right of the old one.
+    expect(map.center).toEqual({ lng: 0.75, lat: 0 });
+    expect(map.jumps.at(-1)).toEqual({ center: [0.75, 0], padding: LEFT_300 });
+    // And this one 50 px below it.
+    camera.setInsets({ ...NO_INSETS, top: 100 });
+    inPlace();
+    vi.runAllTimers();
+    expect(sent.map((r) => [r.request_seq, r.cause])).toEqual([
+      [1, "request"],
+      [1, "resize"],
+    ]);
+    const [lng, lat] = sent[1].center;
+    expect(lng).toBeCloseTo(0, 9);
+    expect(lat).toBeCloseTo(-1 / 3, 9);
+  });
+
+  it("marks the jump that keeps the map in place", () => {
+    const { camera, map } = setup();
+    camera.start();
+    const marks: unknown[] = [];
+    map.on("moveend", (event) => marks.push(event[PLACE]));
+    camera.setInsets(LEFT_300);
+    expect(marks).toEqual([true]);
+  });
+
+  it("keeps the center in place when told not to keep the map's", () => {
+    const { camera, map } = setup();
+    camera.start();
+    camera.setInsets(LEFT_300, false);
+    expect(map.center).toEqual({ lng: 0, lat: 0 });
+    expect(map.padding).toEqual(LEFT_300);
+    expect(map.calls.at(-1)).toBe("setPadding");
   });
 
   it("reports the bounds inside the insets", () => {

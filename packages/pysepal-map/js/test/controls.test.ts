@@ -313,6 +313,7 @@ function setup({
   right.appendChild(controlContainer());
   if (compare) map.canvasContainer.appendChild(right);
   const told: Insets[] = [];
+  const kept: boolean[] = [];
   const observer = {
     elements: [] as FakeElement[],
     callback: () => {},
@@ -322,7 +323,10 @@ function setup({
     map: map as unknown as MapLibreMap,
     root: root as unknown as HTMLElement,
     viewId,
-    onInsets: (insets) => told.push(insets),
+    onInsets: (insets, keepPlace) => {
+      told.push(insets);
+      kept.push(keepPlace);
+    },
     observeSize: (elements, callback) => {
       observer.elements = elements as unknown as FakeElement[];
       observer.callback = callback;
@@ -336,7 +340,18 @@ function setup({
     root.querySelector(".maplibregl-ctrl-shrink")!;
   /** What the observer calls when a corner changes size. */
   const measure = () => observer.callback();
-  return { doc, root, map, controls, told, button, observer, measure, right };
+  return {
+    doc,
+    root,
+    map,
+    controls,
+    told,
+    kept,
+    button,
+    observer,
+    measure,
+    right,
+  };
 }
 
 /** Puts `el` inside a new element marked as the fullscreen root. */
@@ -505,13 +520,17 @@ describe("ViewControls", () => {
   it.each(MODES)(
     "fullscreen uses zero insets and restores them, with %s",
     (_, api) => {
-      const { root, map, controls, told, button } = setup({ api });
+      const { root, map, controls, told, kept, button } = setup({ api });
       controls.setInsets(INSETS);
+      expect(kept).toEqual([true]);
       controls.sync(state());
       told.length = 0;
+      kept.length = 0;
 
       button().click();
       expect(told).toEqual([NO_INSETS]);
+      // The map changes size too: its center keeps its place in the area.
+      expect(kept).toEqual([false]);
       expect(corners(map)).toEqual(placedAt(NO_INSETS));
       expect(root.hasAttribute("data-psm-fullscreen")).toBe(true);
 
@@ -522,6 +541,7 @@ describe("ViewControls", () => {
 
       button().click();
       expect(told.at(-1)).toEqual(later);
+      expect(kept.at(-1)).toBe(false);
       expect(corners(map)).toEqual(placedAt(later));
       expect(root.hasAttribute("data-psm-fullscreen")).toBe(false);
       if (!api) {

@@ -201,8 +201,8 @@ function render({ model, el }: RenderProps<Model>) {
     map,
     root,
     viewId,
-    onInsets: (insets) => {
-      camera.setInsets(insets);
+    onInsets: (insets, keepPlace) => {
+      camera.setInsets(insets, keepPlace);
       compare.setInsets(insets);
     },
   });

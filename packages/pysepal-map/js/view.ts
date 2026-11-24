@@ -81,9 +81,17 @@ export const LINK = "psmLink";
 
 export type LinkMark = "frame" | "user" | "link";
 
+/**
+ * The eventData key that marks the jump keeping the map in place on screen
+ * while the insets change: linked maps do not follow it, and the camera
+ * reports it as a resize.
+ */
+export const PLACE = "psmPlace";
+
 interface MoveEvent {
   [REQUEST]?: unknown;
   [LINK]?: unknown;
+  [PLACE]?: unknown;
   /** Set by MapLibre on the moves of a user gesture. */
   originalEvent?: unknown;
 }
@@ -93,6 +101,7 @@ export interface CameraMap {
   getCenter(): { lng: number; lat: number };
   getZoom(): number;
   unproject(point: [number, number]): { lng: number; lat: number };
+  project(lngLat: { lng: number; lat: number }): { x: number; y: number };
   setPadding(padding: Insets): unknown;
   jumpTo(options: object, eventData?: object): unknown;
   resize(eventData?: object): unknown;
@@ -210,7 +219,8 @@ function savedOf(
  * keep the last user or link move over a later acknowledgement or resize.
  *
  * The insets are the map's padding: the camera centers, fits and reports
- * inside the area they leave.
+ * inside the area they leave. When they change, as a panel opens over the
+ * map, the map keeps its place on screen and the center moves with the area.
  */
 export class ViewCamera {
   /** The sequence of the last request this view applied. */
@@ -257,12 +267,32 @@ export class ViewCamera {
     return this.applied > restored ? this.applied : null;
   }
 
-  /** Use `insets` from now on; before `start`, they wait for it. */
-  setInsets(insets: Insets): void {
+  /**
+   * Use `insets` from now on; before `start`, they wait for it. The map
+   * keeps its place on screen, unless `keepPlace` is false, as when the view
+   * enters or leaves fullscreen: then the center keeps its place in the area.
+   */
+  setInsets(insets: Insets, keepPlace = true): void {
     if (this.disposed || sameInsets(insets, this.insets)) return;
+    const before = this.insets;
     this.insets = { ...insets };
     if (!this.started) return;
-    this.options.map.setPadding(this.insets);
+    const { map } = this.options;
+    if (keepPlace) {
+      // The area's middle moves by half of what each side gained.
+      const at = map.project(map.getCenter());
+      const x =
+        at.x + (insets.left - before.left - insets.right + before.right) / 2;
+      const y =
+        at.y + (insets.top - before.top - insets.bottom + before.bottom) / 2;
+      const { lng, lat } = map.unproject([x, y]);
+      map.jumpTo(
+        { center: [lng, lat], padding: this.insets },
+        { [PLACE]: true }
+      );
+    } else {
+      map.setPadding(this.insets);
+    }
     this.resume();
   }
 

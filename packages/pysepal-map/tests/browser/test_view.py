@@ -267,6 +267,36 @@ def test_fit_respects_insets(harness, page_session):
     assert shown["corner"] == pytest.approx(300, abs=0.5)
 
 
+def test_the_map_keeps_its_place_when_the_insets_change(harness, page_session):
+    """A panel opening over the map moves the controls and the reported center, not the map."""
+    widget = MapWidget(center=(10, 20), zoom=5)
+    display(widget)
+    wait_view(page_session, widget, lambda v: v["request_seq"] == 1)
+    el = view_at(page_session)
+    page_session.wait_for_function("el => !el.psmMap.isMoving()", arg=el)
+    spot = [12.5, 18.0]
+    where = "(el, spot) => { const p = el.psmMap.project(spot); return [p.x, p.y]; }"
+    before = el.evaluate(where, spot)
+
+    widget.set_insets(left=300, top=40)
+    page_session.wait_for_function("el => el.psmMap.getPadding().left === 300", arg=el)
+    assert el.evaluate(where, spot) == pytest.approx(before, abs=0.5)
+    middle = el.evaluate(
+        """el => {
+            const c = el.psmMap.unproject([(300 + el.clientWidth) / 2, (40 + el.clientHeight) / 2]);
+            return [c.lng, c.lat];
+        }"""
+    )
+    view = wait_view(page_session, widget, lambda v: v["cause"] == "resize")
+    assert near(view["center"], middle, 1e-4)
+
+    widget.set_insets()
+    page_session.wait_for_function("el => el.psmMap.getPadding().left === 0", arg=el)
+    assert el.evaluate(where, spot) == pytest.approx(before, abs=0.5)
+    view = wait_view(page_session, widget, lambda v: near(v["center"], [10, 20], 1e-4))
+    assert view["cause"] == "resize"
+
+
 def test_the_camera_stays_north_up_and_flat(harness, page_session):
     widget = MapWidget(center=(0, 0), zoom=3)
     box = widgets.VBox([widget])

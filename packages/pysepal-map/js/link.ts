@@ -1,7 +1,8 @@
-import { LINK, REQUEST, type LinkMark } from "./view";
+import { LINK, PLACE, REQUEST, type LinkMark } from "./view";
 
 interface MoveEvent {
   [LINK]?: unknown;
+  [PLACE]?: unknown;
   [REQUEST]?: unknown;
   /** Set by MapLibre on the moves of a user gesture. */
   originalEvent?: unknown;
@@ -190,7 +191,8 @@ export class ViewLink {
 
   private readonly onMove = (event: MoveEvent) => {
     const { map } = this.options;
-    if (event[LINK] !== undefined) {
+    // A peer's jump, or this map keeping its place while its insets change.
+    if (event[LINK] !== undefined || event[PLACE] !== undefined) {
       this.last = cameraOf(map);
       return;
     }
@@ -204,7 +206,7 @@ export class ViewLink {
   };
 
   private readonly onMoveEnd = (event: MoveEvent) => {
-    if (event[LINK] !== undefined) return;
+    if (event[LINK] !== undefined || event[PLACE] !== undefined) return;
     const { pushed, stale } = this;
     this.pushed = this.stale = false;
     if (stale) {

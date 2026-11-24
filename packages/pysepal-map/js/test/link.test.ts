@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ViewLink, pageRegistry, type LinkRegistry } from "../link";
-import { LINK } from "../view";
+import { LINK, PLACE } from "../view";
 
 type Listener = (event: any) => void;
 
@@ -183,6 +183,19 @@ describe("ViewLink", () => {
     b.map.jumps.length = 0;
     a.map.resize();
     expect(b.map.jumps).toEqual([]);
+  });
+
+  it("a map keeping its place as its insets change moves no peer", () => {
+    const registry: LinkRegistry = new Map();
+    const a = view(registry);
+    const b = view(registry);
+    b.map.jumps.length = 0;
+    a.map.jumpTo({ center: [3, 4], zoom: 2 }, { [PLACE]: true });
+    expect(b.map.jumps).toEqual([]);
+    // The next move passes on the camera from there.
+    a.map.userMove(5, 6);
+    expect(camera(b.map)).toEqual([5, 6, 2]);
+    expect(marks(b.map)).toEqual(["frame", "user"]);
   });
 
   it("a resize after following a peer passes nothing on", () => {

@@ -74,7 +74,7 @@ zoom in the same call, and each paints it on its next frame. Each view still
 reports its own camera, a follower once per movement of the view that moved,
 as that view does: as ``user`` when a user moved it, else as ``link``, which
 counts like a user's. A move that keeps a view's camera, such as a resize,
-moves no other view. Views of one widget never move each other. The first map
+or keeps its map in place as its insets change, moves no other view. Views of one widget never move each other. The first map
 shown sets the camera: a view that joins takes the camera of the group's maps
 already shown, unless a request newer than its link ``seq`` moved it on mount,
 which then moves them. A request not newer than the link, such as a fit that
@@ -268,7 +268,10 @@ map element, as ``left``, ``right``, ``top`` and ``bottom``, all 0 at first. A
 view applies them as the map's padding before it restores the camera, and
 moves its control corners in by as much. Its usable area is what they leave:
 the reported center is its middle, the reported ``bounds`` its corners, and a
-fit stays inside it. While its map is fullscreen, a view uses no insets.
+fit stays inside it. When they change, the map keeps its place on screen and
+the view reports the new middle as a ``resize``. While its map is fullscreen,
+a view uses no insets, and the center keeps its place in the area as it enters
+or leaves fullscreen.
 
 A view marks its root element with ``data-psm-revision`` once its owned style
 matches that revision and every GeoJSON source has loaded its data, on both
@@ -797,7 +800,8 @@ class MapWidget(anywidget.AnyWidget):
         """Declare how many CSS pixels of each side of the map other UI covers.
 
         The views center, fit and report bounds inside the rest, and move
-        their controls in by as much. A side left out is 0; a value that is
+        their controls in by as much; the map itself keeps its place on
+        screen, as under a panel that opens over it. A side left out is 0; a value that is
         not a non-negative int raises ``ValueError`` and changes nothing.
         """
         self.set_trait("insets", _insets(left, right, top, bottom))
