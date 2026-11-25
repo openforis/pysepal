@@ -411,6 +411,17 @@ describe("ViewCamera", () => {
     ]);
   });
 
+  it("reports a center past the antimeridian in [-180, 180], the bounds moved along", () => {
+    const { camera, map, sent } = setup();
+    camera.start();
+    map.userMove(539, 1);
+    vi.runAllTimers();
+    const report = sent.at(-1)!;
+    expect(report.center[0]).toBeCloseTo(179);
+    expect(report.bounds[0]).toBeCloseTo(178);
+    expect(report.bounds[2]).toBeCloseTo(180);
+  });
+
   it("reports a window with a user move as the user's", () => {
     const { camera, map, causes } = setup();
     camera.start();

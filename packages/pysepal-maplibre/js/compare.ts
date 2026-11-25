@@ -306,6 +306,11 @@ export class CompareView {
       // A new style holds none of the mirror.
       this.mirror();
     });
+    // It rebuilds the style after a worker restart or a GPU reset, and throws
+    // on a change to a style that is loading, into the main map's handlers.
+    const unstyled = () => (right.styled = false);
+    map.on("styledataloading", unstyled);
+    map.on("webglcontextlost", unstyled);
     this.right = right;
     (root as CompareRoot).psmCompare = { map, status: reporter, sync };
     this.place();
@@ -387,9 +392,17 @@ export class CompareView {
 
   // Resolved each time, as ViewControls does: the view may join the page late.
   private publish(x: number): void {
-    const target = fullscreenTarget(this.options.root);
+    const { root } = this.options;
+    const target = fullscreenTarget(root);
     if (this.published !== target) this.unpublish();
-    target.style.setProperty(DIVIDER_VARIABLE, `${x}px`);
+    // From the target's padding edge, where its positioned overlays start.
+    const offset =
+      target === root
+        ? 0
+        : root.getBoundingClientRect().left -
+          target.getBoundingClientRect().left -
+          target.clientLeft;
+    target.style.setProperty(DIVIDER_VARIABLE, `${x + offset}px`);
     this.published = target;
   }
 

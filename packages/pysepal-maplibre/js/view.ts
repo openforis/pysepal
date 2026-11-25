@@ -1,3 +1,5 @@
+import { wrapLng } from "./pointer";
+
 /** How long a view gathers camera moves into one report. */
 export const REPORT_DELAY_MS = 250;
 
@@ -529,13 +531,16 @@ export class ViewCamera {
       [x1, y1],
       [x0, y1],
     ];
+    // Past the antimeridian MapLibre counts on: the bounds move by the same turns.
+    const lng = wrapLng(center.lng);
+    const turns = lng - center.lng;
     const points = corners.map((corner) => map.unproject(corner));
-    const lngs = points.map((p) => p.lng);
+    const lngs = points.map((p) => p.lng + turns);
     const lats = points.map((p) => p.lat);
     return {
       type: "view_report",
       view_id: viewId,
-      center: [center.lng, center.lat],
+      center: [lng, center.lat],
       zoom: map.getZoom(),
       bounds: [
         Math.min(...lngs),

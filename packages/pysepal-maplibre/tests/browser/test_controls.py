@@ -168,3 +168,57 @@ def test_the_globe_button_turns_both_compare_maps_into_a_globe(solara_test, page
         " return el.psmCompare.map.getProjection()?.type === 'mercator'; })()"
     )
     assert el.evaluate(projections) == ["mercator", "mercator"]
+
+
+def test_a_globe_compare_view_applies_publishes_after_its_styles_are_rebuilt(
+    solara_test, page_session
+):
+    widget = MapWidget()
+    widget.publish(MapState(compare=True, controls=Controls(globe=True)))
+    display(widget)
+    page_session.wait_for_function(
+        "document.querySelector('.psm-map')?.psmCompare?.map.isStyleLoaded()"
+    )
+    page_session.locator(".maplibregl-ctrl-globe").click()
+    on_globe = (
+        "(() => { const el = document.querySelector('.psm-map');"
+        " return el.psmCompare.map.isStyleLoaded()"
+        " && el.psmCompare.map.getProjection()?.type === 'globe'; })()"
+    )
+    page_session.wait_for_function(on_globe)
+
+    # MapLibre rebuilds both styles from snapshots after a worker restart, the main one first.
+    page_session.locator(".psm-map").evaluate(
+        "el => { el.psmMap._handleWorkersRestarted();"
+        " el.psmCompare.map._handleWorkersRestarted(); }"
+    )
+    widget.publish(MapState(compare=True, controls=Controls(globe=True), theme="dark"))
+    page_session.wait_for_function(
+        "r => document.querySelector('.psm-map')?.dataset.psmRevision === r",
+        arg=str(widget.state["revision"]),
+    )
+    page_session.wait_for_function(on_globe)
+
+
+def test_the_projection_reaches_every_view_and_comes_back_from_a_click(solara_test, page_session):
+    widget = MapWidget()
+    widget.publish(MapState(controls=Controls(globe=True)))
+    widget.set_projection("globe")
+    display(widget)
+    types = (
+        "n => { const maps = [...document.querySelectorAll('.psm-map')].map(el => el.psmMap);"
+        " return maps.length === n && maps.every(m => m.isStyleLoaded())"
+        " ? maps.map(m => m.getProjection()?.type ?? 'mercator') : null; }"
+    )
+    page_session.wait_for_function(f"({types})(1)?.[0] === 'globe'")
+
+    page_session.locator(".maplibregl-ctrl-globe-enabled").click()
+    for _ in range(500):
+        if widget.projection == "mercator":
+            break
+        page_session.wait_for_timeout(20)
+    assert widget.projection == "mercator"
+
+    widget.set_projection("globe")
+    display(widget)
+    page_session.wait_for_function(f"({types})(2)?.join() === 'globe,globe'")

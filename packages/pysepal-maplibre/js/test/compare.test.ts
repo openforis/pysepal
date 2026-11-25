@@ -107,6 +107,14 @@ class FakeTarget {
   getAttribute(name: string) {
     return this.attributes.get(name) ?? null;
   }
+
+  /** Where it sits on the page, and its left border. */
+  left = 0;
+  clientLeft = 0;
+
+  getBoundingClientRect() {
+    return { left: this.left, top: 0 };
+  }
 }
 
 /** A map with a camera, a canvas and the image resolver, over FakeMapLibre. */
@@ -493,6 +501,27 @@ describe("CompareView", () => {
     expect(main.listening("projectiontransition")).toBe(0);
   });
 
+  it.each(["styledataloading", "webglcontextlost"])(
+    "leaves the right style alone from %s until its next style load",
+    async (event) => {
+      const { main, right, model, compare } = await setup(state(1));
+      model.set(compareState(2));
+      right().emit("style.load");
+      // MapLibre rebuilds the style after a worker restart or a GPU reset.
+      right().emit(event);
+      right().calls.length = 0;
+      main.projection = { type: "globe" };
+      main.emit("projectiontransition");
+      compare.setDrawing([], "#ff0000");
+      expect(right().calls).not.toContain("setProjection");
+      expect(right().getSource("psm-draw-mirror")).toBeUndefined();
+
+      right().emit("style.load");
+      expect(right().projection).toEqual({ type: "globe" });
+      expect(right().getSource("psm-draw-mirror")).toBeDefined();
+    }
+  );
+
   it("is settled once both sides are, and marks the root only then", async () => {
     const { model, root, right, messages, sync, compare, settled } =
       await setup(state(1, geojson("b", 1, "x")));
@@ -785,15 +814,17 @@ describe("the divider variable", () => {
     expect(root.variables.get(VARIABLE)).toBe("400px");
   });
 
-  it("publishes the divider on the fullscreen root", async () => {
+  it("publishes the divider on the fullscreen root, from its left edge", async () => {
     const mount = new FakeTarget();
+    // The view sits 40 px right of the root's padding edge.
+    Object.assign(mount, { left: 8, clientLeft: 2 });
     const { root, model, compare } = await setup(state(1));
     root.mount = mount;
     model.set(compareState(2));
-    expect(mount.variables.get(VARIABLE)).toBe("500px");
+    expect(mount.variables.get(VARIABLE)).toBe("540px");
     expect(root.variables.has(VARIABLE)).toBe(false);
     compare.setInsets(INSETS);
-    expect(mount.variables.get(VARIABLE)).toBe("600px");
+    expect(mount.variables.get(VARIABLE)).toBe("640px");
   });
 
   it("removes it on close and dispose", async () => {

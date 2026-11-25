@@ -204,6 +204,37 @@ describe("StatusReporter", () => {
     expect(statuses().at(-1)).toEqual(["v", 2, "loading"]);
   });
 
+  it("reports a PMTiles layer name its archive does not hold", () => {
+    const { reporter, sources, sent, loaded } = setup();
+    const add = (id: string, ref: LayerRef, layers: string[]) => {
+      reporter.track(id, ref, false, "roads");
+      const source = { vectorLayerIds: layers };
+      sources.set(id, source);
+      reporter.bind(id, source);
+      reporter.sourceData({ sourceId: id, sourceDataType: "metadata" });
+      loaded(id);
+    };
+    add("psm:v:1", V1, ["points", "lines"]);
+    expect(sent.at(-1)).toMatchObject({
+      instance: 1,
+      status: "error",
+      error: 'no layer "roads" in the PMTiles archive; it has points, lines',
+    });
+    add("psm:v:2", V2, ["roads"]);
+    expect(sent.at(-1)).toMatchObject({ instance: 2, status: "ready" });
+  });
+
+  it("checks the PMTiles layer name again after a style reload", () => {
+    const { reporter, sources, sent } = setup();
+    reporter.track("psm:v:1", V1, false, "roads");
+    reporter.bind("psm:v:1", {});
+    sources.set("psm:v:1", { vectorLayerIds: ["points"] });
+    reporter.sweep(new Set(["psm:v:1"]));
+    reporter.bind("psm:v:1", sources.get("psm:v:1"));
+    reporter.sourceData({ sourceId: "psm:v:1", sourceDataType: "metadata" });
+    expect(sent.at(-1)).toMatchObject({ status: "error" });
+  });
+
   it("reports loading again when a style reload re-adds the source", () => {
     const { add, loaded, statuses } = setup();
     add("psm:r:1", { id: "r", token: 0, instance: 1 });

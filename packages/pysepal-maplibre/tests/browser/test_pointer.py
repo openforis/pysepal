@@ -4,7 +4,7 @@ import json
 
 from IPython.display import display
 
-from pysepal_map import Controls, GeoJSONSource, Layer, MapState, MapWidget
+from pysepal_map import Controls, GeoJSONSource, Layer, MapState, MapWidget, VectorPaint
 
 SQUARE = {
     "type": "FeatureCollection",
@@ -76,6 +76,44 @@ def test_click_reaches_python_with_the_feature(harness, page_session):
     assert abs(event.lng) < 1 and abs(event.lat) < 1
 
     page_session.mouse.click(*canvas_point(page_session, 40, 0))
+    wait_for(page_session, lambda: len(seen) == 2, "no second click arrived")
+    assert seen[1].features == ()
+
+
+LINE = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"name": "l"},
+            "geometry": {"type": "LineString", "coordinates": [[0, -20], [0, 20]]},
+        }
+    ],
+}
+
+
+def test_a_click_just_beside_a_thin_line_hits_it(harness, page_session):
+    widget = MapWidget()
+    seen = []
+    widget.on_click(seen.append)
+    payload = widget.add_payload(json.dumps(LINE).encode())
+    layer = Layer("ln", GeoJSONSource(payload), paint=VectorPaint(width=1))
+    display(widget)
+    widget.publish(MapState(layers=(layer,)))
+    page_session.wait_for_function(
+        "r => document.querySelector('.psm-map')?.dataset.psmRevision === String(r)",
+        arg=widget.state["revision"],
+    )
+    page_session.evaluate(
+        "() => new Promise(r => { const m = document.querySelector('.psm-map').psmMap;"
+        " m.once('idle', r); m.triggerRepaint(); })"
+    )
+
+    x, y = canvas_point(page_session, 0, 0)
+    page_session.mouse.click(x + 2, y)
+    wait_for(page_session, lambda: seen, "no click arrived")
+    assert seen[0].hits("ln") == ({"name": "l"},)
+    page_session.mouse.click(x + 10, y)
     wait_for(page_session, lambda: len(seen) == 2, "no second click arrived")
     assert seen[1].features == ()
 

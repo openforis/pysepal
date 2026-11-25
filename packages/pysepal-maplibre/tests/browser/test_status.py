@@ -11,6 +11,7 @@ from pysepal_map import (
     LayerStatus,
     MapState,
     MapWidget,
+    PMTilesSource,
     RasterSource,
     VectorPaint,
 )
@@ -146,3 +147,14 @@ def test_a_payload_that_is_not_json_reports_error(harness, page_session):
     display(widget)
     wait_status(page_session, widget, is_("bad", "error", 1))
     assert "not GeoJSON" in widget.layer_status["bad"].error
+
+
+def test_a_pmtiles_layer_name_the_archive_lacks_reports_error(pmtiles, page_session):
+    widget = MapWidget()
+    layer = Layer("pm", PMTilesSource(pmtiles.url, "roads"), paint=VectorPaint())
+    widget.publish(MapState(layers=(layer,)))
+    display(widget)
+    wait_status(page_session, widget, is_("pm", "error", 1))
+    assert widget.layer_status["pm"].error == (
+        'no layer "roads" in the PMTiles archive; it has points'
+    )

@@ -3,6 +3,7 @@ import type { Point } from "maplibre-gl";
 import {
   isCluster,
   ownedStyleLayers,
+  queryNear,
   type PointerMap,
   type RenderedFeature,
 } from "./pointer";
@@ -166,9 +167,7 @@ export class ViewPopups {
     if (!styleLayers.length) return null;
     // Clusters are queried too, so one on top shows nothing of what lies below.
     styleLayers.push(...ownedStyleLayers(map, undefined, "only"));
-    const features: RenderedFeature[] = map.queryRenderedFeatures(point, {
-      layers: styleLayers,
-    });
+    const features = queryNear(map, point, styleLayers);
     for (const feature of features) {
       if (isCluster(feature)) return null;
       const layer = layers.find((l) => sourceId(l) === feature.source);

@@ -14,6 +14,7 @@ import anywidget
 import ipywidgets
 import ipywidgets.widgets.widget as widget_registry
 import pytest
+import traitlets
 
 from pysepal_map import (
     GeoJSONSource,
@@ -725,6 +726,33 @@ def test_a_failing_status_callback_is_logged(board, caplog):
     report(widget, "a", "ready")
     assert caplog.text == ""
     assert len(calls) == 2
+
+
+def test_set_projection_writes_the_projection_every_view_draws():
+    widget = MapWidget()
+    assert widget.projection == "mercator"
+    widget.set_projection("globe")
+    assert widget.projection == "globe"
+    with pytest.raises(ValueError, match="'mercator' or 'globe'"):
+        widget.set_projection("albers")
+    with pytest.raises(traitlets.TraitError):
+        widget.projection = "mercator"
+    assert widget.projection == "globe"
+
+
+def test_a_mounted_view_reports_the_projection_a_user_picked(board):
+    widget, _, _ = board
+    msg(widget, type="projection", view_id="a", projection="globe")
+    assert widget.projection == "mercator", "a view that is not mounted"
+    open_view(widget, "a")
+    msg(widget, type="projection", view_id="a", projection="globe")
+    assert widget.projection == "globe"
+    for bad in ("albers", None, 3, ["globe"]):
+        msg(widget, type="projection", view_id="a", projection=bad)
+    assert widget.projection == "globe"
+    widget.close()
+    msg(widget, type="projection", view_id="a", projection="mercator")
+    assert widget.projection == "globe"
 
 
 def test_the_supplied_loop_runs_the_expiry(loop):

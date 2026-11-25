@@ -43,6 +43,37 @@ export interface RenderedFeature {
   geometry?: { type?: string; coordinates?: unknown };
 }
 
+/** How far from the pointer, in px, a feature counts when none is under it. */
+export const HIT_TOLERANCE_PX = 3;
+
+/** The part of a map a hit test reads. */
+export interface QueryMap {
+  queryRenderedFeatures(
+    geometry: Point | [[number, number], [number, number]],
+    options: { layers: string[] }
+  ): RenderedFeature[];
+}
+
+/**
+ * The features of `layers` under `point`, top first, else those within
+ * `HIT_TOLERANCE_PX` of it, so a thin line or a small point can be hit.
+ */
+export function queryNear(
+  map: QueryMap,
+  point: Point,
+  layers: string[]
+): RenderedFeature[] {
+  if (!layers.length) return [];
+  const under = map.queryRenderedFeatures(point, { layers });
+  if (under.length) return under;
+  const t = HIT_TOLERANCE_PX;
+  const box: [[number, number], [number, number]] = [
+    [point.x - t, point.y - t],
+    [point.x + t, point.y + t],
+  ];
+  return map.queryRenderedFeatures(box, { layers });
+}
+
 /** Whether a rendered feature is a cluster bubble of a clustered source. */
 export const isCluster = (feature: Pick<RenderedFeature, "properties">) =>
   feature.properties?.cluster === true;
@@ -54,7 +85,7 @@ interface PointerEvent {
 }
 
 /** The part of a MapLibre map the pointer rules use. */
-export interface PointerMap {
+export interface PointerMap extends QueryMap {
   getLayersOrder(): string[];
   getLayer(id: string): unknown;
   getSource(
@@ -64,10 +95,6 @@ export interface PointerMap {
     | undefined;
   getZoom(): number;
   getCanvas(): { style: { cursor: string } };
-  queryRenderedFeatures(
-    geometry: Point,
-    options: { layers: string[] }
-  ): RenderedFeature[];
   easeTo(
     options: { center: [number, number]; zoom: number },
     eventData?: unknown
@@ -184,8 +211,7 @@ export class ViewPointer {
 
   /** The rendered features of the owned vector layers, clusters too. */
   private rendered(map: PointerMap, point: Point): RenderedFeature[] {
-    const layers = ownedStyleLayers(map, undefined, "include");
-    return layers.length ? map.queryRenderedFeatures(point, { layers }) : [];
+    return queryNear(map, point, ownedStyleLayers(map, undefined, "include"));
   }
 
   private hitsOf(map: PointerMap, features: RenderedFeature[]): Hit[] {
@@ -225,7 +251,7 @@ export class ViewPointer {
       ...(clickable ? ownedStyleLayers(map, clickable) : []),
       ...ownedStyleLayers(map, clustered, "only"),
     ];
-    return layers.length ? map.queryRenderedFeatures(point, { layers }) : [];
+    return queryNear(map, point, layers);
   }
 
   private readonly onClick = (event: PointerEvent): void => {

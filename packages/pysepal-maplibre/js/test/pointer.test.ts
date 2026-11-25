@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ViewPointer,
+  queryNear,
   wrapLng,
   type MarkerLike,
   type PointerMap,
@@ -200,6 +201,39 @@ describe("parseSourceId", () => {
     expect(parseSourceId("psm:basemap")).toBeNull();
     expect(parseSourceId("other:a:1")).toBeNull();
     expect(parseSourceId("psm:%E0%A4%A:1")).toBeNull();
+  });
+});
+
+describe("queryNear", () => {
+  const line = { source: "psm:l:1" };
+  /** A thin line 2 px right of the point: only a box around it reaches it. */
+  const map = {
+    queries: [] as unknown[],
+    queryRenderedFeatures(geometry: unknown, _options: { layers: string[] }) {
+      this.queries.push(geometry);
+      return Array.isArray(geometry) ? [line] : [];
+    },
+  };
+  const point = { x: 10, y: 20 } as any;
+
+  it("asks for a 3 px box only when nothing is under the point", () => {
+    expect(queryNear(map, point, ["psm:l:1:line"])).toEqual([line]);
+    expect(map.queries).toEqual([
+      point,
+      [
+        [7, 17],
+        [13, 23],
+      ],
+    ]);
+  });
+
+  it("keeps what is under the point, and asks nothing without layers", () => {
+    const under = { source: "psm:p:1" };
+    const exact = { queryRenderedFeatures: () => [under] };
+    expect(queryNear(exact, point, ["psm:p:1:fill"])).toEqual([under]);
+    map.queries.length = 0;
+    expect(queryNear(map, point, [])).toEqual([]);
+    expect(map.queries).toEqual([]);
   });
 });
 

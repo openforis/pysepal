@@ -366,6 +366,30 @@ def test_redisplay_restores_drawing(harness, page_session):
     assert not any(close(c, corners[1], 1e-6) for c in moved["geometry"]["coordinates"][0])
 
 
+def test_drawing_survives_a_style_rebuilt_from_a_snapshot(harness, page_session):
+    # MapLibre rebuilds the style from a snapshot of it, the drawing's own sources
+    # included, after a worker restart or a GPU reset.
+    widget = MapWidget(zoom=3, height="250px")
+    _, calls = record(widget)
+    session = widget.draw.begin(("polygon",), on_change=calls.append)
+    session.start("polygon")
+    [el] = show(page_session, widget)
+    wait_drawing(page_session, el, "polygon")
+    draw_polygon(page_session, el, spread(el, (0.3, 0.2), (0.6, 0.2), (0.6, 0.8), (0.3, 0.8)))
+    wait_for(page_session, lambda: calls, "on_change never ran")
+    [drawn] = session.features["features"]
+
+    el.evaluate("el => { el.psmOldStyle = el.psmMap.style; el.psmMap._handleWorkersRestarted(); }")
+    page_session.wait_for_function(
+        "el => el.psmMap.style !== el.psmOldStyle && el.psmMap.isStyleLoaded()", arg=el
+    )
+    wait_drawing(page_session, el, "polygon")
+    assert polygons(el) == [drawn]
+    corners = drawn["geometry"]["coordinates"][0]
+    middle = [sum(c[i] for c in corners[:-1]) / 4 for i in (0, 1)]
+    shown(page_session, el, middle, "psm-draw-polygon")
+
+
 def test_seed_replaces_drawing(harness, page_session):
     widget = MapWidget(zoom=3)
     reports, calls = record(widget)
@@ -508,10 +532,12 @@ def test_point_in_repeated_world(harness, page_session):
     assert [f["geometry"]["coordinates"] for f in state(first)["store"]] == [[lng, lat]]
     shown(page_session, first, (lng + 360, lat), "psm-draw-point")
 
+    # A view shown later restores the reported camera, whose center is in
+    # [-180, 180]: the same place, in the first world.
     _, second = show(page_session, widget, count=2)
     wait_drawing(page_session, second, "static")
     assert [f["geometry"]["coordinates"] for f in state(second)["store"]] == [[lng, lat]]
-    shown(page_session, second, (lng + 360, lat), "psm-draw-point")
+    shown(page_session, second, (lng, lat), "psm-draw-point")
 
 
 def test_rectangle_edit_survives_redisplay(harness, page_session):

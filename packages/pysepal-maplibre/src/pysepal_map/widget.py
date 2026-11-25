@@ -5,7 +5,7 @@ keeps the rest of the contract, summed up here for whoever drives a widget or
 writes a front end for it.
 
 Traits. ``state``, ``view``, ``view_request``, ``insets``, ``marker``, ``drawing``,
-``draw_request``, ``drawn`` and ``draw_tool`` are read-only: assigning one raises
+``draw_request``, ``drawn``, ``draw_tool`` and ``projection`` are read-only: assigning one raises
 ``traitlets.TraitError``, and only the widget writes them. The comm opens with
 the first request, sequence 1, in ``view_request``.
 
@@ -54,6 +54,8 @@ applied, and every report names that request and its ``cause``: ``user``,
 views not mounted, on an older request, or with a latitude outside [-90, 90]
 or a zoom outside [0, 24] are dropped, and on the same request a ``user`` or
 ``link`` camera is kept over an acknowledgement or another view's resize.
+A view reports its center's longitude in [-180, 180], and its bounds moved by
+as many turns, so across the antimeridian one of their sides passes 180.
 
 A center request carries ``center`` and ``zoom``, null to keep the zoom. A fit
 carries ``bounds``, ``padding``, ``max_zoom`` (null for the map's maximum) and
@@ -66,6 +68,12 @@ replaces it. A view jumps to the request it finds on mount, to a fit that
 waited for a usable area, and, as MapLibre does, for a user whose system asks
 for reduced motion. A fit waits while the view's usable
 area has no size, and runs once it has one.
+
+Projection. ``projection`` is ``"mercator"`` or ``"globe"``, and every view
+draws its map in it once its style loaded, a view shown later included.
+``set_projection`` writes it, and so does a ``projection`` message from a
+mounted view, which a view sends when its map changed projection while the
+model holds another, as the globe button does. Linked maps keep their own.
 
 Linked maps. Maps whose ``link_group`` names the same group keep one camera.
 A map in a group has ``_link`` set to ``{"group", "seq", "member"}``, else
@@ -379,6 +387,7 @@ StatusCallback = Callable[[Mapping[str, LayerStatus]], object]
 ViewCallback = Callable[[dict], Any]
 ClickCallback = Callable[[ClickEvent], object]
 CURSORS = ("", "crosshair", "pointer", "wait")
+PROJECTIONS = ("mercator", "globe")
 View = tuple[str, str]
 
 
@@ -534,6 +543,7 @@ class MapWidget(anywidget.AnyWidget):
     draw_request = traitlets.Dict(read_only=True).tag(sync=True)
     drawn = traitlets.Dict(read_only=True).tag(sync=True)
     draw_tool = traitlets.Dict(read_only=True).tag(sync=True)
+    projection = traitlets.Enum(PROJECTIONS, "mercator", read_only=True).tag(sync=True)
     cursor = traitlets.Enum(CURSORS, "").tag(sync=True)
     height = traitlets.Unicode("400px").tag(sync=True)
     _link = traitlets.Dict(read_only=True).tag(sync=True)
@@ -770,6 +780,12 @@ class MapWidget(anywidget.AnyWidget):
         """Remove the highlight marker."""
         self.set_trait("marker", {})
 
+    def set_projection(self, projection: str) -> None:
+        """Draw the map in ``projection``, ``"mercator"`` or ``"globe"``, in every view."""
+        if projection not in PROJECTIONS:
+            raise ValueError(f"the projection is 'mercator' or 'globe', not {projection!r}")
+        self.set_trait("projection", projection)
+
     def set_center(
         self, lng: float, lat: float, zoom: float | None = None, *, animate: bool = False
     ) -> None:
@@ -961,6 +977,8 @@ class MapWidget(anywidget.AnyWidget):
             self._click(content)
         elif kind == "draw_report":
             self._draw_report(content)
+        elif kind == "projection":
+            self._projection_report(content)
 
     def _answer_pull(self, digests) -> None:
         """Send each digest's bytes, or ``missing`` once a publish dropped them."""
@@ -1184,6 +1202,16 @@ class MapWidget(anywidget.AnyWidget):
                 FeatureHit(layer_id, instance, MappingProxyType(copy.deepcopy(properties)))
             )
         return tuple(features)
+
+    def _projection_report(self, content: dict) -> None:
+        """Take the projection a user picked in a mounted view."""
+        projection = content.get("projection")
+        if not isinstance(projection, str) or projection not in PROJECTIONS:
+            return
+        with self._lock:
+            mounted = any(v[0] == content.get("view_id") for v in self._views)
+            if mounted and not self._closed:
+                self.set_trait("projection", projection)
 
     def _draw_report(self, content: dict) -> None:
         """Mirror one view's drawn features in ``drawn``, and tell the session a user's.

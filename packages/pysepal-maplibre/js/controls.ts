@@ -252,6 +252,12 @@ export class ViewControls {
       const control = make();
       this.held[name] = control;
       this.options.map.addControl(control, position);
+      // MapLibre appends, and the draw toolbar stays below the buttons.
+      const corner = this.corners.get(position);
+      const toolbar = [...(corner?.children ?? [])].find((el) =>
+        el.classList.contains("psm-draw-toolbar")
+      );
+      if (toolbar) corner!.appendChild(toolbar);
     } else if (!wanted && current) {
       this.options.map.removeControl(current);
       delete this.held[name];

@@ -472,6 +472,17 @@ describe("ViewControls", () => {
     expect(bottomLeft(map)).toHaveLength(1);
   });
 
+  it("keeps the draw toolbar below the buttons turned on after it", () => {
+    const { map, controls } = setup();
+    controls.sync(state({ zoom: false, fullscreen: false }));
+    const toolbar = new FakeElement();
+    toolbar.className = "maplibregl-ctrl psm-draw-toolbar";
+    map.corner("top-left").appendChild(toolbar);
+    controls.sync(state());
+    expect(map.corner("top-left").children).toHaveLength(3);
+    expect(map.corner("top-left").children.at(-1)).toBe(toolbar);
+  });
+
   it("keeps the zoom and fullscreen controls top-left", () => {
     const { map, controls } = setup();
     controls.sync(state());

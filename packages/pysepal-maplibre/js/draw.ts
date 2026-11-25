@@ -1106,6 +1106,20 @@ class ViewAdapter extends TerraDrawMapLibreGLAdapter<MapLibreMap> {
     );
   }
 
+  private removeOwn(): void {
+    const map = this.target;
+    for (const id of ADAPTER_LAYERS) if (map.getLayer(id)) map.removeLayer(id);
+    for (const id of ADAPTER_SOURCES)
+      if (map.getSource(id)) map.removeSource(id);
+  }
+
+  // A style MapLibre rebuilt from a snapshot, after a worker restart or a GPU
+  // reset, still holds the sources and layers of the Terra Draw it stopped.
+  override register(callbacks: TerraDrawExtend.TerraDrawCallbacks): void {
+    this.removeOwn();
+    super.register(callbacks);
+  }
+
   override clear(): void {
     if (this.intact()) super.clear();
     else this._currentModeCallbacks?.onClear();
@@ -1119,10 +1133,7 @@ class ViewAdapter extends TerraDrawMapLibreGLAdapter<MapLibreMap> {
     // The base adapter's teardown releases every listener and calls clear().
     TerraDrawExtend.TerraDrawBaseAdapter.prototype.unregister.call(this);
     // A new style that is still loading holds none of these.
-    const map = this.target;
-    for (const id of ADAPTER_LAYERS) if (map.getLayer(id)) map.removeLayer(id);
-    for (const id of ADAPTER_SOURCES)
-      if (map.getSource(id)) map.removeSource(id);
+    this.removeOwn();
   }
 }
 

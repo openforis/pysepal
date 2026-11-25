@@ -103,6 +103,7 @@ interface Wanted {
   ref: LayerRef;
   geojson: boolean;
   digest?: string;
+  sourceLayer?: string;
 }
 
 function wantedOf(state: Partial<MapState>): Map<string, Wanted> {
@@ -116,6 +117,8 @@ function wantedOf(state: Partial<MapState>): Map<string, Wanted> {
       ref: { id, token, instance },
       geojson,
       digest: geojson ? layer.source?.digest : undefined,
+      sourceLayer:
+        layer.kind === "pmtiles" ? layer.source?.source_layer : undefined,
     });
   }
   return wanted;
@@ -477,7 +480,7 @@ export class MapSync {
           add(id, spec);
           return;
         }
-        this.reporter.track(id, want.ref, want.geojson);
+        this.reporter.track(id, want.ref, want.geojson, want.sourceLayer);
         try {
           add(id, spec);
         } catch (error) {

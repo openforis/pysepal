@@ -13,6 +13,7 @@ import { ViewLink, pageRegistry } from "./link";
 import { MapSync } from "./maplive";
 import { ViewPointer } from "./pointer";
 import { ViewPopups } from "./popups";
+import { ViewProjection } from "./projection";
 import { StatusReporter, ViewPresence, newViewId, onLiveAgain } from "./status";
 import { DrawToolbar } from "./toolbar";
 import type { MapState } from "./types";
@@ -25,7 +26,9 @@ maplibregl.setWorkerUrl(
 );
 
 // One registration per bundled MapLibre instance, shared by all its views.
-maplibregl.addProtocol("pmtiles", new Protocol().tile);
+// The metadata gives the TileJSON the archive's layer names, which the
+// status reporter checks, and its attribution.
+maplibregl.addProtocol("pmtiles", new Protocol({ metadata: true }).tile);
 
 interface Model {
   height: string;
@@ -39,6 +42,7 @@ interface Model {
   draw_request: unknown;
   drawn: unknown;
   draw_tool: unknown;
+  projection: string;
   _link: Record<string, unknown>;
 }
 
@@ -199,6 +203,7 @@ function render({ model, el }: RenderProps<Model>) {
   root.psmDraw = draw;
   const camera = new ViewCamera({ map, model, viewId, host: root, send });
   root.psmCamera = camera;
+  const projection = new ViewProjection({ map, model, viewId, send });
   const controls = new ViewControls({
     map,
     root,
@@ -247,6 +252,7 @@ function render({ model, el }: RenderProps<Model>) {
     stopLive();
     link.dispose();
     camera.dispose();
+    projection.dispose();
     // Before the map goes: it removes Terra Draw's layers.
     draw?.dispose();
     pointer.dispose();

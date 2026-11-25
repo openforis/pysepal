@@ -54,6 +54,8 @@ export interface StatusReporterOptions {
 interface Entry {
   ref: LayerRef;
   geojson: boolean;
+  /** For a PMTiles source, the layer of the archive the state names. */
+  sourceLayer?: string;
   /** The source object added under this id; events from any other are stale. */
   source?: unknown;
   /** Loaded; for GeoJSON, only a load after its data was applied counts. */
@@ -104,10 +106,19 @@ export class StatusReporter {
   constructor(private readonly options: StatusReporterOptions) {}
 
   /** Register a source about to be added; it is loading until it loads. */
-  track(id: string, ref: LayerRef, geojson: boolean): void {
+  track(
+    id: string,
+    ref: LayerRef,
+    geojson: boolean,
+    sourceLayer?: string
+  ): void {
     const style = this.entries.get(id)?.style;
     const last = this.entries.get(id)?.last;
-    this.entries.set(id, { ...this.fresh(ref, geojson), style, last });
+    this.entries.set(id, {
+      ...this.fresh(ref, geojson, sourceLayer),
+      style,
+      last,
+    });
     this.update(id);
   }
 
@@ -131,6 +142,7 @@ export class StatusReporter {
     if (entry.geojson && event.sourceDataType === "content") {
       entry.content = true;
     }
+    if (event.sourceDataType === "metadata") this.checkSourceLayer(entry);
     if (event.tile?.state === "loaded") {
       entry.failedTiles.delete(tileKey(event.tile));
       entry.tileLoaded = true;
@@ -212,7 +224,7 @@ export class StatusReporter {
         this.entries.delete(id);
       } else if (entry.source !== undefined && !this.isCurrent(id, entry)) {
         this.entries.set(id, {
-          ...this.fresh(entry.ref, entry.geojson),
+          ...this.fresh(entry.ref, entry.geojson, entry.sourceLayer),
           style: entry.style,
           last: entry.last,
         });
@@ -251,15 +263,35 @@ export class StatusReporter {
     this.options.send(message);
   }
 
-  private fresh(ref: LayerRef, geojson: boolean): Entry {
+  private fresh(ref: LayerRef, geojson: boolean, sourceLayer?: string): Entry {
     return {
       ref: { ...ref },
       geojson,
+      sourceLayer,
       loaded: false,
       content: false,
       failedTiles: new Map(),
       tileLoaded: false,
     };
+  }
+
+  /**
+   * MapLibre draws nothing, and reports no source error, for a layer name
+   * the archive does not hold.
+   */
+  private checkSourceLayer(entry: Entry): void {
+    const layers = (entry.source as { vectorLayerIds?: unknown })
+      .vectorLayerIds;
+    const wanted = entry.sourceLayer;
+    if (
+      wanted === undefined ||
+      !Array.isArray(layers) ||
+      layers.includes(wanted)
+    )
+      return;
+    entry.sourceError ??= `no layer "${wanted}" in the PMTiles archive; it has ${layers.join(
+      ", "
+    )}`;
   }
 
   private markLoaded(entry: Entry): void {
