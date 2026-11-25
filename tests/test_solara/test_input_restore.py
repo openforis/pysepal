@@ -347,11 +347,12 @@ def test_vector_column_list_reaches_the_widget_with_a_divider(monkeypatch):
     async def run():
         root, rc = reacton.render(Harness(), handle_error=False)
         try:
+            # The columns and the values load in separate tasks, in either order.
+            labels = (msg("widgets.vector.column"), msg("widgets.vector.value"))
             await wait_until(
-                lambda: bool(getattr(find_by_label(root, msg("widgets.vector.value")), "items", []))
+                lambda: all(getattr(find_by_label(root, label), "items", []) for label in labels)
             )
-            column = find_by_label(root, msg("widgets.vector.column"))
-            value = find_by_label(root, msg("widgets.vector.value"))
+            column, value = (find_by_label(root, label) for label in labels)
             all_features, divider, *columns = column.items
             assert columns == ["land_use", "plot_id", "region"]
             assert all_features == {"title": "All features", "value": "ALL"}
