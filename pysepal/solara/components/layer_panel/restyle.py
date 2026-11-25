@@ -22,6 +22,10 @@ COLORMAPS = [
 ]
 
 
+# The style fields an emptied field clears; the others keep their value.
+_CLEARABLE = {"min", "max", "palette", "colormap", "stroke", "fill"}
+
+
 def _numbers(text: str) -> float | list[float]:
     values = [float(part) for part in text.split(",") if part.strip()]
     return values[0] if len(values) == 1 else values
@@ -107,12 +111,13 @@ def RestyleForm(spec: LayerSpec, on_apply: Callable[[dict], None]):
         try:
             changes = {}
             for name, raw in edits.current.items():
-                if raw is None or raw == "":
+                value = None if raw is None or raw == "" else _parse(name, raw)
+                if value == []:
+                    value = None
+                if value is None and name not in _CLEARABLE:
                     continue
-                value = _parse(name, raw)
-                if value in ([], getattr(style, name, None)):
-                    continue
-                changes[name] = value
+                if value != getattr(style, name, None):
+                    changes[name] = value
             if changes:
                 on_apply(changes)
         except (ValueError, ValidationError) as exc:
@@ -156,6 +161,7 @@ def RestyleForm(spec: LayerSpec, on_apply: Callable[[dict], None]):
                     rv.Select,
                     label=msg("layer_panel.colormap"),
                     items=COLORMAPS,
+                    clearable=True,
                     v_model=style.colormap,
                     on_v_model=edit("colormap"),
                 ),

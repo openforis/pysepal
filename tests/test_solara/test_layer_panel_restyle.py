@@ -95,3 +95,42 @@ def test_multiband_file_without_bands_has_only_min_max(tmp_path):
         RestyleForm(spec=LayerSpec.from_raster(path), on_apply=lambda c: None), handle_error=False
     )
     assert field_names(box) == ["min", "max"]
+
+
+def test_emptied_fields_clear_their_values(raster_spec):
+    style = raster_spec.style.model_copy(
+        update={"min": 0, "max": 9, "palette": ["#000000"], "colormap": None}
+    )
+    sent = []
+    box, _ = solara.render(
+        RestyleForm(spec=raster_spec.revise(style=style), on_apply=sent.append),
+        handle_error=False,
+    )
+    set_field(box, "min", "")
+    set_field(box, "palette", " , ")
+    click_apply(box)
+    assert sent == [{"min": None, "palette": None}]
+
+
+def test_an_emptied_width_keeps_its_value(vector_spec):
+    style = vector_spec.style.model_copy(update={"fill": "#00ff00"})
+    sent = []
+    box, _ = solara.render(
+        RestyleForm(spec=vector_spec.revise(style=style), on_apply=sent.append),
+        handle_error=False,
+    )
+    set_field(box, "fill", "")
+    set_field(box, "width", "")
+    click_apply(box)
+    assert sent == [{"fill": None}]
+
+
+def test_a_cleared_palette_reaches_the_store(raster_spec):
+    style = raster_spec.style.model_copy(update={"palette": ["#000000"], "colormap": None})
+    store = LayerStore()
+    store.add(raster_spec.revise(style=style))
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    open_settings(box, raster_spec.id)
+    set_field(box, "palette", "")
+    click_apply(box)
+    assert store.get(raster_spec.id).style.palette is None
