@@ -24,7 +24,7 @@ import weakref
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
-__all__ = ["PATH", "allow", "client_prefix", "serving"]
+__all__ = ["PATH", "allow", "client_prefix", "route", "serving"]
 
 #: Where the route listens, below solara's root path.
 PATH = "/_pysepal/tiles"
@@ -96,10 +96,18 @@ def _revoke(token: str) -> None:
         _grants.pop(token, None)
 
 
-def _mount(app: Any) -> None:
+def route() -> Any:
+    """The route, for an app that composes solara's routes into its own Starlette app.
+
+    pysepal puts it in front of solara-server's own routes, but a ``Mount`` of them
+    holds a copy made before, so such an app lists it ahead of that ``Mount``.
+    """
     from starlette.routing import Route
 
-    path = f"{PATH}/{{token}}/{{port:int}}/{{path:path}}"
+    return Route(f"{PATH}/{{token}}/{{port:int}}/{{path:path}}", _forward, methods=["GET", "HEAD"])
+
+
+def _mount(app: Any) -> None:
     with _lock:
         routes = app.router.routes
         # A reload of this module mounts a new handler; the old one reads dead grants.
@@ -107,7 +115,7 @@ def _mount(app: Any) -> None:
             return
         routes[:] = [r for r in routes if not getattr(r, "path", "").startswith(f"{PATH}/")]
         # first: solara's catch-all page route would answer otherwise
-        routes.insert(0, Route(path, _forward, methods=["GET", "HEAD"]))
+        routes.insert(0, route())
 
 
 def _fetch(url: str) -> tuple[int, dict[str, str], bytes]:

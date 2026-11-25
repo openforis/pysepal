@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import pytest
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 
 from pysepal.layers import LayerSpec, prepare_sync, tile_route
@@ -100,6 +100,17 @@ def test_a_local_raster_reaches_the_page_through_the_route(solara_server, byte, 
     twice = f"{tile}&filename=%2Fetc%2Fhostname"
     assert client.get(twice).status_code == 404, "localtileserver would read one of them"
     assert client.get("/raster-app").text == "page"
+
+
+def test_a_composed_app_lists_the_route_itself(solara_server, byte):
+    # The guide's composition: the Mount copies solara's routes before pysepal adds its own.
+    composed = Starlette(
+        routes=[tile_route.route(), Mount("/", routes=solara_server.router.routes)]
+    )
+    render = prepare_sync(LayerSpec.from_raster(byte, name="b"), optimize=False)
+    response = TestClient(composed).get(_middle_tile(render))
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
 
 
 def test_a_raster_is_readable_only_with_its_own_token(solara_server, byte, tmp_path):

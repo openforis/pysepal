@@ -246,6 +246,7 @@ point `SOLARA_APP` at your app file and compose the routes yourself.
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 import solara.server.starlette as solara_starlette
+from pysepal.layers import tile_route
 
 async def archive(request):   # PMTiles: open the file, stream the range
     ...
@@ -257,6 +258,7 @@ app = Starlette(
     routes=[
         Route("/tiles/{kernel_id}/pmtiles", endpoint=archive),
         Route("/rasters/{port:int}/{path:path}", endpoint=raster),
+        tile_route.route(),  # pysepal's raster route, used when no prefix is set
         Mount("/", routes=solara_starlette.routes),  # must be last
     ],
     lifespan=solara_starlette.lifespan,
@@ -287,7 +289,10 @@ return FileResponse(path, headers={"content-encoding": "identity"})
 ```
 
 Mount Solara at `/` rather than a prefix when it owns the app root, and list your
-own routes before it so the catch-all does not swallow them.
+own routes before it so the catch-all does not swallow them. The `Mount` holds a
+copy of Solara's routes, so pysepal cannot put its route in front of them at run
+time: list `tile_route.route()` yourself, or rasters drawn without a prefix get
+the page instead of their tiles.
 
 A proxying raster route must forward the `Range` request header and preserve
 `206 Partial Content`, and drop hop-by-hop headers (`connection`,
