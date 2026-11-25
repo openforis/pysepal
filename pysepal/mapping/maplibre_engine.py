@@ -537,7 +537,7 @@ class MapLibreEngine:
         if event.kind == "removed":
             self._incarnations[layer_id] = self._incarnations.get(layer_id, 0) + 1
             self._accepted.pop(layer_id, None)
-            self._running.pop(layer_id, None)
+            self._drop_running(layer_id)
             self._failed.pop(layer_id, None)
         elif layer_id not in self.store:
             return
@@ -547,12 +547,18 @@ class MapLibreEngine:
 
     # -- preparation --------------------------------------------------------------
 
+    def _drop_running(self, layer_id: str) -> None:
+        """Forget the preparation running for an id, and cancel it: its outcome is stale."""
+        _, task = self._running.pop(layer_id, (None, None))
+        if task is not None and not task.done():
+            _cancel_task(task)
+
     def _request(self, layer_id: str) -> None:
         token = self._tokens[layer_id]
         spec = self.store.get(layer_id)
+        self._drop_running(layer_id)
         render = self._cached(spec) or self._restyled(layer_id, spec)
         if render is not None:
-            self._running.pop(layer_id, None)
             self.put(render)
             self._offer(layer_id, token, spec, render, fresh=False)
             return

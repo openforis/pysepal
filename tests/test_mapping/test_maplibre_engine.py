@@ -133,6 +133,7 @@ class FakePrepare:
         self.overrides: dict[str, dict] = {}
         self.gates: dict[str, list[asyncio.Event]] = {}
         self.calls: list[tuple[str, asyncio.AbstractEventLoop | None]] = []
+        self.cancelled: list[str] = []
 
     def hold(self, layer_id: str) -> asyncio.Event:
         """Make the next async prepare of ``layer_id`` wait for the returned event."""
@@ -174,7 +175,11 @@ class FakePrepare:
         self.calls.append((spec.id, asyncio.get_running_loop()))
         gates = self.gates.get(spec.id)
         if gates:
-            await gates.pop(0).wait()
+            try:
+                await gates.pop(0).wait()
+            except asyncio.CancelledError:
+                self.cancelled.append(spec.id)
+                raise
         return self.render(spec)
 
 
@@ -355,6 +360,21 @@ async def test_stale_prepare_is_dropped(fake):
     [tiles] = layer_of(widget, "a")["source"]["tiles"]
     assert tiles.startswith(new)
     assert store.view("a").status == "ready"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["replaced", "removed"])
+async def test_a_superseded_prepare_is_cancelled(fake, how):
+    _, store, engine = on_loop()
+    fake.hold("a")
+    store.add(tile_spec("a", url="https://tiles.test/old/{z}/{x}/{y}.png"))
+    await wait_until(lambda: len(fake.calls) == 1)
+    if how == "replaced":
+        store.add(tile_spec("a", url="https://tiles.test/new/{z}/{x}/{y}.png"), replace=True)
+    else:
+        store.remove("a")
+    await wait_until(lambda: fake.cancelled == ["a"])
+    await engine.wait_idle()
 
 
 @pytest.mark.asyncio
