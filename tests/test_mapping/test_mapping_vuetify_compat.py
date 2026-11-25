@@ -4,7 +4,7 @@ from pysepal import mapping as sm
 
 
 def test_sepal_map_builds() -> None:
-    """A map shows the zoom, scale and, when asked, fullscreen controls the widget draws."""
+    """A map shows the zoom, scale, globe and, when asked, fullscreen controls the widget draws."""
     m = sm.SepalMap(gee=False, fullscreen_control=True)
 
     assert m.state["controls"] == {
@@ -12,6 +12,7 @@ def test_sepal_map_builds() -> None:
         "fullscreen": True,
         "scale": True,
         "coordinates": False,
+        "globe": True,
     }
 
     # the map btn shows an outlined small icon
