@@ -205,7 +205,7 @@ class SepalMap(MapWidget):
             gee_interface: a shared GEEInterface instance. If provided, takes precedence over gee_session
             fullscreen: make the map fill its container (``height="100%"``).
             fullscreen_control: show the fullscreen control; the zoom and scale controls are always shown.
-            globe_control: show the button that turns the map into a globe and back.
+            globe_control: show the button that turns the map into a globe and back. ``m.projection`` reads the projection and ``m.set_projection("globe")`` sets it, with or without the button.
             layer_store: the layers to draw, for a store shared with other components. The layers already in it are drawn with their stored visibility. Defaults to a new, empty store.
             center: the first camera center, as ``(lng, lat)``.
             zoom: the first zoom level. MapLibre counts a 512 px world at zoom 0.

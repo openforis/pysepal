@@ -706,6 +706,13 @@ def test_the_globe_button_shows_unless_asked_not_to() -> None:
     assert SepalMap(gee=False, globe_control=False).state["controls"]["globe"] is False
 
 
+def test_python_turns_the_map_into_a_globe() -> None:
+    m = SepalMap(gee=False, globe_control=False)
+    assert m.projection == "mercator"
+    m.set_projection("globe")
+    assert m.projection == "globe"
+
+
 def test_zoom_methods_take_padding_by_keyword() -> None:
     m = SepalMap(gee=False)
     with pytest.raises(TypeError):
