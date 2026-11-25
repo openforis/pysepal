@@ -680,11 +680,24 @@ def test_zooms_fly_as_the_map_says(byte: Path) -> None:
     m.zoom_layer(h.id, animate=True)
     assert m.view_request["animate"] is True
 
-    # a plain set_center jumps, whatever the map says
-    m.animate = True
-    m.set_center(0, 0)
-    assert "animate" not in m.view_request
     assert SepalMap(gee=False, animate=False).animate is False
+
+
+def test_set_center_and_fit_bounds_fly_as_the_map_says() -> None:
+    # an app centering after a click is a zoom the user started
+    m = SepalMap(gee=False)
+    m.set_center(0, 0, 4)
+    assert m.view_request["animate"] is True
+    m.fit_bounds((10, 10, 20, 20))
+    assert m.view_request["animate"] is True
+    m.set_center(0, 0, 4, animate=False)
+    assert "animate" not in m.view_request
+
+    m.animate = False
+    m.fit_bounds((10, 10, 20, 20))
+    assert "animate" not in m.view_request
+    m.set_center(0, 0, 4, animate=True)
+    assert m.view_request["animate"] is True
 
 
 def test_zoom_methods_take_padding_by_keyword() -> None:

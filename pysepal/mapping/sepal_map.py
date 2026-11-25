@@ -212,7 +212,7 @@ class SepalMap(MapWidget):
             inspector: build the map's value inspector as ``m.inspector``.
             coordinates: show the pointer's coordinates.
             link_group: the group of maps this one keeps one camera with (see :attr:`link_group`). A group that has a camera replaces ``center`` and ``zoom`` with it.
-            animate: fly to what the zoom methods (``zoom_layer``, ``zoom_bounds``, ``zoom_raster``, ``zoom_ee_object``, ``centerObject``) and the layer panel's zoom button aim at, rather than jump. Change it later as :attr:`animate`; each zoom method also takes ``animate=``.
+            animate: fly to what the camera methods (``set_center``, ``fit_bounds``, ``zoom_layer``, ``zoom_bounds``, ``zoom_raster``, ``zoom_ee_object``, ``centerObject``) and the layer panel's zoom button aim at, rather than jump. Change it later as :attr:`animate`; each of those methods also takes ``animate=``.
 
         Raises:
             ValueError: if both gee_session and gee_interface are provided, or a basemap is unknown
@@ -432,6 +432,42 @@ class SepalMap(MapWidget):
     def _animated(self, animate: Optional[bool]) -> bool:
         return self.animate if animate is None else animate
 
+    def set_center(
+        self,
+        lng: float,
+        lat: float,
+        zoom: Optional[float] = None,
+        *,
+        animate: Optional[bool] = None,
+    ) -> None:
+        """Ask every view to center on ``(lng, lat)``; no zoom keeps theirs.
+
+        Args:
+            lng: the longitude of the new center
+            lat: the latitude of the new center
+            zoom: the new zoom, None to keep the current one
+            animate: fly there rather than jump; None follows :attr:`animate`.
+        """
+        super().set_center(lng, lat, zoom, animate=self._animated(animate))
+
+    def fit_bounds(
+        self,
+        bounds: tuple[float, float, float, float],
+        padding: int = 20,
+        max_zoom: Optional[float] = None,
+        *,
+        animate: Optional[bool] = None,
+    ) -> None:
+        """Ask every view to fit ``(west, south, east, north)``, ``padding`` px in.
+
+        Args:
+            bounds: the corners in EPSG:4326
+            padding: px kept free around the bounds
+            max_zoom: the closest zoom of the fit, None for the map's maximum
+            animate: fly there rather than jump; None follows :attr:`animate`.
+        """
+        super().fit_bounds(bounds, padding, max_zoom, animate=self._animated(animate))
+
     def zoom_bounds(
         self,
         bounds: Sequence[float],
@@ -448,9 +484,7 @@ class SepalMap(MapWidget):
             max_zoom: the closest zoom of the fit, so that a point is not shown at zoom 24.
             animate: fly there rather than jump; None follows :attr:`animate`.
         """
-        self.fit_bounds(
-            tuple(bounds), padding=padding, max_zoom=max_zoom, animate=self._animated(animate)
-        )
+        self.fit_bounds(tuple(bounds), padding=padding, max_zoom=max_zoom, animate=animate)
         return self
 
     @sd.need_ee
@@ -565,7 +599,7 @@ class SepalMap(MapWidget):
             return self.zoom_ee_object(item, animate=animate)
         west, south, east, north = self.gee_interface.get_bounds(item)
         center = ((west + east) / 2, (south + north) / 2)
-        self.set_center(*center, zoom, animate=self._animated(animate))
+        self.set_center(*center, zoom, animate=animate)
         return self
 
     def get_scale(self) -> float:
