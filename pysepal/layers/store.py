@@ -172,7 +172,10 @@ class LayerStore:
     def _drain(self) -> None:
         with self._lock:
             self._drain_loop = None
-        while True:
+            # Only what is queued now: a later hand-over schedules its own drain, so a
+            # writer in a tight loop cannot hold the loop here.
+            count = len(self._queue)
+        for _ in range(count):
             with self._lock:
                 if not self._queue:
                     return

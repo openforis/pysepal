@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+import time
 
 import pytest
 
@@ -160,3 +161,29 @@ def test_events_left_on_a_stopped_loop_are_not_pending(raster_spec):
         assert store.pending_events == 0
     finally:
         loop.close()
+
+
+@pytest.mark.asyncio
+async def test_a_writer_in_a_tight_loop_does_not_hold_the_loop(raster_spec):
+    store = LayerStore()
+    store.subscribe(lambda event: time.sleep(0.001))
+    store.add(raster_spec)
+    stop = threading.Event()
+
+    def write():
+        # Writes outpace the subscriber for 2 s, so the queue never empties.
+        opacity, deadline = 0.5, time.monotonic() + 2
+        while time.monotonic() < deadline and not stop.is_set():
+            opacity = 1.5 - opacity
+            store.set_opacity(raster_spec.id, opacity)
+            time.sleep(0.0005)
+
+    writer = threading.Thread(target=write, daemon=True)
+    writer.start()
+    try:
+        start = time.monotonic()
+        await asyncio.sleep(0.01)
+        assert time.monotonic() - start < 1
+    finally:
+        stop.set()
+        writer.join()
