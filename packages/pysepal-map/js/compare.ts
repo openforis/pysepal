@@ -1,5 +1,9 @@
 /// <reference types="geojson" />
-import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
+import type {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  ProjectionSpecification,
+} from "maplibre-gl";
 
 import { CONTROLS, fullscreenTarget } from "./controls";
 import { MIRROR_SOURCE, mirrorLayers } from "./draw";
@@ -10,6 +14,9 @@ import type { DrawFeature, MapState, ViewSide } from "./types";
 import { NO_INSETS, type Insets } from "./view";
 
 const RIGHT = "right";
+
+/** What a map without a projection draws in. */
+const MERCATOR: ProjectionSpecification = { type: "mercator" };
 
 /** The variable that holds the divider's x, in px from the fullscreen target's left edge. */
 const DIVIDER_VARIABLE = "--psm-divider-x";
@@ -295,6 +302,7 @@ export class CompareView {
     // MapLibre loads a style a frame later at the earliest.
     map.on("style.load", () => {
       right.styled = true;
+      this.project();
       // A new style holds none of the mirror.
       this.mirror();
     });
@@ -302,6 +310,7 @@ export class CompareView {
     (root as CompareRoot).psmCompare = { map, status: reporter, sync };
     this.place();
     main.on("move", this.follow);
+    main.on("projectiontransition", this.project);
     this.follow();
   }
 
@@ -311,6 +320,7 @@ export class CompareView {
     this.right = null;
     const { root, main } = this.options;
     main.off("move", this.follow);
+    main.off("projectiontransition", this.project);
     delete (root as CompareRoot).psmCompare;
     right.sync.dispose();
     // Its view_close drops the side's reports in Python.
@@ -435,6 +445,18 @@ export class CompareView {
     // The page's own shortcuts would act on the same key.
     event.stopPropagation();
     this.moveTo(to);
+  };
+
+  /** Draws the right map in the main map's projection, once it can. */
+  private readonly project = () => {
+    const right = this.right;
+    // MapLibre throws on a projection set before the style loaded.
+    if (!right?.styled) return;
+    const wanted = this.options.main.getProjection() ?? MERCATOR;
+    const current = right.map.getProjection() ?? MERCATOR;
+    if (JSON.stringify(current) === JSON.stringify(wanted)) return;
+    right.map.setProjection(wanted);
+    this.follow();
   };
 
   private readonly follow = () => {

@@ -95,6 +95,8 @@ export interface MapState {
     fullscreen: boolean;
     scale: boolean;
     coordinates: boolean;
+    /** A button that turns the view's map into a globe and back. */
+    globe: boolean;
   };
   basemap: BasemapState | null;
   layers: LayerState[];

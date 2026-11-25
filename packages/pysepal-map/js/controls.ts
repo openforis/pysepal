@@ -1,6 +1,7 @@
 import {
   AttributionControl,
   FullscreenControl,
+  GlobeControl,
   NavigationControl,
   ScaleControl,
 } from "maplibre-gl";
@@ -19,13 +20,14 @@ import { NO_INSETS, type Insets } from "./view";
 const MAPLIBRE_ATTRIBUTION =
   '<a href="https://maplibre.org/" target="_blank">MapLibre</a>';
 
-type Name = "zoom" | "fullscreen" | "scale" | "coordinates";
+type Name = "zoom" | "fullscreen" | "globe" | "scale" | "coordinates";
 
 const DEFAULT_CONTROLS: MapState["controls"] = {
   zoom: true,
   fullscreen: true,
   scale: true,
   coordinates: false,
+  globe: false,
 };
 
 /** Marks the element the fullscreen control fills instead of the map's. */
@@ -205,6 +207,12 @@ export class ViewControls {
       this.fullscreenControl()
     );
     this.toggle(
+      "globe",
+      Boolean(controls.globe),
+      "top-left",
+      () => new GlobeControl()
+    );
+    this.toggle(
       "scale",
       controls.scale,
       "bottom-left",
@@ -249,6 +257,12 @@ export class ViewControls {
       delete this.held[name];
       // Its onRemove drops the document listener: no fullscreenend follows.
       if (name === "fullscreen") this.leaveFullscreen();
+      // No button would be left to take the view off the globe.
+      if (
+        name === "globe" &&
+        this.options.map.getProjection()?.type === "globe"
+      )
+        this.options.map.setProjection({ type: "mercator" });
     }
   }
 

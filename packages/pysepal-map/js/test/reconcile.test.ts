@@ -611,6 +611,7 @@ class StateGenerator {
         fullscreen: true,
         scale: true,
         coordinates: false,
+        globe: false,
       },
       basemap: clone(this.basemap),
       layers: clone(this.layers),

@@ -136,3 +136,34 @@ def test_explicit_height_holds_inside_a_taller_vbox(solara_test, page_session):
     display(box)
     page_session.locator(".psm-map canvas.maplibregl-canvas").wait_for()
     assert page_session.locator(".psm-map").bounding_box()["height"] == 200
+
+
+def test_the_globe_button_turns_both_compare_maps_into_a_globe(solara_test, page_session):
+    widget = MapWidget()
+    widget.publish(MapState(compare=True, controls=Controls(globe=True)))
+    display(widget)
+    page_session.wait_for_function(
+        "document.querySelector('.psm-map')?.psmCompare?.map.isStyleLoaded()"
+    )
+    projections = (
+        "el => [el.psmMap.getProjection()?.type ?? 'mercator',"
+        " el.psmCompare.map.getProjection()?.type ?? 'mercator']"
+    )
+    el = page_session.locator(".psm-map")
+    page_session.locator(".maplibregl-ctrl-globe").click()
+    page_session.wait_for_function(
+        "(() => { const el = document.querySelector('.psm-map');"
+        " return el.psmCompare.map.getProjection()?.type === 'globe'; })()"
+    )
+    assert el.evaluate(projections) == ["globe", "globe"]
+
+    # Without the button nothing could take the view off the globe.
+    widget.publish(MapState(compare=True))
+    page_session.wait_for_function(
+        "!document.querySelector('.maplibregl-ctrl-globe, .maplibregl-ctrl-globe-enabled')"
+    )
+    page_session.wait_for_function(
+        "(() => { const el = document.querySelector('.psm-map');"
+        " return el.psmCompare.map.getProjection()?.type === 'mercator'; })()"
+    )
+    assert el.evaluate(projections) == ["mercator", "mercator"]

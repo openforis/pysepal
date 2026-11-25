@@ -385,13 +385,16 @@ class Controls:
     """The map controls to show.
 
     ``scale`` is a metric scale bar; ``coordinates`` a readout of the pointer's
-    position at the bottom left.
+    position at the bottom left; ``globe`` a button that turns the view's map
+    into a globe and back. The projection is the view's, like its camera:
+    hiding the button takes the view back to the flat map.
     """
 
     zoom: bool = True
     fullscreen: bool = True
     scale: bool = True
     coordinates: bool = False
+    globe: bool = False
 
     def to_json(self) -> dict:
         """The control switches as JSON."""
@@ -400,6 +403,7 @@ class Controls:
             "fullscreen": self.fullscreen,
             "scale": self.scale,
             "coordinates": self.coordinates,
+            "globe": self.globe,
         }
 
 

@@ -42,11 +42,22 @@ class FakeCameraMap {
     return this.zoom;
   }
 
+  /**
+   * A globe zoomed out, which shows space around it: a point more than 100
+   * px from the middle is off the sphere, and unprojects to its edge.
+   */
+  ball = false;
+
   /** Two degrees span the width and the height, whatever the zoom. */
   unproject([x, y]: [number, number]) {
     const { left, right, top, bottom } = this.padding;
     const middleX = left + (this.width - left - right) / 2;
     const middleY = top + (this.height - top - bottom) / 2;
+    const off = Math.hypot(x - middleX, y - middleY);
+    if (this.ball && off > 100) {
+      x = middleX + ((x - middleX) * 100) / off;
+      y = middleY + ((y - middleY) * 100) / off;
+    }
     return {
       lng: this.center.lng + ((x - middleX) * 2) / this.width,
       lat: this.center.lat - ((y - middleY) * 2) / this.height,
@@ -641,6 +652,16 @@ describe("ViewCamera", () => {
     map.on("moveend", (event) => marks.push(event[PLACE]));
     camera.setInsets(LEFT_300);
     expect(marks).toEqual([true]);
+  });
+
+  it("lets a globe that shows whole move to the new area's middle rather than turn", () => {
+    const { camera, map } = setup();
+    camera.start();
+    map.ball = true;
+    camera.setInsets(LEFT_300);
+    expect(map.center).toEqual({ lng: 0, lat: 0 });
+    expect(map.padding).toEqual(LEFT_300);
+    expect(map.calls.at(-1)).toBe("setPadding");
   });
 
   it("keeps the center in place when told not to keep the map's", () => {

@@ -300,7 +300,8 @@ export class ViewCamera {
   /**
    * Use `insets` from now on; before `start`, they wait for it. The map
    * keeps its place on screen, unless `keepPlace` is false, as when the view
-   * enters or leaves fullscreen: then the center keeps its place in the area.
+   * enters or leaves fullscreen, or the map is a globe that shows whole:
+   * then the center keeps its place in the area.
    */
   setInsets(insets: Insets, keepPlace = true): void {
     if (this.disposed || sameInsets(insets, this.insets)) return;
@@ -308,7 +309,9 @@ export class ViewCamera {
     this.insets = { ...insets };
     if (!this.started) return;
     const { map } = this.options;
-    if (keepPlace) {
+    // A globe that shows whole would turn under the jump rather than slide,
+    // so it moves to the new area's middle instead.
+    if (keepPlace && this.fillsView()) {
       // The area's middle moves by half of what each side gained.
       const at = map.project(map.getCenter());
       const x =
@@ -485,6 +488,25 @@ export class ViewCamera {
       Math.floor((clientHeight - top - bottom - 1) / 2)
     );
     return Math.max(0, Math.min(padding, room));
+  }
+
+  /**
+   * Whether the map covers the whole host, as a flat map does. A point off
+   * a globe unprojects to its edge, so its round trip lands elsewhere.
+   */
+  private fillsView(): boolean {
+    const { map, host } = this.options;
+    const [w, h] = [host.clientWidth, host.clientHeight];
+    const corners: [number, number][] = [
+      [0, 0],
+      [w, 0],
+      [0, h],
+      [w, h],
+    ];
+    return corners.every(([x, y]) => {
+      const back = map.project(map.unproject([x, y]));
+      return Math.abs(back.x - x) < 1 && Math.abs(back.y - y) < 1;
+    });
   }
 
   /** Whether the insets leave some of the host. */

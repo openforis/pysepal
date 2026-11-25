@@ -5,7 +5,8 @@
     "zoom": true,
     "fullscreen": true,
     "scale": true,
-    "coordinates": false
+    "coordinates": false,
+    "globe": false
   },
   "basemap": {
     "tiles": ["https://t/{z}/{x}/{y}.png"],

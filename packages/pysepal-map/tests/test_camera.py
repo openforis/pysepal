@@ -122,6 +122,7 @@ def test_controls_scale_in_json():
         "fullscreen": True,
         "scale": True,
         "coordinates": False,
+        "globe": False,
     }
 
 

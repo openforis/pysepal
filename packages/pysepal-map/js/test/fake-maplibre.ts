@@ -169,7 +169,13 @@ export const state = (
   revision,
   theme: "light",
   compare: false,
-  controls: { zoom: true, fullscreen: true, scale: true, coordinates: false },
+  controls: {
+    zoom: true,
+    fullscreen: true,
+    scale: true,
+    coordinates: false,
+    globe: false,
+  },
   basemap: null,
   layers,
 });

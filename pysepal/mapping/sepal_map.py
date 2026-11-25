@@ -184,6 +184,7 @@ class SepalMap(MapWidget):
         gee_interface: Optional[GEEInterface] = None,
         fullscreen: bool = False,
         fullscreen_control: bool = False,
+        globe_control: bool = True,
         layer_store: Optional[LayerStore] = None,
         center: tuple[float, float] = (0.0, 0.0),
         zoom: float = 3.0,
@@ -204,6 +205,7 @@ class SepalMap(MapWidget):
             gee_interface: a shared GEEInterface instance. If provided, takes precedence over gee_session
             fullscreen: make the map fill its container (``height="100%"``).
             fullscreen_control: show the fullscreen control; the zoom and scale controls are always shown.
+            globe_control: show the button that turns the map into a globe and back.
             layer_store: the layers to draw, for a store shared with other components. The layers already in it are drawn with their stored visibility. Defaults to a new, empty store.
             center: the first camera center, as ``(lng, lat)``.
             zoom: the first zoom level. MapLibre counts a 512 px world at zoom 0.
@@ -276,6 +278,7 @@ class SepalMap(MapWidget):
                     fullscreen=fullscreen_control,
                     scale=True,
                     coordinates=coordinates,
+                    globe=globe_control,
                 ),
             )
             self.draw.set_color(THEMES[self.theme == "dark"]["info"])

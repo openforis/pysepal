@@ -1,4 +1,9 @@
-import { AttributionControl, LngLat, ScaleControl } from "maplibre-gl";
+import {
+  AttributionControl,
+  GlobeControl,
+  LngLat,
+  ScaleControl,
+} from "maplibre-gl";
 import type { IControl, Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -199,6 +204,7 @@ class FakeControlMap {
   };
   readonly _camera = { renderedState: { width: 400, height: 300 } };
   resizes = 0;
+  projection: { type: string } | undefined = undefined;
   /** Where the canvas is, and the right map of a compare view. */
   readonly canvasContainer = new FakeElement();
   private readonly controls = controlContainer();
@@ -249,6 +255,14 @@ class FakeControlMap {
     return key;
   }
 
+  getProjection() {
+    return this.projection;
+  }
+
+  setProjection(projection: { type: string }) {
+    this.projection = projection;
+  }
+
   on() {}
 
   off() {}
@@ -288,6 +302,7 @@ function state(controls: Partial<MapState["controls"]> = {}): MapState {
       fullscreen: true,
       scale: true,
       coordinates: false,
+      globe: false,
       ...controls,
     },
     basemap: null,
@@ -466,6 +481,34 @@ describe("ViewControls", () => {
       "bottom-left",
       "bottom-left",
     ]);
+  });
+
+  it("shows the globe button under fullscreen, and leaves the globe when it goes", () => {
+    const { map, controls } = setup();
+    controls.sync(state());
+    expect(map.at("top-left").some((c) => c instanceof GlobeControl)).toBe(
+      false
+    );
+
+    controls.sync(state({ globe: true }));
+    const [, , globe] = map.at("top-left");
+    expect(globe).toBeInstanceOf(GlobeControl);
+    (globe as GlobeControl)._toggleProjection();
+    expect(map.projection).toEqual({ type: "globe" });
+
+    controls.sync(state({ globe: true }));
+    expect(map.projection).toEqual({ type: "globe" });
+    controls.sync(state({ globe: false }));
+    expect(map.at("top-left")).toHaveLength(2);
+    // No button would be left to take the view off the globe.
+    expect(map.projection).toEqual({ type: "mercator" });
+  });
+
+  it("leaves the projection alone when the globe button goes on the flat map", () => {
+    const { map, controls } = setup();
+    controls.sync(state({ globe: true }));
+    controls.sync(state());
+    expect(map.projection).toBeUndefined();
   });
 
   it("offsets the control corners by the insets", () => {

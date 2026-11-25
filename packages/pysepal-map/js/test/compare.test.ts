@@ -114,6 +114,7 @@ class FakeViewMap extends FakeMapLibre {
   center = { lng: 0, lat: 0 };
   zoom = 2;
   padding = { top: 0, bottom: 0, left: 0, right: 0 };
+  projection: { type: string } | undefined = undefined;
   /** The camera and paint calls, in order. */
   readonly calls: string[] = [];
   readonly jumps: any[] = [];
@@ -134,6 +135,11 @@ class FakeViewMap extends FakeMapLibre {
   jumpTo = (options: any) => {
     this.calls.push("jumpTo");
     this.jumps.push(structuredClone(options));
+  };
+  getProjection = () => this.projection;
+  setProjection = (projection: { type: string }) => {
+    this.calls.push("setProjection");
+    this.projection = projection;
   };
   redraw = () => void this.calls.push("redraw");
   resize = () => void this.calls.push("resize");
@@ -456,6 +462,35 @@ describe("CompareView", () => {
       padding: { top: 0, bottom: 0, left: 0, right: 0 },
     });
     expect(right().calls.slice(-2)).toEqual(["jumpTo", "redraw"]);
+  });
+
+  it("draws the right map in the main map's projection once its style loaded", async () => {
+    const { main, right, model } = await setup(state(1));
+    main.projection = { type: "globe" };
+    model.set(compareState(2));
+    // MapLibre throws on a projection set before the style loaded.
+    main.emit("projectiontransition");
+    expect(right().calls).not.toContain("setProjection");
+
+    right().emit("style.load");
+    expect(right().projection).toEqual({ type: "globe" });
+    expect(right().calls.slice(-3)).toEqual([
+      "setProjection",
+      "jumpTo",
+      "redraw",
+    ]);
+
+    main.projection = { type: "mercator" };
+    main.emit("projectiontransition");
+    expect(right().projection).toEqual({ type: "mercator" });
+    right().calls.length = 0;
+    main.emit("projectiontransition");
+    expect(right().calls).toEqual([]);
+
+    model.set(compareState(3));
+    model.set(state(4));
+    main.emit("projectiontransition");
+    expect(main.listening("projectiontransition")).toBe(0);
   });
 
   it("is settled once both sides are, and marks the root only then", async () => {

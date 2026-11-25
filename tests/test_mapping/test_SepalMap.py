@@ -116,6 +116,7 @@ def test_is_a_map_widget() -> None:
         "fullscreen": False,
         "scale": True,
         "coordinates": False,
+        "globe": True,
     }
     assert m.height == "400px"
     assert (m.view_request["center"], m.view_request["zoom"]) == ([0.0, 0.0], 3.0)
@@ -698,6 +699,11 @@ def test_set_center_and_fit_bounds_fly_as_the_map_says() -> None:
     assert "animate" not in m.view_request
     m.set_center(0, 0, 4, animate=True)
     assert m.view_request["animate"] is True
+
+
+def test_the_globe_button_shows_unless_asked_not_to() -> None:
+    assert SepalMap(gee=False).state["controls"]["globe"] is True
+    assert SepalMap(gee=False, globe_control=False).state["controls"]["globe"] is False
 
 
 def test_zoom_methods_take_padding_by_keyword() -> None:
