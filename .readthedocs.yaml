@@ -9,15 +9,12 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.10"
-    nodejs: "22"
   apt_packages:
     # provides gdal-config for GDAL source builds when no prebuilt wheel
     # is available from the girder large_image_wheels index
     - libgdal-dev
   jobs:
     pre_install:
-      # The build hook compiles the widget JS with Node.
-      - pip install ./packages/mapframe
       # Pin pip GDAL to the system libgdal version exposed by libgdal-dev so
       # the source build (when no prebuilt wheel matches) doesn't pull a
       # newer GDAL whose bindings reject the installed libgdal.

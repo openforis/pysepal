@@ -194,7 +194,6 @@ convention = "google"
 "*/__init__.py" = ["F403"] # unable to detect undefined names | hide internal structure
 "setup.py" = ["D100"] # nothing to see there
 "tests/**/*.py" = ["D102", "D103"] # test methods and functions don't need docstrings
-"packages/*/tests/**/*.py" = ["D102", "D103"]
 
 [tool.coverage.run]
 source = ["pysepal"]
