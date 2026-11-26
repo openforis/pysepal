@@ -1,0 +1,10 @@
+{
+  "switch": "Map {number} in group '{group}'",
+  "buttons": {
+    "fit": "Fit map 1 to its raster",
+    "center": "Map 2 to (0, 0), zoom 3"
+  },
+  "layers": {
+    "forest": "Map {number}: forest {year}"
+  }
+}

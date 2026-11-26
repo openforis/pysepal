@@ -33,6 +33,8 @@ APPS = {
     "solara_aoi_app": "Page",
     "solara_aoi_gee_app": "AoiGeeAppDemo",
     "solara_chart_app": "Page",
+    "solara_compare_app": "Page",
+    "solara_linked_maps_app": "Page",
     "solara_map_app": "MapAppDemo",
     "solara_raster_app": "Page",
     "solara_vector_app": "Page",
@@ -225,14 +227,45 @@ async def _vector_app(root, module, url: str = LOOPBACK_ARCHIVE) -> None:
     assert "single" not in store and "categorized" not in store
 
 
+async def _compare_app(root, module) -> None:
+    (m,) = _maps(root)
+    store = m.layer_store
+    assert m.compare
+    assert await _eventually(lambda: "forest_2020" in store and "forest_2024" in store)
+    assert (store.view("forest_2020").side, store.view("forest_2024").side) == ("left", "right")
+    assert store.view("alerts").side == "right" and store.view("plots").side == "both"
+
+    msg = module.msg
+    _click(root, msg("draw.start"))
+    assert m.draw.modes[: len(module.DRAW_MODES)] == module.DRAW_MODES
+    _click(root, msg("draw.end"))
+    assert m.draw.modes == ()
+
+
+async def _linked_maps_app(root, module) -> None:
+    maps = _maps(root)
+    assert [m.link_group for m in maps] == [module.GROUP, module.GROUP, None]
+
+    _click(root, module.msg("buttons.center"))
+    assert maps[1].view_request.get("center") == pytest.approx([0, 0])
+
+    _click(root, module.msg("buttons.fit"))
+    assert await _eventually(lambda: "bounds" in maps[0].view_request)
+
+
 EXERCISES = {
     "solara_aoi_app": _aoi_app,
     "solara_aoi_gee_app": _aoi_app,
     "solara_chart_app": _chart_app,
+    "solara_compare_app": _compare_app,
+    "solara_linked_maps_app": _linked_maps_app,
     "solara_map_app": _map_app,
     "solara_raster_app": _raster_app,
     "solara_vector_app": _vector_app,
 }
+
+#: How many maps a demo shows when it opens; the chart demo opens its map from the page.
+MAP_COUNTS = {"solara_chart_app": 0, "solara_linked_maps_app": 3}
 
 
 def test_every_demo_has_a_smoke_test():
@@ -257,8 +290,7 @@ def _run(name: str, module, exercise) -> None:
     async def run():
         root, rc = reacton.render(getattr(module, APPS[name])(), handle_error=False)
         try:
-            if name != "solara_chart_app":  # its map opens from the page
-                assert len(_maps(root)) == 1
+            assert len(_maps(root)) == MAP_COUNTS.get(name, 1)
             await exercise(root, module)
             # MapView draws the map's legend; one the app mounts itself would overlap it.
             legends = [w for w in _tree(root) if hasattr(w, "selector_options")]

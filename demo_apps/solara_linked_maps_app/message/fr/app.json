@@ -1,0 +1,10 @@
+{
+  "switch": "Carte {number} dans le groupe '{group}'",
+  "buttons": {
+    "fit": "Ajuster la carte 1 à son raster",
+    "center": "Carte 2 en (0, 0), zoom 3"
+  },
+  "layers": {
+    "forest": "Carte {number} : forêt {year}"
+  }
+}

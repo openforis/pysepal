@@ -19,6 +19,8 @@ CATALOGUES = [
     DEMO_ROOT / "solara_aoi_app" / "message",
     DEMO_ROOT / "solara_aoi_gee_app" / "message",
     DEMO_ROOT / "solara_vector_app" / "message",
+    DEMO_ROOT / "solara_compare_app" / "message",
+    DEMO_ROOT / "solara_linked_maps_app" / "message",
 ]
 
 

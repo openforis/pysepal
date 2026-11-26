@@ -1,0 +1,10 @@
+{
+  "switch": "Mapa {number} en el grupo '{group}'",
+  "buttons": {
+    "fit": "Ajustar el mapa 1 a su ráster",
+    "center": "Mapa 2 a (0, 0), zoom 3"
+  },
+  "layers": {
+    "forest": "Mapa {number}: bosque {year}"
+  }
+}

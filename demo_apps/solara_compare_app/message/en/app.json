@@ -1,0 +1,47 @@
+{
+  "app": {
+    "title": "Compare & draw"
+  },
+  "panel": {
+    "title": "Layers",
+    "description": "Layers, sides and the area of interest"
+  },
+  "tabs": {
+    "layers": "Layers",
+    "aoi": "AOI"
+  },
+  "compare": {
+    "switch": "Compare 2020 | 2024"
+  },
+  "draw": {
+    "start": "Start drawing",
+    "end": "End drawing",
+    "count": {
+      "one": "{count} shape reported to Python",
+      "other": "{count} shapes reported to Python"
+    }
+  },
+  "layers": {
+    "forest_2020": "Forest 2020",
+    "forest_2024": "Forest 2024",
+    "alerts": "Alerts 2024",
+    "plots": "Field plots",
+    "concession": "Concession"
+  },
+  "alerts": {
+    "confirmed": "Confirmed",
+    "pending": "Pending review",
+    "rejected": "Rejected",
+    "name": "Alert",
+    "status": "Status",
+    "year": "Year",
+    "radius": "Radius (px)"
+  },
+  "plots": {
+    "forest": "Forest",
+    "shrub": "Shrub",
+    "bare": "Bare",
+    "plot": "Plot",
+    "class": "Class"
+  }
+}
