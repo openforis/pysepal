@@ -12,7 +12,7 @@ from pathlib import Path
 import ee
 import pytest
 from eeclient.exceptions import EERestException
-from pysepal_map import Basemap, Controls, MapState, MapWidget
+from mapframe import Basemap, Controls, MapState, MapWidget
 
 import pysepal.mapping.maplibre_engine as maplibre_engine
 from pysepal.frontend.styles import THEMES

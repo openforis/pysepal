@@ -169,9 +169,9 @@ def _serve_map_bundle(merged_assets_dir: Path) -> None:
     """
     if os.getenv("ANYWIDGET_HMR") == "1" or not is_serving_connections():
         return
-    from pysepal_map import MapWidget
+    from mapframe import MapWidget
 
-    source = importlib.resources.files("pysepal_map").joinpath("static")
+    source = importlib.resources.files("mapframe").joinpath("static")
     target = merged_assets_dir / MAP_BUNDLE_FOLDER
     target.mkdir(parents=True, exist_ok=True)
     bundle = {"folder": MAP_BUNDLE_FOLDER}

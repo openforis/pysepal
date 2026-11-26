@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import solara.server.settings
 import solara.util
-from pysepal_map import MapWidget
+from mapframe import MapWidget
 
 import pysepal.scripts.scratch as scratch
 import pysepal.solara.setup as setup
@@ -145,7 +145,7 @@ def test_under_a_solara_server_no_map_sends_the_bundle(map_bundle):
 
 def test_the_page_loads_the_served_bundle_by_its_hash(map_bundle):
     serving(map_bundle, True)
-    static = importlib.resources.files("pysepal_map").joinpath("static")
+    static = importlib.resources.files("mapframe").joinpath("static")
     setup.setup_solara_server()
 
     served = merged_css().parent / setup.MAP_BUNDLE_FOLDER

@@ -92,7 +92,7 @@ def corner(box, name: str):
 
 
 def fullscreen_root(box):
-    return next(w for w in _tree(box) if _attr(w, "data-psm-fullscreen-root") is not None)
+    return next(w for w in _tree(box) if _attr(w, "data-mapframe-fullscreen-root") is not None)
 
 
 def corner_rule(name: str) -> str:
@@ -591,8 +591,8 @@ def test_placement_css_centres_each_area():
     centre = {
         "all": "calc(var(--pysepal-inset-left) + (100% - var(--pysepal-inset-left)"
         " - var(--pysepal-inset-right)) / 2)",
-        "left": "calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2)",
-        "right": "calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2)",
+        "left": "calc((var(--pysepal-inset-left) + var(--mapframe-divider-x, 50%)) / 2)",
+        "right": "calc((var(--mapframe-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2)",
     }
     for area in ("all", "left", "right"):
         assert f"left: {centre[area]};" in flat(legend_rule(area))
@@ -601,7 +601,9 @@ def test_placement_css_centres_each_area():
     # a compare's cards clear the taller bottom corner, so the two halves share one baseline
     for area in ("left", "right"):
         assert "bottom:" not in legend_rule(area)
-    clear = "max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px))"
+    clear = (
+        "max(var(--mapframe-controls-bottom-left, 0px), var(--mapframe-controls-bottom-right, 0px))"
+    )
     assert f"bottom: calc(var(--pysepal-inset-bottom) + {clear} + 10px);" in flat(base)
     # a long legend scrolls inside the card, which the slot caps
     assert "flex-direction: column" in base
@@ -612,8 +614,8 @@ def test_a_card_hides_when_its_area_has_no_room():
     # each slot is its area less 10 px a side, so the queries read 140 and 60 px areas
     width = {
         "all": "calc(100% - var(--pysepal-inset-left) - var(--pysepal-inset-right) - 20px)",
-        "left": "calc(var(--psm-divider-x, 50%) - var(--pysepal-inset-left) - 20px)",
-        "right": "calc(100% - var(--pysepal-inset-right) - var(--psm-divider-x, 50%) - 20px)",
+        "left": "calc(var(--mapframe-divider-x, 50%) - var(--pysepal-inset-left) - 20px)",
+        "right": "calc(100% - var(--pysepal-inset-right) - var(--mapframe-divider-x, 50%) - 20px)",
     }
     for area in ("all", "left", "right"):
         assert f"width: {width[area]};" in flat(legend_rule(area))
@@ -659,8 +661,10 @@ def test_the_legends_follow_the_publishes_only(fake_vector, monkeypatch):
 
 
 def test_stacks_use_zero_insets_in_fullscreen():
-    assert "[data-psm-fullscreen-root][data-psm-fullscreen]" in map_view.CSS
-    rule = map_view.CSS.split("[data-psm-fullscreen-root][data-psm-fullscreen] {")[1].split("}")[0]
+    assert "[data-mapframe-fullscreen-root][data-mapframe-fullscreen]" in map_view.CSS
+    rule = map_view.CSS.split("[data-mapframe-fullscreen-root][data-mapframe-fullscreen] {")[
+        1
+    ].split("}")[0]
     for side in ("left", "right", "top", "bottom"):
         assert f"--pysepal-inset-{side}: 0px !important" in rule
 
@@ -737,11 +741,11 @@ def test_stacks_clear_the_measured_corners():
     box, rc = solara.render(MapView(m), handle_error=False)
     for name in map_view.CORNERS:
         side = name.split("-")[0]
-        offset = f"var(--pysepal-inset-{side}) + var(--psm-controls-{name}, 0px) + 10px"
+        offset = f"var(--pysepal-inset-{side}) + var(--mapframe-controls-{name}, 0px) + 10px"
         assert f"{side}: calc({offset})" in corner_rule(name)
     cap = corner_rule("top-left").split("max-height:")[1].split(";")[0]
     for name in ("top-left", "bottom-left"):
-        assert f"- var(--psm-controls-{name}, 0px) - 10px" in cap
+        assert f"- var(--mapframe-controls-{name}, 0px) - 10px" in cap
     styles = [w.style_ for w in _tree(box) if getattr(w, "style_", None)]
     assert styles and not [s for s in styles if "--pysepal-controls-" in s]
     assert "--pysepal-controls-" not in map_view.CSS
@@ -749,9 +753,9 @@ def test_stacks_clear_the_measured_corners():
 
 
 def test_stacks_wait_for_the_measure():
-    hidden = ".pysepal-map-root:not([data-psm-controls]) > .pysepal-map-corner"
+    hidden = ".pysepal-map-root:not([data-mapframe-controls]) > .pysepal-map-corner"
     assert f"{hidden} {{ visibility: hidden; }}" in map_view.CSS
-    hidden = ".pysepal-map-root:not([data-psm-controls]) > .pysepal-map-legend"
+    hidden = ".pysepal-map-root:not([data-mapframe-controls]) > .pysepal-map-legend"
     assert f"{hidden} {{ visibility: hidden; }}" in map_view.CSS
     root_rule = map_view.CSS.split(".pysepal-map-root {")[1].split("}")[0]
     assert "position: relative" in root_rule
@@ -773,7 +777,7 @@ def test_view_takes_the_map_height():
 def test_map_app_fills_the_window_whatever_the_map_height():
     css = (Path(map_app.__file__).parent / "map_app.css").read_text()
     rule = css.split(".sepal-mapapp__map .pysepal-map-view,")[1].split("}")[0]
-    assert ".sepal-mapapp__map .psm-map" in rule
+    assert ".sepal-mapapp__map .mapframe-map" in rule
     assert "height: 100% !important" in rule
 
 

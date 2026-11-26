@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, get_args
 
-from pysepal_map import Side
+from mapframe import Side
 
 from .spec import LayerSpec, Legend
 

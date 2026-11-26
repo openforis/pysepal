@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
-from pysepal_map import Side
+from mapframe import Side
 
 from pysepal.layers import LayerSpec, LayerStore, Legend
 

@@ -13,7 +13,7 @@ import json
 import random
 
 import pytest
-from pysepal_map import MapWidget
+from mapframe import MapWidget
 
 import pysepal.mapping.maplibre_engine as maplibre_engine
 from pysepal.frontend.styles import THEMES

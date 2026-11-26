@@ -160,7 +160,7 @@ def Page():
   render.
 - **Do not give slow work to an async callback.** It runs as a bare task on the
   kernel's loop: nothing shows it pending, and its error is only logged
-  (`pysepal_map/_callbacks.py`). Set a reactive, and let a `use_task` run the
+  (`mapframe/_callbacks.py`). Set a reactive, and let a `use_task` run the
   work (section 4).
 - **To render again on a widget trait, use
   `solara.use_trait_observe(obj, name)`**, or an effect that observes it and
@@ -335,7 +335,7 @@ def Page():
 
 - **Link maps with the same `link_group` name.** They keep one camera. The first
   map shown sets it, and a map built later opens where the group is, not at its
-  own `center` (`pysepal_map/widget.py`, "Linked maps").
+  own `center` (`mapframe/widget.py`, "Linked maps").
 - **A group is per kernel.** Under Solara it is per browser page, so a user
   never moves another user's maps.
 - **Close the maps of a group you rebuild.** A closed map leaves its group. A
@@ -389,7 +389,7 @@ def Page():
   user drew, as a GeoJSON FeatureCollection in `lng, lat`.
 - **A map has one session at a time.** A new `begin` ends the old session: its
   `active` turns False, and its `set`, `clear`, `start` and `stop` raise
-  (`pysepal_map/_draw.py`).
+  (`mapframe/_draw.py`).
 - **Begin in an effect, and end in its cleanup**, so the tools go away with the
   component.
 - **`AoiView` holds its own session while its DRAW method is selected.** Begin

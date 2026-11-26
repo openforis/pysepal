@@ -6,5 +6,5 @@ from packaging.version import Version
 
 
 def test_pysepal_requires_a_widget_with_insets():
-    assert "pysepal-maplibre>=0.3.0" in [r.replace(" ", "") for r in requires("pysepal")]
-    assert Version(version("pysepal-maplibre")) >= Version("0.3.0")
+    assert "mapframe>=0.3.0" in [r.replace(" ", "") for r in requires("pysepal")]
+    assert Version(version("mapframe")) >= Version("0.3.0")

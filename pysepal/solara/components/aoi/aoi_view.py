@@ -27,7 +27,7 @@ import geopandas as gpd
 import reacton.ipyvuetify as rv
 import solara
 from deprecated.sphinx import versionadded, versionchanged
-from pysepal_map import Draw
+from mapframe import Draw
 
 from pysepal import mapping as sm
 from pysepal.frontend import styles as ss

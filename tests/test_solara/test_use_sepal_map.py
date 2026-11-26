@@ -1,7 +1,7 @@
 """use_sepal_map builds a map in the component that owns it, and closes it there."""
 
 import solara
-from pysepal_map import widget
+from mapframe import widget
 
 from pysepal.mapping import SepalMap
 from pysepal.solara import use_sepal_map

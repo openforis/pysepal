@@ -37,9 +37,9 @@ _KEEPER = {"all": "left", "left": "left", "right": "right"}
 CSS = """
 .pysepal-map-view { position: relative; width: 100%; overflow: hidden; }
 .pysepal-map-root { position: relative; width: 100%; height: 100%; }
-.pysepal-map-view .psm-map { height: 100% !important; }
+.pysepal-map-view .mapframe-map { height: 100% !important; }
 /* The view sets the insets inline; in fullscreen the camera uses none, so neither do the stacks. */
-[data-psm-fullscreen-root][data-psm-fullscreen] {
+[data-mapframe-fullscreen-root][data-mapframe-fullscreen] {
   --pysepal-inset-left: 0px !important;
   --pysepal-inset-right: 0px !important;
   --pysepal-inset-top: 0px !important;
@@ -56,19 +56,19 @@ CSS = """
 }
 .pysepal-map-corner > * { pointer-events: auto; }
 .pysepal-map-corner > [data-idle] { display: none; }
-/* The widget sets --psm-controls-* on the root, each corner's height, once it has measured. */
-.pysepal-map-root:not([data-psm-controls]) > .pysepal-map-corner { visibility: hidden; }
+/* The widget sets --mapframe-controls-* on the root, each corner's height, once it has measured. */
+.pysepal-map-root:not([data-mapframe-controls]) > .pysepal-map-corner { visibility: hidden; }
 /* Each stack sits 10 px past the map's controls in its corner. The top-left cap ends above the
    bottom-left controls, scale and coordinates, which a card must not cover. */
 .pysepal-map-corner[data-corner="top-left"] {
-  top: calc(var(--pysepal-inset-top) + var(--psm-controls-top-left, 0px) + 10px);
+  top: calc(var(--pysepal-inset-top) + var(--mapframe-controls-top-left, 0px) + 10px);
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
   /* The cap is the corner's: the inspector card shrinks first and scrolls its body, and an
      overlay after it that still overflows scrolls the corner instead of being cut. */
   max-height: calc(
-    100% - var(--pysepal-inset-top) - var(--psm-controls-top-left, 0px) - 10px
-      - var(--pysepal-inset-bottom) - var(--psm-controls-bottom-left, 0px) - 10px
+    100% - var(--pysepal-inset-top) - var(--mapframe-controls-top-left, 0px) - 10px
+      - var(--pysepal-inset-bottom) - var(--mapframe-controls-bottom-left, 0px) - 10px
   );
   overflow-y: auto;
 }
@@ -79,22 +79,22 @@ CSS = """
   min-height: 0;
 }
 .pysepal-map-corner[data-corner="top-right"] {
-  top: calc(var(--pysepal-inset-top) + var(--psm-controls-top-right, 0px) + 10px);
+  top: calc(var(--pysepal-inset-top) + var(--mapframe-controls-top-right, 0px) + 10px);
   right: calc(var(--pysepal-inset-right) + 10px);
   align-items: flex-end;
 }
 .pysepal-map-corner[data-corner="bottom-left"] {
-  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-left, 0px) + 10px);
+  bottom: calc(var(--pysepal-inset-bottom) + var(--mapframe-controls-bottom-left, 0px) + 10px);
   left: calc(var(--pysepal-inset-left) + 10px);
   align-items: flex-start;
 }
 .pysepal-map-corner[data-corner="bottom-right"] {
-  bottom: calc(var(--pysepal-inset-bottom) + var(--psm-controls-bottom-right, 0px) + 10px);
+  bottom: calc(var(--pysepal-inset-bottom) + var(--mapframe-controls-bottom-right, 0px) + 10px);
   right: calc(var(--pysepal-inset-right) + 10px);
   align-items: flex-end;
 }
 /* One legend card per area, centred on it: the whole map, or each half of a compare, whose
-   divider the widget publishes as --psm-divider-x. Each slot is its area less 10 px a side; the
+   divider the widget publishes as --mapframe-divider-x. Each slot is its area less 10 px a side; the
    card is no wider than the slot, and its body scrolls in a slot capped at 40 % of the map.
    The whole map's card sits on the controls' baseline, between the bottom corners; open on a
    narrow map, it may cover them. A compare's halves are narrower: their cards clear the taller
@@ -104,7 +104,7 @@ CSS = """
   z-index: 3;
   bottom: calc(
     var(--pysepal-inset-bottom)
-      + max(var(--psm-controls-bottom-left, 0px), var(--psm-controls-bottom-right, 0px)) + 10px
+      + max(var(--mapframe-controls-bottom-left, 0px), var(--mapframe-controls-bottom-right, 0px)) + 10px
   );
   transform: translateX(-50%);
   display: flex;
@@ -115,7 +115,7 @@ CSS = """
   container: pysepal-legend / inline-size;
 }
 .pysepal-map-legend > * { pointer-events: auto; }
-.pysepal-map-root:not([data-psm-controls]) > .pysepal-map-legend { visibility: hidden; }
+.pysepal-map-root:not([data-mapframe-controls]) > .pysepal-map-legend { visibility: hidden; }
 .pysepal-map-legend[data-area="all"] {
   left: calc(
     var(--pysepal-inset-left) + (100% - var(--pysepal-inset-left) - var(--pysepal-inset-right)) / 2
@@ -124,12 +124,12 @@ CSS = """
   bottom: calc(var(--pysepal-inset-bottom) + 10px);
 }
 .pysepal-map-legend[data-area="left"] {
-  left: calc((var(--pysepal-inset-left) + var(--psm-divider-x, 50%)) / 2);
-  width: calc(var(--psm-divider-x, 50%) - var(--pysepal-inset-left) - 20px);
+  left: calc((var(--pysepal-inset-left) + var(--mapframe-divider-x, 50%)) / 2);
+  width: calc(var(--mapframe-divider-x, 50%) - var(--pysepal-inset-left) - 20px);
 }
 .pysepal-map-legend[data-area="right"] {
-  left: calc((var(--psm-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2);
-  width: calc(100% - var(--pysepal-inset-right) - var(--psm-divider-x, 50%) - 20px);
+  left: calc((var(--mapframe-divider-x, 50%) + 100% - var(--pysepal-inset-right)) / 2);
+  width: calc(100% - var(--pysepal-inset-right) - var(--mapframe-divider-x, 50%) - 20px);
 }
 /* An area under 140 px shows the card's bar only, with the layer's name, and the bar cannot
    open there; one under 60 px,
@@ -399,7 +399,7 @@ def MapView(
     root = rv.Html(
         tag="div",
         class_="pysepal-map-root",
-        attributes={"data-psm-fullscreen-root": ""},
+        attributes={"data-mapframe-fullscreen-root": ""},
         children=[
             map_,
             *[

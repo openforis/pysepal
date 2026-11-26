@@ -395,9 +395,9 @@
   flex: 1;
 }
 
-/* The widget root is sized by --psm-height, and the MapView root takes the same height
+/* The widget root is sized by --mapframe-height, and the MapView root takes the same height
  * inline; in the app both fill the window whatever that height is. */
 .sepal-mapapp__map .pysepal-map-view,
-.sepal-mapapp__map .psm-map {
+.sepal-mapapp__map .mapframe-map {
   height: 100% !important;
 }

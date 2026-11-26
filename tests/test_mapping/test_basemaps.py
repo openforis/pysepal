@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from pysepal_map import Basemap
+from mapframe import Basemap
 from xyzservices import TileProvider
 
 from pysepal import mapping as sm
@@ -12,7 +12,6 @@ from pysepal.mapping.basemaps import (
     BASEMAP_NAMES,
     basemap_label,
     get_basemap,
-    tile_urls,
     xyz_tiles,
 )
 
@@ -50,11 +49,13 @@ def test_basemap_names_cover_the_free_providers() -> None:
     # only pysepal's own entries are guaranteed to be there; the xyzservices
     # ones come and go with the upstream release, minus those MapLibre cannot draw.
     assert all(key in BASEMAP_NAMES for key in xyz_tiles)
-    drawable = {
-        provider.name
-        for provider in sm.basemaps.get_xyz_dict().values()
-        if basemaps._provider_source(provider) is not None
-    }
+    drawable = set()
+    for provider in sm.basemaps.get_xyz_dict().values():
+        try:
+            Basemap.from_xyz(provider)
+        except ValueError:
+            continue
+        drawable.add(provider.name)
     assert drawable <= set(BASEMAP_NAMES)
 
 
@@ -79,42 +80,16 @@ def test_pysepal_entries_come_first_in_the_same_order():
     assert list(BASEMAP_NAMES[: len(xyz_tiles)]) == list(xyz_tiles)
 
 
-def test_tile_urls_expands_subdomains():
-    assert tile_urls("https://{s}.t.test/{z}/{x}/{y}{r}.png", "ab") == (
-        "https://a.t.test/{z}/{x}/{y}.png",
-        "https://b.t.test/{z}/{x}/{y}.png",
-    )
-    assert tile_urls("https://{s}.t.test/{z}", ["x", "y", "z"]) == tuple(
-        f"https://{c}.t.test/{{z}}" for c in "xyz"
-    )
-    assert tile_urls("https://t.test/{z}/{x}/{y}") == ("https://t.test/{z}/{x}/{y}",)
-
-
-def _provider(**options) -> TileProvider:
-    return TileProvider(
-        name="Synthetic",
-        url="https://{s}.synthetic.test/{variant}/{z}/{x}/{y}.png",
-        attribution="synthetic",
-        variant="base",
-        **options,
+def test_a_subdomain_template_draws_on_every_subdomain():
+    assert get_basemap("OpenStreetMap").tiles == tuple(
+        f"https://{s}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png" for s in "abc"
     )
 
 
-def test_provider_subdomains_are_all_kept():
-    source = basemaps._provider_source(_provider(subdomains="12"))
-    assert source["tiles"] == (
-        "https://1.synthetic.test/base/{z}/{x}/{y}.png",
-        "https://2.synthetic.test/base/{z}/{x}/{y}.png",
-    )
-
-
-def test_tms_providers_are_excluded():
-    assert basemaps._provider_source(_provider(tms=True)) is None
-
-
-def test_unfilled_placeholders_are_excluded():
+def test_a_provider_maplibre_cannot_draw_is_left_out(monkeypatch):
     odd = TileProvider(name="Odd", url="https://t.test/{z}/{x}/{y}/{ext}", attribution="")
-    assert basemaps._provider_source(odd) is None
+    monkeypatch.setattr(basemaps, "get_xyz_dict", lambda: {"Odd": odd})
+    assert "Odd" not in basemaps._build_sources()
 
 
 def test_unknown_name_lists_the_valid_ones():

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import rasterio
-from pysepal_map import ClickEvent, FeatureHit
+from mapframe import ClickEvent, FeatureHit
 from rasterio.transform import from_origin
 from rasterio.warp import transform as warp_transform
 

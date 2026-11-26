@@ -1,4 +1,4 @@
-"""Draw a :class:`~pysepal.layers.LayerStore` on a :class:`pysepal_map.MapWidget`.
+"""Draw a :class:`~pysepal.layers.LayerStore` on a :class:`mapframe.MapWidget`.
 
 Each spec is prepared into a :class:`~pysepal.layers.RenderLayer`, and the whole
 map is published as one declarative ``MapState``, at most once per tick of the
@@ -33,7 +33,7 @@ from typing import Any, Literal, Optional, Union
 
 import ee
 from eeclient.exceptions import EERestException
-from pysepal_map import (
+from mapframe import (
     Basemap,
     Cluster,
     Controls,
@@ -45,6 +45,7 @@ from pysepal_map import (
     PMTilesSource,
     RasterSource,
     VectorPaint,
+    check_clusterable,
 )
 
 from pysepal.frontend.styles import THEMES
@@ -60,7 +61,6 @@ from pysepal.layers import (
     prepare_sync,
 )
 from pysepal.mapping._layer_status import EngineStatus, status_board
-from pysepal.mapping.basemaps import tile_urls
 from pysepal.scripts.gee_interface import GEEInterface
 
 __all__ = ["Bounds", "BoundsResult", "MapLibreEngine"]
@@ -121,16 +121,6 @@ def _fields(value: Union[bool, list, dict]) -> Union[None, tuple, dict]:
     if isinstance(value, dict):
         return value
     return None if value is False else () if value is True else tuple(value)
-
-
-def _check_clusterable(data: Optional[dict]) -> None:
-    """Raise ``ValueError`` unless every feature is a point without ``cluster=true``."""
-    for feature in (data or {}).get("features", ()):
-        geometry = feature.get("geometry")
-        if geometry is None or geometry.get("type") != "Point":
-            raise ValueError("clustering needs point features only")
-        if (feature.get("properties") or {}).get("cluster") is True:
-            raise ValueError("property cluster=true is reserved for clusters")
 
 
 def _paint(spec: LayerSpec, is_dark: bool) -> VectorPaint:
@@ -700,7 +690,7 @@ class MapLibreEngine:
                 candidate.digest = hashlib.sha256(candidate.payload).hexdigest()
         try:
             if render.kind == "geojson" and _style_of(spec).cluster:
-                _check_clusterable(render.data)
+                check_clusterable(render.data)
             for is_dark in (False, True):
                 self._layer(layer_id, candidate, is_dark)
         except Exception as exc:
@@ -810,7 +800,7 @@ class MapLibreEngine:
         if render.kind == "raster-xyz":
             url = render.theme_urls[is_dark] if render.theme_urls else render.url
             source = RasterSource(
-                tile_urls(url),
+                (url,),
                 tile_size=render.tile_size,
                 bounds=render.bounds,
                 # explicit: without a maxzoom MapLibre stops the source at 22

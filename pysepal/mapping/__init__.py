@@ -1,6 +1,6 @@
 """All modules used to create a application ``Map``.
 
-The ``SepalMap`` is a **MapLibre** map, the ``MapWidget`` of ``pysepal_map``. It draws the layers of a ``LayerStore`` (``SepalMap.layer_store``) and follows the **pysepal** theme.
+The ``SepalMap`` is a **MapLibre** map, the ``MapWidget`` of ``mapframe``. It draws the layers of a ``LayerStore`` (``SepalMap.layer_store``) and follows the **pysepal** theme.
 
 The main object is the ``SepalMap``. Its layer methods return a live ``LayerHandle``.
 ``SepalMap`` is fully compatible with Google Earth Engine layers.
@@ -15,7 +15,7 @@ Example:
         sm.SepalMap(gee=False)
 """
 
-from pysepal_map import Side as Side
+from mapframe import Side as Side
 
 from pysepal import _removed
 

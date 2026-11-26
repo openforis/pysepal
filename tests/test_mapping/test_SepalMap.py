@@ -13,7 +13,7 @@ import ee
 import geopandas as gpd
 import pytest
 import traitlets
-from pysepal_map import MapWidget
+from mapframe import MapWidget, tile_urls
 from shapely.geometry import box
 
 import pysepal.mapping.sepal_map as sepal_map_module
@@ -28,7 +28,7 @@ from pysepal.layers import (
     VectorStyle,
 )
 from pysepal.mapping import LayerHandle
-from pysepal.mapping.basemaps import BASEMAP_NAMES, get_basemap, tile_urls, xyz_tiles
+from pysepal.mapping.basemaps import BASEMAP_NAMES, get_basemap, xyz_tiles
 from pysepal.mapping.maplibre_engine import MapLibreEngine
 from pysepal.mapping.sepal_map import SepalMap
 from pysepal.mapping.visualization import get_viz_params

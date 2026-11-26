@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Union
 import ee
 import traitlets
 from eeclient.client import EESession
-from pysepal_map import DRAW_MODES, Controls, MapWidget, Side
+from mapframe import DRAW_MODES, Controls, MapWidget, Side
 from typing_extensions import Self
 
 from pysepal._removed import GUIDE as _GUIDE

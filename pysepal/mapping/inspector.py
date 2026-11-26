@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import traitlets
-from pysepal_map import ClickEvent
+from mapframe import ClickEvent
 
 from pysepal.layers import RenderLayer, local_fingerprint, uri_to_path
 from pysepal.mapping.maplibre_engine import _cancel_task

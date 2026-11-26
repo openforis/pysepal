@@ -12,11 +12,11 @@ nox.options.sessions = ["lint", "test", "docs"]
 
 
 def _install_map(session):
-    """Install the in-repo pysepal-maplibre, with its JS built fresh so a stale local build never ships."""
-    with session.chdir("packages/pysepal-maplibre"):
+    """Install the in-repo mapframe, with its JS built fresh so a stale local build never ships."""
+    with session.chdir("packages/mapframe"):
         session.run("npm", "ci", external=True)
         session.run("npm", "run", "build", external=True)
-    session.install("./packages/pysepal-maplibre")
+    session.install("./packages/mapframe")
 
 
 @nox.session(reuse_venv=True)
@@ -138,7 +138,7 @@ def _playwright_install():
 
 @nox.session(name="map", reuse_venv=True)
 def map_widget(session):
-    """Build and browser-test the pysepal-maplibre package."""
+    """Build and browser-test the mapframe package."""
     # JupyterLab writes workspaces, kernel runtime files and the notebook
     # signature database under the user's Jupyter dirs. Venv-installed
     # extensions live in sys.prefix and are still found. Resolved before the
@@ -146,7 +146,7 @@ def map_widget(session):
     jupyter_data = Path(session.create_tmp()).resolve() / "jupyter-data"
     workspaces = jupyter_data / "workspaces"
     workspaces.mkdir(parents=True, exist_ok=True)
-    with session.chdir("packages/pysepal-maplibre"):
+    with session.chdir("packages/mapframe"):
         session.run("npm", "ci", external=True)
         session.run("npm", "run", "typecheck", external=True)
         session.run("npm", "test", external=True)
@@ -187,8 +187,8 @@ def mypy(session):
 
 @nox.session(name="map-release", reuse_venv=True)
 def map_release(session):
-    """Build pysepal-maplibre's sdist and wheel and smoke-test the installed wheel."""
-    with session.chdir("packages/pysepal-maplibre"):
+    """Build mapframe's sdist and wheel and smoke-test the installed wheel."""
+    with session.chdir("packages/mapframe"):
         session.run("npm", "ci", external=True)
         session.run("npm", "run", "build:harness", external=True)
-    session.run("python", "packages/pysepal-maplibre/scripts/release_check.py")
+    session.run("python", "packages/mapframe/scripts/release_check.py")

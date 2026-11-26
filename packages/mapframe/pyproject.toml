@@ -1,0 +1,110 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mapframe"
+version = "0.3.0"
+description = "MapLibre GL JS maps for Jupyter, Voila and Solara: Python publishes the whole map and every view follows it."
+readme = "README.md"
+license = {text = "MIT"}
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{name = "Daniel Guerrero", email = "dfgm2006@gmail.com"}]
+keywords = ["maplibre", "map", "jupyter", "widget", "anywidget", "solara", "voila"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Jupyter",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+requires-python = ">=3.10"
+dependencies = ["anywidget>=0.9", "traitlets"]
+
+[project.urls]
+Homepage = "https://github.com/dfguerrerom/mapframe"
+Repository = "https://github.com/dfguerrerom/mapframe"
+Issues = "https://github.com/dfguerrerom/mapframe/issues"
+Changelog = "https://github.com/dfguerrerom/mapframe/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio", "pytest-ipywidgets", "voila", "jupyterlab", "xyzservices"]
+dev = [
+    "mapframe[test]",
+    "black>=26",
+    "ruff>=0.17",
+    "mypy>=1.10",
+    "commitizen>=3.29",
+    "pre-commit>=3.7",
+    "nox>=2024.4.15",
+]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["src/mapframe/static/widget.js", "src/mapframe/static/widget.css"]
+include = ["src", "js", "build.mjs", "hatch_build.py", "package.json", "package-lock.json", "tsconfig.json", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mapframe"]
+artifacts = ["src/mapframe/static/widget.js", "src/mapframe/static/widget.css"]
+
+[tool.hatch.build.hooks.custom]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+# The browser tests import each other's helpers as top-level modules.
+src = ["src", "tests/browser"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "D", "RUF"]
+ignore = [
+    "E501", # black wraps the code; what is left is long strings and docstrings
+    "D101", # some public classes, such as the state dataclasses, have no docstring yet
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D102", "D103"]
+
+[tool.mypy]
+files = ["src/mapframe"]
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.codespell]
+skip = "package-lock.json,CHANGELOG.md,*.pmtiles"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version_provider = "pep621"
+version_files = [
+    "src/mapframe/__init__.py:__version__",
+    "tests/test_camera.py:__version__ ==",
+]
+tag_format = "v$version"
+update_changelog_on_bump = true
+changelog_incremental = true
+major_version_zero = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # pytest-playwright 0.10's fallback base_url fixture (used without
+    # pytest-base-url) is a session fixture defined as a method, which pytest 9
+    # deprecates; it is not ours to fix.
+    "ignore:Session-scoped fixtures defined as instance methods:pytest.PytestRemovedIn10Warning",
+]

@@ -215,7 +215,7 @@ m.on_click(lambda event: print(event.lng, event.lat, event.hits(spec.id)))
 
 ### SepalMap on MapLibre
 
-`SepalMap` is a MapLibre map (`pysepal_map.MapWidget`), no longer an ipyleaflet
+`SepalMap` is a MapLibre map (`mapframe.MapWidget`), no longer an ipyleaflet
 `Map`. Everything it shows persistently (layers, basemap, theme, controls,
 insets) is declared in its synced state. The camera belongs to the browser:
 `set_center`, `fit_bounds` and `zoom_bounds` ask the views to move, and `m.view`

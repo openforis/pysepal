@@ -118,7 +118,7 @@ import solara.server.app  # imports the patch module in a working order
 import solara.server.patch as patch
 from solara.server.kernel import Kernel
 from solara.server.kernel_context import VirtualKernelContext
-from pysepal_map.widget import _current_kernel
+from mapframe.widget import _current_kernel
 
 ipykernel.kernelbase.Kernel.instance = classmethod(patch.kernel_instance_dispatch)
 ipykernel.kernelbase.Kernel.initialized = classmethod(patch.kernel_initialized_dispatch)

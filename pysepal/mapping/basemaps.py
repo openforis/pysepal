@@ -2,11 +2,9 @@
 
 import logging
 import os
-import re
-from collections.abc import Sequence
 from typing import Optional
 
-from pysepal_map import Basemap
+from mapframe import Basemap
 from xyzservices import TileProvider
 from xyzservices import providers as xyz
 
@@ -110,68 +108,32 @@ def get_xyz_dict(
     return _output
 
 
-_PLACEHOLDER = re.compile(r"\{[^}]*\}")
-_DRAWABLE = frozenset({"{z}", "{x}", "{y}", "{s}", "{r}"})
-_MAX_ZOOM = 24
 _DEFAULT_MAX_ZOOM = 22
 
 
-def tile_urls(template: str, subdomains: str | Sequence[str] = "abc") -> tuple[str, ...]:
-    """Expand a tile URL template into one URL per subdomain.
-
-    Args:
-        template: URL with ``{z}``, ``{x}``, ``{y}`` and optionally ``{s}`` and ``{r}``.
-        subdomains: the subdomains ``{s}`` stands for, one character each when a string.
-
-    Returns:
-        One URL per subdomain with ``{r}`` dropped, or the template alone without ``{s}``.
-    """
-    template = template.replace("{r}", "")
-    if "{s}" not in template:
-        return (template,)
-    return tuple(template.replace("{s}", sub) for sub in subdomains)
-
-
-def _provider_source(provider: TileProvider) -> Optional[dict]:
-    """Describe a xyzservices provider for MapLibre, or ``None`` when it cannot be drawn."""
-    if provider.get("tms"):
-        return None
-    try:
-        template = provider.build_url(fill_subdomain=False)
-    except (KeyError, ValueError, IndexError):
-        return None
-    if set(_PLACEHOLDER.findall(template)) - _DRAWABLE:
-        return None
-    return {
-        "tiles": tile_urls(template, provider.get("subdomains", "abc")),
-        "attribution": provider.get("attribution", ""),
-        "max_zoom": min(int(provider.get("max_zoom", _DEFAULT_MAX_ZOOM)), _MAX_ZOOM),
-        "label": provider.name,
+def _build_sources() -> dict[str, tuple[Basemap, str]]:
+    """Each basemap MapLibre can draw, with its label; pysepal's own come first."""
+    sources = {
+        key: (
+            Basemap(
+                tiles=(entry["url"],), attribution=entry["attribution"], max_zoom=_DEFAULT_MAX_ZOOM
+            ),
+            entry["name"],
+        )
+        for key, entry in xyz_tiles.items()
     }
-
-
-def _build_sources() -> dict[str, dict]:
-    sources: dict[str, dict] = {}
     excluded = []
-    for key, entry in xyz_tiles.items():
-        sources[key] = {
-            "tiles": tile_urls(entry["url"]),
-            "attribution": entry["attribution"],
-            "max_zoom": _DEFAULT_MAX_ZOOM,
-            "label": entry["name"],
-        }
     for provider in get_xyz_dict().values():
-        source = _provider_source(provider)
-        if source is None:
+        try:
+            sources[provider.name] = (Basemap.from_xyz(provider), provider.name)
+        except ValueError:
             excluded.append(provider.name)
-        else:
-            sources[provider.name] = source
     if excluded:
         log.debug("Basemaps MapLibre cannot draw as XYZ: %s", ", ".join(excluded))
     return sources
 
 
-_SOURCES: dict[str, dict] = _build_sources()
+_SOURCES: dict[str, tuple[Basemap, str]] = _build_sources()
 
 BASEMAP_NAMES: tuple[str, ...] = tuple(_SOURCES)
 "Names of the basemaps :func:`get_basemap` accepts."
@@ -191,10 +153,7 @@ def get_basemap(name: str) -> Basemap:
     """
     if name not in _SOURCES:
         raise ValueError(f"Basemap can only be one of the following: {', '.join(BASEMAP_NAMES)}")
-    source = _SOURCES[name]
-    return Basemap(
-        tiles=source["tiles"], attribution=source["attribution"], max_zoom=source["max_zoom"]
-    )
+    return _SOURCES[name][0]
 
 
 def basemap_label(name: str) -> str:
@@ -211,4 +170,4 @@ def basemap_label(name: str) -> str:
     """
     if name not in _SOURCES:
         raise ValueError(f"Basemap can only be one of the following: {', '.join(BASEMAP_NAMES)}")
-    return _SOURCES[name]["label"]
+    return _SOURCES[name][1]
