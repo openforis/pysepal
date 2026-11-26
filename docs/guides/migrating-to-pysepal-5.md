@@ -41,7 +41,8 @@ An old import now fails with a message that points here:
   `layer_state_control`, `layers_control`, `legend_control`, `marker_cluster`, `menu_control` and
   `zoom_control`, raise an `ImportError`;
 - `pysepal.aoi.AoiView` and the other removed names raise an `AttributeError`
-  that names the replacement.
+  that names the replacement, and `from pysepal.aoi import AoiView` an
+  `ImportError` with the same message.
 
 These stay:
 

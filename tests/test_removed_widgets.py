@@ -68,34 +68,61 @@ def test_removed_module_import_says_what_to_do(module):
     assert "migrating-to-pysepal-5" in result.stderr
 
 
-@pytest.mark.parametrize(
-    "module,name",
-    [
-        ("pysepal.aoi", "AoiView"),
-        ("pysepal.aoi", "AoiTile"),
-        ("pysepal.planetapi", "PlanetView"),
-        ("pysepal.mapping", "AoiControl"),
-        ("pysepal.mapping", "LayersControl"),
-        ("pysepal.mapping", "DrawControl"),
-        ("pysepal.mapping", "GeomanDrawControl"),
-        ("pysepal.mapping", "InspectorControl"),
-        ("pysepal.mapping", "ValueInspector"),
-        ("pysepal.mapping", "ZoomControl"),
-        ("pysepal.mapping", "FullScreenControl"),
-        ("pysepal.mapping", "LayerStateControl"),
-        ("pysepal.mapping", "MenuControl"),
-        ("pysepal.mapping", "LegendControl"),
-        ("pysepal.mapping", "EELayer"),
-        ("pysepal.mapping", "MarkerCluster"),
-        ("pysepal.mapping", "get_ipygeojson"),
-    ],
-)
+REMOVED_NAMES = [
+    ("pysepal.aoi", "AoiView"),
+    ("pysepal.aoi", "AoiTile"),
+    ("pysepal.planetapi", "PlanetView"),
+    ("pysepal.mapping", "AoiControl"),
+    ("pysepal.mapping", "LayersControl"),
+    ("pysepal.mapping", "DrawControl"),
+    ("pysepal.mapping", "GeomanDrawControl"),
+    ("pysepal.mapping", "InspectorControl"),
+    ("pysepal.mapping", "ValueInspector"),
+    ("pysepal.mapping", "ZoomControl"),
+    ("pysepal.mapping", "FullScreenControl"),
+    ("pysepal.mapping", "LayerStateControl"),
+    ("pysepal.mapping", "MenuControl"),
+    ("pysepal.mapping", "LegendControl"),
+    ("pysepal.mapping", "EELayer"),
+    ("pysepal.mapping", "MarkerCluster"),
+    ("pysepal.mapping", "get_ipygeojson"),
+]
+
+
+@pytest.mark.parametrize("module,name", REMOVED_NAMES)
 def test_removed_widget_names_say_what_to_do(module, name):
     import importlib
 
     package = importlib.import_module(module)
     with pytest.raises(AttributeError, match="removed in pysepal 5.0"):
         getattr(package, name)
+
+
+@pytest.mark.parametrize("module,name", REMOVED_NAMES)
+def test_from_import_of_a_removed_name_says_what_to_do(module, name):
+    with pytest.raises(ImportError, match="removed in pysepal 5.0"):
+        exec(f"from {module} import {name}")
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "from pysepal.mapping import draw_control",
+        "from pysepal.mapping.draw_control import DrawControl",
+        "from pysepal import sepalwidgets",
+        "from pysepal.sepalwidgets import vue_app",
+    ],
+)
+def test_every_import_form_of_a_removed_module_says_what_to_do(code):
+    with pytest.raises(ImportError, match="removed in pysepal 5.0"):
+        exec(code)
+
+
+def test_a_removed_name_is_absent_for_hasattr():
+    import pysepal.mapping
+
+    assert not hasattr(pysepal.mapping, "DrawControl")
+    assert not hasattr(pysepal.mapping, "draw_control")
 
 
 @pytest.mark.parametrize(
@@ -127,6 +154,10 @@ def test_unknown_names_still_raise_the_usual_error():
 
     with pytest.raises(AttributeError, match="has no attribute 'nope'"):
         pysepal.aoi.nope
+    with pytest.raises(ModuleNotFoundError, match="No module named 'pysepal.mapping.nope'"):
+        import pysepal.mapping.nope
+    with pytest.raises(ImportError, match="cannot import name 'nope'"):
+        from pysepal.mapping import nope  # noqa: F401
 
 
 def test_the_solara_surface_imports():

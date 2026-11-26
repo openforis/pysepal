@@ -23,6 +23,7 @@ from eeclient.client import EESession
 from pysepal_map import DRAW_MODES, Controls, MapWidget, Side
 from typing_extensions import Self
 
+from pysepal._removed import GUIDE as _GUIDE
 from pysepal.frontend.styles import THEMES
 from pysepal.layers import (
     LayerSpec,
@@ -70,8 +71,6 @@ _SEPAL_BASEMAPS = ("SEPAL_LIGHT", "SEPAL_DARK")
 
 #: Metres per CSS pixel at zoom 0 on the equator, for MapLibre's 512 px world.
 _METERS_PER_PX = 78271.517
-
-_GUIDE = "docs/guides/migrating-to-pysepal-5.md"
 
 
 def _check_ee_inputs(ee_object: ee.ComputedObject, vis_params: dict) -> None:
