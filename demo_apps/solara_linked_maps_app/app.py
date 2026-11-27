@@ -33,6 +33,7 @@ from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
 from pysepal.solara.components.map_view import MapView
 
@@ -87,29 +88,27 @@ def raster_path(year: str, cleared: bool) -> Path:
     return path
 
 
-def build_maps(theme_state) -> list[SepalMap]:
-    """One map per entry of ``MAPS``, each drawing its date's raster."""
-    maps = []
-    for number, (year, cleared, center, zoom, group) in enumerate(MAPS, start=1):
-        m = SepalMap(
-            gee=False,
-            theme_state=theme_state,
-            center=center,
-            zoom=zoom,
-            fullscreen=False,
-            height=HEIGHT,
-            link_group=group,
-        )
-        m.add_raster(
-            raster_path(year, cleared),
-            layer_name=msg("layers.forest", number=number, year=year),
-            key="forest",
-            colormap="viridis",
-            vmin=0,
-            vmax=255,
-        )
-        maps.append(m)
-    return maps
+def build_map(number: int, theme_state) -> SepalMap:
+    """Map ``number`` of ``MAPS``, counted from 1, drawing its date's raster."""
+    year, cleared, center, zoom, group = MAPS[number - 1]
+    m = SepalMap(
+        gee=False,
+        theme_state=theme_state,
+        center=center,
+        zoom=zoom,
+        fullscreen=False,
+        height=HEIGHT,
+        link_group=group,
+    )
+    m.add_raster(
+        raster_path(year, cleared),
+        layer_name=msg("layers.forest", number=number, year=year),
+        key="forest",
+        colormap="viridis",
+        vmin=0,
+        vmax=255,
+    )
+    return m
 
 
 @solara.component
@@ -129,7 +128,12 @@ def LinkedMapsDemo():
     """The three maps, each with its switch, under the buttons that move them from Python."""
     setup_theme_colors()
     theme_state = get_current_theme_state()
-    maps = solara.use_memo(lambda: build_maps(theme_state), [])
+    # one hook call per map, never in a loop: each map is closed with the page
+    maps = [
+        use_sepal_map(lambda: build_map(1, theme_state), []),
+        use_sepal_map(lambda: build_map(2, theme_state), []),
+        use_sepal_map(lambda: build_map(3, theme_state), []),
+    ]
 
     with solara.Column(style={"width": "100%", "padding": "6px"}):
         with solara.Row(style={"gap": "12px", "align-items": "center"}):

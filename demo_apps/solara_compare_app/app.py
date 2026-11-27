@@ -35,6 +35,7 @@ from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
 from pysepal.solara.components.aoi import AoiView
 from pysepal.solara.components.layer_panel import LayerPanel
@@ -239,7 +240,7 @@ def CompareAppDemo():
     """The compare map in a MapApp, with the layers and the AOI in its right panel."""
     setup_theme_colors()
     theme_state = get_current_theme_state()
-    m = solara.use_memo(lambda: build_map(theme_state), [])
+    m = use_sepal_map(lambda: build_map(theme_state), [])
     aoi = solara.use_reactive(None)
     MapApp(
         app_title=msg("app.title"),
