@@ -63,7 +63,7 @@ There are two ways to end up with a second loop:
   directly to `ee-client`, it runs on _whichever loop called it_ — so this is a
   second loop even when every `use_task` in the app sets
   `prefer_threaded=False`. Mixing the two scheduling styles in one app is what
-  breaks, which is why the legacy `sw.TaskButton` must not be combined with
+  breaks, which is why `gee_interface.create_task()` must not be combined with
   `use_task` components.
 
 Two consequences follow:

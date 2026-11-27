@@ -144,9 +144,9 @@ toast shows at a time, and a tracked task's failure stays in the log. Pass
 `timeout=` to override one toast, or edit `TOAST_TIMEOUT_DEFAULTS` to change a
 type's default.
 
-If no provider is mounted, `use_notifications()` returns a `NoopNotifier`.
-That means toast calls are silently dropped unless the component provides its own
-fallback UX.
+If no provider is mounted, `use_notifications()` raises
+`NotificationProviderError`. Only `use_notifications(required=False)` returns a
+`NoopNotifier`, which logs each message at `WARNING` instead of showing it.
 
 ## Tracking Long-Running Tasks
 
@@ -222,8 +222,9 @@ It then gets a `NoopNotifier`. Nothing reaches the screen, but nothing is lost
 either: every dropped message is logged at `WARNING` with its text.
 
 Every pysepal component that notifies is in this category — `AoiView`,
-`AssetSelectComponent`, `PointsSelectorComponent`, `VectorSelectorComponent`
-and the export dialog all render standalone. `AoiView` goes furthest and
+`AssetSelectComponent`, `PointsSelectorComponent`, `VectorSelectorComponent`,
+the export dialog and `MapView`, which toasts a layer that fails to load, all
+render standalone. `AoiView` goes furthest and
 surfaces success and failure inline when it has no provider; the others log.
 
 Use `required=False` only for that case. Inside an application, the default is
@@ -274,8 +275,11 @@ def report_failures(func):
     return wrapper
 ```
 
-**A worker thread.** `asyncio.to_thread` copies the kernel context, so the
-scope still resolves and the toast lands on the right connection's bus:
+**A worker thread, under Voila or Jupyter only.** There the kernel fallback
+resolves the scope from a thread that `asyncio.to_thread` started. Under
+`solara run` a pool worker has no kernel context, so `notify()` and
+`track_task()` there log a warning and drop the message: open the tracker on
+the loop and call `asyncio.to_thread` inside it, or notify after the `await`.
 
 ```python
 import asyncio

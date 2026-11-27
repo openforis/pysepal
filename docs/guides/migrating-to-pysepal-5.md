@@ -40,8 +40,9 @@ An old import now fails with a message that points here:
   `fullscreen_control`, `geojson_utils`, `inspector_control`, `layer`,
   `layer_state_control`, `layers_control`, `legend_control`, `marker_cluster`, `menu_control` and
   `zoom_control`, raise an `ImportError`;
-- `pysepal.aoi.AoiView` and the other removed names raise an `AttributeError`
-  that names the replacement, and `from pysepal.aoi import AoiView` an
+- `pysepal.aoi.AoiView` and the other removed names of `pysepal.aoi`,
+  `pysepal.planetapi` and `pysepal.mapping` raise an `AttributeError` that
+  names the replacement, and `from pysepal.aoi import AoiView` an
   `ImportError` with the same message.
 
 These stay:
@@ -81,9 +82,10 @@ other components, build the store yourself and pass it with
   layer's id in the store is `key`, or the normalized layer name when `key` is
   empty. `find_layer` and `remove_layer` find a layer by key or name, hidden
   ones included, and `remove_all` removes them all.
-- **The same key replaces the layer in place.** Adding a layer whose key is
-  already in the store replaces it and keeps its position, visibility and
-  opacity. Without a `key`, the key is the normalized name, so two calls with
+- **The same key replaces the layer in place.** The `add_*` methods replace a
+  layer whose key is already in the store and keep its position, visibility
+  and opacity. `m.layer_store.add(spec)` does so only with `replace=True`, and
+  raises `ValueError` without it. Without a `key`, the key is the normalized name, so two calls with
   the same name replace each other: `add_raster` no longer adds three random
   letters to a name already in use. A call with neither a name nor a key gets a
   new `Layer N` name and its own layer. When an `*_async` call is overtaken by
@@ -102,8 +104,10 @@ other components, build the store yourself and pass it with
   it is equivalent to the object you passed, but not the same Python object.
 - **Earth Engine colours are normalised** to `#rrggbb`. The alpha of an
   8-digit `fillColor` becomes the fill opacity, but an `RRGGBBAA` `color` (the
-  stroke) or palette entry loses its alpha. Use a 6-digit colour, and
-  `fill_opacity` for a see-through fill.
+  stroke) or palette entry loses its alpha. Give `color` and palette
+  entries 6 digits. For a see-through fill, use an 8-digit `fillColor`, or
+  `handle.restyle(fill_opacity=0.5)` later: `add_ee_layer` refuses a
+  `fill_opacity` key with a `TypeError`.
 - **No layer or basemap switcher on the map.** Without the old in-map control,
   users switch layers only where the app shows a `LayerPanel`, and the basemap
   only where the app sets `m.basemap`. In a `MapApp`, add the panel as a right
@@ -133,7 +137,8 @@ other components, build the store yourself and pass it with
 The draw, inspector, zoom, fullscreen, state bar, menu and legend controls only
 attach to an ipyleaflet map, so they are removed, and `SepalMap` loses the
 arguments and members that built them. The MapLibre map draws its own zoom and
-scale controls, and a fullscreen control with `fullscreen_control=True`. Their
+scale controls, a globe button (`globe_control=False` hides it), and a
+fullscreen control with `fullscreen_control=True`. Their
 modules raise an `ImportError`, their names in `pysepal.mapping` and the removed
 `SepalMap` members raise an `AttributeError`. `m.state` no longer means the state
 bar: it is the map's declared state.
@@ -144,7 +149,7 @@ bar: it is the map's declared state.
 | `LayerStateControl`, `SepalMap(statebar=...)`, `m.state`                                                                          | `MapView` shows layer loading                                                                                                                                                                                                                                                                             |
 | `LegendControl`, `m.add_legend`, `m.add_colorbar`                                                                                 | the `MapView` legend, built from each layer's legend                                                                                                                                                                                                                                                      |
 | `MenuControl`                                                                                                                     | Solara components in `MapView(overlays=...)`                                                                                                                                                                                                                                                              |
-| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.begin(modes)` and the `DrawSession` it returns (`features`, `set`, `clear`, `start`, `stop`, `end`, `on_change`); the map draws the toolbar                                                                                                                                                       |
+| `DrawControl`, `GeomanDrawControl`, `SepalMap(dc=...)`, `m.dc`, `m.show_dc`, `m.hide_dc`, `dc.on_draw`, `dc.data`, `dc.to_json()` | `m.draw.begin(modes)` and the `DrawSession` it returns (`features`, `active`, `set`, `clear`, `start`, `stop`, `end`), with `on_change=` on `begin`; the map draws the toolbar                                                                                                                            |
 | `InspectorControl`, `ValueInspector`, `SepalMap(vinspector=...)`, `m.v_inspector`                                                 | `SepalMap(inspector=True)`, shown by `MapView`                                                                                                                                                                                                                                                            |
 | `m.on_interaction(handler)` with `type == "click"`                                                                                | `m.on_click(cb)` with a `ClickEvent` (`lng`, `lat`, `features`)                                                                                                                                                                                                                                           |
 | mousemove coordinate readouts                                                                                                     | `SepalMap(coordinates=True)`                                                                                                                                                                                                                                                                              |
@@ -201,8 +206,9 @@ Notes on the interaction replacements:
 import pandas as pd
 
 from pysepal.layers import LayerSpec, VectorStyle
+from pysepal.mapping import SepalMap
 
-m = SepalMap(inspector=True, coordinates=True)
+m = SepalMap(gee=False, inspector=True, coordinates=True)
 sites = pd.DataFrame({"lng": [-74.0, -73.9], "lat": [4.6, 4.7], "name": ["A", "B"]})
 spec = LayerSpec.from_points(
     sites,
@@ -224,7 +230,7 @@ holds where the camera is once a view reported. A removed member raises an
 
 | Before                                                                                          | Now                                                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ipyleaflet keyword arguments (`min_zoom`, `scroll_wheel_zoom`, `layout`, ...), `map_id`         | `SepalMap(basemaps, *, gee, theme_state, gee_session, gee_interface, fullscreen, fullscreen_control, layer_store, center, zoom, height, loop, inspector, coordinates, link_group)`                                                  |
+| ipyleaflet keyword arguments (`min_zoom`, `scroll_wheel_zoom`, `layout`, ...), `map_id`         | `SepalMap(basemaps, *, gee, theme_state, gee_session, gee_interface, fullscreen, fullscreen_control, globe_control, layer_store, center, zoom, height, loop, inspector, coordinates, link_group, animate)`                          |
 | positional options, `SepalMap([], False)`                                                       | everything after `basemaps` is keyword-only; `SepalMap([], False)` raises `TypeError`                                                                                                                                               |
 | `center=[lat, lng]`                                                                             | `center=(lng, lat)`                                                                                                                                                                                                                 |
 | `m.center`, `m.zoom`                                                                            | `m.view` to read the camera, `m.set_center(lng, lat, zoom)` to move it                                                                                                                                                              |
@@ -251,11 +257,12 @@ holds where the camera is once a view reported. A removed member raises an
 **Known limitation: local raster tiles.** MapLibre fetches tiles where ipyleaflet
 loaded them as images, so a local raster's tile URL on another origin than the
 page needs CORS headers, which `localtileserver` does not send. Such tiles reach
-the map only through a same-origin route (the prefix SEPAL sets,
-`jupyter-server-proxy` in JupyterLab, a route you mount) or through
-jupyter-loopback's comm bridge, which pysepal turns on for every local raster.
-With the bridge off (`LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK=1`) and no such
-route, the browser blocks them. See [local-tile-servers.md](./local-tile-servers.md).
+the map only through a same-origin route: the prefix SEPAL sets,
+`jupyter-server-proxy` in JupyterLab, the route pysepal mounts under
+`solara run` when `LOCALTILESERVER_CLIENT_PREFIX` is unset, or one you mount.
+Outside `solara run`, pysepal turns on jupyter-loopback's comm bridge as the
+fallback. With the bridge off (`LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK=1`)
+and no such route, the browser blocks them. See [local-tile-servers.md](./local-tile-servers.md).
 
 ### The map
 
@@ -266,8 +273,9 @@ of its sections, as `demo_apps/solara_raster_app/app.py` does.
 
 - **Panel rows are one line.** Each row has a drag handle, a visibility toggle,
   the name, a status, zoom-to-layer, a settings button and a remove button.
-  The settings button (the gear) opens a pop-up with the style form, the
-  opacity and the download and export buttons. A row has no expansion panel and
+  The settings button (the gear) opens a pop-up with the opacity, the style
+  form (not for tile layers), Download for a layer read from local files, and
+  Export for an Earth Engine layer when the panel has `on_export=`. A row has no expansion panel and
   no legend. Zoom-to-layer uses the bounds the layer was prepared with; an
   Earth Engine layer looks them up on the first zoom, and a layer without
   bounds still draws but disables its zoom button.
@@ -337,28 +345,29 @@ on ipyvuetify 1.
 
 ### 2. Replace the removed widgets
 
-| Removed                                        | Replacement                                                                        |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `sepalwidgets.vue_app.MapApp.element(...)`     | `pysepal.solara.components.map_app.MapApp(...)` (see below)                        |
-| `sepalwidgets.vue_app.ThemeToggle`             | `pysepal.solara.components.map_app.ThemeToggle`                                    |
-| `sepalwidgets.vue_app.LocaleSelect`            | `pysepal.solara.components.locale_select.LocaleSelectComponent`                    |
-| `sw.FileInput`                                 | `pysepal.solara.components.inputs.FileInputComponent`                              |
-| `sw.AssetSelect`                               | `pysepal.solara.components.inputs.AssetSelectComponent`                            |
-| `sw.VectorField`                               | `pysepal.solara.components.inputs.VectorSelectorComponent`                         |
-| `sw.LoadTableField`                            | `pysepal.solara.components.inputs.PointsSelectorComponent`                         |
-| `sw.TaskButton`, `sw.Btn` with a task          | `pysepal.solara.components.task_button.TaskButtonComponent`                        |
-| `sw.Alert`, `sw.StateBar`, `sw.Banner`         | `pysepal.solara.notifications` (`NotificationProvider`, `use_notifications`)       |
-| `aoi.AoiTile`, `aoi.AoiView`, `AoiControl`     | `pysepal.solara.components.aoi.AoiView`                                            |
-| `aoi.select_methods`                           | the `methods` argument of `pysepal.solara.components.aoi.AoiView`                  |
-| `planetapi.PlanetView`, `InfoView`, `InfoCard` | `pysepal.planetapi.PlanetModel` with your own Solara form                          |
-| `catch_errors`                                 | `try` / `except` in the task, then `notify(...)` from `use_notifications()`        |
-| `loading_button`, `thread_controller`          | `TaskButtonComponent` or `solara.lab.use_task`                                     |
-| `sw.Tile`, `sw.Card`, other `sw.*` subclasses  | Solara layout (`solara.Card`, `solara.Column`, ...) or plain `solara.v.*` elements |
+| Removed                                        | Replacement                                                                                                     |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `sepalwidgets.vue_app.MapApp.element(...)`     | `pysepal.solara.components.map_app.MapApp(...)` (see below)                                                     |
+| `sepalwidgets.vue_app.ThemeToggle`             | `pysepal.solara.components.map_app.ThemeToggle`                                                                 |
+| `sepalwidgets.vue_app.LocaleSelect`            | `pysepal.solara.components.locale_select.LocaleSelectComponent`                                                 |
+| `sw.FileInput`                                 | `pysepal.solara.components.inputs.FileInputComponent`                                                           |
+| `sw.AssetSelect`                               | `pysepal.solara.components.inputs.AssetSelectComponent`                                                         |
+| `sw.VectorField`                               | `pysepal.solara.components.inputs.VectorSelectorComponent`                                                      |
+| `sw.LoadTableField`                            | `pysepal.solara.components.inputs.PointsSelectorComponent`                                                      |
+| `sw.TaskButton`, `sw.Btn` with a task          | `pysepal.solara.components.task_button.TaskButtonComponent`                                                     |
+| `sw.Alert`, `sw.StateBar`, `sw.Banner`         | `pysepal.solara.notifications` (`NotificationProvider`, `use_notifications`)                                    |
+| `aoi.AoiTile`, `aoi.AoiView`, `AoiControl`     | `pysepal.solara.components.aoi.AoiView`                                                                         |
+| `aoi.select_methods`                           | the `methods` argument of `pysepal.solara.components.aoi.AoiView`                                               |
+| `planetapi.PlanetView`, `InfoView`, `InfoCard` | `pysepal.planetapi.PlanetModel` with your own Solara form                                                       |
+| `catch_errors`                                 | `try` / `except` in the task, then `notifications.error(str(error))` with `notifications = use_notifications()` |
+| `loading_button`, `thread_controller`          | `TaskButtonComponent` or `solara.lab.use_task`                                                                  |
+| `sw.Tile`, `sw.Card`, other `sw.*` subclasses  | Solara layout (`solara.Card`, `solara.Column`, ...) or plain `solara.v.*` elements                              |
 
 ### 3. Move to the Solara `MapApp`
 
 `MapApp` takes the same keyword arguments as the old `MapApp.element`, except
-`model`, `theme_toggle` and `language_selector`. The theme toggle and the
+`model`, `theme_toggle` and `language_selector`, which raise `TypeError`, and
+`right_panel_width`: the panel's width is `right_panel_config["width"]`. The theme toggle and the
 language selector are built in. Instead of `model=`, pass `current_step` with
 `on_current_step` and `step_open` with `on_step_open`. Usually the move is just
 this change:
@@ -401,7 +410,7 @@ its own `.vue` templates, write it for Vuetify 3. The common changes:
 | `beforeDestroy` in a template                            | `beforeUnmount`                                                                   |
 
 A removed class raises `AttributeError` in Python. An unknown prop is dropped
-with only a `DeprecationWarning`, and an unknown component in a template shows
+silently, and an unknown component in a template shows
 up only in the browser console. Check the app in a browser with
 `scripts/browser_probe.mjs --console` ([browser-testing.md](./browser-testing.md)). The
 rules for `.vue` templates are in [ipyvuetify-widgets.md](./ipyvuetify-widgets.md).

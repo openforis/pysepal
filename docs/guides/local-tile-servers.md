@@ -65,7 +65,9 @@ can leave the request path at all:
 `localtileserver` builds an XYZ template and rio-tiler renders each PNG from the
 GeoTIFF per request, applying colormap, band selection and stretch. Nothing on
 disk matches the request, so the tile server has to stay in the path. PMTiles is
-the opposite: the archive already is the payload.
+the opposite: the archive already is the payload. `LayerSpec.from_vector` takes a
+PMTiles archive only by URL: a local `.pmtiles` path raises `ValueError`, so
+serve it over HTTP(S) first.
 
 The test, whichever package you are on: **does the response already exist on
 disk?**
@@ -179,6 +181,10 @@ variable straight through to `TileClient`, so the browser gets
 bridge is the only thing carrying those tiles: the loopback URL is another origin
 than the page, so they load in this configuration only while the bridge is on.
 
+**Never define it empty for an app served by `solara run`.** There an empty
+prefix also turns off the route pysepal mounts (Configuration 2), no bridge
+carries the loopback URL, and every raster tile is blocked.
+
 **`LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK` does not help here**, and makes
 things worse: it only guards the comm bridge, so it removes the fallback while
 leaving the unreachable prefix URL in place. Reach for it only in Configuration 2
@@ -186,11 +192,13 @@ or 3, where a real route serves the tiles.
 
 ### The comm bridge is a fallback, not a plan
 
-With no prefix set, both libraries stand up jupyter-loopback's comm bridge
-themselves — `vectortileserver`'s `create_leaflet_layer` calls its
-`enable_for_port` helper, and pysepal calls `TileClient.enable_jupyter_loopback()`
-for every local raster. It tunnels loopback fetches over the kernel's websocket;
-pysepal does not configure it beyond that call.
+With no prefix set and outside `solara run`, pysepal calls
+`TileClient.enable_jupyter_loopback()` for each local raster. It tunnels
+loopback fetches over the kernel's websocket; pysepal does not configure it
+beyond that call. PMTiles drawn with `LayerSpec.from_vector` never get the
+bridge (`vectortileserver`'s `create_leaflet_layer`, which turned it on, is the
+ipyleaflet API pysepal 5 no longer uses), so a remote browser needs a prefix for
+them.
 
 Do not plan around it. Under ipyleaflet, where it was seen to work, the browser
 was on the same machine as the kernel and could reach the loopback URL anyway,
@@ -307,17 +315,17 @@ export LOCALTILESERVER_DISABLE_JUPYTER_LOOPBACK=1
 export VECTORTILESERVER_DISABLE_JUPYTER_LOOPBACK=1
 ```
 
-Both packages substitute `{port}` when the prefix is read. The
-`*_DISABLE_JUPYTER_LOOPBACK` variables stop the libraries from also standing up
-the comm bridge behind your back — without them you get both paths, and the
-bridge widget (and its loopback fetch primitive) is mounted even though nothing
-needs it.
+Both packages substitute `{port}` when the prefix is read. Under `solara run`
+pysepal never turns the comm bridge on, so the `*_DISABLE_JUPYTER_LOOPBACK`
+variables are a guard: they matter only where the app, or a library it calls,
+runs `enable_jupyter_loopback()` itself.
 
 `VECTORTILESERVER_CLIENT_PREFIX` is deliberately absent above: the archive route
 keys on the kernel, so set it per client rather than process-wide.
 
 ```python
 TileWorkspace(
+    host="127.0.0.1",  # a SEPAL sandbox has no IPv6 loopback for "localhost"
     client_prefix=f"{root_path}/tiles/{kernel_id}",
     allowed_directories=[session_tile_dir(kernel_id)],
 )
@@ -405,7 +413,8 @@ never be able to escape via `..`.
 | Autodetects a proxy prefix | Yes — the Voila trap                       | No — must be set explicitly                 |
 
 An **empty** `*_CLIENT_PREFIX` forces the loopback URL; **unset** is not the same
-thing, and for `localtileserver` means "autodetect".
+thing, and for `localtileserver` means "autodetect". Under `solara run` an empty
+prefix also turns off pysepal's own raster route, so leave it unset there.
 
 ## Security
 
@@ -424,20 +433,20 @@ app portable from configuration 2 to configuration 3.
 
 ## What Has Been Verified
 
-| Claim                                                                  | How                                                                                                                                                             |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| An autodetected prefix 404s under standalone Voila                     | Ran it — the 404 above is from that log                                                                                                                         |
-| An empty `LOCALTILESERVER_CLIENT_PREFIX` fixes it                      | Ran it under ipyleaflet and again under MapLibre — raster renders, zero proxy 404s                                                                              |
-| Under MapLibre the bridge carries the loopback tiles under Voila       | Ran it: plain Voila with the empty prefix shows a local raster, with no request to the tile port on the network                                                 |
-| ...but never under solara-server                                       | Ran it: stock `solara run`, first page and after a reload: no `window.__jupyter_loopback__`, `Failed to fetch (0)` per tile, `200` in the server log            |
-| pysepal's route carries them under solara-server                       | Ran it: stock `solara run`, first page and after a reload: the raster draws from `/_pysepal/tiles/{port}`; `tests/test_layers/test_tile_route.py` pins the 404s |
-| `vectortileserver` needs no configuration when the browser is local    | Ran it under ipyleaflet — PMTiles render with nothing set; not rerun under MapLibre                                                                             |
-| ...but not when it is remote                                           | Reported from a SEPAL sandbox: empty map, rasters fine                                                                                                          |
-| SEPAL's `/proxy/{port}` route carries a vector tile port too           | Ran it on the sandbox — 200, and 206 with `Content-Range` for a range request                                                                                   |
-| A set variable wins outright, so autodetect never runs                 | Ran `get_default_client_params` across unset / set / empty                                                                                                      |
-| SEPAL-hosted Voila works on the prefix SEPAL sets                      | **Not run.** Follows from that precedence                                                                                                                       |
-| The prefix-less loopback path avoids both jupyter-loopback bugs        | Read `widget.js`; the localhost branch returns `"broken"`                                                                                                       |
-| Configuration 2 / 3 routes, and the bridge carrying a _remote_ browser | **Not run.** Read from source only — verify before relying on it                                                                                                |
+| Claim                                                                  | How                                                                                                                                                                         |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An autodetected prefix 404s under standalone Voila                     | Ran it — the 404 above is from that log                                                                                                                                     |
+| An empty `LOCALTILESERVER_CLIENT_PREFIX` fixes it                      | Ran it under ipyleaflet and again under MapLibre — raster renders, zero proxy 404s                                                                                          |
+| Under MapLibre the bridge carries the loopback tiles under Voila       | Ran it: plain Voila with the empty prefix shows a local raster, with no request to the tile port on the network                                                             |
+| ...but never under solara-server                                       | Ran it: stock `solara run`, first page and after a reload: no `window.__jupyter_loopback__`, `Failed to fetch (0)` per tile, `200` in the server log                        |
+| pysepal's route carries them under solara-server                       | Ran it: stock `solara run`, first page and after a reload: the raster draws from `/_pysepal/tiles/{token}/{port}/...`; `tests/test_layers/test_tile_route.py` pins the 404s |
+| `vectortileserver` needs no configuration when the browser is local    | Ran it under ipyleaflet — PMTiles render with nothing set; not rerun under MapLibre                                                                                         |
+| ...but not when it is remote                                           | Reported from a SEPAL sandbox: empty map, rasters fine                                                                                                                      |
+| SEPAL's `/proxy/{port}` route carries a vector tile port too           | Ran it on the sandbox — 200, and 206 with `Content-Range` for a range request                                                                                               |
+| A set variable wins outright, so autodetect never runs                 | Ran `get_default_client_params` across unset / set / empty                                                                                                                  |
+| SEPAL-hosted Voila works on the prefix SEPAL sets                      | **Not run.** Follows from that precedence                                                                                                                                   |
+| The prefix-less loopback path avoids both jupyter-loopback bugs        | Read `widget.js`; the localhost branch returns `"broken"`                                                                                                                   |
+| Configuration 2 / 3 routes, and the bridge carrying a _remote_ browser | **Not run.** Read from source only — verify before relying on it                                                                                                            |
 
 Every run had the browser on the same machine as the kernel. Under ipyleaflet the
 tiles could reach `127.0.0.1` directly; under MapLibre the bridge carried them under
