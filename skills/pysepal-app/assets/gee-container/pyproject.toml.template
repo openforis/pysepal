@@ -8,14 +8,16 @@ version = "0.1.0"
 description = "{{project_description}}"
 requires-python = ">=3.12"
 dependencies = [
+    # Before the pysepal 5.0 release, use
+    # "pysepal @ git+https://github.com/openforis/pysepal@feat/layer-system" instead.
     "pysepal>=5",
     "solara",
-    "ee-client>=3.2.1,<4",
+    "ee-client>=3.4.0,<4",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit>=2.18.0",
+    "pre-commit>=3.2",
     "commitizen",
     "pytest",
     "pytest-asyncio",
@@ -40,16 +42,18 @@ addopts = [
 pythonpath = ["."]
 
 [tool.ruff]
-ignore-init-module-imports = true
 fix = true
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I", "D", "RUF"]
 ignore = ["E501", "F403", "D107", "D100", "D101", "D102", "D103", "D104"]
 
-[tool.ruff.flake8-quotes]
+[tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.black]
 line-length = 100
+target-version = ["py312"]

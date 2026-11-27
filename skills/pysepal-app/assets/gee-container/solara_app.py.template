@@ -1,7 +1,6 @@
 import logging
 
 import solara
-
 from pysepal import mapping as sm
 from pysepal.logger import setup_logging
 from pysepal.solara import (
@@ -16,7 +15,7 @@ from pysepal.solara import (
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider
 
-from component.model.state_manager import app_state
+from component.message import messages, msg
 
 logger = setup_logging(logger_name="{{module_slug}}")
 logger.setLevel(logging.DEBUG)
@@ -41,8 +40,11 @@ def Page():
 
     sepal_map = use_sepal_map(
         lambda: sm.SepalMap(
-            zoom=3, center=(0, 0), gee=True,
-            gee_interface=gee_interface, theme_state=theme_state,
+            zoom=3,
+            center=(0, 0),
+            gee=True,
+            gee_interface=gee_interface,
+            theme_state=theme_state,
         ),
         [gee_interface],
     )
@@ -73,16 +75,17 @@ def Page():
         # },
     ]
 
-    solara.Title("{{app_title}}")
+    solara.Title(msg("app.title"))
     NotificationProvider()
 
     MapApp(
-        app_title="{{app_title}}",
+        app_title=msg("app.title"),
         app_icon="{{app_icon}}",
         main_map=[sepal_map],
         steps_data=steps_data,
         initial_step=1,
         theme_state=theme_state,
+        locales=messages.available_locales(),
         right_panel_config=right_panel_config,
         right_panel_content=right_panel_content,
         right_panel_open=False,

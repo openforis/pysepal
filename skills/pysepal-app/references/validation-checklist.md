@@ -8,7 +8,10 @@ Run this checklist before presenting the finished scaffold.
 - The generated structure matches the chosen app family.
 - New app state uses `solara.reactive()`.
 - No new traitlets observer architecture was scaffolded.
-- Every referenced pysepal component exists in the live discovery output.
+- Every referenced pysepal name exists in the installed pysepal: components in
+  the discovery script's output, which covers `pysepal/solara/components`;
+  entry-point helpers, hooks and notifications in `pysepal.solara.__all__`; the
+  map in `pysepal.mapping`; layers in `pysepal.layers`.
 - Nothing imports `pysepal.sepalwidgets`.
 - Map apps use `MapApp(...)` from `pysepal.solara.components.map_app`, with no
   `.element`, `model=`, `theme_toggle=` or `language_selector=`.
@@ -16,14 +19,19 @@ Run this checklist before presenting the finished scaffold.
   map code follows `docs/guides/solara-map-apps.md`.
 - The app's own `rv.*`, `solara.v` and `.vue` code is Vuetify 3, with no
   `IPYVUETIFY_V3` branch.
-- The app requires `pysepal>=5` and does not pin `ipyvuetify<3`.
+- The app requires `pysepal>=5` (before the 5.0 release,
+  `"pysepal @ git+https://github.com/openforis/pysepal@feat/layer-system"`) and
+  does not pin `ipyvuetify<3`.
 - GEE flows inside Solara components avoid blocking sync calls.
 - GEE/container user-file operations use `SepalClient`, not `Path`, `os`,
   `shutil`, `glob`, `open()`, or container-local filesystem writes.
 - `pyproject.toml` is the source of truth for Python dependencies.
 - `requirements.txt` was not generated.
 - `sepal_environment.yml` installs the project with `-e .`.
-- `component/message/` exists.
+- `component/message/` binds `catalog()` and has `en/*.json`, and a map app
+  passes `locales=messages.available_locales()` to `MapApp`.
+- `.env` is listed in `.gitignore`, and in `.dockerignore` for a container app.
+- `ruff check` and `black --check` pass on the generated files.
 - Existing repo edits, if any, do not silently replace user-owned architecture.
 
 ## GEE-Specific Checks

@@ -1,6 +1,6 @@
 # Pysepal App Defaults
 
-These defaults were recovered from the saved pysepal design session and should be treated as the current baseline unless the user explicitly overrides them.
+Treat these defaults as the baseline unless the user explicitly overrides them.
 
 ## Agreed Defaults
 
@@ -24,6 +24,7 @@ project/
 ├── pyproject.toml
 ├── sepal_environment.yml
 ├── .pre-commit-config.yaml
+├── .gitignore
 ├── component/
 │   ├── model/
 │   ├── tile/
@@ -44,13 +45,16 @@ Default output set:
 - `docker-compose.yml`
 - `docker-compose.override.yml` when local overrides are useful
 - `supervisord.conf`
+- `.dockerignore`, so `COPY .` leaves `.env` and `.git` out of the image
 - env bootstrap files as needed
 - the standard `component/` tree
 
 Auth expectations:
 
-- work with SEPAL header/env auth when available
-- work with local `earthengine authenticate` credentials when developing outside SEPAL
+- work with SEPAL headers when deployed
+- in local development, arm `PYSEPAL_DEV_AUTH=1` (with `LOCAL_SEPAL_USER`,
+  `LOCAL_SEPAL_PASSWORD` and `SEPAL_HOST`) when the app handles user files or
+  any SEPAL API; `PYSEPAL_LOCAL_EE=1` runs on the local `earthengine authenticate` credentials but gives no `SepalClient`
 
 GEE execution expectations:
 
@@ -93,7 +97,8 @@ widget frontend: SEPAL's Voila loads the extensions from the app's environment.
 
 `pyproject.toml` owns Python dependencies. Both templates require
 `pysepal>=5`, the first release with the native `MapApp`; it is Vuetify 3
-only.
+only. Nothing published satisfies that pin before the 5.0 release: until then
+use `"pysepal @ git+https://github.com/openforis/pysepal@feat/layer-system"`.
 
 `sepal_environment.yml` owns conda-level or compiled dependencies and installs the local project with:
 
@@ -103,12 +108,3 @@ dependencies:
   - pip:
       - -e .
 ```
-
-## Repo-Local Draft Target
-
-The first draft of the skill should live in:
-
-- `skills/pysepal-app/SKILL.md`
-- `skills/pysepal-app/agents/openai.yaml`
-
-Install or copy it into a user-specific skill directory only after the repo-local version is reviewed.

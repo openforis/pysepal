@@ -9,8 +9,19 @@ Use this skill when building or restructuring pysepal applications.
 
 ## Version check
 
-This skill documents pysepal 4.1.0. Compare that with the pysepal installed in
-the app's environment before relying on any API detail here:
+This skill documents pysepal 4.1.0.
+That number is the package metadata, which stays 4.x until the 5.0 release; the
+API described here is pysepal 5. Check that the app's environment has it before
+relying on any API detail here:
+
+```bash
+python -c "import pysepal.sepalwidgets"
+```
+
+On pysepal 5 this raises `ImportError: pysepal.sepalwidgets was removed in pysepal 5.0 ...`. If it imports, the app is on pysepal 4: follow
+`docs/guides/migrating-to-pysepal-5.md` before using anything here.
+
+Then compare the version numbers:
 
 ```bash
 python -c "import importlib.metadata as m; print(m.version('pysepal'))"
@@ -28,6 +39,7 @@ install, otherwise your local pysepal checkout.
 For app architecture:
 
 - `docs/guides/solara-app-builder.md`
+- `docs/guides/solara-map-apps.md` for the map rules, which its tests run; its "A whole app" section is a complete `MapApp` app
 - `docs/guides/solara-gee-patterns.md` for async GEE work
 - `docs/guides/solara-notifications.md` when the app has async work, task progress, toasts, or `MapApp`
 - `docs/guides/solara-export.md` when the app produces `ee.Image` or `ee.FeatureCollection` layers users can export
@@ -52,7 +64,7 @@ For repo-specific defaults and scaffold workflow:
 - A Voila app in SEPAL's app catalog brings its own widget frontend (SEPAL's Voila loads the extensions from the app's environment), so it can require pysepal 5 as soon as its code is ready.
 - New GEE flows use `solara.lab.use_task(..., prefer_threaded=False)`.
 - Retrieve session-bound interfaces inside components with `get_current_gee_interface()` and related getters.
-- An app needing neither GEE, `SepalClient` nor Drive omits `@with_sepal_sessions` and keeps `setup_sessions()`; see "Apps that don't use Earth Engine" in `docs/guides/solara-app-builder.md`.
+- An app needing neither GEE, `SepalClient` nor Drive omits `@with_sepal_sessions`; see "Apps that don't use Earth Engine" in `docs/guides/solara-app-builder.md`.
 - Never construct a bare `GEEInterface()` in a container app: it raises `SepalSessionError` in a per-connection runtime. Pass `gee_interface=get_current_gee_interface()` to `SepalMap`, `AoiModel`, asset inputs and `process_admin`, or `SepalMap(gee=False)` when the map has no Earth Engine layers.
 - GEE/container apps use the session `SepalClient` for all runtime user-file reads, writes, listing, and directory creation.
 - Do not write user data to the container filesystem, and do not use `Path`, `os`, `shutil`, `glob`, or `open()` to walk/read/write user workspace files in Solara container apps.
@@ -74,6 +86,11 @@ scripts that handle user files, and use:
 - `sepal_client.files.mkdir(path, parents=True)` to create user folders
 - `sepal_client.results_path` as the base for module-owned outputs under
   `module_results/<module_name>`
+
+For local development of an app that handles user files, arm `PYSEPAL_DEV_AUTH=1`
+with `LOCAL_SEPAL_USER`, `LOCAL_SEPAL_PASSWORD` and `SEPAL_HOST` in `.env`.
+`PYSEPAL_LOCAL_EE=1` gives Earth Engine only: `get_current_sepal_client()` then
+returns `None`.
 
 Do not branch on `DEPLOY_ENV` or local/dev mode to write user data with
 `Path.mkdir`, `Path.open`, `Path.write_text`, `os.listdir`, `os.walk`, `glob`,
@@ -108,7 +125,7 @@ When a new pysepal Solara app produces GEE-backed layers users may want to take 
 - let the dialog publish toasts through the mounted `NotificationProvider`; do not add inline success/error widgets alongside it
 - do not build a second custom export UX unless the dialog genuinely cannot cover the requirements; if customization is needed, prefer `use_export_dialog(...)` + `ExportDialog(controller=...)` over re-implementing submission logic
 - use canonical file-format values (`"GEO_TIFF"`, `"GEO_JSON"`, `"SHP"`, `"CSV"`, `"KML"`, `"KMZ"`) at the pysepal to ee-client boundary
-- match pysepal's own `ee-client>=3.2.1,<4` floor in the app's pyproject rather
+- match pysepal's own `ee-client>=3.4.0,<4` floor in the app's pyproject rather
   than pinning an older ee-client
 
 ## App Shell Guidance
@@ -125,7 +142,12 @@ Default placement:
 
 1. Determine app type and whether the repo is new or existing.
 2. Inspect the current file tree and entrypoints.
-3. Read the guides above before scaffolding.
+3. Read the guides above before scaffolding, and list the live components with
+   `python ${CLAUDE_PLUGIN_ROOT}/skills/pysepal-app/scripts/discover_pysepal_components.py`
+   (from a checkout: `skills/pysepal-app/scripts/...`, or pass `--repo-root <checkout>`).
+   It reads `pysepal/solara/components` of the installed pysepal; the entry-point
+   helpers, hooks and notifications are in `pysepal.solara.__all__`, the map in
+   `pysepal.mapping` and the layers in `pysepal.layers`.
 4. Choose the default file set from `references/file-matrix.md`.
 5. Build a runnable base scaffold first.
 6. Map notebook or legacy logic into `component/model`, `component/tile`, `component/widget`, `component/scripts`, `component/parameter`, and `component/message`.

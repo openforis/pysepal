@@ -1,0 +1,11 @@
+# Local settings: LOCAL_SEPAL_PASSWORD and other credentials
+.env
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
