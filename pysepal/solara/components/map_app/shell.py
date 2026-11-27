@@ -186,8 +186,8 @@ def MapApp(
     the bottom and the task pill hides.
 
     It takes the keyword arguments of the legacy
-    ``pysepal.sepalwidgets.vue_app.MapApp.element``, so moving an app means
-    changing the import and dropping ``.element``.
+    ``pysepal.sepalwidgets.vue_app.MapApp.element`` except ``model``,
+    ``theme_toggle`` and ``language_selector``, which raise ``TypeError``.
 
     Args:
         app_title: Title at the top of the drawer.
@@ -205,8 +205,9 @@ def MapApp(
             footer buttons: ``label``, ``cancel``, ``close``, ``next``; a
             ``next`` step without content closes the dialog), ``width`` and
             ``height`` (dialog steps: px as a number, ``"600"`` or ``"600px"``,
-            or ``"NN%"`` of the window; a size that does not read falls back to
-            ``dialog_width``).
+            or ``"NN%"`` of the window; a ``width`` that does not read falls
+            back to ``dialog_width``, a ``height`` lets the dialog fit its
+            content).
         right_panel_config: ``title``, ``icon``, ``width`` (px as a number,
             ``"300"`` or ``"300px"``), ``description`` and ``toggle_icon`` of the
             right panel.

@@ -182,3 +182,57 @@ def test_the_pool_worker_snippet_draws_what_its_button_adds(offline, monkeypatch
 
     asyncio.run(run())
     assert [r.getMessage() for r in caplog.records] == [], "nothing logs an error"
+
+
+def test_the_whole_app_adds_its_layer_once_an_area_is_picked(offline, monkeypatch, caplog):
+    """The whole app's button waits for an area, then its task adds the Earth Engine layer."""
+    from pysepal.solara.components.aoi.aoi_result import AoiResult
+    from pysepal.solara.notifications import NotificationProvider
+
+    [snippet] = [s for s in RUNNABLE if "def TreeCoverPanel" in s.code]
+    caplog.set_level(logging.ERROR)
+    namespace = _load(snippet, monkeypatch)
+
+    class _Image:
+        def select(self, *args):
+            return self
+
+        def clip(self, *args):
+            return self
+
+    added = []
+
+    async def add_ee_layer_async(self, image, vis_params, name, key=""):
+        added.append((name, key))
+
+    monkeypatch.setattr(namespace["ee"], "Image", lambda *args: _Image())
+    monkeypatch.setattr(SepalMap, "add_ee_layer_async", add_ee_layer_async)
+    aoi = solara.reactive(None)
+
+    @solara.component
+    def Host():
+        m = solara.use_memo(lambda: SepalMap(gee=False), [])
+        NotificationProvider()
+        namespace["TreeCoverPanel"](m, aoi)
+
+    def button(rc):
+        [found] = [b for b in rc.find(v.Btn).widgets if "Show tree cover" in str(b.children)]
+        return found
+
+    async def run():
+        root, rc = solara.render(Host(), handle_error=False)
+        try:
+            assert button(rc).disabled, "no area yet"
+            aoi.set(AoiResult(method="DRAW", name="area", feature_collection=object()))
+            assert not button(rc).disabled
+            button(rc).fire_event("click", {})
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 10
+            while not added and loop.time() < deadline:
+                await asyncio.sleep(0.01)
+            assert added == [("Tree cover", "tree_cover")]
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+    assert [r.getMessage() for r in caplog.records] == [], "nothing logs an error"

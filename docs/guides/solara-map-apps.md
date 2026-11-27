@@ -37,6 +37,108 @@ The snippets leave out the entry point (`setup_solara_server()`,
 9. Test with `solara.render` on a live loop, and close the render context.
 10. Deploy with `setup_solara_server()` and `--production`.
 
+## A whole app
+
+A map app is one `Page` that builds the map with `use_sepal_map`, mounts
+`NotificationProvider()` once and hands the map to `MapApp`. Each panel section
+is a component that takes the map and the reactives it shares with the others.
+Here the user picks an area, a task renders an Earth Engine layer over it with
+its progress in the task pill, and the layer panel lists what the map shows.
+`MapView`, which `MapApp` builds around the map, shows the layer's legend.
+
+<!-- run -->
+
+```python
+import ee
+import solara
+
+from pysepal.mapping import SepalMap
+from pysepal.solara import get_current_gee_interface, get_current_theme_state, use_sepal_map
+from pysepal.solara.components.aoi import AoiView
+from pysepal.solara.components.layer_panel import LayerPanel
+from pysepal.solara.components.map_app import MapApp
+from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
+from pysepal.solara.notifications import NotificationProvider, use_notifications
+
+TREE_COVER = {"min": 0, "max": 100, "palette": ["#ffffcc", "#006837"]}
+
+
+@solara.component
+def TreeCoverPanel(m: SepalMap, aoi: solara.Reactive):
+    notifications = use_notifications()
+
+    async def compute():
+        area = aoi.value.feature_collection
+        with notifications.track("Tree cover", total_steps=1) as progress:
+            progress.step("Rendering in Earth Engine")
+            hansen = ee.Image("UMD/hansen/global_forest_change_2023_v1_11")
+            image = hansen.select("treecover2000").clip(area)
+            await m.add_ee_layer_async(image, TREE_COVER, "Tree cover", key="tree_cover")
+        notifications.success("Tree cover added")
+
+    task = solara.lab.use_task(compute, dependencies=None, raise_error=False, prefer_threaded=False)
+    TaskButtonComponent(
+        label="Show tree cover",
+        external_busy=aoi.value is None,  # no area yet: the button waits
+        **use_task_button(task, on_start=task),
+    )
+
+
+@solara.component
+def Page():
+    gee_interface = get_current_gee_interface()
+    theme_state = get_current_theme_state()
+    m = use_sepal_map(
+        lambda: SepalMap(gee_interface=gee_interface, theme_state=theme_state), [gee_interface]
+    )
+    aoi = solara.use_reactive(None)
+
+    NotificationProvider()
+    MapApp(
+        app_title="Tree cover",
+        main_map=[m],
+        theme_state=theme_state,
+        right_panel_config={"title": "Tools", "icon": "mdi-tools", "width": 380},
+        right_panel_content=[
+            {
+                "title": "Area of interest",
+                "icon": "mdi-map-marker",
+                "content": AoiView(value=aoi, map_=m, methods=["ADMIN0", "ADMIN1", "DRAW"]),
+            },
+            {"title": "Tree cover", "icon": "mdi-forest", "content": TreeCoverPanel(m, aoi)},
+            {"title": "Layers", "icon": "mdi-layers", "content": LayerPanel(m.layer_store, map_=m)},
+        ],
+        right_panel_open=True,
+    )
+```
+
+The entry point goes around `Page`, as
+[Building Solara apps](./solara-app-builder.md) explains:
+
+<!-- fragment -->
+
+```python
+# app.py
+from pysepal.solara import setup_sessions, setup_solara_server, with_sepal_sessions
+
+setup_solara_server()
+
+
+@solara.lab.on_kernel_start
+def on_kernel_start():
+    return setup_sessions()
+
+
+@solara.component
+@with_sepal_sessions(module_name="tree_cover")
+def Page():
+    ...  # as above
+```
+
+In a real app the sections live in `component/tile/`, the vis params in
+`component/parameter/`, and the strings come from `msg()`;
+`demo_apps/solara_map_app/` is laid out that way.
+
 ## 1. Create, hold, share and close a map
 
 - **Build a map with `use_sepal_map(factory, dependencies)`, in the component
@@ -203,8 +305,8 @@ def Page():
   [Solara GEE patterns](./solara-gee-patterns.md).
 - **Add layers with `add_ee_layer_async` and `add_raster_async` in that task.**
   They render in Earth Engine, or prepare the raster in a worker thread, without
-  blocking the loop. They return `None` when a newer action on the same key
-  replaced them, or when the map closed meanwhile.
+  blocking the loop. They return `None` when a newer add, restyle or removal
+  on the same key superseded them, or when the map closed meanwhile.
 - **Compute in a pool worker, and write after the `await`.** A pool worker
   (`asyncio.to_thread`, an executor) has no kernel context
   (`solara/server/patch.py`, `_is_pool_worker_thread`): a widget built there
@@ -341,7 +443,9 @@ def Page():
 - **Close the maps of a group you rebuild.** A closed map leaves its group. A
   hot reload keeps the kernel (`solara/server/kernel_context.py`, `restart`), so
   a map left open keeps the group's camera, and the new maps open there.
-  `use_sepal_map` closes the old maps first.
+  `use_sepal_map` closes the old maps before a hot reload builds the new ones.
+  On a dependency change it builds the new map first and closes the old one
+  after the render, so the new map opens at the group's camera.
 - **Compare is one map with two halves.** `m.compare = True` splits it, and each
   layer draws on its side: `side=` on the add methods and on
   `layer_store.add`, or `handle.side` later. The switch is the app's; see
@@ -387,6 +491,11 @@ def Page():
 - **Hold the tools with `session = m.draw.begin(modes, on_change=...)`.** Every
   view of the map then shows the toolbar, and `session.features` holds what the
   user drew, as a GeoJSON FeatureCollection in `lng, lat`.
+- **Pick the tools.** `modes` names tools of `mapframe._draw.DRAW_MODES`
+  (`"polygon"`, `"rectangle"`, `"circle"`, `"linestring"`, `"point"`), by
+  default the first three. `edit=True`, the default, adds `"select"` to edit
+  what was drawn, and `features=` shows shapes from the start. Bad modes or
+  features raise `ValueError` and leave the active session as it was.
 - **A map has one session at a time.** A new `begin` ends the old session: its
   `active` turns False, and its `set`, `clear`, `start` and `stop` raise
   (`mapframe/_draw.py`).
@@ -437,9 +546,13 @@ def Page():
   chip. A local raster's gradient reads the range its tiles stretch across, the
   file's own when `vmin` and `vmax` are unset. A multiband raster has none.
 - **An explicit legend is the app's.** `restyle` keeps it, and
-  `handle.legend = None` goes back to the derived one.
+  `handle.legend = None` goes back to the asset's legend, else the one derived
+  from the style.
 - **An empty `Legend()` shows none.** The card does not list the layer, and the
   user's pick stays.
+- **Overlay layers get no card.** A layer in the `"overlay"` zone
+  (`overlay=True` on `add_ee_layer`, `zone="overlay"` on a `LayerSpec`), such
+  as the AOI that `AoiView` draws, is never listed.
 - **`MapView(m, legend=False)` shows no card.**
 
 <!-- run -->
@@ -528,11 +641,11 @@ def test_the_page_shows_its_cities():
 ## 10. Deploy
 
 - **Call `setup_solara_server()` at module level.** Under a Solara server it
-  serves the map's JavaScript, about 2 MB, once per page, and the browser caches
+  serves the map's JavaScript, about 2.4 MB, once per page, and the browser caches
   it; without it every map sends the bundle again. It also sets a 5-minute cull
   timeout and serves pysepal's CSS and JS.
 - **Run `solara run app.py --production` outside development.** Development
-  mode watches the app's files and hot-reloads them (`solara/__main__.py`).
+  mode watches the app's files and hot-reloads them (`solara/server/reload.py`).
 - **Restart the server after changing pysepal.** A hot reload imports again only
   the modules under the app's root (`solara/server/reload.py`).
 - **Expect a dropped page to live until the cull.** A closed tab closes its
