@@ -7,8 +7,22 @@ module.exports = {
   mounted() {
     this.appliedVars = [];
     this.appliedClass = "";
-    this.onResize = () =>
-      this.window_size({ w: window.innerWidth, h: window.innerHeight });
+    this.lastSize = null;
+    this.frame = 0;
+    // one report per frame, and only when the size changed: each report is a
+    // round trip and a render of the shell
+    this.onResize = () => {
+      if (this.frame) return;
+      this.frame = window.requestAnimationFrame(() => {
+        this.frame = 0;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        if (this.lastSize && this.lastSize.w === w && this.lastSize.h === h)
+          return;
+        this.lastSize = { w, h };
+        this.window_size({ w, h });
+      });
+    };
     window.addEventListener("resize", this.onResize);
     this.onResize();
     this.applyVars(this.css_vars);
@@ -29,11 +43,6 @@ module.exports = {
     applyVars(vars) {
       const root = document.documentElement;
       const next = vars || {};
-      const reserved = () =>
-        ["--sepal-top-reserved", "--sepal-bottom-reserved"]
-          .map((name) => root.style.getPropertyValue(name))
-          .join();
-      const reservedBefore = reserved();
       this.appliedVars
         .filter((name) => !(name in next))
         .forEach((name) => root.style.removeProperty(name));
@@ -41,12 +50,6 @@ module.exports = {
         root.style.setProperty(name, value)
       );
       this.appliedVars = Object.keys(next);
-      // Leaflet only re-measures on a window resize, and the map's height
-      // changes when the top bar comes or goes and the bottom sheet opens or
-      // closes.
-      if (reserved() !== reservedBefore) {
-        this.$nextTick(() => window.dispatchEvent(new Event("resize")));
-      }
     },
     applyBodyClass(name) {
       if (this.appliedClass) document.body.classList.remove(this.appliedClass);
@@ -57,6 +60,8 @@ module.exports = {
       if (this.tornDown) return;
       this.tornDown = true;
       window.removeEventListener("resize", this.onResize);
+      if (this.frame) window.cancelAnimationFrame(this.frame);
+      this.frame = 0;
       this.applyVars({});
       this.applyBodyClass("");
     },

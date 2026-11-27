@@ -198,13 +198,18 @@ def test_the_gee_aoi_demo_offers_what_a_spec_can_carry():
     """
     import importlib.util
 
+    from pysepal.mapping import SepalMap
     from pysepal.solara.components.aoi.aoi_view import resolve_methods
 
     spec = importlib.util.spec_from_file_location("_aoi_gee_demo", AOI_GEE_APP / "app.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    # map_ stands in for the demo's SepalMap: resolve_methods only tests it for None.
-    offered = resolve_methods(module.METHODS, gee=True, map_=object())
+    # resolve_methods only tests that the map has drawing tools.
+    map_ = SepalMap(gee=False)
+    try:
+        offered = resolve_methods(module.METHODS, gee=True, map_=map_)
+    finally:
+        map_.close()
 
     assert set(offered) == {"ADMIN0", "ADMIN1", "ADMIN2", "DRAW", "ASSET"}

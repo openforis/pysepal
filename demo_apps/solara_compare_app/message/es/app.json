@@ -1,0 +1,48 @@
+{
+  "app": {
+    "title": "Comparar y dibujar"
+  },
+  "panel": {
+    "title": "Capas",
+    "description": "Capas, lados y el área de interés"
+  },
+  "tabs": {
+    "layers": "Capas",
+    "aoi": "AOI"
+  },
+  "compare": {
+    "switch": "Comparar 2020 | 2024"
+  },
+  "draw": {
+    "start": "Empezar a dibujar",
+    "end": "Terminar de dibujar",
+    "count": {
+      "one": "{count} forma enviada a Python",
+      "many": "{count} formas enviadas a Python",
+      "other": "{count} formas enviadas a Python"
+    }
+  },
+  "layers": {
+    "forest_2020": "Bosque 2020",
+    "forest_2024": "Bosque 2024",
+    "alerts": "Alertas 2024",
+    "plots": "Parcelas de campo",
+    "concession": "Concesión"
+  },
+  "alerts": {
+    "confirmed": "Confirmada",
+    "pending": "Pendiente de revisión",
+    "rejected": "Rechazada",
+    "name": "Alerta",
+    "status": "Estado",
+    "year": "Año",
+    "radius": "Radio (px)"
+  },
+  "plots": {
+    "forest": "Bosque",
+    "shrub": "Matorral",
+    "bare": "Suelo desnudo",
+    "plot": "Parcela",
+    "class": "Clase"
+  }
+}

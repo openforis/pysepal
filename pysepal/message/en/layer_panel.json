@@ -1,0 +1,36 @@
+{
+  "layer_panel": {
+    "title": "Layers",
+    "empty": "No layers on the map",
+    "opacity": "Opacity",
+    "legend": "Legend",
+    "download": "Download",
+    "too_large": "This file is too large to download here. Use the SEPAL file browser instead.",
+    "export": "Export",
+    "remove": "Remove",
+    "zoom": "Zoom to layer",
+    "settings": "Layer settings",
+    "hide": "Hide layer",
+    "show": "Show layer",
+    "reorder": "Drag to reorder, or press Alt+Up or Alt+Down",
+    "no_bounds": "This layer has no bounds to zoom to",
+    "zoom_failed": "Could not zoom to the layer. Try again.",
+    "preparing": "Preparing layer",
+    "error": "The layer could not be loaded",
+    "restyle": "Style",
+    "apply": "Apply",
+    "min": "Min",
+    "max": "Max",
+    "palette": "Palette (comma-separated colors)",
+    "colormap": "Colormap",
+    "stroke": "Stroke",
+    "fill": "Fill",
+    "fill_opacity": "Fill opacity",
+    "width": "Width",
+    "side": {
+      "left": "Left side only",
+      "both": "Both sides",
+      "right": "Right side only"
+    }
+  }
+}

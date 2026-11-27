@@ -34,6 +34,18 @@ def test(session):
 
 
 @nox.session(reuse_venv=False)
+def demos(session):
+    """Run the demo apps' smoke tests with the demos' own dependencies.
+
+    Apart from ``test``: vectortileserver brings ipyleaflet, which the main suite must
+    run without, so that a pysepal module importing it fails there.
+    """
+    session.install(".[test,demos]")
+    test_files = session.posargs or ["tests/test_demo_apps"]
+    session.run("pytest", "--color=yes", *test_files)
+
+
+@nox.session(reuse_venv=False)
 def test_gee(session):
     """Run GEE smoke tests. Requires EARTHENGINE_* credentials."""
     session.install(".[test]")
@@ -89,9 +101,7 @@ def docs(session):
     # build the api doc files
     templates = "docs/source/_templates/apidoc"
     modules = "docs/source/modules"
-    # the sepalwidgets stub only raises an ImportError
-    stub = "pysepal/sepalwidgets"
-    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal", stub)
+    session.run("sphinx-apidoc", f"--templatedir={templates}", "-o", modules, "pysepal")
 
     # build the documentation
     source = "docs/source"

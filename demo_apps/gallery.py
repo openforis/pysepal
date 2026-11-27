@@ -29,8 +29,8 @@ DEMOS = [
         "map-app",
         "Map App",
         "What a real SEPAL module needs: AOI selection, async processing with "
-        "progress notifications, layer management, a floating legend driven by the "
-        "layers on the map, and Earth Engine / Drive / SEPAL exports. It "
+        "progress notifications, layer management, legends for the layers on the "
+        "map, and Earth Engine / Drive / SEPAL exports. It "
         "authenticates against SEPAL, so it needs credentials in `.env`.",
     ),
     (
@@ -69,6 +69,25 @@ DEMOS = [
         "with a single symbol and with a color per attribute value. Needs "
         "tippecanoe on PATH; it tiles a generated grid unless "
         "`PYSEPAL_DEMO_VECTOR_DIR` points at a real `landcover.geojson`.",
+    ),
+    (
+        "solara_compare_app",
+        "compare-app",
+        "Compare & Draw",
+        "One map in compare mode: a 2020 raster on the left, a 2024 one on the "
+        "right, a swipe between them, and the layer panel moving layers between "
+        "the sides. Pins coloured by status, clustered plots, a legend per side, "
+        "a drawing session whose shapes reach Python, and the AOI selector. No "
+        "session and no credentials.",
+    ),
+    (
+        "solara_linked_maps_app",
+        "linked-maps-app",
+        "Linked Maps",
+        "Three maps side by side: two share a link group, so moving one moves "
+        "the other, and a switch per map moves it in or out of the group. "
+        "Camera calls from Python travel through the group too. No session and "
+        "no credentials.",
     ),
     (
         "solara_chart_app",

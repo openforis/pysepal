@@ -5,7 +5,7 @@ watches its element with a ``ResizeObserver`` and draws again when the element
 changes size or becomes visible, so none of these contexts carries resize code.
 Change a layout and check that the chart follows: a card that changes width, a
 collapsed panel, an unopened tab, MapApp's right panel, a dialog step, and a menu
-on the map.
+over the map.
 
 The UI lives in :func:`ChartAppDemo` so both runtimes share it -- ``Page`` is the
 Solara entrypoint, ``ui.ipynb`` the Voila one.
@@ -22,14 +22,14 @@ import reacton.ipyvuetify as rv
 import solara
 from chart_messages import messages, msg
 from chart_options import sample_series
-from chart_widgets import ContextChart, build_map_chart_card
+from chart_widgets import ContextChart, MapChartMenu
 
 from pysepal import mapping as sm
-from pysepal.mapping.menu_control import MenuControl
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider, use_notifications
@@ -133,35 +133,28 @@ def PageContexts(values: list, on_map, on_regenerate):
 
 @solara.component
 def MapContexts(values: list, on_back):
-    """The MapApp shell: a right panel, a dialog step, a menu on the map."""
+    """The MapApp shell: a right panel, a dialog step, a menu over the map."""
     theme_state = get_current_theme_state()
 
     def build_map():
-        sepal_map = sm.SepalMap(
-            zoom=3,
-            center=[0, 0],
+        return sm.SepalMap(
+            zoom=2,
+            center=(0, 0),
             gee=False,
             fullscreen=True,
             fullscreen_control=True,
             theme_state=theme_state,
         )
-        sepal_map.add(
-            MenuControl(
-                "mdi-chart-bar",
-                build_map_chart_card(values, width="360px"),
-                m=sepal_map,
-                card_title=msg("contexts.map.card_title"),
-                position="topright",
-            )
-        )
-        return sepal_map
 
-    sepal_map = solara.use_memo(build_map, [])
+    sepal_map = use_sepal_map(build_map, [])
 
     MapApp(
         app_title=msg("app.title"),
         app_icon="mdi-chart-box",
         main_map=[sepal_map],
+        map_overlays={
+            "top-right": [MapChartMenu(values, title=msg("contexts.map.card_title"))],
+        },
         steps_data=[
             {
                 "id": 1,

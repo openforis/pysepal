@@ -1,0 +1,136 @@
+"""Tests for the restyle form of the LayerPanel."""
+
+import solara
+
+from pysepal.layers import LayerStore
+from pysepal.mapping.maplibre_engine import _paint
+from pysepal.solara.components.layer_panel import LayerPanel
+from pysepal.solara.components.layer_panel.restyle import RestyleForm
+from tests.test_solara._layer_panel_helpers import (
+    all_text,
+    click_apply,
+    field_names,
+    open_settings,
+    set_field,
+)
+
+
+def test_apply_sends_only_changes(raster_spec):
+    sent = []
+    box, _ = solara.render(RestyleForm(spec=raster_spec, on_apply=sent.append), handle_error=False)
+    set_field(box, "max", "120")
+    click_apply(box)
+    assert sent == [{"max": 120.0}]
+
+
+def test_invalid_palette_shows_error_and_keeps_store(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    open_settings(box, raster_spec.id)
+    set_field(box, "palette", "#zz")
+    click_apply(box)
+    assert store.get(raster_spec.id).revision == 0 and "palette" in all_text(box).lower()
+
+
+def test_vector_form_fields(vector_spec):
+    box, _ = solara.render(
+        RestyleForm(spec=vector_spec, on_apply=lambda c: None), handle_error=False
+    )
+    assert field_names(box) == ["stroke", "fill", "fill_opacity", "width"]
+
+
+def test_fill_only_edit_is_visible(vector_spec):
+    store = LayerStore()
+    store.add(vector_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    open_settings(box, vector_spec.id)
+    set_field(box, "fill", "#00ff00")
+    click_apply(box)
+    assert _paint(store.get(vector_spec.id), is_dark=False).fill_opacity == 1.0
+
+
+def test_class_colors_raster_has_no_form(raster_spec):
+    style = raster_spec.style.model_copy(update={"class_colors": {1: "#ffffff"}})
+    box, _ = solara.render(
+        RestyleForm(spec=raster_spec.revise(style=style), on_apply=lambda c: None),
+        handle_error=False,
+    )
+    assert field_names(box) == []
+
+
+def test_a_valid_apply_clears_the_error(raster_spec):
+    store = LayerStore()
+    store.add(raster_spec)
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    open_settings(box, raster_spec.id)
+    set_field(box, "palette", "#zz")
+    click_apply(box)
+    set_field(box, "palette", "#000000,#ffffff")
+    click_apply(box)
+    assert store.get(raster_spec.id).revision == 1 and "palette" not in all_text(box).lower()
+
+
+def test_multiband_file_without_bands_has_only_min_max(tmp_path):
+    import numpy as np
+    import rasterio as rio
+    from rasterio.transform import from_origin
+
+    from pysepal.layers import LayerSpec
+
+    path = tmp_path / "rgb.tif"
+    with rio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=8,
+        width=8,
+        count=3,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=from_origin(0, 0, 0.01, 0.01),
+    ) as ds:
+        ds.write(np.ones((3, 8, 8), dtype="uint8"))
+    box, _ = solara.render(
+        RestyleForm(spec=LayerSpec.from_raster(path), on_apply=lambda c: None), handle_error=False
+    )
+    assert field_names(box) == ["min", "max"]
+
+
+def test_emptied_fields_clear_their_values(raster_spec):
+    style = raster_spec.style.model_copy(
+        update={"min": 0, "max": 9, "palette": ["#000000"], "colormap": None}
+    )
+    sent = []
+    box, _ = solara.render(
+        RestyleForm(spec=raster_spec.revise(style=style), on_apply=sent.append),
+        handle_error=False,
+    )
+    set_field(box, "min", "")
+    set_field(box, "palette", " , ")
+    click_apply(box)
+    assert sent == [{"min": None, "palette": None}]
+
+
+def test_an_emptied_width_keeps_its_value(vector_spec):
+    style = vector_spec.style.model_copy(update={"fill": "#00ff00"})
+    sent = []
+    box, _ = solara.render(
+        RestyleForm(spec=vector_spec.revise(style=style), on_apply=sent.append),
+        handle_error=False,
+    )
+    set_field(box, "fill", "")
+    set_field(box, "width", "")
+    click_apply(box)
+    assert sent == [{"fill": None}]
+
+
+def test_a_cleared_palette_reaches_the_store(raster_spec):
+    style = raster_spec.style.model_copy(update={"palette": ["#000000"], "colormap": None})
+    store = LayerStore()
+    store.add(raster_spec.revise(style=style))
+    box, _ = solara.render(LayerPanel(store=store), handle_error=False)
+    open_settings(box, raster_spec.id)
+    set_field(box, "palette", "")
+    click_apply(box)
+    assert store.get(raster_spec.id).style.palette is None

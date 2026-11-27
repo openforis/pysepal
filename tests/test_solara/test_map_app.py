@@ -1,19 +1,27 @@
 """Tests for the native Solara MapApp shell, on the installed ipyvuetify major."""
 
+import re
+from pathlib import Path
 from typing import Any, List
 
 import ipyvuetify as v
 import ipywidgets
 import pytest
 import solara
-import traitlets
 
+from pysepal.mapping import SepalMap
+from pysepal.message import msg
+from pysepal.solara.components import map_app
 from pysepal.solara.components.map_app import MapApp, ThemeToggle
 from pysepal.solara.components.map_app._ui import step_keys
 from pysepal.solara.components.map_app.drawer import belt_slots, split_belt
 from pysepal.solara.components.map_app.shell import initial_step_index
 from pysepal.solara.components.map_app.step_dialog import clamp
 from pysepal.solara.theme import ThemeState
+from tests.test_solara.test_notifications.test_notification_ui_template import (
+    needs_node,
+    run_vue_script,
+)
 
 
 def walk(widget):
@@ -29,16 +37,25 @@ def walk(widget):
 
 
 class FakeMap(ipywidgets.DOMWidget):
-    """The traits the shell pushes onto a SepalMap."""
+    """What the shell calls on a SepalMap; it records every ``set_insets``."""
 
-    viewport_inset_left = traitlets.Int(0)
-    viewport_inset_right = traitlets.Int(0)
-    viewport_inset_bottom = traitlets.Int(0)
-    canvas_width_px = traitlets.Int(0)
-    canvas_height_px = traitlets.Int(0)
+    def __init__(self, **kwargs):
+        """Start with no call."""
+        super().__init__(**kwargs)
+        self.inset_calls = []
+
+    def set_insets(self, *, left=0, right=0, top=0, bottom=0):
+        self.inset_calls.append({"left": left, "right": right, "top": top, "bottom": bottom})
+
+    @property
+    def insets(self):
+        return self.inset_calls[-1] if self.inset_calls else None
 
     def bind_theme_state(self, theme_state):
         self.bound = theme_state
+
+
+ZERO_INSETS = {"left": 0, "right": 0, "top": 0, "bottom": 0}
 
 
 def _classes(widget) -> str:
@@ -603,9 +620,51 @@ def test_wide_window_publishes_layout_vars_and_insets():
     assert css_vars["--sepal-right-panel-width"] == "380px"
     assert css_vars["--sepal-right-panel-open"] == "1"
     assert css_vars["--sepal-bottom-reserved"] == "0px"
-    assert (fake.viewport_inset_left, fake.viewport_inset_right) == (320, 380)
-    assert (fake.canvas_width_px, fake.canvas_height_px) == (1400, 900)
+    # the drawer and the right panel overlap the map, which spans the window
+    assert fake.insets == {"left": 320, "right": 380, "top": 0, "bottom": 0}
     assert isinstance(fake.bound, ThemeState)
+
+
+def test_closing_the_panel_gives_its_width_back_to_the_map():
+    fake = FakeMap()
+    panel_open = solara.reactive(True)
+
+    @solara.component
+    def Harness():
+        return MapApp(
+            main_map=fake,
+            right_panel_content=SECTIONS,
+            right_panel_config={"width": 380},
+            right_panel_open=panel_open.value,
+        )
+
+    box, _ = solara.render(Harness(), handle_error=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+    assert fake.insets == {"left": 320, "right": 380, "top": 0, "bottom": 0}
+
+    panel_open.set(False)
+    assert fake.insets == {"left": 320, "right": 0, "top": 0, "bottom": 0}
+
+
+def test_a_replaced_map_gets_the_current_insets():
+    first, second = FakeMap(), FakeMap()
+    current = solara.reactive(first)
+
+    @solara.component
+    def Harness():
+        return MapApp(
+            main_map=current.value,
+            right_panel_content=SECTIONS,
+            right_panel_config={"width": 380},
+            right_panel_open=True,
+        )
+
+    box, _ = solara.render(Harness(), handle_error=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+
+    current.set(second)
+
+    assert second.insets == first.insets == {"left": 320, "right": 380, "top": 0, "bottom": 0}
 
 
 def test_narrow_window_docks_panel_at_bottom():
@@ -619,8 +678,8 @@ def test_narrow_window_docks_panel_at_bottom():
     assert "sepal-right-panel--narrow" in _classes(_with_class(box, "sepal-right-panel")[0])
     assert _bridge(box).css_vars["--sepal-bottom-reserved"] == "45vh"
     assert _bridge(box).css_vars["--sepal-right-panel-width"] == "0px"
-    assert (fake.viewport_inset_left, fake.viewport_inset_right) == (0, 0)
-    assert fake.viewport_inset_bottom == 270
+    # the map already sits below the belt and above the bottom band
+    assert fake.insets == ZERO_INSETS
 
 
 def _toggles(root) -> List[Any]:
@@ -659,7 +718,8 @@ def test_narrow_window_turns_the_drawer_into_a_top_belt():
     assert css_vars["--sepal-drawer-width"] == "0px"
     assert css_vars["--sepal-bottom-reserved"] == "48px"
     assert css_vars["--sepal-notification-pill-display"] == "none"
-    assert fake.canvas_height_px == 552
+    # narrow and collapsed: no inset either
+    assert fake.insets == ZERO_INSETS
 
     _item(box, 1).vue_click(None)
     assert calls["current"] == [1]
@@ -759,6 +819,112 @@ def test_toggle_follows_the_state_and_skips_auto_when_disabled():
     assert button.mode == "dark"
 
 
+def _map_frame(root):
+    """Return the widget of ``MapFrame.vue``, which holds the map."""
+    return next(w for w in walk(root) if hasattr(w, "collapsible"))
+
+
+def _is_rail(root) -> bool:
+    return "sepal-mapapp--rail" in _classes(_with_class(root, "sepal-mapapp")[0]).split()
+
+
+def _pin_button(root):
+    titles = (msg("map_app.pin"), msg("map_app.unpin"))
+    return next(
+        w for w in walk(root) if (getattr(w, "attributes", None) or {}).get("title") in titles
+    )
+
+
+def _click_listeners(root) -> List[Any]:
+    """Return the widgets under ``root`` that send every click to the kernel."""
+    return [w for w in walk(root) if "click" in (getattr(w, "_events", None) or [])]
+
+
+def _wide_unpinned():
+    box, _, _ = _render(main_map=FakeMap(), is_pinned=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+    return box
+
+
+def test_a_map_click_collapses_an_expanded_unpinned_drawer():
+    box = _wide_unpinned()
+    assert _is_rail(box)
+    _toggles(box)[0].click()
+    assert not _is_rail(box)
+    assert _map_frame(box).collapsible is True
+
+    _map_frame(box).vue_collapse(None)
+
+    assert _is_rail(box)
+    assert _map_frame(box).collapsible is False
+
+
+def test_a_pinned_or_railed_drawer_does_not_listen_to_map_clicks():
+    box = _wide_unpinned()
+    frame = _map_frame(box)
+    # unpinned on the rail
+    assert frame.collapsible is False
+
+    _toggles(box)[0].click()
+    _pin_button(box).click()
+    # pinned open
+    assert frame.collapsible is False
+    assert not _click_listeners(frame)
+
+    # a click sent before the browser heard of the pin changes nothing
+    frame.vue_collapse(None)
+    assert not _is_rail(box)
+
+
+def test_the_map_container_keeps_its_classes():
+    template = (Path(map_app.__file__).parent / "MapFrame.vue").read_text()
+    root = re.search(r"<template>\s*<div([^>]*)>", template).group(1)
+    assert "id=" not in root
+    assert 'class="map-background sepal-mapapp__map"' in root
+    assert '@click="onClick"' in root
+
+
+def test_drawer_changes_do_not_remount_the_map():
+    m = SepalMap(gee=False)
+    box, rc, _ = _render(main_map=m, is_pinned=False)
+    _bridge(box).vue_window_size({"w": 1400, "h": 900})
+    frame = _map_frame(box)
+    view = _with_class(box, "pysepal-map-view")[0]
+    changes = [
+        lambda: _toggles(box)[0].click(),  # expand
+        lambda: _pin_button(box).click(),  # pin
+        lambda: _pin_button(box).click(),  # unpin
+        lambda: _map_frame(box).vue_collapse(None),  # a map click collapses it
+    ]
+
+    for change in changes:
+        change()
+        assert _map_frame(box) is frame
+        assert _with_class(box, "pysepal-map-view")[0] is view
+
+    assert _is_rail(box)
+    assert m in walk(view)
+    rc.close()
+
+
+@needs_node
+def test_the_frame_calls_python_only_while_the_drawer_is_collapsible():
+    calls = run_vue_script(
+        Path(map_app.__file__).parent / "MapFrame.vue",
+        """
+        const calls = [];
+        const vm = makeVm({ collapsible: false, collapse: (data) => calls.push(data) });
+        vm.onClick();
+        vm.collapsible = true;
+        vm.onClick();
+        vm.collapsible = false;
+        vm.onClick();
+        return calls;
+        """,
+    )
+    assert calls == [None]
+
+
 def test_drawer_items_still_click_after_the_belt_comes_and_goes():
     """A narrow window turns the drawer into a belt and back; the items must still answer."""
     box, _, calls = _render(main_map=FakeMap(), steps_data=_steps())
@@ -769,3 +935,58 @@ def test_drawer_items_still_click_after_the_belt_comes_and_goes():
 
     assert calls["current"] == [1]
     assert _visible(_step_container(box))
+
+
+def test_no_insets_before_the_first_size():
+    fake = FakeMap()
+    box, _, _ = _render(main_map=fake)
+
+    assert fake.inset_calls == []
+
+    _bridge(box).vue_window_size({"w": 400, "h": 800})
+    assert fake.inset_calls == [ZERO_INSETS]
+
+
+_BRIDGE_VUE = Path(map_app.__file__).parent / "ViewportBridge.vue"
+
+_BRIDGE_JS = """
+const frames = [];
+const listeners = {};
+const dispatched = [];
+globalThis.window = {
+  innerWidth: 1000, innerHeight: 800,
+  addEventListener: (name, fn) => { listeners[name] = fn; },
+  removeEventListener() {},
+  requestAnimationFrame: (fn) => { frames.push(fn); return frames.length; },
+  cancelAnimationFrame() {},
+  dispatchEvent: (event) => dispatched.push(event.type),
+};
+globalThis.document = {
+  documentElement: { style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" } },
+  body: { classList: { add() {}, remove() {} } },
+};
+const reports = [];
+const vm = makeVm({
+  window_size: (size) => reports.push(size), css_vars: {}, body_class: "", $nextTick: (fn) => fn(),
+});
+const flush = () => { frames.splice(0).forEach((fn) => fn()); };
+options.mounted.call(vm);
+flush();
+for (let i = 0; i < 5; i++) listeners.resize();
+flush();
+window.innerWidth = 500;
+listeners.resize();
+listeners.resize();
+flush();
+vm.applyVars({ "--sepal-top-reserved": "48px" });
+flush();
+return { reports, dispatched };
+"""
+
+
+@needs_node
+def test_viewport_bridge_reports_only_changes():
+    result = run_vue_script(_BRIDGE_VUE, _BRIDGE_JS)
+
+    assert result["reports"] == [{"w": 1000, "h": 800}, {"w": 500, "h": 800}]
+    assert result["dispatched"] == []

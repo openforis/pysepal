@@ -63,7 +63,7 @@ There are two ways to end up with a second loop:
   directly to `ee-client`, it runs on _whichever loop called it_ — so this is a
   second loop even when every `use_task` in the app sets
   `prefer_threaded=False`. Mixing the two scheduling styles in one app is what
-  breaks, which is why the legacy `sw.TaskButton` must not be combined with
+  breaks, which is why `gee_interface.create_task()` must not be combined with
   `use_task` components.
 
 Two consequences follow:
@@ -393,13 +393,13 @@ for cancellation and unmount behavior.
 AoiView's `methods` parameter controls which selection methods are available.
 Some need something the deployment may not have.
 
-| Method       | Requires           | Works in GEE/container apps | Works in local/Voila   |
-| ------------ | ------------------ | --------------------------- | ---------------------- |
-| `ADMIN0/1/2` | GEE (GAUL) or GADM | Yes                         | Yes                    |
-| `DRAW`       | Map + DrawControl  | Yes                         | Yes                    |
-| `ASSET`      | GEE asset access   | Yes                         | Yes (with credentials) |
-| `SHAPE`      | The user's files   | Yes, with a session         | Yes                    |
-| `POINTS`     | The user's files   | Yes, with a session         | Yes                    |
+| Method       | Requires             | Works in GEE/container apps | Works in local/Voila   |
+| ------------ | -------------------- | --------------------------- | ---------------------- |
+| `ADMIN0/1/2` | GEE (GAUL) or GADM   | Yes                         | Yes                    |
+| `DRAW`       | Map + `m.draw.begin` | Yes                         | Yes                    |
+| `ASSET`      | GEE asset access     | Yes                         | Yes (with credentials) |
+| `SHAPE`      | The user's files     | Yes, with a session         | Yes                    |
+| `POINTS`     | The user's files     | Yes, with a session         | Yes                    |
 
 ### GEE / Container apps (multi-user, Docker)
 

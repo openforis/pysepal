@@ -686,8 +686,8 @@ chart = EChartsWidget(option=option, height=f"{height}px")
 `width: 100%` makes the chart fill its container. Since ipecharts 1.4.2 the
 chart watches its element with a `ResizeObserver` and draws again whenever the
 element changes size, including when a hidden container is shown. A card that
-changes width, a map `MenuControl`, a dialog step and `MapApp`'s right panel need
-no resize code. `demo_apps/solara_chart_app` mounts a chart in seven such places.
+changes width, a menu over the map (a `MapView` overlay), a dialog step and
+`MapApp`'s right panel need no resize code. `demo_apps/solara_chart_app` mounts a chart in seven such places.
 
 Require `ipecharts>=1.4.2`. Older versions draw again only on a window resize, so
 a chart in a container that changes width, or that starts hidden, keeps the

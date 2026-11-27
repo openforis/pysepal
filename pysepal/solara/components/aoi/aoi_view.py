@@ -18,14 +18,20 @@ Usage:
             print(f"Selected: {aoi.value.name}")
 """
 
+import json
+import logging
+import weakref
 from typing import Any, Callable, Collection, Dict, List, Optional, Union
 
+import geopandas as gpd
 import reacton.ipyvuetify as rv
 import solara
 from deprecated.sphinx import versionadded, versionchanged
+from mapframe import Draw
 
 from pysepal import mapping as sm
-from pysepal.mapping import get_ipygeojson
+from pysepal.frontend import styles as ss
+from pysepal.layers import LayerSpec, LayerStore, VectorStyle
 from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.admin import (
@@ -35,14 +41,15 @@ from pysepal.solara.components.aoi.admin import (
 from pysepal.solara.components.aoi.aoi_result import AoiResult
 from pysepal.solara.components.aoi.aoi_spec import ADMIN_METHODS, AoiSpec
 from pysepal.solara.components.aoi.asset import process_asset
-from pysepal.solara.components.aoi.constants import admin_source_attribution
+from pysepal.solara.components.aoi.constants import (
+    AOI_LAYER_ID,
+    AOI_PREVIEW_LAYER_ID,
+    admin_source_attribution,
+)
 from pysepal.solara.components.aoi.draw import process_draw
 from pysepal.solara.components.aoi.points import process_points
 from pysepal.solara.components.aoi.shape import process_shape
-from pysepal.solara.components.aoi.wms_utils import (
-    WMS_PREVIEW_LAYER_NAME,
-    create_wms_preview_layer,
-)
+from pysepal.solara.components.aoi.wms_utils import create_wms_preview_layer
 from pysepal.solara.components.inputs.admin_selector import AdminLevelSelector
 from pysepal.solara.components.inputs.asset_select import AssetSelectComponent
 from pysepal.solara.components.inputs.point_selector import PointsSelectorComponent
@@ -53,6 +60,13 @@ from pysepal.solara.notifications.notifier import NoopNotifier
 from pysepal.solara.utils import get_current_gee_interface, user_files_available
 
 __all__ = ["AoiResult", "AoiView", "MethodSelect"]
+
+log = logging.getLogger(__name__)
+
+# Who drew the AOI outline of a store: one token per AoiView, so a view another one took
+# over from never removes what is now the newer owner's.
+_OUTLINE_OWNERS: "weakref.WeakKeyDictionary[LayerStore, object]" = weakref.WeakKeyDictionary()
+_DRAW_MODES = ("polygon", "rectangle", "circle")
 
 # Method group identifiers. Codes, not words: they are compared in code below,
 # so a translated value would break the comparison as soon as a user picks a
@@ -73,6 +87,41 @@ METHODS: Dict[str, Dict[str, str]] = {
 }
 TYPE_LABEL_KEYS: Dict[str, str] = {ADMIN: "aoi_sel.administrative", CUSTOM: "aoi_sel.custom"}
 
+# Leaflet path options, and the VectorStyle field each one becomes
+_LEAFLET_STYLE = {
+    "color": "stroke",
+    "fillColor": "fill",
+    "fillOpacity": "fill_opacity",
+    "weight": "width",
+}
+
+
+def _outline_style(map_style: Optional[dict]) -> VectorStyle:
+    """The style of the AOI outline, from a Leaflet style dict or the default ``aoi.json``.
+
+    The default colours follow the theme, so they stay unset and the map draws them in
+    its primary colour. As in Leaflet, a fill is drawn unless ``fill`` is False, in
+    ``color`` at an opacity of 0.2 unless ``fillColor`` and ``fillOpacity`` say
+    otherwise; ``stroke: False`` hides the line. Other Leaflet options are dropped.
+    """
+    if map_style is None:
+        style = json.loads((ss.JSON_DIR / "aoi.json").read_text())
+        themed = {"color", "fillColor"}
+    else:
+        style, themed = map_style, set()
+    given = {key: value for key, value in style.items() if key not in themed}
+    fields = {field: given[key] for key, field in _LEAFLET_STYLE.items() if key in given}
+    if style.get("fill") is False:
+        fields.pop("fill", None)
+        fields["fill_opacity"] = 0.0
+    else:
+        fields.setdefault("fill_opacity", 0.2)
+        if "color" in given:
+            fields.setdefault("fill", given["color"])
+    if style.get("stroke") is False:
+        fields["width"] = 0.0
+    return VectorStyle(**fields)
+
 
 def resolve_methods(
     methods: Union[str, List[str]] = "ALL",
@@ -85,7 +134,7 @@ def resolve_methods(
         methods: 'ALL', 'ADMIN', 'CUSTOM', or a list of names to keep or, when each
             is prefixed with '-', to drop.
         gee: Whether Earth Engine is enabled. ASSET needs it.
-        map_: The linked map. DRAW needs one.
+        map_: The linked map. DRAW needs one with drawing tools (``map_.draw``).
 
     SHAPE and POINTS read the user's files: the local disk, or in a shared app
     the user's SEPAL workspace. A shared app without a session has neither and
@@ -119,7 +168,7 @@ def resolve_methods(
     # Clean the list from things we can't use
     if not gee:
         method_dict.pop("ASSET", None)
-    if map_ is None:
+    if not isinstance(getattr(map_, "draw", None), Draw):
         method_dict.pop("DRAW", None)
     if not user_files_available():
         method_dict.pop("SHAPE", None)
@@ -225,7 +274,9 @@ def AoiView(
         methods: Methods to enable ('ALL', 'ADMIN', 'CUSTOM', or list of method names)
         map_: Link to a SepalMap instance for drawing and display
         gee: Whether to bind to Earth Engine
-        map_style: Custom style for AOI display on map
+        map_style: Custom style for AOI display on map, as Leaflet path options:
+            ``color``, ``weight``, ``fillColor``, ``fillOpacity``, ``fill`` and
+            ``stroke``. An Earth Engine AOI takes it as its visualization parameters.
         file_initial_folder: Initial folder for file-based method pickers (SHAPE, POINTS)
         clear_ref: Optional ref that receives a clear callback for external reset.
             The clear callback preserves the currently selected method so the
@@ -318,8 +369,11 @@ def AoiView(
 
     solara.use_effect(_ensure_ee, [gee])
 
-    # Get DrawControl if map is provided
-    aoi_dc = map_.dc if map_ else None
+    # The map's drawing tools, if it has them
+    aoi_draw = getattr(map_, "draw", None)
+    if not isinstance(aoi_draw, Draw):
+        aoi_draw = None
+    token = solara.use_ref(object()).current
 
     selected_method = solara.use_reactive("")
     form_revision = solara.use_reactive(0)
@@ -330,13 +384,21 @@ def AoiView(
     points_data = solara.use_reactive(None)
     asset_data = solara.use_reactive(None)
     asset_loading = solara.use_reactive(False)
-    has_drawing = solara.use_reactive(False)
+    # Bumped when the drawing changes, to render again; the fallback is a restored
+    # drawing the tools could not take (a polygon with holes), kept for submit.
+    draw_tick = solara.use_reactive(0)
+    draw_fallback = solara.use_reactive(None)
+    # The drawing session this view began; a newer session on the map ends it.
+    draw_session = solara.use_ref(None)
     allowed_countries = None if countries is None else {str(code) for code in countries}
 
     # Restore and unmount bookkeeping; see Note in the docstring.
     applied_spec = solara.use_ref(None)
     last_method = solara.use_ref("")
     alive = solara.use_ref(True)
+    # Raised by every run and every clear: a run whose number is no longer current
+    # was cleared or replaced, and must not add or zoom.
+    aoi_run = solara.use_ref(0)
 
     # Notification system (replaces embedded alert). When no
     # NotificationProvider is mounted, `notifications` is a NoopNotifier
@@ -345,36 +407,59 @@ def AoiView(
     fallback_message = solara.use_reactive("")
     fallback_level = solara.use_reactive("info")
 
-    def _clear_map_layers():
-        if not map_:
+    def _clear_map_layers(*, force: bool = False):
+        store = getattr(map_, "layer_store", None) if map_ else None
+        if store is None:
             return
-
-        for layer in list(map_.layers):
-            # Match on `key`, not `name`. add_layer(..., key="aoi") keeps the layer's
-            # own name — the file stem for vector AOIs — so a name-based match left
-            # every SHAPE/POINTS/DRAW geometry on the map after a clear.
-            identity = getattr(layer, "key", None) or getattr(layer, "name", None)
-            if identity in ["aoi", WMS_PREVIEW_LAYER_NAME]:
-                try:
-                    map_.remove_layer(layer)
-                except Exception:
-                    # Layer may already be detached by another cleanup path.
-                    pass
-
-    def _sync_draw_control(active_method: str = ""):
-        if not (map_ and aoi_dc):
+        # The ids are shared by every AoiView of the store: only the one that drew the
+        # outline removes it, unless it is about to draw another.
+        if not force and _OUTLINE_OWNERS.get(store) is not token:
             return
+        _OUTLINE_OWNERS.pop(store, None)
+        # By id, not name: a vector AOI is named after its file. Removing a reserved id
+        # also cancels the Earth Engine add still preparing it.
+        for layer_id in (AOI_LAYER_ID, AOI_PREVIEW_LAYER_ID):
+            store.remove(layer_id, missing_ok=True)
 
+    def on_user_edit(_collection):
+        draw_fallback.set(None)
+
+    def _owns_draw() -> bool:
+        session = draw_session.current
+        return session is not None and session.active
+
+    def _take_draw(features=None):
+        draw_session.current = aoi_draw.begin(
+            _DRAW_MODES, features=features, on_change=on_user_edit
+        )
+        # The traits the begin wrote rendered this view before it held the session.
+        draw_tick.set(draw_tick.peek() + 1)
+
+    def _sync_draw_control(active_method: str = "", *, retry: bool = False):
+        """Hold a drawing session for DRAW, and end it for any other method.
+
+        ``retry``: DRAW stays selected, so the session goes on and is only cleared.
+        """
+        if aoi_draw is None:
+            return
         try:
-            aoi_dc.clear()
             if active_method == "DRAW":
-                if aoi_dc not in map_.controls:
-                    map_.add_control(aoi_dc)
-            elif aoi_dc in map_.controls:
-                map_.remove_control(aoi_dc)
+                if not retry:
+                    _take_draw()
+                elif _owns_draw():
+                    draw_session.current.clear()
+            elif draw_session.current is not None:
+                # A session a newer one ended stays ended: this leaves the newer one be.
+                draw_session.current.end()
+                draw_session.current = None
         except Exception:
-            # Control may already be detached by another cleanup path.
-            pass
+            log.exception("The drawing tools could not be synced")
+
+    def _effective_drawing() -> dict:
+        """The drawing this view may submit: nothing unless it holds the tools."""
+        if not _owns_draw():
+            return {"type": "FeatureCollection", "features": []}
+        return draw_fallback.value or draw_session.current.features
 
     def _cancel_pending_run():
         """Stop a run in flight, unless the run itself is what asked.
@@ -405,6 +490,7 @@ def AoiView(
                 reactive owned by the host app, which ``use_reactive`` passes straight
                 through. Only user-driven clears may null it; teardown must not.
         """
+        aoi_run.current += 1
         _cancel_pending_run()
         if reset_loading:
             reactive_loading.set(False)
@@ -424,12 +510,14 @@ def AoiView(
         fallback_message.set("")
         fallback_level.set("info")
 
+        draw_fallback.set(None)
         _clear_map_layers()
-        _sync_draw_control(
-            active_method
-            if active_method is not None
-            else ("" if reset_method else selected_method.value)
-        )
+        if active_method is not None:
+            _sync_draw_control(active_method)
+        elif reset_method:
+            _sync_draw_control("")
+        else:
+            _sync_draw_control(selected_method.value, retry=True)
 
         if reset_method:
             selected_method.set("")
@@ -447,7 +535,7 @@ def AoiView(
 
             clear_ref.current = clear
 
-    solara.use_effect(_register_clear, [])
+    solara.use_effect(_register_clear, [map_ if map_ else None, aoi_draw])
 
     # Track the current task in the notification system
     task_tracker_ref = solara.use_ref(None)
@@ -455,6 +543,12 @@ def AoiView(
     async def process_aoi() -> Optional[AoiResult]:
         """Process the selected AOI."""
         method = selected_method.value
+        aoi_run.current += 1
+        run = aoi_run.current
+
+        def current() -> bool:
+            return alive.current and aoi_run.current == run
+
         tracker = notifications.track(f"Processing AOI ({method})")
         task_tracker_ref.current = tracker
         tracker.__enter__()
@@ -479,10 +573,10 @@ def AoiView(
                 )
 
             elif method == "DRAW":
-                if aoi_dc is None:
-                    raise ValueError("No DrawControl available")
+                if aoi_draw is None:
+                    raise ValueError(msg("aoi_sel.exception.no_draw_control"))
 
-                features = aoi_dc.to_json()
+                features = _effective_drawing()
                 if not features.get("features"):
                     raise ValueError("No drawn features found. Please draw an area on the map.")
 
@@ -529,18 +623,23 @@ def AoiView(
                 raise ValueError("Please select a method")
 
             # Update the map if available
-            if alive.current and map_ and result:
+            if current() and map_ and result:
                 tracker.step("Updating map...")
 
-                _clear_map_layers()
+                _clear_map_layers(force=True)
+                _OUTLINE_OWNERS[map_.layer_store] = token
 
-                # Add new AOI layer
+                # Add the new AOI, in the overlay zone of the map's store
                 if gee and result.feature_collection:
+                    # A clear removes the reserved id, so a late add commits nothing,
+                    # and the map supersedes its zoom.
                     await map_.add_ee_layer_async(
                         result.feature_collection,
                         map_style or {},
                         "aoi",
+                        key=AOI_LAYER_ID,
                         autocenter=True,
+                        overlay=True,
                         attribution=(
                             f"Google Earth Engine, {admin_source_attribution(gee=True)}"
                             if result.admin is not None
@@ -549,20 +648,31 @@ def AoiView(
                     )
                 elif result.admin is not None:
                     level = int(method[-1])
-                    wms_layer = create_wms_preview_layer(
+                    preview = create_wms_preview_layer(
                         level=level,
                         admin_code=result.admin,
                         name="aoi",
                         attribution=admin_source_attribution(gee=False),
                     )
-                    map_.add_layer(wms_layer)
+                    map_.layer_store.add(preview, replace=True)
 
+                    # tiles have no bounds
                     bounds = await fetch_admin_bounds_async(level=level, admin_code=result.admin)
-                    map_.zoom_bounds(bounds)
+                    if current():
+                        map_.zoom_bounds(bounds)
                 elif result.gdf is not None:
-                    geojson_layer = get_ipygeojson(result.gdf, result.name, map_style)
-                    map_.add_layer(geojson_layer, key="aoi")
-                    map_.zoom_bounds(result.gdf.total_bounds)
+                    # a plain GeoDataFrame: pygadm's subclass
+                    # fails in the frames geopandas builds from it
+                    gdf = gpd.GeoDataFrame(result.gdf).to_crs(4326)
+                    outline = LayerSpec.from_geojson(
+                        gdf,
+                        id=AOI_LAYER_ID,
+                        name=result.name,
+                        zone="overlay",
+                        style=_outline_style(map_style),
+                    )
+                    map_.layer_store.add(outline, replace=True)
+                    map_.zoom_bounds(gdf.total_bounds)
 
             if not alive.current:
                 tracker.complete()
@@ -632,17 +742,22 @@ def AoiView(
         fallback_level.set("info")
         task()
 
-    def _seed_draw_control(geo_json):
-        # Best effort: refill the editable draw control so a restored DRAW AOI stays
-        # editable. The geometry is drawn from the result regardless.
-        if not (map_ and aoi_dc) or not geo_json:
+    def _seed_draw(geo_json):
+        # The restored AOI stays editable. Tools that cannot take it (a polygon with
+        # holes) begin empty, and the spec's GeoJSON stands in for it.
+        if aoi_draw is None:
             return
+        fallback = None
         try:
-            aoi_dc.data = geo_json.get("features", [])
-            if aoi_dc not in map_.controls:
-                map_.add_control(aoi_dc)
+            try:
+                _take_draw((geo_json or {}).get("features") or [])
+            except ValueError:
+                log.warning("The drawn AOI cannot be edited on the map", exc_info=True)
+                fallback = geo_json
+                _take_draw()
         except Exception:
-            pass
+            log.exception("The drawing tools could not be seeded")
+        draw_fallback.set(fallback)
 
     def _apply_spec():
         incoming = reactive_spec.value
@@ -669,7 +784,7 @@ def AoiView(
         last_method.current = incoming.method
 
         _cancel_pending_run()
-        if incoming.method != selected_method.value:
+        if incoming.method not in (selected_method.value, "DRAW"):
             _sync_draw_control(incoming.method)
 
         selected_method.set(incoming.method)
@@ -688,7 +803,7 @@ def AoiView(
             asset_data.set(incoming.asset_data())
         elif incoming.method == "DRAW":
             draw_name.set(incoming.name or "")
-            _seed_draw_control(incoming.geo_json)
+            _seed_draw(incoming.geo_json)
 
         if autoselect:
             start_process()
@@ -726,28 +841,39 @@ def AoiView(
 
         return cleanup
 
-    solara.use_effect(_cleanup, [id(map_) if map_ else None])
+    solara.use_effect(_cleanup, [map_ if map_ else None])
 
     def _watch_drawing():
-        if aoi_dc is None:
+        if aoi_draw is None:
             return None
 
-        def on_data(change):
-            has_drawing.set(bool(change["new"]))
+        def on_change(_change=None):
+            draw_tick.set(draw_tick.peek() + 1)
 
-        has_drawing.set(bool(aoi_dc.data))
-        aoi_dc.observe(on_data, names="data")
-        return lambda: aoi_dc.unobserve(on_data, names="data")
+        # After a map swap the new tools are taken here; the cleanup above ended the old.
+        if selected_method.peek() == "DRAW" and not _owns_draw():
+            try:
+                _take_draw()
+            except Exception:
+                log.exception("The drawing tools could not be taken")
+        map_.observe(on_change, names=["drawn", "draw_request"])
+        on_change()
 
-    solara.use_effect(_watch_drawing, [id(aoi_dc) if aoi_dc else None])
+        def stop():
+            map_.unobserve(on_change, names=["drawn", "draw_request"])
 
+        return stop
+
+    solara.use_effect(_watch_drawing, [aoi_draw if aoi_draw else None])
+
+    draw_tick.value  # read, so a change of the drawing renders again
     # The selectors publish None until their form is complete.
     method = selected_method.value
     selections = {"SHAPE": shape_data, "POINTS": points_data, "ASSET": asset_data}
     if method in ADMIN_METHODS:
         form_complete = bool(admin_code.value)
     elif method == "DRAW":
-        form_complete = has_drawing.value
+        form_complete = bool(_effective_drawing()["features"])
     else:
         form_complete = method in selections and bool(selections[method].value)
 
@@ -794,7 +920,7 @@ def AoiView(
             )
 
         elif selected_method.value == "DRAW":
-            if aoi_dc:
+            if aoi_draw is not None:
                 with rv.TextField(
                     label=msg("aoi_sel.aoi_name"),
                     v_model=draw_name.value,

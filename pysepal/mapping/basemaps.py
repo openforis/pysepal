@@ -1,12 +1,14 @@
 """Module to load basemaps from different providers."""
 
+import logging
 import os
 from typing import Optional
 
-from box import Box
-from ipyleaflet import TileLayer
+from mapframe import Basemap
 from xyzservices import TileProvider
 from xyzservices import providers as xyz
+
+log = logging.getLogger("sepalui.mapping")
 
 # CARTO watermarks its raster tiles when they are requested without an API key. The
 # key is a deployment secret, so it arrives through the environment and never ships in
@@ -106,35 +108,66 @@ def get_xyz_dict(
     return _output
 
 
-def xyz_to_leaflet() -> dict:
-    """Convert all available xyz tile services to ipyleaflet tile layers.
+_DEFAULT_MAX_ZOOM = 22
 
-    Adapted from https://github.com/giswqs/geemap.
+
+def _build_sources() -> dict[str, tuple[Basemap, str]]:
+    """Each basemap MapLibre can draw, with its label; pysepal's own come first."""
+    sources = {
+        key: (
+            Basemap(
+                tiles=(entry["url"],), attribution=entry["attribution"], max_zoom=_DEFAULT_MAX_ZOOM
+            ),
+            entry["name"],
+        )
+        for key, entry in xyz_tiles.items()
+    }
+    excluded = []
+    for provider in get_xyz_dict().values():
+        try:
+            sources[provider.name] = (Basemap.from_xyz(provider), provider.name)
+        except ValueError:
+            excluded.append(provider.name)
+    if excluded:
+        log.debug("Basemaps MapLibre cannot draw as XYZ: %s", ", ".join(excluded))
+    return sources
+
+
+_SOURCES: dict[str, tuple[Basemap, str]] = _build_sources()
+
+BASEMAP_NAMES: tuple[str, ...] = tuple(_SOURCES)
+"Names of the basemaps :func:`get_basemap` accepts."
+
+
+def get_basemap(name: str) -> Basemap:
+    """Return a basemap by name, ready for the MapLibre map.
+
+    Args:
+        name: one of :data:`BASEMAP_NAMES`.
 
     Returns:
-        A dictionary of ipyleaflet tile layers.
+        The basemap.
+
+    Raises:
+        ValueError: when the name is unknown or the provider cannot be drawn by MapLibre.
     """
-    leaflet_dict = {}
-
-    for key in xyz_tiles:
-        name = xyz_tiles[key]["name"]
-        url = xyz_tiles[key]["url"]
-        attribution = xyz_tiles[key]["attribution"]
-        leaflet_dict[key] = TileLayer(
-            url=url, name=name, attribution=attribution, max_zoom=22, base=True
-        )
-
-    for item in get_xyz_dict().values():
-        leaflet_dict[item.name] = TileLayer(
-            url=item.build_url(),
-            name=item.name,
-            max_zoom=item.get("max_zoom", 22),
-            attribution=item.attribution,
-            base=True,
-        )
-
-    return leaflet_dict
+    if name not in _SOURCES:
+        raise ValueError(f"Basemap can only be one of the following: {', '.join(BASEMAP_NAMES)}")
+    return _SOURCES[name][0]
 
 
-basemap_tiles: Box = Box(xyz_to_leaflet(), frozen_box=True)
-"the basemaps list as a box"
+def basemap_label(name: str) -> str:
+    """Return the display name of a basemap.
+
+    Args:
+        name: one of :data:`BASEMAP_NAMES`.
+
+    Returns:
+        The label to show in the picker.
+
+    Raises:
+        ValueError: when the name is unknown.
+    """
+    if name not in _SOURCES:
+        raise ValueError(f"Basemap can only be one of the following: {', '.join(BASEMAP_NAMES)}")
+    return _SOURCES[name][1]

@@ -184,7 +184,7 @@ Set EE vector visualization
 
 By default, when adding a vector (ee.Geometry, ee.Feature, ee.FeatureCollection) layer to a :code:`SepalMap` map, it will use pre-defined styles (features without fill color and primary color in the borders), which means, that if no visualization parameters (:code:`vis_params`) are passed, it will use these.
 
-The visualization parameters are added as a second argument in the :code:`SepalMap().add_layer(layer, vis_params)` method, and it is receiving a dictionary. To check the available style parameters, please refer to the `ee.FeatureCollection style <https://developers.google.com/earth-engine/apidocs/ee-featurecollection-style>`_ documentation.
+The visualization parameters are added as a second argument in the :code:`SepalMap().add_ee_layer(layer, vis_params)` method, and it is receiving a dictionary. To check the available style parameters, please refer to the `ee.FeatureCollection style <https://developers.google.com/earth-engine/apidocs/ee-featurecollection-style>`_ documentation.
 
 
 .. note::
@@ -207,4 +207,4 @@ The visualization parameters are added as a second argument in the :code:`SepalM
     )
 
     map_ = sm.SepalMap()
-    map_.addLayer(geometry, {"color": "red", "fillColor": None})
+    map_.add_ee_layer(geometry, {"color": "red", "fillColor": None})

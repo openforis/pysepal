@@ -1,13 +1,13 @@
 """The native Solara MapApp shell: a full-screen map with a drawer of steps and a tool panel."""
 
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Union
 
-import reacton.ipyvue as ipyvue
 import reacton.ipyvuetify as rv
 import solara
 
 from pysepal.message import msg
+from pysepal.solara.components.map_view import MapView
 from pysepal.solara.theme import ThemeState, resolve_theme_state
 
 from ._ui import Slot, as_children, step_keys
@@ -109,17 +109,33 @@ def use_prop_change(value, apply: Callable) -> None:
     solara.use_effect(effect, [value])
 
 
+@solara.component_vue("MapFrame.vue")
+def MapFrame(
+    collapsible: bool,
+    event_collapse: Optional[Callable[[Any], None]] = None,
+    children: list = [],
+):
+    """Hold the map, and call ``event_collapse`` on a click on it while ``collapsible``.
+
+    The browser checks ``collapsible``, so a click the drawer does not need, such as
+    each vertex of a drawing, sends nothing to the kernel.
+    """
+
+
 @solara.component
-def MapContainer(map_widget, on_click: Callable[[], None]):
-    """Render the map behind the shell."""
-    container = rv.Html(
-        tag="div",
-        class_="map-background sepal-mapapp__map",
-        attributes={"id": "map-container"},
-        children=[map_widget],
+def MapContainer(
+    map_widget,
+    collapsible: bool,
+    on_collapse: Callable[[], None],
+    overlays: Optional[Mapping] = None,
+):
+    """Render the map behind the shell, in a ``MapView`` when it has a layer store."""
+    shown = (
+        MapView(map_widget, overlays=overlays) if hasattr(map_widget, "layer_store") else map_widget
     )
-    ipyvue.use_event(container, "click", lambda *_: on_click())
-    return container
+    return MapFrame(
+        collapsible=collapsible, event_collapse=lambda _: on_collapse(), children=[shown]
+    )
 
 
 @solara.component
@@ -160,6 +176,7 @@ def MapApp(
     docs_url: str = "",
     dialog_width: Union[int, str] = 800,
     dialog_fullscreen: bool = False,
+    map_overlays: Optional[Mapping] = None,
 ):
     """Render a full-screen map application.
 
@@ -169,15 +186,15 @@ def MapApp(
     the bottom and the task pill hides.
 
     It takes the keyword arguments of the legacy
-    ``pysepal.sepalwidgets.vue_app.MapApp.element``, so moving an app means
-    changing the import and dropping ``.element``.
+    ``pysepal.sepalwidgets.vue_app.MapApp.element`` except ``model``,
+    ``theme_toggle`` and ``language_selector``, which raise ``TypeError``.
 
     Args:
         app_title: Title at the top of the drawer.
         app_icon: MDI icon beside the title.
         main_map: The map widget, or a one-item list holding it. It gets the
-            panels' insets (``viewport_inset_*``), the window size
-            (``canvas_*_px``) and the theme (``bind_theme_state``) when it has them.
+            panels' insets (``set_insets``) and the theme (``bind_theme_state``)
+            when it has them.
         steps_data: Drawer steps: ``id`` (reported through ``on_current_step``;
             give each step its own), ``name``, ``icon``, ``display``
             (``"step"`` replaces the map, ``"dialog"`` opens a dialog, anything
@@ -188,8 +205,9 @@ def MapApp(
             footer buttons: ``label``, ``cancel``, ``close``, ``next``; a
             ``next`` step without content closes the dialog), ``width`` and
             ``height`` (dialog steps: px as a number, ``"600"`` or ``"600px"``,
-            or ``"NN%"`` of the window; a size that does not read falls back to
-            ``dialog_width``).
+            or ``"NN%"`` of the window; a ``width`` that does not read falls
+            back to ``dialog_width``, a ``height`` lets the dialog fit its
+            content).
         right_panel_config: ``title``, ``icon``, ``width`` (px as a number,
             ``"300"`` or ``"300px"``), ``description`` and ``toggle_icon`` of the
             right panel.
@@ -217,6 +235,9 @@ def MapApp(
         dialog_width: Default width of dialog steps, in the forms of a step's
             ``width``; 800 when it does not read.
         dialog_fullscreen: Show dialog steps full screen.
+        map_overlays: Elements to stack over the map, by corner (``"top-left"``,
+            ``"top-right"``, ``"bottom-left"``, ``"bottom-right"``). Used when the map has a
+            ``layer_store``.
     """
     state = resolve_theme_state(theme_state)
     map_widget = _map_widget(main_map)
@@ -352,29 +373,27 @@ def MapApp(
     }
 
     def push_insets():
-        if map_widget is None or not hasattr(map_widget, "viewport_inset_left"):
+        if map_widget is None or not hasattr(map_widget, "set_insets"):
             return
-        map_widget.viewport_inset_left = drawer_px
-        map_widget.viewport_inset_right = right_px
-        if hasattr(map_widget, "viewport_inset_bottom"):
-            docked = narrow and has_panel
-            map_widget.viewport_inset_bottom = (
-                int(height * NARROW_PANEL_HEIGHT_VH / 100) if docked else 0
-            )
-        if width > 0 and hasattr(map_widget, "canvas_width_px"):
-            map_widget.canvas_width_px = width
-        if height > 0 and hasattr(map_widget, "canvas_height_px"):
-            map_widget.canvas_height_px = height - top_px
+        if not width:
+            # no size reported yet: a phone would get the wide insets first
+            return
+        if narrow:
+            # the map already sits below the belt and above the bottom band
+            map_widget.set_insets()
+        else:
+            # the drawer and the right panel overlap the map, which spans the window
+            map_widget.set_insets(left=drawer_px, right=right_px)
 
     solara.use_effect(
-        push_insets, [id(map_widget), drawer_px, right_px, narrow, has_panel, width, height]
+        push_insets, [map_widget, width > 0, drawer_px, right_px, narrow, has_panel, panel_open]
     )
 
     def bind_theme():
         if map_widget is not None and hasattr(map_widget, "bind_theme_state"):
             map_widget.bind_theme_state(state)
 
-    solara.use_effect(bind_theme, [id(map_widget), id(state)])
+    solara.use_effect(bind_theme, [map_widget, state])
 
     def collapse_if_unpinned():
         if not pinned and not rail:
@@ -408,7 +427,12 @@ def MapApp(
             ).key("viewport-bridge")
 
             if has_map:
-                MapContainer(map_widget, on_click=collapse_if_unpinned).key("map")
+                MapContainer(
+                    map_widget,
+                    collapsible=not pinned and not rail,
+                    on_collapse=collapse_if_unpinned,
+                    overlays=map_overlays,
+                ).key("map")
 
             if step_slots:
                 with rv.Sheet(

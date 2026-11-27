@@ -1,7 +1,7 @@
 """Decide how a local raster is coloured when it is served as tiles.
 
 Two ways to paint a raster, both returning the keyword arguments that
-``localtileserver.get_leaflet_tile_layer`` expects, so
+localtileserver's tile endpoints take, so
 :meth:`~pysepal.mapping.SepalMap.add_raster` can pick one and stay a single code
 path:
 
@@ -120,7 +120,7 @@ def _densify_class_codes(image: Path, class_colors: dict, cache_dir: Path) -> Tu
 
 
 def _class_color_kwargs(class_colors: dict) -> Optional[dict]:
-    """Return the ``get_leaflet_tile_layer`` kwargs for a categorical raster.
+    """Return the localtileserver tile kwargs for a categorical raster.
 
     The LUT is registered server-side rather than passed as a matplotlib
     ``Colormap``: that is the only localtileserver route preserving per-class
@@ -147,12 +147,12 @@ def _class_color_kwargs(class_colors: dict) -> Optional[dict]:
 
 
 def _continuous_color_kwargs(image: Path, bands, colormap) -> dict:
-    """Return the ``get_leaflet_tile_layer`` kwargs for a continuous raster.
+    """Return the localtileserver tile kwargs for a continuous raster.
 
     A multi-band source without an explicit single band is rendered as an RGB
     composite; anything else is one band with ``colormap`` across its range.
 
-    ``colormap`` goes straight through -- ``get_leaflet_tile_layer`` accepts a
+    ``colormap`` goes straight through -- localtileserver accepts a
     name, a matplotlib ``Colormap`` or a list of colors, and only the arguments
     it names (``indexes``, ``colormap``, ``vmin``, ``vmax``, ``nodata``,
     ``stretch``, ``expression``) reach the tile URL. Everything else lands on the
@@ -163,6 +163,9 @@ def _continuous_color_kwargs(image: Path, bands, colormap) -> dict:
 
     with rio.open(image) as ds:
         count = ds.count
+
+    if isinstance(bands, (list, tuple)) and len(bands) == 1:
+        bands = bands[0]
 
     if count > 1 and not isinstance(bands, int):
         return {"indexes": list(bands) if bands else [3, 2, 1]}

@@ -1,0 +1,12 @@
+"""The app's message catalogue, bound once at import.
+
+``msg`` follows the connection's locale wherever it is called. Add a locale by
+adding a folder next to ``en/`` with the same files and keys.
+"""
+
+from pathlib import Path
+
+from pysepal.i18n import catalog
+
+messages = catalog(Path(__file__).parent)
+msg = messages.msg

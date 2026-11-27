@@ -14,6 +14,7 @@ from .errors import (
     SepalSessionError,
     SessionScopeClosedError,
 )
+from .hooks import use_sepal_map
 from .notifications import (
     NotificationProvider,
     notify,
@@ -73,6 +74,7 @@ __all__ = [
     "setup_theme_colors",
     "track_task",
     "use_notifications",
+    "use_sepal_map",
     "use_theme_dark",
     "with_sepal_sessions",
 ]

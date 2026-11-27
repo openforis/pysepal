@@ -1,9 +1,10 @@
 """Vector tiles from a local file: convert once, then style the archive.
 
-Two buttons over one PMTiles archive built by ``vectortileserver``: a single
-symbol, and one deterministic color per attribute value. The conversion runs
-once and is cached by the workspace, so the second button restyles the same
-archive rather than rebuilding it.
+``vectortileserver`` builds a PMTiles archive and serves it; the map draws it
+with a pysepal ``VectorStyle``. Two buttons style the one archive: a single
+symbol, and a color per class of an attribute. The conversion runs once and is
+cached by the workspace, so the second button restyles the same archive rather
+than rebuilding it.
 
 Unlike rasters, the browser reads PMTiles with HTTP range requests straight out
 of the archive, so what reaches it is the file itself rather than tiles rendered
@@ -29,15 +30,17 @@ from pathlib import Path
 from typing import Optional
 
 import solara
-from vectortileserver import TileWorkspace, categorized_style, single_symbol_style
+from vectortileserver import TileWorkspace
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
+from pysepal.layers import LayerSpec, VectorStyle
 from pysepal.scripts.scratch import scratch_root
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
@@ -59,9 +62,18 @@ VECTOR_DIR_ENV_VAR = "PYSEPAL_DEMO_VECTOR_DIR"
 VECTOR_PREFIX_ENV_VAR = "VECTORTILESERVER_CLIENT_PREFIX"
 RASTER_PREFIX_ENV_VAR = "LOCALTILESERVER_CLIENT_PREFIX"
 
-#: The attribute the categorized style colors by, and the values it expects.
+#: The attribute the categorized style colors by, and the color of each of its values.
 LANDCOVER_FIELD = "landcover"
-LANDCOVER_CLASSES = ["forest", "savanna", "cropland", "wetland", "urban", "water"]
+LANDCOVER_COLORS = {
+    "forest": "#2d6a4f",
+    "savanna": "#e9c46a",
+    "cropland": "#f4a261",
+    "wetland": "#2a9d8f",
+    "urban": "#9b2226",
+    "water": "#219ebc",
+}
+LANDCOVER_CLASSES = list(LANDCOVER_COLORS)
+SINGLE_COLOR = "#2d6a4f"
 
 
 def _synthetic_vector(path: Path) -> Path:
@@ -153,16 +165,28 @@ def VectorPanel():
 
     def build_map():
         return sm.SepalMap(
-            zoom=3, center=[0, 0], gee=False, fullscreen=True, theme_state=theme_state
+            zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         )
 
-    sepal_map = solara.use_memo(build_map, [])
+    sepal_map = use_sepal_map(build_map, [])
 
-    async def show(style, layer_name: str, key: str) -> None:
-        """Convert if needed, then put the styled archive on the map."""
-        layer = await workspace.open_async(vector["source"], style=style)
-        layer.name = layer_name
-        sepal_map.add_layer(layer, key=key)
+    async def show(style: VectorStyle, layer_name: str, key: str) -> None:
+        """Convert if needed, then draw the archive with ``style``.
+
+        Only the URL, the source layer and the bounds of the layer the workspace
+        returns are used: the map draws the archive itself. Behind a proxy the URL is
+        root-relative, and the browser reads it from the page's origin.
+        """
+        layer = await workspace.open_async(vector["source"])
+        spec = LayerSpec.from_vector(
+            layer.url,
+            format="PMTiles",
+            layer=layer.list_layers()[0],
+            id=key,
+            name=layer_name,
+            style=style,
+        )
+        sepal_map.layer_store.add(spec, replace=True)
         (south, west), (north, east) = layer.bounds
         sepal_map.zoom_bounds((west, south, east, north))
 
@@ -170,18 +194,22 @@ def VectorPanel():
         """One color for every feature: the archive drawn with no attribute lookup."""
         with notifications.track(msg("tasks.single")) as task:
             task.step(msg("tasks.building"))
-            await show(single_symbol_style(color="#2d6a4f"), msg("layers.single"), "single")
+            style = VectorStyle(stroke=SINGLE_COLOR, fill=SINGLE_COLOR, fill_opacity=0.5, width=1)
+            await show(style, msg("layers.single"), "single")
         notifications.success(msg("toasts.single"))
 
     async def add_categorized():
-        """A deterministic palette color per attribute value, from the same archive."""
+        """A color per attribute value, from the same archive; the legend lists the classes."""
         with notifications.track(msg("tasks.categorized")) as task:
             task.step(msg("tasks.styling"))
-            await show(
-                categorized_style(field=LANDCOVER_FIELD, values=LANDCOVER_CLASSES),
-                msg("layers.categorized"),
-                "categorized",
+            style = VectorStyle(
+                color_by=LANDCOVER_FIELD,
+                class_colors=LANDCOVER_COLORS,
+                class_labels={name: msg(f"classes.{name}") for name in LANDCOVER_CLASSES},
+                fill_opacity=0.7,
+                width=1,
             )
+            await show(style, msg("layers.categorized"), "categorized")
         notifications.success(msg("toasts.categorized", count=len(LANDCOVER_CLASSES)))
 
     single_task = solara.lab.use_task(

@@ -1,8 +1,8 @@
 """All modules used to create a application ``Map``.
 
-The ``SepalMap`` is inheriting from the **ipyleaflet** ``Map``. It has been customized to support additional widgets as controls based on **ipyvuetify**. It is also fully compatible with the **pysepal** framework thanks to frontend modifications.
+The ``SepalMap`` is a **MapLibre** map, the ``MapWidget`` of ``mapframe``. It draws the layers of a ``LayerStore`` (``SepalMap.layer_store``) and follows the **pysepal** theme.
 
-The main object is the ``SepalMap`` that should be used in favor of ``Map`` in **pysepal** framework. The others are pre-designed controls that can be helpful to speed up developments.
+The main object is the ``SepalMap``. Its layer methods return a live ``LayerHandle``.
 ``SepalMap`` is fully compatible with Google Earth Engine layers.
 
 Every module content can be called directly from the package.
@@ -15,28 +15,58 @@ Example:
         sm.SepalMap(gee=False)
 """
 
-from .draw_control import *
-from .fullscreen_control import *
-from .geojson_utils import *
-from .inspector_control import *
-from .layer import *
-from .layer_state_control import *
-from .layers_control import *
-from .legend_control import *
+from mapframe import Side as Side
+
+from pysepal import _removed
+
+from .handle import LayerGoneError as LayerGoneError
+from .handle import LayerHandle as LayerHandle
+from .handle import ZoomResult as ZoomResult
+from .inspector import *
 from .map_btn import *
-from .marker_cluster import *
-from .menu_control import *
 from .sepal_map import *
 from .tiling import *
 from .visualization import *
-from .zoom_control import *
 
+_DRAW = "m.draw.begin(modes) and the DrawSession it returns"
+_INSPECTOR = "SepalMap(inspector=True) shown in a MapView"
+_CONTROLS = "the zoom, scale and fullscreen controls the map draws itself"
+_EE_LAYER = "m.add_ee_layer(...) or a LayerSpec, and the LayerHandle it returns"
+_GEOJSON = "LayerSpec.from_geojson or LayerSpec.from_vector with a VectorStyle"
 
-def __getattr__(name: str):
-    if name in ("AoiControl", "aoi_control"):
-        raise AttributeError(
-            f"{__name__}.{name} was removed in pysepal 5.0 with the ipyvuetify 1 widget layer; "
-            'use pysepal.solara.components.aoi.AoiView or pin "pysepal<5". '
-            "See docs/guides/migrating-to-pysepal-5.md"
-        )
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# What replaced each removed name or module, by the change that removed it.
+__getattr__ = _removed.removed(
+    __name__,
+    {
+        "the ipyvuetify 1 widget layer": {
+            "AoiControl": "pysepal.solara.components.aoi.AoiView",
+            "aoi_control": "pysepal.solara.components.aoi.AoiView",
+            "LayersControl": "SepalMap.layer_store with the Solara LayerPanel",
+            "layers_control": "SepalMap.layer_store with the Solara LayerPanel",
+        },
+        "the move to MapLibre": {
+            "DrawControl": _DRAW,
+            "GeomanDrawControl": _DRAW,
+            "draw_control": _DRAW,
+            "InspectorControl": _INSPECTOR,
+            "ValueInspector": _INSPECTOR,
+            "inspector_control": _INSPECTOR,
+            "ZoomControl": _CONTROLS,
+            "zoom_control": _CONTROLS,
+            "FullScreenControl": _CONTROLS,
+            "fullscreen_control": _CONTROLS,
+            "LayerStateControl": "the layer loading state MapView shows",
+            "layer_state_control": "the layer loading state MapView shows",
+            "MenuControl": "Solara components in MapView(overlays=...)",
+            "menu_control": "Solara components in MapView(overlays=...)",
+            "LegendControl": "the MapView legend, built from each layer's legend",
+            "legend_control": "the MapView legend, built from each layer's legend",
+            "EELayer": _EE_LAYER,
+            "layer": _EE_LAYER,
+            "MarkerCluster": "LayerSpec.from_points(...) with VectorStyle(cluster=True)",
+            "marker_cluster": "LayerSpec.from_points(...) with VectorStyle(cluster=True)",
+            "get_ipygeojson": _GEOJSON,
+            "geojson_utils": _GEOJSON,
+        },
+    },
+)

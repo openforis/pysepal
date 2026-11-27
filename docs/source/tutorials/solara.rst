@@ -300,8 +300,9 @@ Complete Map Application Example
 
 The full worked example lives at
 ``demo_apps/solara_map_app/app.py``. It wires an ``AoiView``,
-async processing with progress notifications, layer management, a floating map
-legend and the export dialog into one ``MapApp`` shell — read it alongside this
+async processing with progress notifications, layer management, the map's
+legend card (one per view area, with a dropdown of its layers) and the export
+dialog into one ``MapApp`` shell — read it alongside this
 section rather than copying the skeleton below.
 
 ``MapApp`` takes the map, the drawer steps and the right panel:
@@ -310,7 +311,7 @@ section rather than copying the skeleton below.
 
     from pysepal.mapping import SepalMap
     from pysepal.solara.components.map_app import MapApp
-    from pysepal.solara import get_current_gee_interface, get_current_theme_state
+    from pysepal.solara import get_current_gee_interface, get_current_theme_state, use_sepal_map
 
     @solara.component
     @with_sepal_sessions(module_name="your_map_module")
@@ -320,7 +321,11 @@ section rather than copying the skeleton below.
         gee_interface = get_current_gee_interface()
         theme_state = get_current_theme_state()
 
-        map_ = SepalMap(gee_interface=gee_interface, fullscreen=True, theme_state=theme_state)
+        # Built once per GEE interface; Page closes it on unmount and on a hot reload.
+        map_ = use_sepal_map(
+            lambda: SepalMap(gee_interface=gee_interface, theme_state=theme_state),
+            [gee_interface],
+        )
 
         # Drawer entries. `display` is "step" (inline) or "dialog" (modal).
         steps_data = [

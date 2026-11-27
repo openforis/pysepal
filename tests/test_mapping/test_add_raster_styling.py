@@ -2,8 +2,8 @@
 
 ``get_leaflet_tile_layer`` only forwards ``indexes``, ``colormap``, ``vmin``,
 ``vmax``, ``nodata``, ``stretch`` and ``expression`` into the tile URL; every
-other keyword lands on the widget as an unrecognised trait and is dropped. So
-these assert on the URL query rather than on the layer object.
+other keyword is dropped. So these assert on the query of the tile URL the map
+publishes to the browser rather than on the layer spec.
 """
 
 from pathlib import Path
@@ -22,18 +22,29 @@ from pysepal.mapping.raster_style import (
 )
 
 
-def _params(layer) -> dict:
+def _render(m, layer):
+    """The render the map draws for a layer handle."""
+    return m.layer_engine.accepted(layer.id)[1]
+
+
+def _drawn_url(m, layer) -> str:
+    """The tile URL the map publishes for a layer handle."""
+    drawn = next(x for x in m.state["layers"] if x["id"] == layer.id)
+    return drawn["source"]["tiles"][0]
+
+
+def _params(m, layer) -> dict:
     """Tile URL query parameters, minus the filename."""
-    params = parse_qs(urlparse(layer.url).query)
+    params = parse_qs(urlparse(_drawn_url(m, layer)).query)
     params.pop("filename", None)
     return {key: values[0] if len(values) == 1 else values for key, values in params.items()}
 
 
-def _served_file(layer) -> str:
-    return parse_qs(urlparse(layer.url).query)["filename"][0]
+def _served_file(m, layer) -> str:
+    return parse_qs(urlparse(_drawn_url(m, layer)).query)["filename"][0]
 
 
-def _rendered_colors(layer) -> set:
+def _rendered_colors(m, layer) -> set:
     """The opaque RGB colors the tile server actually draws for this layer.
 
     Renders through the layer's own URL parameters, so it measures what
@@ -42,9 +53,9 @@ def _rendered_colors(layer) -> set:
     import numpy as np
     import rasterio as rio
 
-    params = _params(layer)
+    params = _params(m, layer)
     indexes = [int(i) for i in params["indexes"].split(",")] if "indexes" in params else None
-    png = layer.tile_server.thumbnail(
+    png = _render(m, layer).keepalive.thumbnail(
         indexes=indexes,
         colormap=params.get("colormap"),
         vmin=params.get("vmin"),
@@ -178,9 +189,9 @@ def test_add_raster_with_class_colors(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, class_colors={1: "#ff0000", 2: "#00ff00"}, key="clas")
 
-    assert type(layer).__name__ == "BoundTileLayer"
-    assert m.find_layer("clas") is layer
-    assert _params(layer)["colormap"].startswith("custom:")
+    assert isinstance(layer, sm.LayerHandle) and _render(m, layer).kind == "raster-xyz"
+    assert m.find_layer("clas") == layer
+    assert _params(m, layer)["colormap"].startswith("custom:")
 
 
 def test_class_colors_draw_their_exact_colors(int16_classes: Path) -> None:
@@ -190,7 +201,7 @@ def test_class_colors_draw_their_exact_colors(int16_classes: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(int16_classes, class_colors={1: "#ff0000", 2: "#00ff00"}, key="i16")
 
-    assert _rendered_colors(layer) == {(255, 0, 0), (0, 255, 0)}
+    assert _rendered_colors(m, layer) == {(255, 0, 0), (0, 255, 0)}
 
 
 def test_class_colors_above_a_byte_draw_their_exact_colors(tmp_path: Path) -> None:
@@ -217,7 +228,7 @@ def test_class_colors_above_a_byte_draw_their_exact_colors(tmp_path: Path) -> No
     m = sm.SepalMap()
     layer = m.add_raster(source, class_colors={300: "#0000ff", 1024: "#ffffff"}, key="high")
 
-    assert _rendered_colors(layer) == {(0, 0, 255), (255, 255, 255)}
+    assert _rendered_colors(m, layer) == {(0, 0, 255), (255, 255, 255)}
 
 
 def test_class_colors_leave_undeclared_values_transparent(tmp_path: Path) -> None:
@@ -244,7 +255,7 @@ def test_class_colors_leave_undeclared_values_transparent(tmp_path: Path) -> Non
     m = sm.SepalMap()
     layer = m.add_raster(source, class_colors={1: "#ff0000"}, key="stray")
 
-    assert _rendered_colors(layer) == {(255, 0, 0)}
+    assert _rendered_colors(m, layer) == {(255, 0, 0)}
 
 
 def test_class_colors_ignore_a_caller_supplied_range(int16_classes: Path, caplog) -> None:
@@ -254,7 +265,7 @@ def test_class_colors_ignore_a_caller_supplied_range(int16_classes: Path, caplog
         int16_classes, class_colors={1: "#ff0000", 2: "#00ff00"}, vmin=1, vmax=2, key="pin"
     )
 
-    params = _params(layer)
+    params = _params(m, layer)
     assert (params["vmin"], params["vmax"]) == ("0", "255")
     assert "vmin/vmax are ignored" in caplog.text
 
@@ -264,9 +275,10 @@ async def test_add_raster_async_matches_the_sync_call(int16_classes: Path) -> No
     colors = {1: "#ff0000", 2: "#00ff00"}
     m = sm.SepalMap()
     layer = await m.add_raster_async(int16_classes, class_colors=colors, key="a")
+    m.layer_engine.flush()
 
-    assert m.find_layer("a") is layer
-    assert _rendered_colors(layer) == {(255, 0, 0), (0, 255, 0)}
+    assert m.find_layer("a") == layer
+    assert _rendered_colors(m, layer) == {(255, 0, 0), (0, 255, 0)}
 
 
 @pytest.mark.asyncio
@@ -274,7 +286,7 @@ async def test_add_raster_async_prepares_off_the_loop(byte: Path, monkeypatch) -
     # the whole point: rewriting the pixels must not run on the thread driving the UI
     import threading
 
-    import pysepal.mapping.sepal_map as sepal_map
+    import pysepal.mapping.tiling as sepal_map
 
     calling_thread = {}
     real = sepal_map._optimize_for_tiles
@@ -292,20 +304,20 @@ async def test_add_raster_async_prepares_off_the_loop(byte: Path, monkeypatch) -
 
 
 def test_add_raster_points_the_inspector_at_the_source(byte: Path) -> None:
-    # the served file may be a prepared COG copy; the v_inspector must report
+    # the served file may be a prepared COG copy; the inspector must report
     # values from the raster the caller supplied
     m = sm.SepalMap()
     layer = m.add_raster(byte, class_colors={1: "#ff0000"}, key="clas")
 
-    assert layer.raster == str(byte)
+    assert _render(m, layer).raster == str(byte)
 
 
 def test_empty_class_colors_takes_the_continuous_path(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, class_colors={}, layer_name="empty", key="empty")
 
-    assert type(layer).__name__ == "BoundTileLayer"
-    assert m.find_layer("empty") is layer
+    assert m.find_layer("empty") == layer
+    assert not _params(m, layer).get("colormap", "").startswith("custom:")
 
 
 def test_falls_back_to_continuous_when_registration_is_unavailable(byte: Path, monkeypatch) -> None:
@@ -323,8 +335,8 @@ def test_falls_back_to_continuous_when_registration_is_unavailable(byte: Path, m
     m = sm.SepalMap()
     layer = m.add_raster(byte, class_colors={1: "#ff0000"}, layer_name="fb", key="fb")
 
-    assert type(layer).__name__ == "BoundTileLayer"
-    assert m.find_layer("fb") is layer
+    assert m.find_layer("fb") == layer
+    assert not _params(m, layer).get("colormap", "").startswith("custom:")
 
 
 def test_a_broken_class_color_is_not_swallowed(byte: Path) -> None:
@@ -342,7 +354,7 @@ def test_colormap_reaches_the_tile_server(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, colormap="viridis", key="v")
 
-    assert _params(layer)["colormap"] == "viridis"
+    assert _params(m, layer)["colormap"] == "viridis"
 
 
 def test_colormap_object_is_registered_server_side(byte: Path) -> None:
@@ -352,27 +364,28 @@ def test_colormap_object_is_registered_server_side(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, colormap=cmap, key="c")
 
-    assert _params(layer)["colormap"].startswith("custom:")
+    assert _params(m, layer)["colormap"].startswith("custom:")
 
 
 def test_value_range_and_nodata_reach_the_tile_server(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, colormap="viridis", vmin=1, vmax=14, nodata=0, key="p")
 
-    params = _params(layer)
-    assert (params["vmin"], params["vmax"], params["nodata"]) == ("1", "14", "0")
+    # numbers, not strings: the layer spec stores the range and nodata as floats
+    params = _params(m, layer)
+    assert tuple(float(params[k]) for k in ("vmin", "vmax", "nodata")) == (1, 14, 0)
 
 
 def test_unpinned_range_leaves_the_stretch_to_the_file(byte: Path) -> None:
     m = sm.SepalMap()
-    params = _params(m.add_raster(byte, key="auto"))
+    params = _params(m, m.add_raster(byte, key="auto"))
 
     assert "vmin" not in params and "vmax" not in params
 
 
 def test_multi_band_source_renders_as_an_rgb_composite(rgb: Path) -> None:
     m = sm.SepalMap()
-    params = _params(m.add_raster(rgb, key="rgb"))
+    params = _params(m, m.add_raster(rgb, key="rgb"))
 
     # band indexes, no colormap: an RGB composite is not a ramp
     assert params["indexes"] == "3,2,1"
@@ -381,56 +394,93 @@ def test_multi_band_source_renders_as_an_rgb_composite(rgb: Path) -> None:
 
 def test_explicit_band_on_a_multi_band_source_uses_a_ramp(rgb: Path) -> None:
     m = sm.SepalMap()
-    params = _params(m.add_raster(rgb, bands=2, colormap="viridis", key="one"))
+    params = _params(m, m.add_raster(rgb, bands=2, colormap="viridis", key="one"))
 
     assert params["indexes"] == "2"
     assert params["colormap"] == "viridis"
 
 
-def _on_screen_width_px(layer, zoom: int) -> float:
-    """How wide the raster draws at ``zoom``; longitude is linear in Mercator px."""
-    (_, west), (_, east) = layer.bounds
-    return (east - west) * (256 * 2**zoom) / 360
+def write_rgb(tmp_path: Path) -> Path:
+    """Write a small 3-band uint8 GeoTIFF, so the test needs no download."""
+    import numpy as np
+    import rasterio as rio
+    from rasterio.transform import from_origin
+
+    path = tmp_path / "rgb.tif"
+    data = np.stack([np.full((64, 64), value, dtype="uint8") for value in (10, 120, 240)])
+    data[:, :, 32:] //= 2
+    with rio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=64,
+        width=64,
+        count=3,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=from_origin(0, 0, 0.01, 0.01),
+    ) as ds:
+        ds.write(data)
+    return path
+
+
+def test_band_selection_through_the_wrapper(tmp_path: Path) -> None:
+    path = write_rgb(tmp_path)
+    m = sm.SepalMap()
+    one = _params(m, m.add_raster(path, bands=2, colormap="viridis", key="one"))
+    # inherits the "inferno" default
+    rgb = _params(m, m.add_raster(path, bands=[3, 2, 1], key="rgb"))
+    assert (one["indexes"], one["colormap"]) == ("2", "viridis")
+    assert rgb["indexes"] == "3,2,1" and "colormap" not in rgb
+
+
+def test_styling_survives_a_restyle_with_the_same_values(byte: Path) -> None:
+    # the store keeps a spec, not the wrapper's arguments: an int band, a Colormap
+    # object, the range, nodata and warping reach the tile server, and a restyle
+    # that round-trips the same style reuses that render instead of preparing anew
+    import rasterio as rio
+
+    cmap = LinearSegmentedColormap.from_list("x", ["#228b22", "#ff0000"], N=256)
+    m = sm.SepalMap()
+    kwargs = dict(bands=1, colormap=cmap, vmin=1, vmax=14, nodata=0, warp_to_3857=True)
+    layer = m.add_raster(byte, key="r", **kwargs)
+    first = _drawn_url(m, layer)
+    m.layer_store.restyle("r", **m.layer_store.get("r").style.model_dump())
+
+    assert _drawn_url(m, m.find_layer("r")) == first
+    params = _params(m, layer)
+    assert params["indexes"] == "1" and params["colormap"].startswith("custom:")
+    assert tuple(float(params[k]) for k in ("vmin", "vmax", "nodata")) == (1, 14, 0)
+    with rio.open(_served_file(m, layer)) as ds:
+        assert ds.crs.to_epsg() == 3857
 
 
 @pytest.mark.parametrize("fixture", ["byte", "rgb"])
 def test_fit_bounds_frames_the_whole_raster(fixture: str, request) -> None:
     # localtileserver's default_zoom frames a raster in a 256px tile rather than
-    # in the map, which drew it about an eighth of the viewport wide
-    canvas_px = 1024  # the map's fallback canvas width, with no frontend attached
+    # in the map; the map asks the browser to fit the raster's own bounds instead
     m = sm.SepalMap()
     layer = m.add_raster(request.getfixturevalue(fixture), key="fit")
 
-    on_screen_px = _on_screen_width_px(layer, m.zoom)
-
-    # fills the viewport without spilling off it; the exact zoom is whichever
-    # axis runs out of pixels first, so height may be what binds
-    assert 0.25 * canvas_px < on_screen_px <= canvas_px
-
-
-def test_fit_bounds_centres_on_the_raster(byte: Path) -> None:
-    m = sm.SepalMap()
-    layer = m.add_raster(byte, key="centre")
-
-    (south, west), (north, east) = layer.bounds
-
-    assert south < m.center[0] < north
-    assert west < m.center[1] < east
+    west, south, east, north = _render(m, layer).bounds
+    assert west < east and south < north
+    assert m.view_request["bounds"] == [west, south, east, north]
+    assert m.view_request["padding"] == 20
 
 
 def test_fit_bounds_can_be_declined(byte: Path) -> None:
     m = sm.SepalMap()
-    before = (m.center, m.zoom)
+    before = m.view_request
     m.add_raster(byte, fit_bounds=False, key="still")
 
-    assert (m.center, m.zoom) == before
+    assert m.view_request == before
 
 
 def test_optimize_serves_a_prepared_copy(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, key="cog")
 
-    assert _served_file(layer) != str(byte)  # the cached COG, not the source
+    assert _served_file(m, layer) != str(byte)  # the cached COG, not the source
 
 
 def test_warp_reaches_the_tile_server(byte: Path) -> None:
@@ -439,7 +489,7 @@ def test_warp_reaches_the_tile_server(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, warp_to_3857=True, key="warp")
 
-    with rio.open(_served_file(layer)) as ds:
+    with rio.open(_served_file(m, layer)) as ds:
         assert ds.crs.to_epsg() == 3857
 
 
@@ -448,7 +498,7 @@ def test_warp_without_optimize_says_so(byte: Path, caplog) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, warp_to_3857=True, optimize=False, key="nowarp")
 
-    assert _served_file(layer) == str(byte)
+    assert _served_file(m, layer) == str(byte)
     assert "warp_to_3857 needs optimize=True" in caplog.text
 
 
@@ -458,4 +508,4 @@ def test_optimize_false_serves_the_source_untouched(byte: Path) -> None:
     m = sm.SepalMap()
     layer = m.add_raster(byte, optimize=False, key="raw")
 
-    assert _served_file(layer) == str(byte)
+    assert _served_file(m, layer) == str(byte)

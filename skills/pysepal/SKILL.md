@@ -29,7 +29,17 @@ the app's environment before relying on any API detail here:
 python -c "import importlib.metadata as m; print(m.version('pysepal'))"
 ```
 
-If the two differ, say so up front. Wherever this skill and the installed package
+That number is the package metadata, which stays 4.x until the 5.0 release; the
+API here is pysepal 5. Probe which one the app runs:
+
+```bash
+python -c "import pysepal.sepalwidgets"
+```
+
+On pysepal 5 this raises `ImportError: pysepal.sepalwidgets was removed in pysepal 5.0 ...`. If it imports, the app is on pysepal 4 (sepalwidgets, the
+ipyleaflet `SepalMap`): follow `docs/guides/migrating-to-pysepal-5.md`.
+
+If the versions differ, say so up front. Wherever this skill and the installed package
 disagree, the installed package's docstrings win. Suggest `claude plugin update pysepal` when the skill is behind, or upgrading pysepal when the app is behind.
 
 ## Source of truth
@@ -38,7 +48,9 @@ This skill is the source of truth for how to build a pysepal app. The package
 documentation under `docs/` lags behind the code: the Sphinx widget pages and
 tutorials still being rewritten for pysepal 5 are out of date. Read a
 guide for depth. When a document and this skill disagree, follow the skill and
-treat the document as stale.
+treat the document as stale, with one exception: `docs/guides/solara-map-apps.md`
+is tested (`tests/test_docs/test_solara_map_apps_snippets.py` renders its
+snippets), so where it and this skill disagree, the guide wins.
 
 Three rules come before everything else:
 
@@ -62,11 +74,14 @@ python skills/pysepal-app/scripts/discover_pysepal_components.py
 
 Pass `--repo-root <checkout>` to inspect a checkout instead.
 
-Use the output as the only source of truth for component names and import
-paths. If the script fails, ask the user for the correct pysepal repo path.
+Use the output as the only source of truth for the names and import paths of
+the components under `pysepal.solara.components`, the private `VuetifyTemplate`
+widgets included. If the script fails, ask the user for the correct pysepal
+repo path.
 
-It lists the Solara layer, which holds the `VuetifyTemplate` widgets too
-(FileInput, LocaleSelect).
+It does not list the map and layer API (`pysepal.mapping`, `pysepal.layers`),
+the hooks and helpers of `pysepal.solara` (`use_sepal_map`, `get_current_*`),
+`pysepal.solara.notifications` or `pysepal.i18n`. Check those by importing them.
 
 ## GEE Async Pattern (Session-Backed)
 
@@ -133,22 +148,6 @@ with rv.CardActions():
     rv.Btn(children=["OK"])
 ```
 
-### No solara.Column inside rv. containers
-
-`solara.Column` captures children into its own tree, detaching them from
-the `rv.` parent.
-
-```python
-# WRONG — CardText stays empty
-with rv.CardText():
-    with solara.Column():
-        rv.Select(...)
-
-# CORRECT
-with rv.CardText():
-    rv.Select(...)
-```
-
 ### Keep stateful siblings in place with keys
 
 Reacton matches a container's children by position and type. An element that
@@ -192,44 +191,62 @@ field, it shows as a shadow strip in the light theme (hard to see in dark). Use
 
 ### MapApp layout
 
-All map-based pysepal apps use `MapApp` as the layout shell. Do not build
-custom `solara.Columns` layouts. `MapApp` is a plain `@solara.component`.
+A full map app uses `MapApp` as its shell; do not rebuild its drawer and
+panels yourself. An embedded map, or several side by side, goes in `MapView`
+(`pysepal.solara.components.map_view`). `MapApp` is a plain `@solara.component`.
 Steps and panel sections are plain dicts; a
 `content` is a Solara element, a widget, or a list of them, so
 `@solara.component` tiles and `solara.Button(..., on_click=...)` go straight in.
 
 ```python
-from pysepal.solara import get_current_theme_state
+from pysepal.mapping import SepalMap
+from pysepal.solara import get_current_gee_interface, get_current_theme_state, use_sepal_map
 from pysepal.solara.components.map_app import MapApp
 
-# Scope-keyed theme state — the shell's built-in toggle and the map follow it
-theme_state = get_current_theme_state()
-sepal_map = SepalMap(fullscreen=True, theme_state=theme_state, gee=True)
 
-MapApp(
-    app_title="My App",
-    app_icon="mdi-earth",
-    main_map=[sepal_map],
-    steps_data=[
-        {"id": 1, "name": "AOI", "icon": "mdi-map",
-         "display": "step",  # or "dialog"
-         "content": AoiStep()},
-    ],
-    theme_state=theme_state,
-    locales=messages.available_locales(),  # the built-in language selector
-    right_panel_config={"title": "Tools", "icon": "mdi-cog", "width": 400},
-    right_panel_content=[
-        {"title": "Section", "icon": "mdi-cog", "content": [LayerControls()],
-         # Static guidance belongs here, not in a solara.Info alert.
-         "description": "Shown under the section title."},
-    ],
-    # Pinned under the scrolling sections, e.g. a persistent action bar.
-    right_panel_footer=[ActionBar()],
-    right_panel_open=True,
-)
+@solara.component
+def Page():
+    # Scope-keyed theme state — the shell's built-in toggle and the map follow it
+    theme_state = get_current_theme_state()
+    gee_interface = get_current_gee_interface()
+    sepal_map = use_sepal_map(
+        lambda: SepalMap(theme_state=theme_state, gee_interface=gee_interface),
+        [gee_interface],
+    )
+
+    MapApp(
+        app_title="My App",
+        app_icon="mdi-earth",
+        main_map=[sepal_map],
+        steps_data=[
+            {"id": 1, "name": "AOI", "icon": "mdi-map",
+             "display": "step",  # or "dialog"
+             "content": AoiStep()},
+        ],
+        theme_state=theme_state,
+        locales=messages.available_locales(),  # the built-in language selector
+        right_panel_config={"title": "Tools", "icon": "mdi-cog", "width": 400},
+        right_panel_content=[
+            {"title": "Section", "icon": "mdi-cog", "content": [LayerControls()],
+             # Static guidance belongs here, not in a solara.Info alert.
+             "description": "Shown under the section title."},
+        ],
+        # Pinned under the scrolling sections, e.g. a persistent action bar.
+        right_panel_footer=[ActionBar()],
+        right_panel_open=True,
+    )
 ```
 
-`fullscreen=True` on the map is what makes it fill the shell. The shell has no
+Build a map with `use_sepal_map(factory, dependencies)` in the component that
+owns it. A `SepalMap(...)` in the render body is a new map, with no layers, on
+every render. Solara never closes a map built in `solara.use_memo`: it stays
+alive, in its link group too, until the kernel closes. The hook closes the map
+on unmount, on a dependency change and on a hot reload. The component that
+builds a map closes it; the components it passes the map to (`MapView`,
+`LayerPanel`, `AoiView`) never do.
+
+The shell's CSS makes the map fill the window whatever its `height`, so
+`fullscreen=True` changes nothing inside `MapApp`. The shell has no
 `model=`, `theme_toggle=` or `language_selector=`: the toggle and the selector
 are built in. It owns its state, so a value passed on every render does not undo
 what the user did; only a change of the value is an instruction. To follow or
@@ -258,36 +275,117 @@ instead of opening a window.
 
 Pass `docs_url=` with the app's published guide, for the Documentation link.
 
-To show and hide a map layer from a control, keep the prepared tiles (the
-`use_task` result) and add or remove the layer in an effect on a `shown`
-reactive. Showing it again then needs no Earth Engine request. Reset `shown` in
-an effect on the input the layer depends on, if a new input must show the layer
-again.
+To show and hide a map layer from a control, set `handle.visible` (or
+`m.layer_store.set_visible(layer_id, shown)`) in an effect on a `shown`
+reactive. The layer stays prepared, so showing it again makes no Earth Engine
+request. A `LayerPanel` row already has this toggle.
 
 `SepalMap` takes the theme through `theme_state=`; `theme_toggle=` was removed
 in 5.0.
 
+### Maps and layers (pysepal 5, MapLibre via mapframe)
+
+`SepalMap` is a MapLibre map (`mapframe.MapWidget`), not ipyleaflet. Read
+`docs/guides/solara-map-apps.md` before writing map code: it is tested, opens
+with a whole app ("A whole app"), and each rule gives its reason and its Solara
+source. Every `MapApp` argument is in `docs/guides/solara-mapapp-component.md`;
+each removed ipyleaflet member and its replacement in
+`docs/guides/migrating-to-pysepal-5.md`. Take code from those guides.
+
+- **`lng, lat` everywhere:** `SepalMap(center=(lng, lat))`,
+  `set_center(lng, lat, zoom)`, `ClickEvent.lng`/`.lat`, `LayerSpec.from_points`.
+  A ported `center=[lat, lng]` is accepted and shows the wrong place. Arguments
+  after `basemaps` are keyword-only; a MapLibre zoom counts a 512 px world.
+- **Layers live in `m.layer_store`** (`pysepal.layers.LayerStore`, top first).
+  Add one with `m.layer_store.add(LayerSpec.from_tiles(...), replace=True)`, or
+  `from_points`, `from_geojson`, `from_vector`, `from_raster`, `from_ee`.
+  `add_ee_layer`, `add_raster` and their `*_async` twins write to the store and
+  return a live `LayerHandle` (`visible`, `opacity`, `side`, `legend`,
+  `restyle()`, `zoom()`, `remove()`). The id is `key`, else the normalized name;
+  the same key replaces the layer in place. `find_layer`,
+  `remove_layer(key, none_ok=True)`, `remove_all`. `overlay=True` keeps a
+  reference layer (an AOI) above the data. `VectorStyle` gives colours by class
+  (`color_by`, `class_colors`), pins, clusters, popups and tooltips.
+- **`add_raster` takes `layer_name=`**, `add_ee_layer` takes `name=`. The
+  `*_async` forms return `None` when a newer action on the same key or a closed
+  map overtook them, and raise `LayerPrepareError` when the layer cannot render:
+  catch it in the task and notify.
+- **Users switch layers only in a `LayerPanel`**
+  (`pysepal.solara.components.layer_panel`); the map has no layer or basemap
+  switcher. In a `MapApp`, make `LayerPanel(store=m.layer_store, map_=m)` a
+  right-panel section; `on_export=` gets an Earth Engine layer's spec when the
+  user clicks its Export button.
+- **Earth Engine is on by default.** A map without it is `SepalMap(gee=False)`,
+  and an `AoiView` on it takes `gee=False`. With it, pass
+  `gee_interface=get_current_gee_interface()`: in a multi-user container a map
+  without one raises `SepalSessionError: A GEEInterface built with no session ...`.
+- **Over the map:** `MapView(m, overlays={"top-left": [...]})` stacks components
+  by corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`); `MapApp`
+  takes them as `map_overlays=`. `MapView(legend=False, status=False)` drops the
+  legend card or the loading badge. `SepalMap(inspector=True)` and
+  `coordinates=True` add the pixel inspector and the pointer readout.
+- **Drawing:** `session = m.draw.begin(modes, on_change=...)`, modes from
+  `polygon`, `rectangle`, `circle`, `linestring`, `point`; `session.features`
+  is a FeatureCollection. One session per map: a new `begin` ends the old one,
+  and `AoiView` holds its own while its DRAW method is selected.
+- **Linked maps and compare:** maps with the same `link_group` share one camera.
+  `m.compare = True` splits one map; `side=` on the add methods, or
+  `handle.side`, picks the half.
+- **Tests:** stub Earth Engine by patching `SessionManager.get_gee_interface` and
+  `pysepal.scripts.utils.init_ee`, run with `SOLARA_CHECK_HOOKS=raise`, and after
+  `rc.close()` assert `m.comm is None` (the guide's § 9).
+
+The five rules that matter most:
+
+1. **Build each map with `use_sepal_map(factory, dependencies)` in the
+   component that owns it, and pass it down.** Never in the render body, at
+   module level, in `use_state` or in `solara.use_memo` alone. Dependencies are
+   the objects (`[gee_interface]`), never `id(obj)`.
+2. **Keep map callbacks short.** `on_click`, `on_view`, `on_status` and a draw
+   session's `on_change` run under the kernel lock: set a reactive. Register
+   them in an effect and remove them in its cleanup; begin a `m.draw.begin(...)`
+   session the same way and `end()` it there.
+3. **Run slow work in `use_task(..., prefer_threaded=False)`** with
+   `await m.add_ee_layer_async(...)` or `add_raster_async`. A pool worker
+   (`asyncio.to_thread`) computes and returns; the task writes the map after
+   the `await`.
+4. **Show a map with `MapApp`, which sizes it, or `MapView(m, overlays=...)`**,
+   as tall as the map's `height` (with `fullscreen=True`, a parent that has a
+   height). Give each layer its legend (`legend=` on the add methods,
+   `handle.legend`); `MapView` shows one card per view area, so mount no
+   `LegendComponent` over the map.
+5. **Keep state per kernel.** The theme is `theme_state` or
+   `get_current_theme_state()` (`set_mode("dark")`), never `v.theme.dark`;
+   `link_group` is per kernel. Under Solara call `setup_solara_server()`, which
+   serves the map bundle once per page, and deploy with `--production`.
+
 ### Reference templates
 
-One worked example lives in the pysepal repo — read it before building a
-new app to see the patterns in action:
+The demos in `demo_apps/` show the patterns in action — read the closest one
+before building a new app:
 
 - `demo_apps/solara_map_app/` — MapApp shell with `AoiView`
   in the right panel, `NotificationProvider` task tracking, `ExportLauncher`
-  sources, and a `LegendComponent` whose layer selector is driven by the layers
-  on the map. `app.py` holds the shell: `MapAppDemo` owns the UI so `Page`
+  sources, and layer legends that `MapView` shows, two of them set by the app
+  (a composite's channels, the area of each class). `app.py` holds the shell: `MapAppDemo` owns the UI so `Page`
   (Solara, session-authenticated) and `ui.ipynb` (Voila) can share it. The rest
   lives under `component/` — `parameter/` (layer ids, vis params), `model/`
   (dataclasses in reactives), `scripts/` (Earth Engine work, no UI), `tile/`
-  (right-panel sections), `widget/` (map, layer lifecycle, floating legend).
+  (right-panel sections), `widget/` (the map and its layer lifecycle).
+- `solara_raster_app/` — local rasters (ramps, classes, a large file) and a
+  `LayerPanel` section in `MapApp`.
+- `solara_vector_app/` — a local vector served as PMTiles, styled by class.
+- `solara_compare_app/` — compare mode, a drawing session, pins and clusters.
+- `solara_linked_maps_app/` — three `MapView`s, two in one `link_group`.
+- `solara_aoi_app/`, `solara_aoi_gee_app/` — saving and restoring an `AoiView`.
 
 ### Dialogs inside MapApp content
 
-An `rv.Dialog` inside `right_panel_content` or `steps_data` mounts when it
-opens; it does not need `eager=True`. The removed Vue `MapApp` embedded content
-through `<jupyter-widget>`, where it did. Drop `eager=True` when you move an
-app: an eager dialog is built with the page, so its tasks run at page load,
-once per session, not on each open.
+An `rv.Dialog` inside `right_panel_content` or `steps_data` does not need
+`eager=True`: `eager` only decides when the browser builds the dialog's DOM.
+Python renders the content, and runs its effects and tasks, at page load either
+way, open or not. To defer work to the open, render the content only while the
+dialog is open, or start the task from the open handler.
 
 ### value/on_value pattern
 
@@ -444,12 +542,13 @@ with track_task("Exporting", total_steps=2) as task:
   reading `.value` in the render body. This prevents notification changes
   from triggering parent component re-renders (which would disrupt
   MapApp layout).
-- The task pill and the legend track the shell through CSS variables that
-  `MapApp` publishes on the page root (`--sepal-notification-right-offset`,
+- The task pill tracks the shell through CSS variables that `MapApp` publishes
+  on the page root (`--sepal-notification-right-offset`,
   `--sepal-notification-pill-display`, `--sepal-top-reserved`,
-  `--sepal-right-panel-width`, `--sepal-drawer-width`,
-  `--sepal-bottom-reserved`). No DOM polling. Mount `NotificationProvider()`
-  and the legend next to the shell and they follow it.
+  `--sepal-right-panel-width`, `--sepal-right-panel-open`,
+  `--sepal-drawer-width`, `--sepal-bottom-reserved`). No DOM polling. Mount
+  `NotificationProvider()` next to the shell and it follows it. The map's
+  legend cards need none of this: `MapView` places them.
 - `@catch_errors` was removed in 5.0 with sepalwidgets. Catch the error in the
   task and publish it through the notification API.
 
@@ -520,8 +619,7 @@ ExportLauncher(sources=sources, button_text=True)
   `"KMZ"`. The constants `DEFAULT_IMAGE_FILE_FORMAT`,
   `DEFAULT_TABLE_FILE_FORMAT`, and the `value` fields of
   `TABLE_FILE_FORMATS` already use canonical strings.
-- `ee-client >= 2.5.2` is required (pyproject.toml enforces). 2.5.1 had a
-  table-to-asset serializer bug.
+- pyproject.toml requires `ee-client>=3.4.0,<4`.
 - SEPAL-workspace target is auto-disabled when no session-backed
   `SepalClient` is available — don't pass one explicitly in normal apps,
   `use_export_dialog` picks it up via `get_current_sepal_client()`.
@@ -593,7 +691,9 @@ Use `use_task` + `asyncio.to_thread` instead. Read
 in Solara Components" for the pattern.
 
 An `asyncio.to_thread` worker has no kernel context. Do not call `msg()` or
-`notify()` in it. Return the result and publish after the `await`. See
+`notify()` in it, nor build a widget or write a reactive. A `layer_store` write
+there is safe (the store hands its events to its loop), but prefer to return
+the result and publish after the `await`. See
 "Translations" § "Workers and the locale".
 
 ## Vuetify 3
@@ -605,11 +705,13 @@ pysepal 5 runs on ipyvuetify 3 (Vuetify 3, Vue 3) only. Write the app's own
 - Props: `density="compact"` (not `dense`), `size="small"` (not `small`),
   `variant="text"` / `"outlined"` / `"flat"` (not `text` / `outlined` /
   `depressed`), icon `start` (not `left`). A text field defaults to `filled`;
-  pass `variant="underlined"` or `"outlined"`.
+  pass `variant="underlined"` or `"outlined"`. pysepal's own
+  `TaskButtonComponent` and `ExportLauncher` keep `small=`; `size=` raises
+  `TypeError` there.
 - Components: no `v-list-item-content`, `v-list-item-icon`, `v-flex`,
   `v-tabs-items`; `v-expansion-panel-title` / `-text` replace `-header` /
   `-content`. A removed class raises `AttributeError` in Python. An unknown
-  prop is dropped with only a `DeprecationWarning`.
+  prop is dropped silently: no error, no warning.
 - Activator slots bind `props`: `v-bind="props"` in a template,
   `v_bind="x.props"` on a Python widget.
 - Select and autocomplete items: `{"title", "value"}`, a header
@@ -781,7 +883,7 @@ names in a constant and translate only the display labels from it.
 | `use_locale()`, `LocaleState`, `locale_state=` | `current_locale()` / `set_locale()`                |
 | `language_selector=[LocaleSelect(...)]`        | `locales=messages.available_locales()`             |
 
-All four `demo_apps/` are translated (en, es, fr); `solara_raster_app` shows
+All eight `demo_apps/` are translated (en, es, fr); `solara_raster_app` shows
 plural nodes. Full text: `docs/source/tutorials/translate-app.rst` and
 `docs/guides/migration-v4.md` § 6.
 
@@ -852,7 +954,7 @@ ECharts from a CDN at mount, and rebuilds the chart on every update. The guide's
 before re-opening the question when an upstream release touches that component.
 
 A chart follows the size of its container by itself since ipecharts 1.4.2, also
-in a container that changes width or starts hidden (a map `MenuControl`).
+in a container that changes width or starts hidden (a menu over the map).
 Require `ipecharts>=1.4.2` and write no resize code.
 
 Read `docs/guides/ipecharts.md` before creating any
@@ -914,15 +1016,20 @@ quickest way to count requests while you click through the app.
 **Cause:** a conditional sibling appeared before it and remounted it. The task
 keeps running unseen. **Fix:** see "Keep stateful siblings in place with keys".
 
-### `ImportError` from `pysepal.sepalwidgets`, `AttributeError: ... was removed in pysepal 5.0`, or `AttributeError: module 'ipyvuetify' has no attribute ...`
+### `ImportError` from `pysepal.sepalwidgets`, `AttributeError: ... was removed in pysepal 5.0`, `TypeError: SepalMap.__init__() got an unexpected keyword argument ...`, or `AttributeError: module 'ipyvuetify' (or 'reacton.ipyvuetify') has no attribute ...`
 
-**Cause:** the app runs pysepal 5 (ipyvuetify 3). sepalwidgets, `AoiTile`,
-`AoiView` from `pysepal.aoi`, `PlanetView`, `AoiControl` and Vuetify 2
-components such as `ListItemContent` do not exist there. **Fix:** move the code
-to the Solara components and Vuetify 3 (`docs/guides/migrating-to-pysepal-5.md`),
-or pin `pysepal<5` until it is ready.
+**Cause:** the app runs pysepal 5 (ipyvuetify 3, MapLibre). sepalwidgets,
+`AoiTile`, `AoiView` from `pysepal.aoi`, `PlanetView`, `AoiControl`, the
+ipyleaflet `SepalMap` API (`m.dc`, `m.layers`, `m.add_layer`, `m.add_control`,
+`m.on_interaction`, `m.add_legend`, the map controls, the `dc=`, `statebar=`,
+`vinspector=` and `theme_toggle=` arguments) and Vuetify 2 components such as
+`ListItemContent` do not exist there. `catch_errors` and `loading_button` raise
+a plain `AttributeError: module 'pysepal.scripts.decorator' has no attribute`.
+**Fix:** move the code to the Solara components, the MapLibre map and Vuetify 3
+(`docs/guides/migrating-to-pysepal-5.md`, "Map controls" and "SepalMap on
+MapLibre" for the map), or pin `pysepal<5` until it is ready.
 
-### `TypeError: Expected element, not '<some text>'`
+### `TypeError: Expected element, not some text`
 
 **Cause:** a function under `@solara.component` returned a value that is not an
 element, often a plain helper that sits under a decorator meant for the next
@@ -941,10 +1048,15 @@ start/cancel/start cycle hits a second loop → RuntimeError.
 
 - Set `prefer_threaded=False` on the `use_task` — this runs the coroutine on
   Solara's stable kernel event loop instead of a throwaway per-task loop
-- Move `add_ee_layer` into the async task via `asyncio.to_thread`:
+- Move the layer into that task with the async method, which renders in Earth
+  Engine without blocking the loop:
   ```python
-  await asyncio.to_thread(map_.add_ee_layer, fc, vis, "aoi", autocenter=True)
+  await map_.add_ee_layer_async(fc, vis, "aoi", autocenter=True)
   ```
+- Never build a widget or write a reactive in `asyncio.to_thread` or an
+  executor. A pool worker has no kernel context: widgets built there never reach
+  the browser. Compute there and return the result; write the map after the
+  `await` (a `layer_store` write from the worker also shows, but keep it after).
 
 ### Excessive "Closing GEEInterface..." log messages
 
@@ -973,11 +1085,9 @@ Reference: `docs/guides/ipyvuetify-widgets.md`
 
 ### Silent empty widgets (no error)
 
-**Cause:** `v.Widget(...)` used inside `with rv.Something():` context, or
-`solara.Column` wrapping `rv.` elements.
+**Cause:** `v.Widget(...)` used inside a `with rv.Something():` context.
 
-**Fix:** Use `rv.Widget(...)` throughout, avoid mixing `solara.Column` with
-`rv.` containers.
+**Fix:** Use `rv.Widget(...)` throughout.
 
 ### `Collection.loadTable: Expected asset to be a Collection, found 'Image'`
 
@@ -989,22 +1099,27 @@ after `asset_id` changed.
 
 ## Component Naming Convention
 
-Solara components use `OriginalName + Component` suffix:
+The input widgets ported from sepalwidgets carry a `Component` suffix; the map,
+shell and export components do not (there is no `MapViewComponent`):
 
-| Component                 | Package                                   |
-| ------------------------- | ----------------------------------------- |
-| `FileInputComponent`      | `pysepal.solara.components.inputs`        |
-| `AssetSelectComponent`    | `pysepal.solara.components.inputs`        |
-| `PointsSelectorComponent` | `pysepal.solara.components.inputs`        |
-| `VectorSelectorComponent` | `pysepal.solara.components.inputs`        |
-| `TaskButtonComponent`     | `pysepal.solara.components.task_button`   |
-| `LocaleSelectComponent`   | `pysepal.solara.components.locale_select` |
-| `AoiView`                 | `pysepal.solara.components.aoi`           |
-| `MapApp`, `ThemeToggle`   | `pysepal.solara.components.map_app`       |
-| `NotificationProvider`    | `pysepal.solara.notifications`            |
+| Component                        | Package                                   |
+| -------------------------------- | ----------------------------------------- |
+| `FileInputComponent`             | `pysepal.solara.components.inputs`        |
+| `AssetSelectComponent`           | `pysepal.solara.components.inputs`        |
+| `PointsSelectorComponent`        | `pysepal.solara.components.inputs`        |
+| `VectorSelectorComponent`        | `pysepal.solara.components.inputs`        |
+| `TaskButtonComponent`            | `pysepal.solara.components.task_button`   |
+| `LocaleSelectComponent`          | `pysepal.solara.components.locale_select` |
+| `AoiView`                        | `pysepal.solara.components.aoi`           |
+| `MapApp`, `ThemeToggle`          | `pysepal.solara.components.map_app`       |
+| `MapView`                        | `pysepal.solara.components.map_view`      |
+| `LayerPanel`                     | `pysepal.solara.components.layer_panel`   |
+| `LegendComponent`                | `pysepal.solara.components.legend`        |
+| `ExportLauncher`, `ExportDialog` | `pysepal.solara.components.export`        |
+| `NotificationProvider`           | `pysepal.solara.notifications`            |
+| `use_sepal_map`, `get_current_*` | `pysepal.solara`                          |
 
-`AoiView` and `MapApp` keep their legacy names. Run discovery for the full
-current list — do not rely on this table.
+Run discovery for the full current list — do not rely on this table.
 
 ## Guides (read when needed)
 
@@ -1016,6 +1131,7 @@ current list — do not rely on this table.
 | `solara-app-builder.md`      | Scaffolding or restructuring an app                                               |
 | `solara-export.md`           | Adding export to EE asset / Drive / SEPAL workspace                               |
 | `solara-mapapp-component.md` | Every `MapApp` argument; moving from the removed `MapApp.element`                 |
+| `solara-map-apps.md`         | Any map code: building, sharing, closing, events, layout, legends, tests, deploy  |
 | `migrating-to-pysepal-5.md`  | Replacing a removed widget; Vuetify 3 spellings; the `pysepal<5` pin              |
 | `solara-migration.md`        | Converting ipyvuetify widget to Solara                                            |
 | `ipyvuetify-widgets.md`      | Writing a `component_vue` / `v.VuetifyTemplate`: template rules, data, events     |
@@ -1024,6 +1140,8 @@ current list — do not rely on this table.
 | `migration-notes-v3.4.md`    | Auditing an existing app for stale patterns                                       |
 | `migration-v4.md`            | Moving a 3.x app to 4.0: sessions, locale, `catalog()`                            |
 | `solara-upstream.md`         | What an upstream Solara release means for pysepal; why the pin sits where it does |
+| `solara-notifications.md`    | Toasts, task tracking and the provider rules                                      |
+| `browser-testing.md`         | Checking an app in a browser: console errors, screenshots (`browser_probe.mjs`)   |
 
 Tutorial: `docs/source/tutorials/translate-app.rst` — writing catalogues,
 plural nodes, `check()`.
@@ -1050,9 +1168,16 @@ When invoked with `/pysepal audit`, check the current project for:
 
 - [ ] Old imports: `asset_method`, `AssetSelector`, `PointsSelector`, `ShapeSelector`
 - [ ] `prefer_threaded=True` (or missing `prefer_threaded`) on GEE `use_task` hooks
-- [ ] `process_admin()` / `process_asset()` called without `gee_interface=` (creates throwaway instances)
+- [ ] `process_admin()` called without `gee_interface=` (creates a throwaway interface), or `process_asset()` without it (refused with `SepalSessionError` in a multi-user container)
 - [ ] `asyncio.to_thread(gee_interface.` wrapping GEE calls
-- [ ] `add_ee_layer` called from sync `use_effect` handlers
+- [ ] A `SepalMap(...)` built in a render body or in `solara.use_memo` (use `use_sepal_map`, which closes it)
+- [ ] `add_ee_layer` called from sync `use_effect` handlers, or wrapped in `asyncio.to_thread` (use `await map_.add_ee_layer_async(...)` in `use_task(prefer_threaded=False)`)
+- [ ] A widget built or a reactive written in an `asyncio.to_thread` or executor worker (return the result and write after the `await`)
+- [ ] `id(obj)` in a hook's dependencies, e.g. `use_sepal_map(..., [id(gee_interface)])` (pass the object)
+- [ ] `m.on_click` / `m.on_view` / `m.draw.begin` called in a render body instead of an effect with a cleanup, or a map callback doing slow work
+- [ ] An app's own `LegendComponent` over a map (`MapView` shows each layer's legend; pass `legend=`)
+- [ ] `v.theme.dark` or `ipyvuetify.theme` set to change a map's theme (use `ThemeToggle` or `get_current_theme_state().set_mode(...)`)
+- [ ] A Solara entry point without `setup_solara_server()` (every map then sends its 2 MB bundle)
 - [ ] `v.Widget(...)` inside `with rv.Something():` contexts
 - [ ] Missing `loading` parameter on `AssetSelectComponent`
 - [ ] Separate cancel button below action button (use `TaskButtonComponent` instead)
@@ -1076,6 +1201,10 @@ When invoked with `/pysepal audit`, check the current project for:
 - [ ] `msg()` called inside `asyncio.to_thread` or an executor worker (return a key + named values; translate in the UI context)
 - [ ] No test asserting `messages.check() == ()`
 - [ ] A `pysepal.sepalwidgets` import (`sw.*`, `vue_app.MapApp`, `vue_app.ThemeToggle`, `vue_app.LocaleSelect`), `pysepal.aoi.AoiTile` / `pysepal.aoi.AoiView`, `pysepal.planetapi.PlanetView`, `mapping.AoiControl`, `thread_controller`, `@catch_errors` or `@loading_button` (removed in 5.0; see `migrating-to-pysepal-5.md`)
+- [ ] The ipyleaflet map API (removed in 5.0; see `migrating-to-pysepal-5.md` "Map controls" and "SepalMap on MapLibre"): `ipyleaflet` imports (`TileLayer`, `WidgetControl`, `Marker`, `GeoJSON`), `m.add_layer`, `m.layers`, `m.add_control`, `m.dc` / `DrawControl` / `dc.on_draw`, `m.on_interaction`, `m.add_legend`, `m.add_colorbar`, `LayersControl`, `SplitMapControl`, `traitlets.link` on `center` / `zoom`, `SepalMap(dc=..., statebar=..., vinspector=...)` or positional arguments, `AoiModel.ipygeojson`, `create_leaflet_layer`, `.full-screen-map` CSS, `find_layer(..., base=...)`
+- [ ] Leaflet camera habits: `center=[lat, lng]` (the map is `lng, lat`), `set_center(..., zoom=-1)`, `zoom_out=`, reads of `m.center` / `m.zoom` (read `m.view`)
+- [ ] Tile layers built by hand from `get_map_id_async` instead of `add_ee_layer_async`, or a layer removed and re-added to hide it (set `handle.visible`)
+- [ ] A map with several layers and no `LayerPanel` (users cannot toggle layers without one)
 - [ ] `MapApp(model=...)`, `theme_toggle=` or `language_selector=` (the native `MapApp` has none: use `current_step` / `on_current_step`, `step_open` / `on_step_open`, `theme_state=`, `locales=`)
 - [ ] Vuetify 2 props or components in the app's own `rv.*`, `solara.v` or `.vue` code (`dense`, `small`, `outlined`, `text=True`, `v-list-item-content`, `ExpansionPanelHeader`, activator `on`, select items with `text`), or a leftover `IPYVUETIFY_V3` branch (pysepal 5 is Vuetify 3 only)
 - [ ] An app used as a JupyterLab notebook that requires pysepal 5 where the Jupyter server still has ipyvuetify 1

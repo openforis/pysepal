@@ -1,7 +1,5 @@
 import solara
 
-from component.model.state_manager import app_state
-
 
 @solara.component
 def Page():

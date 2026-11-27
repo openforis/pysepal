@@ -23,6 +23,14 @@
     "single": "Landcover (single)",
     "categorized": "Landcover (categorized)"
   },
+  "classes": {
+    "forest": "Forest",
+    "savanna": "Savanna",
+    "cropland": "Cropland",
+    "wetland": "Wetland",
+    "urban": "Urban",
+    "water": "Water"
+  },
   "tasks": {
     "single": "Single symbol",
     "categorized": "Categorized",

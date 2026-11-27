@@ -23,6 +23,14 @@
     "single": "Occupation du sol (unique)",
     "categorized": "Occupation du sol (catégorisée)"
   },
+  "classes": {
+    "forest": "Forêt",
+    "savanna": "Savane",
+    "cropland": "Cultures",
+    "wetland": "Zone humide",
+    "urban": "Urbain",
+    "water": "Eau"
+  },
   "tasks": {
     "single": "Symbole unique",
     "categorized": "Catégorisé",

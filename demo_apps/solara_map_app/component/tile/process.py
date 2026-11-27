@@ -4,26 +4,20 @@ import asyncio
 
 import solara
 from component.message import msg
-from component.model import LayerLegend
 from component.parameter import (
     ELEVATION_CLASS_LAYER_ID,
     ELEVATION_CLASSES,
     PIXEL_AREA_LAYER_ID,
     PIXEL_AREA_VIS,
 )
-from component.scripts import (
-    build_outputs,
-    elevation_class_legend,
-    gradient_legend,
-    upsert_legends,
-)
+from component.scripts import build_outputs, elevation_class_legend
 
 from pysepal.solara.notifications import use_notifications
 
 
 @solara.component
-def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
-    """Run the demo processing, add its layers and publish their legends."""
+def ProcessPanel(aoi_data, outputs, sepal_map, gee_interface):
+    """Run the demo processing, add its layers and give the classes their areas in the legend."""
     notifications = use_notifications()
 
     async def run_process():
@@ -44,7 +38,7 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
                 name=msg("layers.pixel_area"),
                 key=PIXEL_AREA_LAYER_ID,
             )
-            await sepal_map.add_ee_layer_async(
+            elevation = await sepal_map.add_ee_layer_async(
                 built.elevation_class,
                 vis_params={
                     "min": 1,
@@ -61,17 +55,8 @@ def ProcessPanel(aoi_data, outputs, layer_legends, sepal_map, gee_interface):
             task.set_progress(0.9)
 
             task.step(msg("tasks.publishing"))
-            layer_legends.set(
-                upsert_legends(
-                    layer_legends.value,
-                    LayerLegend(
-                        PIXEL_AREA_LAYER_ID,
-                        msg("layers.pixel_area"),
-                        gradient_legend(msg("layers.pixel_area"), PIXEL_AREA_VIS),
-                    ),
-                    LayerLegend(ELEVATION_CLASS_LAYER_ID, msg("layers.elevation"), class_legend),
-                )
-            )
+            if elevation is not None and elevation.alive:
+                elevation.legend = class_legend
             outputs.set(built)
 
         notifications.success(msg("toasts.process_done"))

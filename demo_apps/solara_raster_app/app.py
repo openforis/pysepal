@@ -4,7 +4,8 @@ Three buttons, one per path through :meth:`~pysepal.mapping.SepalMap.add_raster`
 a continuous colormap, exact per-class colors, and a raster large enough that
 preparing it has to happen off the event loop. A fourth points at a file that is
 not there, to show a failed task: its error toast stays until it is closed or
-another task starts.
+another task starts. The layer panel lists what the buttons added, to reorder, hide,
+restyle or remove it.
 
 Set ``PYSEPAL_DEMO_RASTER_DIR`` to a directory holding ``aa_test_congo.tif`` and
 ``hansen_bolivia.tif`` to run against real class maps; without it the demo
@@ -27,12 +28,15 @@ import solara
 
 from pysepal import mapping as sm
 from pysepal.i18n import catalog
+from pysepal.message import msg as pysepal_msg
 from pysepal.scripts.scratch import scratch_root
 from pysepal.solara import (
     get_current_theme_state,
     setup_solara_server,
     setup_theme_colors,
+    use_sepal_map,
 )
+from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 from pysepal.solara.notifications import NotificationProvider, use_notifications
@@ -147,10 +151,10 @@ def RasterPanel():
 
     def build_map():
         return sm.SepalMap(
-            zoom=3, center=[0, 0], gee=False, fullscreen=True, theme_state=theme_state
+            zoom=2, center=(0, 0), gee=False, fullscreen=True, theme_state=theme_state
         )
 
-    sepal_map = solara.use_memo(build_map, [])
+    sepal_map = use_sepal_map(build_map, [])
 
     async def add_continuous():
         """What every raster looked like before class_colors: a stretched ramp."""
@@ -219,7 +223,7 @@ def RasterPanel():
         # with no render in progress and no locale threaded in to reach it.
         removed = 0
         for key in ("continuous", "classes", "large"):
-            if sepal_map.find_layer(key, none_ok=True) is not None:
+            if sepal_map.find_layer(key) is not None:
                 sepal_map.remove_layer(key, none_ok=True)
                 removed += 1
         if removed:
@@ -259,6 +263,11 @@ def RasterPanel():
                 "description": msg(
                     "section.description", source=source, env_var=RASTER_DIR_ENV_VAR
                 ),
+            },
+            {
+                "title": pysepal_msg("layer_panel.title"),
+                "icon": "mdi-layers",
+                "content": LayerPanel(store=sepal_map.layer_store, map_=sepal_map),
             },
             {
                 "title": msg("errors.title"),

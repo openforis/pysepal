@@ -23,6 +23,14 @@
     "single": "Cobertura del suelo (único)",
     "categorized": "Cobertura del suelo (categorizada)"
   },
+  "classes": {
+    "forest": "Bosque",
+    "savanna": "Sabana",
+    "cropland": "Cultivos",
+    "wetland": "Humedal",
+    "urban": "Urbano",
+    "water": "Agua"
+  },
   "tasks": {
     "single": "Símbolo único",
     "categorized": "Categorizado",

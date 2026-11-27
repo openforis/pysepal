@@ -30,7 +30,8 @@
 
 Use `import reacton.ipyvuetify as rv` when:
 
-- Solara has no native equivalent (Dialog, Tabs, Menu, Snackbar)
+- Solara has no native equivalent (a general Dialog, Snackbar);
+  `solara.lab` has `Tabs`, `Menu` and `ConfirmationDialog`
 - You need low-level vuetify control (custom slots, complex layouts)
 - Wrapping existing Vue templates during incremental migration
 
@@ -373,6 +374,7 @@ def MyComponent():
         fetch_data,
         dependencies=None,  # None = manual trigger via task()
         raise_error=False,
+        prefer_threaded=False,  # stay on the kernel's loop, as GEE work needs
     )
 
     solara.Button("Fetch", on_click=task, disabled=task.pending)
@@ -449,7 +451,8 @@ These two hooks have **different return types** — don't confuse them:
 
 ### Key rules
 
-- **Always provide `dependencies`** — omitting runs on every render
+- **Choose `dependencies` on purpose** — omitting it runs the task once on
+  mount, like `[]`; `None` waits for a manual `task()` call
 - **`dependencies=[]`** — runs once on mount
 - **`dependencies=None`** — manual trigger only (for `use_task`)
 - **Prefer `use_task`** over `use_thread` for new code (better performance, async support)

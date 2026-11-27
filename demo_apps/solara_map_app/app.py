@@ -1,9 +1,10 @@
 """SEPAL Solara map application demo.
 
 One app exercising what a real SEPAL module needs: AOI selection, async
-processing with progress notifications, layer management, a floating map legend
-driven by the layers currently on the map, Earth Engine / Drive / SEPAL exports,
-and every way the file input selects paths (a dialog step).
+processing with progress notifications, a layer panel over the map's layer store
+(opening on a local raster and vector), layer legends that the map shows for the
+layers on it, Earth Engine / Drive / SEPAL exports, and every way the file input
+selects paths (a dialog step).
 
 This module is only the shell: it opens the session, holds the reactives the
 sections share and lays them out. The pieces live under ``component/``:
@@ -11,9 +12,9 @@ sections share and lays them out. The pieces live under ``component/``:
 - ``component/parameter`` -- layer ids, vis params, class breaks, sample paths
 - ``component/message`` -- the message catalogue, read through ``msg``
 - ``component/model`` -- the app model and the dataclasses carried in reactives
-- ``component/scripts`` -- Earth Engine work, legend numbers, export sources (no UI)
+- ``component/scripts`` -- Earth Engine work, layer legends, export sources (no UI)
 - ``component/tile`` -- the right-panel sections and the file selection step
-- ``component/widget`` -- the map, its layer lifecycle and the floating legend
+- ``component/widget`` -- the map and the lifecycle of its layers
 
 The UI lives in :func:`MapAppDemo` so the same code serves both runtimes --
 ``Page`` wraps it with SEPAL session auth for Solara, and ``ui.ipynb`` is a thin
@@ -30,8 +31,9 @@ import solara
 from component.message import messages, msg
 from component.scripts import sample_folder
 from component.tile import ExportPanel, FilesPanel, ProcessPanel, use_layer_tools
-from component.widget import MapLegend, use_aoi_scoped_layers, use_sepal_map
+from component.widget import use_aoi_scoped_layers, use_demo_map
 
+from pysepal.message import msg as pysepal_msg
 from pysepal.solara import (
     get_current_drive_interface,
     get_current_filesystem,
@@ -43,6 +45,7 @@ from pysepal.solara import (
     with_sepal_sessions,
 )
 from pysepal.solara.components.aoi import AoiView
+from pysepal.solara.components.layer_panel import LayerPanel
 from pysepal.solara.components.map_app import MapApp
 from pysepal.solara.notifications import NotificationProvider
 
@@ -57,7 +60,7 @@ def on_kernel_start():
 
 @solara.component
 def MapAppDemo():
-    """MapApp shell wiring AOI, processing, layers, legend and export together."""
+    """MapApp shell wiring AOI, processing, layers and export together."""
     setup_theme_colors()
 
     gee_interface = get_current_gee_interface()
@@ -69,11 +72,10 @@ def MapAppDemo():
     aoi_data = solara.use_reactive(None)
     aoi_loading = solara.use_reactive(False)
     outputs = solara.use_reactive(None)
-    layer_legends = solara.use_reactive(())
 
-    sepal_map = use_sepal_map(gee_interface, theme_state)
-    use_aoi_scoped_layers(aoi_data, sepal_map, outputs, layer_legends)
-    layer_tools = use_layer_tools(sepal_map, layer_legends, outputs)
+    sepal_map = use_demo_map(gee_interface, theme_state)
+    use_aoi_scoped_layers(aoi_data, sepal_map, outputs)
+    layer_tools = use_layer_tools(sepal_map, outputs)
 
     aoi_view = AoiView(
         value=aoi_data,
@@ -104,7 +106,6 @@ def MapAppDemo():
                 ProcessPanel(
                     aoi_data=aoi_data,
                     outputs=outputs,
-                    layer_legends=layer_legends,
                     sepal_map=sepal_map,
                     gee_interface=gee_interface,
                 )
@@ -112,10 +113,15 @@ def MapAppDemo():
             "description": msg("section.process.description"),
         },
         {
-            "title": msg("section.layers.title"),
+            "title": pysepal_msg("layer_panel.title"),
             "icon": "mdi-layers",
+            "content": LayerPanel(store=sepal_map.layer_store, map_=sepal_map),
+        },
+        {
+            "title": msg("section.add_layers.title"),
+            "icon": "mdi-layers-plus",
             "content": layer_tools,
-            "description": msg("section.layers.description"),
+            "description": msg("section.add_layers.description"),
             "divider": True,
         },
         {
@@ -146,8 +152,6 @@ def MapAppDemo():
 
     # Toasts top-right, task progress pill bottom-right.
     NotificationProvider()
-
-    MapLegend(layer_legends)
 
     MapApp(
         app_title=msg("app.title"),

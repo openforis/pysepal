@@ -6,6 +6,7 @@ adapter contract: pass-through of the resolved id and translation of Solara's
 failure modes into ``UnsupportedSolaraRuntimeError``.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
@@ -107,3 +108,44 @@ def test_current_scope_id_is_total_against_a_broken_kernel(name, config):
     """
     with patch("IPython.get_ipython", return_value=_FakeIPython(config)):
         assert current_scope_id() == PROCESS_SCOPE
+
+
+_KERNEL_PER_CONTEXT = """
+import asyncio
+from uuid import uuid4
+import ipykernel.kernelbase
+import solara.server.app  # imports the patch module in a working order
+import solara.server.patch as patch
+from solara.server.kernel import Kernel
+from solara.server.kernel_context import VirtualKernelContext
+from mapframe.widget import _current_kernel
+
+ipykernel.kernelbase.Kernel.instance = classmethod(patch.kernel_instance_dispatch)
+ipykernel.kernelbase.Kernel.initialized = classmethod(patch.kernel_initialized_dispatch)
+loop = asyncio.new_event_loop()
+seen = []
+for _ in range(2):
+    context = VirtualKernelContext(id=uuid4().hex, session_id="t", kernel=Kernel(), event_loop=loop)
+    with context:
+        seen.append(_current_kernel() is context.kernel)
+print(seen)
+"""
+
+
+def test_each_solara_kernel_context_has_its_own_map_kernel(tmp_path):
+    # pysepal-map scopes its links by ipykernel's Kernel.instance(), which only
+    # Solara's patch makes per kernel context. This installs Solara's own
+    # dispatchers in a fresh interpreter, so it fails if they are renamed or
+    # stop telling contexts apart.
+    import subprocess
+    import sys
+
+    run = subprocess.run(
+        [sys.executable, "-c", _KERNEL_PER_CONTEXT],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "IPYTHONDIR": str(tmp_path)},
+    )
+
+    assert run.returncode == 0, run.stderr[-800:]
+    assert run.stdout.strip().splitlines()[-1] == "[True, True]"

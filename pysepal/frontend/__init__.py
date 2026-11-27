@@ -1,4 +1,4 @@
 """Package to customize the display of the widgets.
 
-`IpyvuetfyWidget` and ìpyleaflet.Map` are not working together natively. This package provide helpers, css, js and js workaround to help user build safe application including both widgets and maps.
+`IpyvuetifyWidget` and map widgets do not always work together natively. This package provides helpers, css, js and js workarounds to help users build safe applications including both widgets and maps.
 """

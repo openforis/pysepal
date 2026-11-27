@@ -20,8 +20,7 @@ class MapBtn(v.Btn, SepalWidget):
     def __init__(self, content: str, **kwargs) -> None:
         """Btn specifically design to be displayed on a map.
 
-        It matches all the characteristics of
-        the classic leaflet btn but as they are from ipyvuetify we can use them in combination with Menu to produce on-the-map tiles.
+        A small ipyvuetify button sized for a map, usable with a Menu to produce on-the-map tiles.
         The MapBtn is responsive to theme changes. It only accept icon or 3 letters as children as the space is very limited.
 
         Args:

@@ -412,6 +412,35 @@ def int16_classes(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture(scope="session")
+def ramp(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A one-band int16 raster whose values run from 10 to 90.
+
+    Returns:
+        the path to the raster
+    """
+    import numpy as np
+    import rasterio as rio
+    from rasterio.transform import from_origin
+
+    file = tmp_path_factory.mktemp("temp") / "ramp.tif"
+    data = np.repeat(np.linspace(10, 90, 64).astype("int16")[None, :], 64, axis=0)
+    with rio.open(
+        file,
+        "w",
+        driver="GTiff",
+        height=64,
+        width=64,
+        count=1,
+        dtype="int16",
+        crs="EPSG:4326",
+        transform=from_origin(0, 0, 0.01, 0.01),
+    ) as ds:
+        ds.write(data, 1)
+
+    return file
+
+
+@pytest.fixture(scope="session")
 def _tile_cache_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Where prepared rasters are cached for the duration of the run."""
     return tmp_path_factory.mktemp("tile-cache")
@@ -533,3 +562,43 @@ def gee_interface_with_sepal() -> Optional[GEEInterface]:
         print(f"\n[ERROR] Failed to create GEEInterface with SEPAL: {e}")
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return None
+
+
+@pytest.fixture
+def raster_spec(byte: Path):
+    """A local raster LayerSpec named "a"."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_raster(byte, name="a")
+
+
+@pytest.fixture
+def raster_spec_b(byte: Path):
+    """A second local raster LayerSpec named "b"."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_raster(byte, name="b")
+
+
+@pytest.fixture
+def vector_spec(fake_vector: Path):
+    """A local vector LayerSpec."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_vector(fake_vector)
+
+
+@pytest.fixture
+def pmtiles_spec():
+    """A remote PMTiles LayerSpec (no network access)."""
+    from pysepal.layers import LayerSpec
+
+    return LayerSpec.from_vector("https://x.org/a.pmtiles", layer="roads", id="pm")
+
+
+@pytest.fixture
+def gee_spec():
+    """An Earth Engine LayerSpec with an empty expression (no EE calls)."""
+    from pysepal.layers import GeeSource, LayerSpec, RasterStyle
+
+    return LayerSpec(id="g", name="g", source=GeeSource(expr={}, kind="Image"), style=RasterStyle())

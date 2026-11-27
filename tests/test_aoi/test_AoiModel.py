@@ -551,7 +551,6 @@ def aoi_model_outputs() -> List[str]:
     return [
         "gdf",
         "feature_collection",
-        "ipygeojson",
         "selected_feature",
         "dst_asset_id",
     ]

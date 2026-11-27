@@ -1,8 +1,9 @@
 """UI toolkit for building ipyvuetify and Solara dashboards, with first-class SEPAL integration.
 
-``pysepal`` provides ipyvuetify and Solara components for building geospatial dashboards — mapping (ipyleaflet), AOI selection, GEE session helpers, notifications, exports, i18n, and theme state — usable in any Jupyter / Solara context and tightly integrated with the SEPAL platform.
+``pysepal`` provides ipyvuetify and Solara components for building geospatial dashboards — mapping (MapLibre), AOI selection, GEE session helpers, notifications, exports, i18n, and theme state — usable in any Jupyter / Solara context and tightly integrated with the SEPAL platform.
 """
 
+from pysepal import _removed
 from pysepal.frontend.styles import SepalColor
 
 __author__ = """Pierrick Rambaud"""
@@ -11,3 +12,8 @@ __version__ = "4.1.0"
 
 color = SepalColor()
 'color: the colors of sepal. members are in the following list: "main, darker, bg, primary, accent, secondary, success, info, warning, error, menu". They will render according to the selected theme.'
+
+__getattr__ = _removed.removed(
+    __name__,
+    {"the ipyvuetify 1 widget layer": {"sepalwidgets": "pysepal.solara components"}},
+)

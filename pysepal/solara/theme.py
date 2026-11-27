@@ -111,5 +111,5 @@ def use_theme_dark(theme_state: Optional[ThemeState] = None) -> bool:
         theme_state.observe(handler, "dark")
         return lambda: theme_state.unobserve(handler, "dark")
 
-    solara.use_effect(_observe, [id(theme_state)])
+    solara.use_effect(_observe, [theme_state])
     return dark

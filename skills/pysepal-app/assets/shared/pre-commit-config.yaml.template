@@ -2,7 +2,7 @@ default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
   - repo: "https://github.com/psf/black"
-    rev: "22.3.0"
+    rev: "26.5.1"
     hooks:
       - id: black
         stages: [pre-commit]
@@ -25,8 +25,8 @@ repos:
       - id: prettier
         stages: [pre-commit]
 
-  - repo: "https://github.com/charliermarsh/ruff-pre-commit"
-    rev: "v0.0.215"
+  - repo: "https://github.com/astral-sh/ruff-pre-commit"
+    rev: "v0.15.15"
     hooks:
-      - id: ruff
+      - id: ruff-check
         stages: [pre-commit]

@@ -1,4 +1,4 @@
-"""Right-panel section holding the standalone layer controls.
+"""Right-panel section with the buttons that add and clear the demo layers.
 
 A hook returning the section's content, a list of elements that MapApp renders
 one under the other.
@@ -8,13 +8,14 @@ import logging
 
 import solara
 from component.message import msg
-from component.model import AppModel, LayerLegend
+from component.model import AppModel
 from component.parameter import (
     DEMO_CENTER,
     NDVI_LAYER_ID,
     NDVI_VIS,
     PMTILES_CENTER,
     PMTILES_LAYER_ID,
+    PMTILES_SOURCE_LAYER,
     PMTILES_STYLE,
     PMTILES_URL,
     RADAR_BANDS,
@@ -24,20 +25,18 @@ from component.parameter import (
 )
 from component.scripts import (
     band_legend,
-    gradient_legend,
     ndvi_composite,
     radar_composite,
-    upsert_legends,
 )
-from ipyleaflet import PMTilesLayer
 
+from pysepal.layers import LayerSpec, VectorSource
 from pysepal.solara.components.admin import AdminButton
 from pysepal.solara.components.task_button import TaskButtonComponent, use_task_button
 
 logger = logging.getLogger("SEPALUI.map_app")
 
 
-def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
+def use_layer_tools(sepal_map, outputs) -> list:
     """Return the content of the "Layers" panel section."""
 
     async def add_ndvi_layer():
@@ -53,35 +52,21 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
             name=msg("layers.ndvi"),
             key=NDVI_LAYER_ID,
         )
-        sepal_map.center = DEMO_CENTER
-        sepal_map.zoom = 12
-        layer_legends.set(
-            upsert_legends(
-                layer_legends.value,
-                LayerLegend(
-                    NDVI_LAYER_ID,
-                    msg("layers.ndvi"),
-                    gradient_legend(msg("layers.ndvi_short"), NDVI_VIS),
-                ),
-            )
-        )
+        sepal_map.set_center(*DEMO_CENTER, 11)
 
     async def add_radar_layer():
-        """Add the Sentinel-1 composite; same loop rule as the NDVI layer."""
+        """Add the Sentinel-1 composite; same loop rule as the NDVI layer.
+
+        Its style has three bands and no palette, so the layer gets its own legend.
+        """
         await sepal_map.add_ee_layer_async(
             radar_composite(),
             vis_params=RADAR_VIS,
             name=msg("layers.radar"),
             key=RADAR_LAYER_ID,
+            legend=band_legend(RADAR_BANDS),
         )
-        sepal_map.center = RADAR_CENTER
-        sepal_map.zoom = 11
-        layer_legends.set(
-            upsert_legends(
-                layer_legends.value,
-                LayerLegend(RADAR_LAYER_ID, msg("layers.radar"), band_legend(RADAR_BANDS)),
-            )
-        )
+        sepal_map.set_center(*RADAR_CENTER, 10)
 
     ndvi_task = solara.lab.use_task(
         add_ndvi_layer, dependencies=None, raise_error=False, prefer_threaded=False
@@ -93,19 +78,21 @@ def use_layer_tools(sepal_map, layer_legends, outputs) -> list:
     radar_btn_props = use_task_button(radar_task, on_start=radar_task)
 
     def add_pmtiles_layer():
-        """Add vector tiles, which the layer control drives without Earth Engine."""
-        sepal_map.add_layer(
-            PMTilesLayer(name=msg("layers.pmtiles"), url=PMTILES_URL, style=PMTILES_STYLE),
-            key=PMTILES_LAYER_ID,
+        """Add vector tiles, which the layer panel drives without Earth Engine."""
+        sepal_map.layer_store.add(
+            LayerSpec(
+                id=PMTILES_LAYER_ID,
+                name=msg("layers.pmtiles"),
+                source=VectorSource(uri=PMTILES_URL, format="PMTiles", layer=PMTILES_SOURCE_LAYER),
+                style=PMTILES_STYLE,
+            ),
+            replace=True,
         )
-        sepal_map.center = PMTILES_CENTER
-        sepal_map.zoom = 14
+        sepal_map.set_center(*PMTILES_CENTER, 13)
 
     def remove_all_layers():
         sepal_map.remove_all()
-        sepal_map.center = DEMO_CENTER
-        sepal_map.zoom = 5
-        layer_legends.set(())
+        sepal_map.set_center(*DEMO_CENTER, 4)
         outputs.set(None)
 
     app_model = solara.use_memo(AppModel, [])

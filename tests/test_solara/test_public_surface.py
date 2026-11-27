@@ -39,6 +39,7 @@ SEALED_SURFACE = frozenset(
         "setup_theme_colors",
         "track_task",
         "use_notifications",
+        "use_sepal_map",
         "use_theme_dark",
         "with_sepal_sessions",
     }

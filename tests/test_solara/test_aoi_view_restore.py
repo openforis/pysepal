@@ -10,11 +10,13 @@ import solara
 
 import pysepal.solara.components.aoi.admin as admin_mod
 import pysepal.solara.components.aoi.aoi_view as aoi_view_mod
+from pysepal import mapping as sm
 from pysepal.message import msg
 from pysepal.solara.components.aoi.aoi_spec import AoiSpec
 from pysepal.solara.components.aoi.aoi_view import AoiView
 
-from ._harness import find_by_label, of_type, render_and_drain, wait_until
+from ._draw_helpers import HOLE, SQUARE, mount
+from ._harness import find_by_label, of_type, render_and_drain, wait_until, walk
 
 DATA = Path(__file__).resolve().parents[1] / "data" / "aoi_manual" / "manual_polygons.geojson"
 pytestmark = pytest.mark.usefixtures("empty_file_browser")
@@ -214,7 +216,7 @@ def test_autoselect_false_leaves_the_map_untouched(monkeypatch):
         )
 
     def _has_aoi_layer(*_):
-        return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
+        return "aoi" in sepal_map.layer_store
 
     render_and_drain(_Harness, _has_aoi_layer, timeout=0.5)
 
@@ -224,7 +226,7 @@ def test_autoselect_false_leaves_the_map_untouched(monkeypatch):
 def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
     """Clear must take the geometry off the map, not just the state.
 
-    Vector AOIs are added with ``key="aoi"`` but keep the file stem as their
+    Vector AOIs are added with the id ``aoi`` but keep the file stem as their
     ``name``, so matching cleanup on the name left the polygon behind.
     """
     monkeypatch.setattr(admin_mod, "fetch_admin_items", _fake_items)
@@ -243,7 +245,7 @@ def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
         )
 
     def _has_aoi_layer(*_):
-        return any(getattr(layer, "key", None) == "aoi" for layer in sepal_map.layers)
+        return "aoi" in sepal_map.layer_store
 
     async def run():
         _root, rc = reacton.render(_Harness(), handle_error=False)
@@ -257,25 +259,29 @@ def test_clearing_removes_the_aoi_layer_from_the_map(monkeypatch):
     asyncio.run(run())
 
 
-def test_restoring_another_method_removes_the_draw_control():
-    from unittest.mock import Mock
+def _polygon_spec(*rings, name="drawn"):
+    geo_json = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {"type": "Polygon", "coordinates": list(rings)},
+            }
+        ],
+    }
+    return AoiSpec(method="DRAW", name=name, geo_json=geo_json)
 
-    import traitlets
 
-    class _Draw(traitlets.HasTraits):
-        data = traitlets.List()
+def _draw_map():
+    map_ = sm.SepalMap(gee=False)
+    mount(map_)
+    return map_
 
-        def clear(self):
-            self.data = []
 
-    draw = _Draw()
-    map_ = SimpleNamespace(gee=False, dc=draw, controls=[], layers=[])
-    map_.add_control = map_.controls.append
-    map_.remove_control = map_.controls.remove
-    map_.remove_layer = Mock()
-    spec = solara.reactive(
-        AoiSpec(method="DRAW", geo_json={"type": "FeatureCollection", "features": [{"id": "a"}]})
-    )
+def test_restoring_a_draw_spec_seeds_the_drawing_and_leaving_it_removes_the_tools():
+    map_ = _draw_map()
+    spec = solara.reactive(_polygon_spec(SQUARE))
 
     @solara.component
     def Harness():
@@ -284,12 +290,78 @@ def test_restoring_another_method_removes_the_draw_control():
     async def run():
         root, rc = reacton.render(Harness(), handle_error=False)
         try:
-            assert draw in map_.controls
-            assert draw.data == [{"id": "a"}]
+            assert map_.draw_request["seq"] > 0
+            assert len(map_.draw_request["features"]) == 1
+            assert map_.draw.modes == ("polygon", "rectangle", "circle", "select")
+            seeded = map_.draw._session
             spec.set(AoiSpec(method="SHAPE", pathname=str(DATA)))
             assert _method_select(root).v_model == "SHAPE"
-            assert draw not in map_.controls
-            assert draw.data == []
+            assert not seeded.active and map_.draw._session is None
+            assert map_.draw.modes == ()
+            assert map_.draw.features["features"] == []
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+def test_a_holed_draw_spec_still_restores_the_aoi_without_editable_features():
+    map_ = _draw_map()
+    held = solara.reactive(None)
+    spec = _polygon_spec(SQUARE, HOLE)
+
+    @solara.component
+    def Harness():
+        AoiView(spec=spec, value=held, gee=False, map_=map_)
+
+    async def run():
+        _root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            await wait_until(lambda: held.value is not None and "aoi" in map_.layer_store)
+            assert map_.draw.features["features"] == []
+            assert map_.draw.modes
+            assert held.value.spec.geo_json["features"][0]["geometry"]["coordinates"] == [
+                SQUARE,
+                HOLE,
+            ]
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("autoselect", [True, False])
+def test_a_second_restore_with_a_holed_polygon_submits_the_second_geometry(autoselect):
+    map_ = _draw_map()
+    held = solara.reactive(None)
+    first = _polygon_spec(SQUARE, name="first")
+    second = _polygon_spec(SQUARE, HOLE, name="second")
+    spec = solara.reactive(first)
+
+    @solara.component
+    def Harness():
+        AoiView(spec=spec, value=held, gee=False, map_=map_, autoselect=autoselect)
+
+    async def run():
+        root, rc = reacton.render(Harness(), handle_error=False)
+        try:
+            if autoselect:
+                await wait_until(lambda: held.value is not None)
+            spec.set(second)
+            if autoselect:
+                await wait_until(lambda: held.value is not None and held.value.name == "second")
+            else:
+                button = next(
+                    b for b in of_type(root, "Btn") if msg("aoi_sel.btn") in (b.children or [])
+                )
+                assert not button.disabled
+                next(w for w in walk(root) if hasattr(w, "vue_submit")).vue_submit(None)
+                await wait_until(lambda: held.value is not None)
+            assert held.value.name == "second"
+            assert held.value.spec.geo_json["features"][0]["geometry"]["coordinates"] == [
+                SQUARE,
+                HOLE,
+            ]
         finally:
             rc.close()
 

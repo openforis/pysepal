@@ -1,200 +1,977 @@
 """Test the SepalMap object."""
 
-import json
+import asyncio
+import functools
+import inspect
 import math
 import random
 from pathlib import Path
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import ee
 import geopandas as gpd
-import ipyvuetify as v
 import pytest
-from ipyleaflet import GeoJSON
+import traitlets
+from mapframe import MapWidget, tile_urls
 from shapely.geometry import box
 
-from pysepal import aoi
-from pysepal import mapping as sm
+import pysepal.mapping.sepal_map as sepal_map_module
 from pysepal.frontend import styles as ss
-from pysepal.mapping.basemaps import basemap_tiles, xyz_tiles
-from pysepal.mapping.legend_control import LegendControl
+from pysepal.layers import (
+    GeeSource,
+    LayerSpec,
+    LayerStore,
+    Legend,
+    LegendItem,
+    RenderLayer,
+    VectorStyle,
+)
+from pysepal.mapping import LayerHandle
+from pysepal.mapping.basemaps import BASEMAP_NAMES, get_basemap, xyz_tiles
+from pysepal.mapping.maplibre_engine import MapLibreEngine
+from pysepal.mapping.sepal_map import SepalMap
 from pysepal.mapping.visualization import get_viz_params
 from pysepal.scripts.gee_interface import GEEInterface
-from pysepal.solara.theme import ThemeState
+from pysepal.solara.theme import ThemeState, get_current_theme_state
+from tests._kernel_contexts import kernel_contexts  # noqa: F401
+from tests.test_solara._harness import wait_until
 
 # create a seed so that we can check values
 random.seed(42)
 
+TILES = "https://tiles.test/{}/{{z}}/{{x}}/{{y}}.png"
 
-def test_init() -> None:
-    """Init a Sepal Map."""
-    # check that the map start with no info
-    m = sm.SepalMap()
-    id1 = m._id  # to check that the next map has another ID
 
-    assert isinstance(m, sm.SepalMap)
-    assert m.center == [0, 0]
-    assert m.zoom == 3
-    assert len(m.layers) == 2
+def layer_of(m: SepalMap, layer_id: str) -> Optional[dict]:
+    """The published state of one layer."""
+    return next((x for x in m.state.get("layers", ()) if x["id"] == layer_id), None)
 
-    default_basemaps = ["SEPAL Dark", "SEPAL Light"]
 
-    # Get current theme
-    dark_theme = bool(v.theme.dark)
+def ids_of(m: SepalMap) -> list:
+    return [x["id"] for x in m.state.get("layers", ())]
 
-    # The basemap will change depending on the current theme.
-    assert m.layers[0].name == default_basemaps[not dark_theme]
 
-    # check that the map start with several basemaps
+def msg(m: SepalMap, **content) -> None:
+    """Send a message as a view would."""
+    m._handle_custom_msg(content, [])
 
-    # xyz_tiles keys, so that an upstream provider needing a key cannot take
-    # these out of basemap_tiles the way it took CartoDB out (#1044).
-    basemaps = ["ROADMAP", "TERRAIN"]
-    names = [basemap_tiles[b].name for b in basemaps]
-    m = sm.SepalMap(basemaps)
-    assert len(m.layers) == 3
-    layers_name = [layer.name for layer in m.layers]
-    assert all(n in layers_name for n in names)
 
-    # the caller's order has to survive, as only the first one is left visible
-    assert layers_name[: len(names)] == names
-    assert m.layers[0].visible
-    assert not m.layers[1].visible
+def drawn_tiles(m: SepalMap, layer_id: str, bounds=None, **kw) -> LayerSpec:
+    """Add a tile layer whose render, seeded in the engine, knows ``bounds``."""
+    spec = LayerSpec.from_tiles(TILES.format(layer_id), name=layer_id, id=layer_id, **kw)
+    m.layer_engine.put(
+        RenderLayer(
+            render_hash=spec.render_hash, kind="raster-xyz", url=spec.source.url, bounds=bounds
+        )
+    )
+    m.layer_store.add(spec, replace=True)
+    return spec
 
-    # duplicates are dropped without disturbing that order
-    m = sm.SepalMap([basemaps[1], basemaps[0], basemaps[1]])
-    assert [layer.name for layer in m.layers][:2] == [names[1], names[0]]
 
-    # check that the map start with a DC
-    m = sm.SepalMap(dc=True)
-    assert m._id != id1
-    assert m.dc in m.controls
+def drawn_ee(m: SepalMap, gee_spec: LayerSpec, layer_id: str) -> LayerSpec:
+    """Add an Earth Engine image whose bounds are only known to Earth Engine."""
+    # its own expression, so that no two layers share a render
+    source = GeeSource(expr={"layer": layer_id}, kind="Image")
+    spec = gee_spec.model_copy(update={"id": layer_id, "name": layer_id, "source": source})
+    url = f"https://ee.test/{layer_id}/{{z}}/{{x}}/{{y}}"
+    m.layer_engine.put(
+        RenderLayer(
+            render_hash=spec.render_hash, kind="raster-xyz", url=url, ee_object=f"ee:{layer_id}"
+        )
+    )
+    m.layer_store.add(spec)
+    return spec
 
-    # check that the map starts with a vinspector
-    m = sm.SepalMap(vinspector=True)
-    assert m.v_inspector in m.controls
 
-    # check that the map start with a statebar
-    m = sm.SepalMap(statebar=True)
-    assert m.state in m.controls
+class SlowGee:
+    """An interface whose async bounds lookup waits for ``gate``."""
 
-    # check that a wrong layer raise an error if it's not part of the leaflet basemap list
-    with pytest.raises(Exception):
-        m = sm.SepalMap(["TOTO"])
+    def __init__(self, answer) -> None:
+        """Keep the answer to give."""
+        self.answer = answer
+        self.gate = asyncio.Event()
+        self.calls = 0
 
-    return
+    def get_bounds(self, item):
+        self.calls += 1
+        return self.answer
+
+    async def get_bounds_async(self, item):
+        self.calls += 1
+        await self.gate.wait()
+        return self.answer
+
+
+# -- the widget ------------------------------------------------------------------------------
+
+
+def test_is_a_map_widget() -> None:
+    m = SepalMap(gee=False)
+
+    assert isinstance(m, MapWidget)
+    assert isinstance(m.layer_engine, MapLibreEngine) and isinstance(m.layer_store, LayerStore)
+    assert m.state["controls"] == {
+        "zoom": True,
+        "fullscreen": False,
+        "scale": True,
+        "coordinates": False,
+        "globe": True,
+    }
+    assert m.height == "400px"
+    assert (m.view_request["center"], m.view_request["zoom"]) == ([0.0, 0.0], 3.0)
+
+    # center is (lng, lat)
+    m = SepalMap(gee=False, fullscreen=True, fullscreen_control=True, center=(10, 20), zoom=5)
+    assert m.state["controls"]["fullscreen"] is True
+    assert m.height == "100%"
+    assert (m.view_request["center"], m.view_request["zoom"]) == ([10.0, 20.0], 5.0)
+
+
+def test_an_empty_supplied_store_is_kept() -> None:
+    store = LayerStore()
+    assert SepalMap(gee=False, layer_store=store).layer_store is store
+
+
+def test_positional_options_raise() -> None:
+    # the second positional argument used to be dc, then gee: it is keyword-only now
+    with pytest.raises(TypeError):
+        SepalMap([], False)
+
+    m = SepalMap(gee=False)
+    # the second positional argument of remove_layer used to be base
+    with pytest.raises(TypeError):
+        m.remove_layer("x", True)
+
+
+@pytest.mark.parametrize(
+    "member",
+    ["add_layer", "add_control", "layers", "viewport_inset_left", "canvas_width_px"],
+)
+def test_removed_members_point_at_the_guide(member) -> None:
+    with pytest.raises(AttributeError, match="migrating-to-pysepal-5"):
+        getattr(SepalMap(gee=False), member)
 
 
 def test_set_center() -> None:
     """Check the center can be updated."""
-    m = sm.SepalMap()
+    m = SepalMap(gee=False)
 
     lat = random.randint(-90, 90)
     lng = random.randint(-180, 180)
     zoom = random.randint(0, 22)
     m.set_center(lng, lat, zoom)
 
-    assert m.zoom == zoom
-    assert m.center == [lat, lng]
+    assert m.view_request["center"] == [lng, lat]
+    assert m.view_request["zoom"] == zoom
 
-    return
+    m.setCenter(lng=1, lat=2)
+    assert m.view_request["center"] == [1, 2]
+
+
+def test_link_group_kwarg() -> None:
+    assert SepalMap(gee=False, link_group="g").link_group == "g"
+
+
+def test_link_views_is_gone() -> None:
+    import pysepal.mapping
+
+    assert not hasattr(pysepal.mapping, "link_views")
+
+
+# -- basemaps ---------------------------------------------------------------------------------
+
+
+def test_default_basemap_follows_the_theme() -> None:
+    for mode, name in [("light", "SEPAL_LIGHT"), ("dark", "SEPAL_DARK")]:
+        m = SepalMap(gee=False, theme_state=ThemeState(mode=mode))
+        assert (m.basemaps, m.basemap) == ((name,), name)
+        assert m.state["basemap"]["tiles"] == list(get_basemap(name).tiles)
+
+    # the kernel's theme when no state is given
+    name = "SEPAL_DARK" if get_current_theme_state().dark else "SEPAL_LIGHT"
+    assert SepalMap(gee=False).basemaps == (name,)
+
+
+def test_basemaps_keep_the_caller_order() -> None:
+    # xyz_tiles keys, so that an upstream provider needing a key cannot take them out (#1044)
+    m = SepalMap(["ROADMAP", "TERRAIN", "ROADMAP"], gee=False)
+
+    assert (m.basemaps, m.basemap) == (("ROADMAP", "TERRAIN"), "ROADMAP")
+    assert m.state["basemap"]["tiles"] == list(get_basemap("ROADMAP").tiles)
+
+    with pytest.raises(ValueError):
+        SepalMap(["TOTO"], gee=False)
+
+
+def test_theme_switch_swaps_the_sepal_choice_and_keeps_a_third_party_pick() -> None:
+    theme = ThemeState(mode="light")
+    m = SepalMap(["SEPAL_LIGHT", "OpenStreetMap"], gee=False, theme_state=theme)
+
+    theme.set_mode("dark")
+    assert (m.basemaps, m.basemap) == (("SEPAL_DARK", "OpenStreetMap"), "SEPAL_DARK")
+    assert m.state["basemap"]["tiles"] == list(get_basemap("SEPAL_DARK").tiles)
+
+    m.basemap = "OpenStreetMap"
+    theme.set_mode("light")
+    assert (m.basemaps, m.basemap) == (("SEPAL_LIGHT", "OpenStreetMap"), "OpenStreetMap")
+    assert m.state["basemap"]["tiles"] == list(get_basemap("OpenStreetMap").tiles)
+
+
+def test_theme_switch_keeps_both_sepal_choices() -> None:
+    theme = ThemeState(mode="light")
+    choices = ("SEPAL_LIGHT", "OpenStreetMap", "SEPAL_DARK")
+    m = SepalMap(list(choices), gee=False, theme_state=theme)
+
+    theme.set_mode("dark")
+    assert (m.basemaps, m.basemap) == (choices, "SEPAL_DARK")
+    assert m.state["basemap"]["tiles"] == list(get_basemap("SEPAL_DARK").tiles)
+
+    theme.set_mode("light")
+    assert (m.basemaps, m.basemap) == (choices, "SEPAL_LIGHT")
+
+    m.basemap = "OpenStreetMap"
+    theme.set_mode("dark")
+    assert (m.basemaps, m.basemap) == (choices, "OpenStreetMap")
+
+
+def test_basemap_observer_never_sees_an_invalid_pair() -> None:
+    theme = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=theme)
+    pairs = []
+    m.observe(lambda _: pairs.append((m.basemaps, m.basemap)), names=["basemaps", "basemap"])
+
+    m.add_basemap("HYBRID")
+    theme.set_mode("dark")
+    m.basemap = "SEPAL_DARK"
+    m.add_basemap("OpenStreetMap")
+
+    assert pairs and all(current in choices for choices, current in pairs)
+    final = (("SEPAL_DARK", "HYBRID", "OpenStreetMap"), "OpenStreetMap")
+    assert (m.basemaps, m.basemap) == final
+
+    with pytest.raises(traitlets.TraitError):
+        m.basemap = "ROADMAP"  # not among the choices
+    with pytest.raises(traitlets.TraitError):
+        m.basemaps = ("ROADMAP",)  # leaves the current one out
+    with pytest.raises(ValueError):
+        m.add_basemap("TOTO")
+    assert (m.basemaps, m.basemap) == final
+
+
+def test_add_basemap() -> None:
+    m = SepalMap(gee=False, theme_state=ThemeState(mode="light"))
+    m.add_basemap("HYBRID")
+
+    assert (m.basemaps, m.basemap) == (("SEPAL_LIGHT", "HYBRID"), "HYBRID")
+    assert m.state["basemap"]["tiles"] == list(get_basemap("HYBRID").tiles)
+
+    # a choice already there is made current, not repeated
+    m.add_basemap("SEPAL_LIGHT")
+    assert (m.basemaps, m.basemap) == (("SEPAL_LIGHT", "HYBRID"), "SEPAL_LIGHT")
+
+
+def test_get_basemap_list() -> None:
+    """Every key SepalMap will accept as a basemap has to be listed (#1044)."""
+    res = SepalMap.get_basemap_list()
+
+    assert res == list(BASEMAP_NAMES)
+    assert all(key in res for key in xyz_tiles)
+
+
+@pytest.mark.parametrize(
+    "member,replacement",
+    [
+        ("dc", "m.draw.begin(modes) and the DrawSession it returns"),
+        ("show_dc", "m.draw.begin(modes)"),
+        ("hide_dc", "end() on the DrawSession that m.draw.begin(modes) returns"),
+        ("v_inspector", "SepalMap(inspector=True) shown in a MapView"),
+        ("on_interaction", "m.on_click(callback)"),
+    ],
+)
+def test_removed_member_messages(member, replacement) -> None:
+    with pytest.raises(AttributeError) as error:
+        getattr(SepalMap(gee=False), member)
+    assert replacement in str(error.value)
+
+
+def test_draw_color_follows_theme() -> None:
+    state = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=state)
+    assert m.draw.color == ss.THEMES[False]["info"]
+    state.set_mode("dark")
+    assert m.draw.color == ss.THEMES[True]["info"]
+    assert SepalMap(gee=False, theme_state=state).draw.color == ss.THEMES[True]["info"]
+
+
+def test_coordinates_control() -> None:
+    assert SepalMap(gee=False).state["controls"]["coordinates"] is False
+    assert SepalMap(gee=False, coordinates=True).state["controls"]["coordinates"] is True
+
+
+def test_inspector_is_none_by_default() -> None:
+    assert SepalMap(gee=False).inspector is None
+
+
+# -- theme ------------------------------------------------------------------------------------
+
+
+def test_map_theme_trait_follows_its_own_theme_state() -> None:
+    light, dark = ThemeState(mode="light"), ThemeState(mode="dark")
+    a, b = SepalMap(gee=False, theme_state=light), SepalMap(gee=False, theme_state=dark)
+    seen = []
+    a.observe(lambda change: seen.append(change["new"]), "theme")
+    assert (a.theme, b.theme) == ("light", "dark")
+    assert (a.state["theme"], b.state["theme"]) == ("light", "dark")
+
+    light.set_mode("dark")
+    assert (a.theme, a.state["theme"], seen) == ("dark", "dark", ["dark"])
+    assert b.theme == "dark"
+
+    dark.set_mode("light")
+    assert (a.theme, b.theme) == ("dark", "light")
+
+    a.bind_theme_state(ThemeState(mode="light"))
+    assert (a.theme, a.state["theme"]) == ("light", "light")
+
+
+def test_the_map_theme_is_read_only() -> None:
+    m = SepalMap(gee=False, theme_state=ThemeState(mode="light"))
+    with pytest.raises(traitlets.TraitError):
+        m.theme = "dark"
+    assert (m.theme, m.state["theme"]) == ("light", "light")
+
+
+def _dark_observers(source):
+    """Return the handlers ``source`` will call when ``dark`` changes."""
+    return source._trait_notifiers.get("dark", {}).get("change", [])
+
+
+def test_a_closed_map_stops_following_its_theme_state() -> None:
+    theme_state = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=theme_state)
+    m.close()
+
+    theme_state.set_mode("dark")
+
+    assert m.theme == "light"
+
+
+def test_a_closed_map_stops_following_the_kernel_theme() -> None:
+    """The default source is the kernel's theme, which outlives every map built in it."""
+    m = SepalMap(gee=False)
+    m.close()
+
+    theme = get_current_theme_state()
+    assert not [h for h in _dark_observers(theme) if getattr(h, "__self__", None) is m]
+
+
+def test_a_map_without_theme_state_follows_the_kernel_theme(kernel_contexts) -> None:  # noqa: F811
+    """Solara gives each kernel its own theme; ``ipyvuetify.theme`` is one for the process."""
+    first, second = kernel_contexts(), kernel_contexts()
+    with second:
+        get_current_theme_state().set_mode("dark")
+        b = SepalMap(gee=False)
+    with first:
+        theme = get_current_theme_state()
+        a = SepalMap(gee=False)
+    assert (a.theme, b.theme) == ("light", "dark")
+
+    theme.set_mode("dark")
+    assert (a.theme, b.theme) == ("dark", "dark")
+    with second:
+        get_current_theme_state().set_mode("light")
+    assert (a.theme, b.theme) == ("dark", "light")
+
+    with first:
+        a.bind_theme_state(ThemeState(mode="light"))
+        a.bind_theme_state(None)
+    assert a._theme_source is theme and a.theme == "dark"
+    a.close()
+    b.close()
+
+
+def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
+    """The bound method traitlets keeps is what holds the map."""
+    theme_state = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=theme_state)
+    m.close()
+
+    assert not [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is m]
+
+
+# -- close ------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("part", ["theme", "inspector", "engine"])
+def test_close_reaches_the_widget_close_when_a_part_raises(part, monkeypatch, caplog) -> None:
+    """Solara closes a kernel's widgets in one loop: a raise would leak the kernel."""
+    theme_state = ThemeState(mode="light")
+    m = SepalMap(gee=False, inspector=True, theme_state=theme_state)
+    m.inspector.activate()
+    owner = {"theme": m, "inspector": m.inspector, "engine": m.layer_engine}[part]
+    name = "_unbind_theme_source" if part == "theme" else "close"
+
+    def broken() -> None:
+        raise RuntimeError(f"{part} broke")
+
+    monkeypatch.setattr(owner, name, broken)
+    with caplog.at_level("ERROR", logger="sepalui.mapping"):
+        m.close()
+
+    assert f"{part} broke" in caplog.text
+    assert m.comm is None and m._callbacks._closed
+    assert part == "inspector" or not m.inspector.active
+    assert part == "engine" or m.layer_engine._closed
+    observers = [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is m]
+    assert part == "theme" or not observers
+
+
+def test_close_logs_a_failing_widget_close(monkeypatch, caplog) -> None:
+    m = SepalMap(gee=False)
+
+    def broken(self) -> None:
+        raise RuntimeError("widget broke")
+
+    monkeypatch.setattr(MapWidget, "close", broken)
+    with caplog.at_level("ERROR", logger="sepalui.mapping"):
+        m.close()
+
+    assert "widget broke" in caplog.text
+    assert m.layer_engine._closed
+    monkeypatch.undo()
+    m.close()
+
+
+@pytest.fixture
+def square_gdf() -> gpd.GeoDataFrame:
+    """A small square around the Vatican."""
+    return gpd.GeoDataFrame(geometry=[box(12.445, 41.899, 12.459, 41.909)], crs="EPSG:4326")
+
+
+def test_a_vector_without_a_stroke_follows_the_map_theme(square_gdf) -> None:
+    """The AOI takes the theme the map is bound to, not the process-global palette."""
+    theme_state = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=theme_state)
+    m.layer_store.add(LayerSpec.from_geojson(square_gdf, id="aoi", name="aoi", zone="overlay"))
+
+    paint = layer_of(m, "aoi")["paint"]
+    assert paint["stroke"] == paint["fill"] == ss.THEMES[False]["primary"]
+
+    theme_state.set_mode("dark")
+    paint = layer_of(m, "aoi")["paint"]
+    assert paint["stroke"] == paint["fill"] == ss.THEMES[True]["primary"]
+
+
+def test_a_vector_with_its_own_stroke_ignores_the_theme(square_gdf) -> None:
+    theme_state = ThemeState(mode="light")
+    m = SepalMap(gee=False, theme_state=theme_state)
+    style = VectorStyle(stroke="#ff0000", fill="#ff0000")
+    m.layer_store.add(LayerSpec.from_geojson(square_gdf, id="aoi", name="aoi", style=style))
+
+    theme_state.set_mode("dark")
+    paint = layer_of(m, "aoi")["paint"]
+    assert (paint["stroke"], paint["fill"]) == ("#ff0000", "#ff0000")
+
+
+# -- layers -----------------------------------------------------------------------------------
+
+
+def test_add_raster_returns_a_handle_drawn_in_state(rgb: Path) -> None:
+    m = SepalMap(gee=False)
+
+    h = m.add_raster(rgb, layer_name="rgb")
+
+    assert isinstance(h, LayerHandle) and (h.id, h.name) == ("rgb", "rgb")
+    _, render = m.layer_engine.accepted("rgb")
+    layer = layer_of(m, "rgb")
+    assert layer["kind"] == "raster" and layer["zone"] == "data"
+    assert layer["source"]["tiles"] == list(tile_urls(render.url))
+    assert m.find_layer("rgb") == h
+
+
+def test_add_raster_puts_its_legend_on_the_spec(rgb: Path) -> None:
+    m = SepalMap(gee=False)
+    own = Legend(title="own", items=[LegendItem(label="a", color="#ff0000")])
+
+    h = m.add_raster(rgb, layer_name="rgb", legend=own)
+
+    assert h.legend == own
+    assert m.layer_store.get("rgb").legend == own
+
+
+def test_add_raster_async_puts_its_legend_on_the_spec(rgb: Path) -> None:
+    m = SepalMap(gee=False)
+    own = Legend(title="own")
+
+    h = asyncio.run(m.add_raster_async(rgb, layer_name="rgb", legend=own))
+
+    assert h.legend == own
+
+
+@pytest.mark.asyncio
+async def test_add_ee_layer_puts_its_legend_on_the_spec(gee_spec, monkeypatch) -> None:
+    def render(spec):
+        url = "https://ee.test/{z}/{x}/{y}"
+        return RenderLayer(render_hash=spec.render_hash, kind="raster-xyz", url=url)
+
+    async def prepare(spec, **kw):
+        return render(spec)
+
+    monkeypatch.setattr(sepal_map_module, "prepare", prepare)
+    monkeypatch.setattr(sepal_map_module, "prepare_sync", lambda spec, **kw: render(spec))
+    monkeypatch.setattr(SepalMap, "_ee_spec", lambda self, *args, **kwargs: gee_spec)
+    own = Legend(title="own")
+    m = SepalMap(gee=False)
+    m.gee_interface = None
+
+    assert (await m.add_ee_layer_async(None, legend=own)).legend == own
+    assert m.add_ee_layer(None, legend=Legend(title="sync")).legend == Legend(title="sync")
+    assert m.add_ee_layer(None).legend is None
+
+
+def test_add_raster(rgb: Path, byte: Path) -> None:
+    """Add raster files to the map."""
+    m = SepalMap(gee=False)
+
+    m.add_raster(rgb, layer_name="rgb")
+    m.add_raster(byte, layer_name="byte")
+
+    assert m.layer_store.ids == ["byte", "rgb"]
+    assert ids_of(m) == ["byte", "rgb"]
+    assert m.find_layer("byte").name == "byte"
+
+
+def test_find_layer_uses_drawing_order() -> None:
+    m = SepalMap(gee=False)
+    store = m.layer_store
+    store.add(LayerSpec.from_tiles(TILES.format("o"), name="x", id="o", zone="overlay"))
+    store.add(LayerSpec.from_tiles(TILES.format("d"), name="x", id="d"))
+    store.add(LayerSpec.from_tiles(TILES.format("z"), name="d", id="z"))
+    assert store.ids == ["z", "d", "o"]
+
+    # a name: the first in drawing order, the overlay zone before the data zone
+    assert m.find_layer("x") == LayerHandle(m, "o")
+    # an id beats a name
+    assert m.find_layer("d") == LayerHandle(m, "d")
+    assert m.find_layer(LayerHandle(m, "z")) == LayerHandle(m, "z")
+    assert m.find_layer("nothing") is None
+
+
+def test_remove_layer_rejects_a_handle_from_another_store() -> None:
+    a, b = SepalMap(gee=False), SepalMap(gee=False)
+    a.layer_store.add(LayerSpec.from_tiles(TILES.format("t"), name="t", id="t"))
+    h = a.find_layer("t")
+
+    with pytest.raises(ValueError):
+        b.remove_layer(h)
+    with pytest.raises(ValueError):
+        b.find_layer(h)
+    with pytest.raises(ValueError):
+        b.remove_layer("t")
+    b.remove_layer("t", none_ok=True)
+    assert "t" in a.layer_store
+
+    a.remove_layer(h)
+    assert "t" not in a.layer_store
+
+
+def test_remove_all_covers_both_zones() -> None:
+    m = SepalMap(gee=False)
+    store = m.layer_store
+    store.add(LayerSpec.from_tiles(TILES.format("o"), name="o", id="o", zone="overlay"))
+    store.add(LayerSpec.from_tiles(TILES.format("d"), name="d", id="d"))
+    store.add(LayerSpec.from_tiles(TILES.format("k"), name="kept", id="k"))
+    store.reserve("p", "pending")
+
+    m.remove_all(keep_names=["kept"])
+
+    assert store.ids == ["k"] and store.reserved() == {}
+    assert ids_of(m) == ["k"]
+
+
+@pytest.mark.asyncio
+async def test_overlay_goes_through_reservations(gee_spec, monkeypatch) -> None:
+    gate = asyncio.Event()
+
+    async def slow_prepare(spec, **kw):
+        await gate.wait()
+        url = "https://ee.test/{z}/{x}/{y}"
+        return RenderLayer(render_hash=spec.render_hash, kind="raster-xyz", url=url)
+
+    monkeypatch.setattr(sepal_map_module, "prepare", slow_prepare)
+    monkeypatch.setattr(SepalMap, "_ee_spec", lambda self, *args, **kwargs: gee_spec)
+    m = SepalMap(gee=False)
+    m.gee_interface = None
+
+    # remove_all during an async overlay add: nothing lands
+    pending = asyncio.create_task(m.add_ee_layer_async(None, overlay=True))
+    await wait_until(lambda: gee_spec.id in m.layer_store.reserved())
+    m.remove_all()
+    gate.set()
+    assert await pending is None
+    assert gee_spec.id not in m.layer_store and m.layer_store.reserved() == {}
+
+    # without one it lands in the overlay zone
+    handle = await m.add_ee_layer_async(None, overlay=True)
+    m.layer_engine.flush()
+    assert handle == LayerHandle(m, gee_spec.id)
+    assert m.layer_store.get(gee_spec.id).zone == "overlay"
+    assert layer_of(m, gee_spec.id)["zone"] == "overlay"
+
+
+@pytest.mark.asyncio
+async def test_closed_map_commits_no_pending_add(byte, monkeypatch) -> None:
+    gates = []
+
+    async def slow_prepare(spec, **kw):
+        gate = asyncio.Event()
+        gates.append(gate)
+        await gate.wait()
+        return sepal_map_module.prepare_sync(spec, **kw)
+
+    monkeypatch.setattr(sepal_map_module, "prepare", slow_prepare)
+    store = LayerStore()
+    m = SepalMap(gee=False, layer_store=store)
+    store.reserve("other", "Other")  # another writer's pending add
+    pending = asyncio.create_task(m.add_raster_async(byte, key="k"))
+    await wait_until(lambda: len(gates) == 1)
+
+    m.close()
+    gates[0].set()
+
+    assert await pending is None
+    assert "k" not in store and store.reserved() == {"other": "Other"}
+    assert await m.add_raster_async(byte, key="late") is None
+    assert "late" not in store and len(gates) == 1
+
+
+# -- zoom -------------------------------------------------------------------------------------
+
+
+def test_zoom_bounds_passes_padding() -> None:
+    m = SepalMap(gee=False)
+    assert m.zoom_bounds((10, 10, 20, 20)) is m
+    assert m.view_request["bounds"] == [10, 10, 20, 20]
+    assert (m.view_request["padding"], m.view_request["max_zoom"]) == (20, 18)
+    assert "zoom_out" not in m.view_request
+
+    m.zoom_bounds((10, 10, 20, 20), padding=40)
+    assert (m.view_request["padding"], m.view_request["max_zoom"]) == (40, 18)
+
+
+def test_zooms_fly_as_the_map_says(byte: Path) -> None:
+    m = SepalMap(gee=False)
+    assert m.animate is True
+    assert "animate" not in m.view_request, "the first camera jumps"
+
+    m.zoom_bounds((10, 10, 20, 20))
+    assert m.view_request["animate"] is True
+    m.zoom_bounds((10, 10, 20, 20), animate=False)
+    assert "animate" not in m.view_request
+
+    h = m.add_raster(byte, fit_bounds=False)
+    assert h.zoom() == "moved" and m.view_request["animate"] is True
+    m.zoom_raster(h, animate=False)
+    assert "animate" not in m.view_request
+
+    m.animate = False
+    m.zoom_layer(h.id)
+    assert "animate" not in m.view_request
+    m.zoom_layer(h.id, animate=True)
+    assert m.view_request["animate"] is True
+
+    assert SepalMap(gee=False, animate=False).animate is False
+
+
+def test_set_center_and_fit_bounds_fly_as_the_map_says() -> None:
+    # an app centering after a click is a zoom the user started
+    m = SepalMap(gee=False)
+    m.set_center(0, 0, 4)
+    assert m.view_request["animate"] is True
+    m.fit_bounds((10, 10, 20, 20))
+    assert m.view_request["animate"] is True
+    m.set_center(0, 0, 4, animate=False)
+    assert "animate" not in m.view_request
+
+    m.animate = False
+    m.fit_bounds((10, 10, 20, 20))
+    assert "animate" not in m.view_request
+    m.set_center(0, 0, 4, animate=True)
+    assert m.view_request["animate"] is True
+
+
+def test_the_globe_button_shows_unless_asked_not_to() -> None:
+    assert SepalMap(gee=False).state["controls"]["globe"] is True
+    assert SepalMap(gee=False, globe_control=False).state["controls"]["globe"] is False
+
+
+def test_python_turns_the_map_into_a_globe() -> None:
+    m = SepalMap(gee=False, globe_control=False)
+    assert m.projection == "mercator"
+    m.set_projection("globe")
+    assert m.projection == "globe"
+
+
+def test_zoom_methods_take_padding_by_keyword() -> None:
+    m = SepalMap(gee=False)
+    with pytest.raises(TypeError):
+        m.zoom_bounds((10, 10, 20, 20), 2)
+    with pytest.raises(TypeError):
+        m.zoom_layer("x", 2)
+    with pytest.raises(TypeError):
+        m.zoom_raster("x", 2)
+    parameter = inspect.signature(SepalMap.zoom_ee_object.__wrapped__).parameters["padding"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_point_fit_stops_at_18() -> None:
+    m = SepalMap(gee=False)
+    m.zoom_bounds((12.5, 41.9, 12.5, 41.9))
+    assert m.view_request["bounds"] == [12.5, 41.9, 12.5, 41.9]
+    assert m.view_request["max_zoom"] == 18
+
+
+def test_zoom_raster(byte: Path) -> None:
+    m = SepalMap(gee=False)
+    h = m.add_raster(byte, fit_bounds=False)
+    _, render = m.layer_engine.accepted(h.id)
+    fit = list(render.bounds)
+
+    assert m.zoom_raster(h) is m
+    assert m.view_request["bounds"] == fit
+
+    m.set_center(0, 0)
+    m.zoom_raster(h.id)
+    assert m.view_request["bounds"] == fit
+
+    # a file is read with rioxarray
+    m.set_center(0, 0)
+    m.zoom_raster(byte)
+    assert m.view_request["bounds"] == pytest.approx(fit, abs=0.01)
+
+
+def test_zoom_layer_passes_the_engine_outcome_through(gee_spec) -> None:
+    m = SepalMap(gee=False)
+    drawn_tiles(m, "b", (1.0, 1.0, 2.0, 2.0))
+    drawn_tiles(m, "nb")
+    drawn_ee(m, gee_spec, "ee")
+
+    assert m.zoom_layer("missing") == "missing"
+    assert m.zoom_layer("nb") == "no_bounds"
+    assert m.zoom_layer("ee") == "failed"  # no Earth Engine interface to ask
+    assert m.zoom_layer("b") == "moved"
+    assert m.view_request["bounds"] == [1.0, 1.0, 2.0, 2.0]
+    assert m.find_layer("b").zoom() == "moved"
+
+
+@pytest.mark.asyncio
+async def test_slow_zoom_is_superseded_by_a_newer_one(gee_spec) -> None:
+    m = SepalMap(gee=False)
+    gee = SlowGee((10.0, 10.0, 20.0, 20.0))
+    m.layer_engine.gee_interface = gee
+    drawn_ee(m, gee_spec, "a")
+    drawn_tiles(m, "b", (1.0, 1.0, 2.0, 2.0))
+
+    slow = asyncio.create_task(m.zoom_layer_async("a"))
+    await wait_until(lambda: gee.calls == 1)
+    assert await m.zoom_layer_async("b") == "moved"
+    gee.gate.set()
+
+    assert await slow == "superseded"
+    assert m.view_request["bounds"] == [1.0, 1.0, 2.0, 2.0]
+
+
+class GatedGee:
+    """Answers each async bounds lookup when its own gate opens."""
+
+    def __init__(self) -> None:
+        """Start with no lookup."""
+        self.gates: dict = {}
+
+    async def get_bounds_async(self, item):
+        gate = self.gates[item] = asyncio.Event()
+        await gate.wait()
+        west = float(item.removeprefix("ee:a"))
+        return (west, 0.0, west + 1, 1.0)
+
+
+@pytest.mark.asyncio
+async def test_an_older_zoom_answering_first_is_superseded(gee_spec) -> None:
+    """Two slow zooms: the first click's answer comes first, the second click wins."""
+    m = SepalMap(gee=False)
+    gee = GatedGee()
+    m.layer_engine.gee_interface = gee
+    drawn_ee(m, gee_spec, "a1")
+    drawn_ee(m, gee_spec, "a2")
+
+    first = asyncio.create_task(m.zoom_layer_async("a1"))
+    second = asyncio.create_task(m.zoom_layer_async("a2"))
+    await wait_until(lambda: len(gee.gates) == 2)
+    gee.gates["ee:a1"].set()
+    assert await first == "superseded"
+    gee.gates["ee:a2"].set()
+
+    assert await second == "moved"
+    assert m.view_request["bounds"] == [2.0, 0.0, 3.0, 1.0]
+
+
+@pytest.mark.asyncio
+async def test_slow_zoom_loses_to_a_direct_fit_bounds(gee_spec) -> None:
+    m = SepalMap(gee=False)
+    gee = SlowGee((10.0, 10.0, 20.0, 20.0))
+    m.layer_engine.gee_interface = gee
+    drawn_ee(m, gee_spec, "a")
+
+    slow = asyncio.create_task(m.zoom_layer_async("a"))
+    await wait_until(lambda: gee.calls == 1)
+    m.fit_bounds((1.0, 1.0, 2.0, 2.0))
+    gee.gate.set()
+
+    assert await slow == "superseded"
+    assert m.view_request["bounds"] == [1.0, 1.0, 2.0, 2.0]
+
+    # the lookup is cached, and nothing newer runs: the zoom moves
+    assert await m.zoom_layer_async("a") == "moved"
+    assert m.view_request["bounds"] == [10.0, 10.0, 20.0, 20.0]
+
+
+@pytest.mark.asyncio
+async def test_stale_no_bounds_is_superseded(gee_spec) -> None:
+    m = SepalMap(gee=False)
+    gee = SlowGee((-180.0, -90.0, 180.0, 90.0))  # unbounded
+    m.layer_engine.gee_interface = gee
+    drawn_ee(m, gee_spec, "a")
+    seq = m.view_request["seq"]
+
+    slow = asyncio.create_task(m.zoom_layer_async("a"))
+    await wait_until(lambda: gee.calls == 1)
+    drawn_tiles(m, "a", (1.0, 1.0, 2.0, 2.0))  # replaced under the same id
+    gee.gate.set()
+
+    assert await slow == "superseded"
+    assert m.view_request["seq"] == seq
+    assert await m.zoom_layer_async("a") == "moved"
+
+
+@pytest.mark.asyncio
+async def test_a_closed_map_supersedes_its_pending_zoom(gee_spec) -> None:
+    m = SepalMap(gee=False)
+    gee = SlowGee((10.0, 10.0, 20.0, 20.0))
+    m.layer_engine.gee_interface = gee
+    drawn_ee(m, gee_spec, "a")
+
+    slow = asyncio.create_task(m.zoom_layer_async("a"))
+    await wait_until(lambda: gee.calls == 1)
+    m.close()
+    gee.gate.set()
+
+    assert await slow == "superseded"
+
+
+def test_get_scale_before_and_after_a_report() -> None:
+    m = SepalMap(gee=False, center=(0, 0), zoom=0)
+    assert math.isclose(m.get_scale(), 78271.517)
+    assert m.getScale() == m.get_scale()
+
+    msg(m, type="view_open", view_id="v", side="main")
+    msg(
+        m,
+        type="view_report",
+        view_id="v",
+        request_seq=1,
+        center=[10.0, 60.0],
+        zoom=2.0,
+        bounds=[0.0, 50.0, 20.0, 70.0],
+        cause="user",
+    )
+    assert math.isclose(m.get_scale(), 78271.517 * 0.5 / 4)
+
+
+# -- review focus -----------------------------------------------------------------------------
+
+
+def test_shared_store_two_maps(rgb) -> None:
+    store = LayerStore()
+    a, b = SepalMap(gee=False, layer_store=store), SepalMap(gee=False, layer_store=store)
+    a.add_raster(rgb, layer_name="r")
+    assert [layer["id"] for layer in b.state["layers"]] == ["r"]
+
+    a.close()
+    store.set_visible("r", False)
+    assert b.state["layers"][0]["visible"] is False and "r" in store
+
+
+def test_shared_store_tile_error_clears_with_its_map() -> None:
+    """One map headless, the other mounted with a tile error."""
+    store = LayerStore()
+    quiet, shown = SepalMap(gee=False, layer_store=store), SepalMap(gee=False, layer_store=store)
+    store.add(LayerSpec.from_tiles(TILES.format("t"), name="t", id="t"))
+    assert store.view("t").status == "ready"
+
+    msg(shown, type="view_open", view_id="v", side="main")
+    drawn = layer_of(shown, "t")
+    msg(
+        shown,
+        type="status",
+        view_id="v",
+        side="main",
+        id="t",
+        token=drawn["token"],
+        instance=drawn["instance"],
+        status="error",
+        error="tile 500",
+    )
+    assert (store.view("t").status, store.view("t").error) == ("error", "tile 500")
+
+    shown.close()
+    assert (store.view("t").status, store.view("t").error) == ("ready", "")
+    store.set_opacity("t", 0.3)
+    assert layer_of(quiet, "t")["opacity"] == 0.3
+
+
+# -- Earth Engine -----------------------------------------------------------------------------
 
 
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_zoom_ee_object() -> None:
+def test_zoom_ee_object_passes_padding() -> None:
     """Check we can zoom on a GEE object."""
-    # init objects
-    m = sm.SepalMap()
+    m = SepalMap()
     ee_object = ee.FeatureCollection("FAO/GAUL/2015/level0").filter(
         ee.Filter.eq("ADM0_NAME", "France")
     )
 
-    # zoom without zoom out
     m.zoom_ee_object(ee_object.geometry())
+    west, south, east, north = m.view_request["bounds"]
+    assert ((west + east) / 2, (south + north) / 2) == pytest.approx((2.5, 46.5), abs=5)
+    assert m.view_request["padding"] == 20
 
-    assert m.center == pytest.approx([46.5, 2.5], abs=0.5)
-    assert m.zoom == 5.0
-
-    # zoom with a zoom_out option
-    m.zoom_ee_object(ee_object.geometry(), 3)
-
-    assert m.zoom == pytest.approx(4, abs=1)
-
-    return
+    m.zoom_ee_object(ee_object.geometry(), padding=40)
+    assert m.view_request["padding"] == 40
 
 
-def test_zoom_bounds() -> None:
-    """Check we can zoom on bounds.
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_center_object_follows_the_gee_console() -> None:
+    m = SepalMap()
+    geometry = ee.Geometry.Rectangle([0, 40, 10, 50])
 
-    When specified in the same order as in shapely bounds method.
-    """
-    # init objects
-    m = sm.SepalMap()
-    bounds = [
-        45.73871293893269,  # minx
-        4.9050034976367,  # miny
-        45.7746437385302,  # maxx
-        4.9050034976367,  # maxy
-    ]
+    assert m.centerObject(geometry, 3) is m
+    request = m.view_request
+    assert request["zoom"] == 3
+    assert request["center"] == pytest.approx([5, 45], abs=1)
 
-    # zoom without zoom_out
-    m.zoom_bounds(bounds)
-
-    # it works but we cannot test pure JS from here
-    # assert m.zoom == 14.0
-
-    # zoom with zoom_out
-    m.zoom_bounds(bounds, 5)
-
-    # it works but we cannot test pure JS from here
-    # assert m.zoom == 10.0
-
-    return
-
-
-def test_add_raster(rgb: Path, byte: Path) -> None:
-    """Add raster files to the map.
-
-    Args:
-        rgb: the path to a rgb image (3 bands)
-        byte: the path to a byte image (1 band)
-    """
-    m = sm.SepalMap()
-
-    # add a rgb layer to the map
-    m.add_raster(rgb, layer_name="rgb")
-    layer = m.find_layer("rgb")
-    assert layer.name == "rgb"
-    assert layer.key == "rgb"
-    assert type(layer).__name__ == "BoundTileLayer"
-
-    # add a byte layer
-    m.add_raster(byte, layer_name="byte")
-    layer = m.find_layer("byte")
-    assert layer.name == "byte"
-    assert layer.key == "byte"
-
-    return
-
-
-def test_add_colorbar() -> None:
-    """Add a colorbar to the map."""
-    # create a map and add a colorbar
-    m = sm.SepalMap()
-    m.add_colorbar(colors=["#fc8d59", "#ffffbf", "#91bfdb"], vmin=0, vmax=5)
-
-    assert len(m.controls) == 5  # only thing I can check
-
-    return
+    m.centerObject(geometry)
+    assert m.view_request["padding"] == 20
+    assert "bounds" in m.view_request
 
 
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_add_ee_layer_exceptions() -> None:
     """Check exceptions are raised on ee_layer method."""
-    map_ = sm.SepalMap()
+    map_ = SepalMap()
 
     # Test add a non ee map element
     with pytest.raises(AttributeError):
@@ -217,38 +994,28 @@ def test_add_ee_layer_exceptions() -> None:
     with pytest.raises(TypeError):
         map_.addLayer(geometry, {"invalid_propery": "red", "fillColor": None})
 
-    return
-
 
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_add_ee_layer(image_id: str) -> None:
-    """Add a GEE layer on the map.
-
-    Args:
-        image_id: the AssetId of the Daniel W. image
-    """
-    # create map and image
+    """Add a GEE layer on the map."""
     image = ee.Image(image_id)
-    m = sm.SepalMap()
+    m = SepalMap()
 
     # display all the viz available in the image
     for viz in get_viz_params(image, m.gee_interface).values():
         m.addLayer(image, {}, viz["name"], viz_name=viz["name"])
 
-    assert len(m.layers) == 6
+    assert len(m.layer_store) == 4
 
     # display an image without properties
-    m = sm.SepalMap()
-
+    m = SepalMap()
     dataset = ee.Image("CSP/ERGo/1_0/Global/ALOS_mTPI")
     dataset = ee.Image().addBands(dataset)  # with all bands and 0 properties
-    m.addLayer(dataset)
-
-    assert len(m.layers) == 3
+    assert isinstance(m.addLayer(dataset), LayerHandle)
+    assert len(m.layer_store) == 1
 
     # Test with vector
-
     geometry = ee.FeatureCollection(
         ee.Geometry.Polygon(
             [
@@ -261,39 +1028,15 @@ def test_add_ee_layer(image_id: str) -> None:
             ],
         )
     )
-
-    map_ = sm.SepalMap()
+    map_ = SepalMap()
     map_.addLayer(geometry, {"color": "red", "fillColor": None})
-
-    assert len(m.layers) == 3
-
-    return
-
-
-def test_get_basemap_list() -> None:
-    """Every key SepalMap will accept as a basemap has to be listed.
-
-    Named providers used to stand in for "some upstream basemaps"; xyzservices
-    withdrew the whole CARTO family behind an API key in 2026.9.1 and the
-    stand-ins became a failing test (#1044). The list is asserted against its
-    two real sources instead.
-    """
-    res = sm.SepalMap.get_basemap_list()
-
-    assert all(key in res for key in xyz_tiles)
-    assert set(sm.basemaps.get_xyz_dict()) <= set(res)
-
-    return
+    assert len(map_.layer_store) == 1
 
 
 @pytest.mark.gee
 @pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
 def test_get_viz_params(image_id: str) -> None:
-    """Check I identify all the viz parameter from Daniel W. asset.
-
-    Args:
-        image_id: the AssetId of the GEE image
-    """
+    """Check I identify all the viz parameter from Daniel W. asset."""
     image = ee.Image(image_id)
     with GEEInterface() as gee_interface:
         res = get_viz_params(image, gee_interface)
@@ -343,340 +1086,12 @@ def test_get_viz_params(image_id: str) -> None:
 
     assert res == expected
 
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_remove_layer(ee_map_with_layers: sm.SepalMap) -> None:
-    """Remove a specific layer from the map.
-
-    Args:
-        ee_map_with_layers: a map supporting multiple ee assets tile layer
-    """
-    m = ee_map_with_layers
-
-    # remove using a layer without counting the base
-    m.remove_layer(0)
-    assert len(m.layers) == 5
-    assert m.layers[0].base is True
-
-    # remove when authorizing selection of bases
-    m.remove_layer(0, base=True)
-    assert len(m.layers) == 4
-    assert len([ly for ly in m.layers if ly.base is True]) == 0
-    # assert m.layers[0].name == "NDWI harmonics"
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_remove_all(ee_map_with_layers: sm.SepalMap) -> None:
-    """Remove all layers from the map.
-
-    Args:
-        ee_map_with_layers: a map supporting multiple ee assets tile layer
-    """
-    m = ee_map_with_layers
-
-    m.remove_all()
-    assert len(m.layers) == 1
-
-    m.remove_all(base=True)
-    assert len(m.layers) == 0
-
-    return
-
-
-def test_add_layer() -> None:
-    """Add geojson layer to the map."""
-    m = sm.SepalMap()
-
-    polygon = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [
-                            [-80.37597656249999, 25.720735134412106],
-                            [-66.181640625, 18.312810846425442],
-                            [-64.8193359375, 32.10118973232094],
-                            [-80.37597656249999, 25.720735134412106],
-                        ]
-                    ],
-                },
-            }
-        ],
-    }
-
-    # Arrange without style and requesting default hover.
-    geojson = GeoJSON(data=polygon, name="geojson data")
-
-    # Act
-    m.add_layer(geojson, hover=True)
-
-    # Assert
-    new_layer = m.layers[-1]
-
-    layer_style = json.loads((ss.JSON_DIR / "layer.json").read_text())["layer"]
-    hover_style = json.loads((ss.JSON_DIR / "layer_hover.json").read_text())
-
-    assert all([new_layer.style[k] == v for k, v in layer_style.items()])
-    assert all([new_layer.hover_style[k] == v for k, v in hover_style.items()])
-    assert new_layer.name == "geojson data"
-    assert new_layer.key == "geojson_data"
-
-    # Arrange with style
-    layer_style = {"color": "blue"}
-    layer_hover_style = {"color": "red"}
-    geojson = GeoJSON(data=polygon, style=layer_style, hover_style=layer_hover_style)
-
-    # Act
-    m.add_layer(geojson)
-
-    # Assert
-    new_layer = m.layers[-1]
-
-    assert new_layer.style == layer_style
-    assert new_layer.hover_style == layer_hover_style
-
-    return
-
-
-def test_add_basemap() -> None:
-    """Add a basemap to the map."""
-    m = sm.SepalMap()
-    m.add_basemap("HYBRID")
-
-    assert len(m.layers) == 3
-    layer = m.find_layer("Google Satellite", base=True)
-    assert layer.name == "Google Satellite"
-    assert layer.base is True
-
-    # check that a wrong layer raise an error if it's not part of the leaflet basemap list
-    with pytest.raises(Exception):
-        m.add_basemap("TOTO")
-
-    return
-
-
-def test_get_scale():
-    """Get the scale of a map."""
-    m = sm.SepalMap()
-    m.zoom = 5
-
-    assert math.isclose(m.get_scale(), 4891.97)
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_find_layer(ee_map_with_layers: sm.SepalMap) -> None:
-    """Find a layer in a map.
-
-    Args:
-        ee_map_with_layers: a map supporting multiple ee assets tile layer
-    """
-    m = ee_map_with_layers
-
-    # search by name
-    res = m.find_layer("Classification")
-    assert res.name == "Classification"
-
-    # assert the two ways of handling non existing layer
-    with pytest.raises(ValueError):
-        res = m.find_layer("toto")
-    res = m.find_layer("toto", none_ok=True)
-    assert res is None
-
-    # search by index
-    res = m.find_layer(1)
-    assert res.name == "RGB"
-
-    res = m.find_layer(-1)
-    assert res.name == "Classification"
-
-    # out of bounds
-    with pytest.raises(ValueError):
-        res = m.find_layer(50)
-
-    # search by layer name
-    res = m.find_layer(m.layers[3])
-    assert res.name == "NDWI harmonics"
-
-    # search by layer key
-    res = m.find_layer(m.layers[3].key)
-    assert res.name == "NDWI harmonics"
-
-    # search including the basemap
-    res = m.find_layer(0, base=True)
-    assert "SEPAL" in res.name
-    assert res.base is True
-
-    # search something that is not a key
-    with pytest.raises(ValueError):
-        m.find_layer(m)
-
-    return
-
-
-def test_zoom_raster(byte: Path) -> None:
-    """Check that we can zoom on a raster.
-
-    Args:
-        byte: the path to the image
-    """
-    m = sm.SepalMap()
-    layer = m.add_raster(byte)
-    m.zoom_raster(layer)
-
-    center = [33.89703655465772, -117.63458938969723]
-    assert all([math.isclose(s, t, rel_tol=0.2) for s, t in zip(m.center, center)])
-
-    # it works but we cannot test pure JS from here
-    # assert m.zoom == 15.0
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_add_legend(ee_map_with_layers: sm.SepalMap) -> None:
-    """Add a legend to the map.
-
-    Args:
-        ee_map_with_layers: a map supporting multiple ee assets tile layer
-    """
-    legend_dict = {
-        "forest": "#b3842e",
-        "non forest": "#a1458e",
-        "secondary": "#324a88",
-        "success": "#3f802a",
-        "info": "#79b1c9",
-        "warning": "#b8721d",
-    }
-
-    ee_map_with_layers.add_legend(legend_dict=legend_dict)
-
-    # just test that is a Legend, the rest is tested by Legend
-    assert isinstance(ee_map_with_layers.legend, LegendControl)
-    assert ee_map_with_layers.legend.legend_dict == legend_dict
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_add_ee_layer_autocenter_sync() -> None:
-    """Test that autocenter calls zoom_bounds with expected bbox in sync add_ee_layer."""
-    # Arrange
-    m = sm.SepalMap()
-    ee_object = ee.Geometry.Rectangle([-180, -90, 180, 90])
-
-    # Mock the extent get_bounds computes for the object (per-feature-bbox, #996)
-    m.gee_interface.get_bounds = MagicMock(return_value=(-180, -90, 180, 90))
-    m.gee_interface.get_map_id = MagicMock(
-        return_value={"tile_fetcher": MagicMock(url_format="http://test")}
-    )
-
-    # Mock zoom_bounds to track if it's called
-    with patch.object(m, "zoom_bounds") as mock_zoom_bounds:
-        # Act
-        m.add_ee_layer(ee_object, autocenter=True, name="test_layer")
-
-        # Assert - zoom_bounds should be called with the expected bbox
-        mock_zoom_bounds.assert_called_once_with((-180, -90, 180, 90))
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-@pytest.mark.asyncio
-async def test_add_ee_layer_autocenter_async() -> None:
-    """Test that autocenter calls zoom_bounds with expected bbox in async add_ee_layer_async."""
-    # Arrange
-    m = sm.SepalMap()
-    ee_object = ee.Geometry.Rectangle([-180, -90, 180, 90])
-
-    # Mock the extent get_bounds_async computes for the object (per-feature-bbox, #996)
-    m.gee_interface.get_bounds_async = AsyncMock(return_value=(-180, -90, 180, 90))
-    m.gee_interface.get_map_id_async = AsyncMock(
-        return_value={"tile_fetcher": MagicMock(url_format="http://test")}
-    )
-
-    # Mock zoom_bounds to track if it's called
-    with patch.object(m, "zoom_bounds") as mock_zoom_bounds:
-        # Act
-        await m.add_ee_layer_async(ee_object, autocenter=True, name="test_layer")
-
-        # Assert - zoom_bounds should be called with the expected bbox
-        mock_zoom_bounds.assert_called_once_with((-180, -90, 180, 90))
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-def test_add_ee_layer_no_autocenter_sync() -> None:
-    """Test that zoom_bounds is not called when autocenter=False in sync add_ee_layer."""
-    # Arrange
-    m = sm.SepalMap()
-    ee_object = ee.Geometry.Rectangle([-180, -90, 180, 90])
-
-    # Mock gee_interface methods
-    m.gee_interface.get_info = MagicMock(return_value=[])
-    m.gee_interface.get_map_id = MagicMock(
-        return_value={"tile_fetcher": MagicMock(url_format="http://test")}
-    )
-
-    # Mock zoom_bounds to track if it's called
-    with patch.object(m, "zoom_bounds") as mock_zoom_bounds:
-        # Act
-        m.add_ee_layer(ee_object, autocenter=False, name="test_layer")
-
-        # Assert - zoom_bounds should NOT be called
-        mock_zoom_bounds.assert_not_called()
-
-    return
-
-
-@pytest.mark.gee
-@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
-@pytest.mark.asyncio
-async def test_add_ee_layer_no_autocenter_async() -> None:
-    """Test that zoom_bounds is not called when autocenter=False in async add_ee_layer_async."""
-    # Arrange
-    m = sm.SepalMap()
-    ee_object = ee.Geometry.Rectangle([-180, -90, 180, 90])
-
-    # Mock gee_interface async methods
-    m.gee_interface.get_info_async = AsyncMock(return_value=[])
-    m.gee_interface.get_map_id_async = AsyncMock(
-        return_value={"tile_fetcher": MagicMock(url_format="http://test")}
-    )
-
-    # Mock zoom_bounds to track if it's called
-    with patch.object(m, "zoom_bounds") as mock_zoom_bounds:
-        # Act
-        await m.add_ee_layer_async(ee_object, autocenter=False, name="test_layer")
-
-        # Assert - zoom_bounds should NOT be called
-        mock_zoom_bounds.assert_not_called()
-
-    return
-
 
 @pytest.fixture(scope="function")
-def ee_map_with_layers(image_id: str) -> sm.SepalMap:
+def ee_map_with_layers(image_id: str) -> SepalMap:
     """A sepalMap supporting each combo band from the asset."""
     image = ee.Image(image_id)
-    m = sm.SepalMap()
+    m = SepalMap()
 
     # display all the viz available in the image
     for viz in get_viz_params(image, m.gee_interface).values():
@@ -685,97 +1100,147 @@ def ee_map_with_layers(image_id: str) -> sm.SepalMap:
     return m
 
 
-def _dark_observers(source):
-    """Return the handlers ``source`` will call when ``dark`` changes."""
-    return source._trait_notifiers.get("dark", {}).get("change", [])
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_remove_layer(ee_map_with_layers: SepalMap) -> None:
+    """Remove a specific layer from the map."""
+    m = ee_map_with_layers
+
+    m.remove_layer("Classification")
+    assert len(m.layer_store) == 3 and m.find_layer("Classification") is None
+
+    m.remove_layer(m.layer_store.ids[0])
+    assert len(m.layer_store) == 2
 
 
-def test_a_closed_map_stops_following_its_theme_state() -> None:
-    theme_state = ThemeState(mode="light")
-    map_ = sm.SepalMap(theme_state=theme_state)
-    map_.close()
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_remove_all(ee_map_with_layers: SepalMap) -> None:
+    """Remove all layers from the map."""
+    m = ee_map_with_layers
 
-    classes = tuple(map_._dom_classes)
-    theme_state.set_mode("dark")
+    m.remove_all(keep_names=["RGB"])
+    assert [spec.name for spec in m.layer_store.specs()] == ["RGB"]
 
-    assert tuple(map_._dom_classes) == classes
-
-
-def test_a_closed_map_stops_following_the_global_vuetify_theme() -> None:
-    """The default source is ``v.theme``, process-global and never collected.
-
-    A map that keeps observing it is retained for the life of the process,
-    which the per-kernel theme store does not help with.
-    """
-    map_ = sm.SepalMap()
-    map_.close()
-
-    assert not [h for h in _dark_observers(v.theme) if getattr(h, "__self__", None) is map_]
+    m.remove_all()
+    assert len(m.layer_store) == 0
 
 
-def test_a_closed_map_is_not_referenced_by_its_theme_state() -> None:
-    """The bound method traitlets keeps is what holds the map."""
-    theme_state = ThemeState(mode="light")
-    map_ = sm.SepalMap(theme_state=theme_state)
-    map_.close()
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_find_layer(ee_map_with_layers: SepalMap) -> None:
+    """Find a layer in a map."""
+    m = ee_map_with_layers
 
-    assert not [h for h in _dark_observers(theme_state) if getattr(h, "__self__", None) is map_]
+    # search by name
+    res = m.find_layer("Classification")
+    assert isinstance(res, LayerHandle) and res.name == "Classification"
 
+    # a missing layer
+    assert m.find_layer("toto") is None
 
-@pytest.fixture
-def square_gdf() -> gpd.GeoDataFrame:
-    """A small square around the Vatican."""
-    return gpd.GeoDataFrame(geometry=[box(12.445, 41.899, 12.459, 41.909)], crs="EPSG:4326")
+    # search by key, and by handle
+    assert m.find_layer(res.id) == res
+    assert m.find_layer(res) == res
 
-
-def _aoi_model_layer(gdf: gpd.GeoDataFrame) -> GeoJSON:
-    model = aoi.AoiModel(gee=False)
-    model.gdf, model.name = gdf, "square"
-    return model.get_ipygeojson()
-
-
-@pytest.mark.parametrize("build", [sm.get_ipygeojson, _aoi_model_layer])
-def test_a_geojson_aoi_follows_the_map_theme(build, square_gdf: gpd.GeoDataFrame) -> None:
-    """The AOI takes the theme the map is bound to, not the process-global palette."""
-    theme_state = ThemeState(mode="light")
-    m = sm.SepalMap(gee=False, theme_state=theme_state)
-    m.add_layer(build(square_gdf), key="aoi")
-    layer = m.find_layer("aoi")
-
-    assert layer.style["color"] == layer.style["fillColor"] == ss.LIGHT_THEME["primary"]
-
-    theme_state.set_mode("dark")
-    assert layer.style["color"] == layer.style["fillColor"] == ss.DARK_THEME["primary"]
-    assert layer.style["fillOpacity"] == 0.4
+    # search something that is not a key
+    with pytest.raises(TypeError):
+        m.find_layer(m)
 
 
-def test_a_geojson_aoi_with_its_own_style_ignores_the_theme(square_gdf: gpd.GeoDataFrame) -> None:
-    theme_state = ThemeState(mode="light")
-    m = sm.SepalMap(gee=False, theme_state=theme_state)
-    style = {"color": "#ff0000", "fillColor": "#ff0000"}
-    m.add_layer(sm.get_ipygeojson(square_gdf, style=style), key="aoi")
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_add_ee_layer_autocenter_sync() -> None:
+    """Autocenter fits the bounds Earth Engine computes for the object."""
+    m = SepalMap()
+    ee_object = ee.Geometry.Rectangle([1, 2, 3, 4])
 
-    theme_state.set_mode("dark")
-    assert m.find_layer("aoi").style == style
+    # Mock the extent get_bounds computes for the object (per-feature-bbox, #996)
+    m.gee_interface.get_bounds = MagicMock(return_value=(1, 2, 3, 4))
+    m.gee_interface.get_map_id = MagicMock(
+        return_value={"tile_fetcher": MagicMock(url_format="http://test/{z}/{x}/{y}")}
+    )
+
+    m.add_ee_layer(ee_object, autocenter=True, name="test_layer")
+
+    assert m.view_request["bounds"] == [1, 2, 3, 4]
 
 
-def test_a_themed_layer_changes_before_the_basemap_swap() -> None:
-    """Replacing the basemap makes the frontend rebuild every layer view above it.
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+async def test_add_ee_layer_autocenter_async() -> None:
+    """Autocenter fits the bounds Earth Engine computes for the object."""
+    m = SepalMap()
+    ee_object = ee.Geometry.Rectangle([1, 2, 3, 4])
 
-    A view rebuilt before its new url arrives keeps the old tiles: ipyleaflet's
-    refresh skips tiles that are still loading.
-    """
-    theme_state = ThemeState(mode="light")
-    m = sm.SepalMap(gee=False, theme_state=theme_state)
-    layer = sm.EELayer(ee_object=None, url="light", theme_urls={False: "light", True: "dark"})
-    m.add_layer(layer, key="aoi")
-    events = []
-    layer.observe(lambda _: events.append("url"), "url")
-    m.observe(lambda _: events.append("layers"), "layers")
+    m.gee_interface.get_bounds_async = AsyncMock(return_value=(1, 2, 3, 4))
+    m.gee_interface.get_map_id_async = AsyncMock(
+        return_value={"tile_fetcher": MagicMock(url_format="http://test/{z}/{x}/{y}")}
+    )
 
-    theme_state.set_mode("dark")
+    await m.add_ee_layer_async(ee_object, autocenter=True, name="test_layer")
 
-    assert events.index("url") < events.index("layers")
+    assert m.view_request["bounds"] == [1, 2, 3, 4]
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+async def test_add_ee_layer_autocenter_from_a_worker_thread() -> None:
+    """Off the loop's thread the engine takes the layer later: the fit does not wait for it."""
+    m = SepalMap()
+    m.gee_interface.get_bounds = MagicMock(return_value=(1, 2, 3, 4))
+    m.gee_interface.get_map_id = MagicMock(
+        return_value={"tile_fetcher": MagicMock(url_format="http://test/{z}/{x}/{y}")}
+    )
+    add = functools.partial(m.add_ee_layer, autocenter=True, name="test_layer")
+
+    for _ in range(5):
+        before = m.view_request["seq"]
+        await asyncio.to_thread(add, ee.Geometry.Rectangle([1, 2, 3, 4]))
+        assert m.view_request["seq"] == before + 1
+        assert m.view_request["bounds"] == [1, 2, 3, 4]
+    await m.layer_engine.wait_idle()
+    assert m.layer_store.ids == ["test_layer"]
+    m.close()
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_add_ee_layer_no_autocenter_sync() -> None:
+    """No camera request when autocenter=False in sync add_ee_layer."""
+    m = SepalMap()
+    ee_object = ee.Geometry.Rectangle([-180, -90, 180, 90])
+
+    m.gee_interface.get_info = MagicMock(return_value=[])
+    m.gee_interface.get_map_id = MagicMock(
+        return_value={"tile_fetcher": MagicMock(url_format="http://test/{z}/{x}/{y}")}
+    )
+    seq = m.view_request["seq"]
+
+    m.add_ee_layer(ee_object, autocenter=False, name="test_layer")
+
+    assert m.view_request["seq"] == seq
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+@pytest.mark.asyncio
+async def test_add_ee_layer_no_autocenter_async() -> None:
+    """No camera request when autocenter=False in add_ee_layer_async."""
+    m = SepalMap()
+    ee_object = ee.Geometry.Rectangle([-180, -90, 180, 90])
+
+    m.gee_interface.get_info_async = AsyncMock(return_value=[])
+    m.gee_interface.get_map_id_async = AsyncMock(
+        return_value={"tile_fetcher": MagicMock(url_format="http://test/{z}/{x}/{y}")}
+    )
+    seq = m.view_request["seq"]
+
+    await m.add_ee_layer_async(ee_object, autocenter=False, name="test_layer")
+
+    assert m.view_request["seq"] == seq
 
 
 def _fake_map_id(image: ee.Image, vis_params: dict) -> dict:
@@ -788,8 +1253,8 @@ def _tile_url(color: Optional[str]) -> str:
     return f"https://tiles.test/{color}/{{z}}/{{x}}/{{y}}"
 
 
-def _offline_gee_map(theme_state: ThemeState) -> sm.SepalMap:
-    m = sm.SepalMap(theme_state=theme_state)
+def _offline_gee_map(theme_state: ThemeState) -> SepalMap:
+    m = SepalMap(theme_state=theme_state)
     m.gee_interface.get_info = MagicMock(return_value=[])
     m.gee_interface.get_info_async = AsyncMock(return_value=[])
     m.gee_interface.get_map_id = MagicMock(side_effect=_fake_map_id)
@@ -797,14 +1262,20 @@ def _offline_gee_map(theme_state: ThemeState) -> sm.SepalMap:
     return m
 
 
-async def _add_ee_layer(m: sm.SepalMap, sync: bool, *args) -> None:
+async def _add_ee_layer(m: SepalMap, sync: bool, *args) -> None:
     if sync:
         m.add_ee_layer(*args)
     else:
         await m.add_ee_layer_async(*args)
 
 
-def _map_id_calls(m: sm.SepalMap, sync: bool) -> int:
+def _drawn_url(m: SepalMap, layer_id: str) -> str:
+    """The tile URL the browser gets for a layer."""
+    m.layer_engine.flush()
+    return layer_of(m, layer_id)["source"]["tiles"][0]
+
+
+def _map_id_calls(m: SepalMap, sync: bool) -> int:
     mock = m.gee_interface.get_map_id if sync else m.gee_interface.get_map_id_async
     return mock.call_count
 
@@ -818,15 +1289,14 @@ async def test_an_ee_vector_in_the_default_colour_follows_the_map_theme(sync: bo
     theme_state = ThemeState(mode="light")
     m = _offline_gee_map(theme_state)
     await _add_ee_layer(m, sync, ee.FeatureCollection(ee.Geometry.Point(0, 0)), {}, "aoi")
-    layer = m.find_layer("aoi")
 
-    assert layer.url == _tile_url(ss.LIGHT_THEME["primary"])
+    assert _drawn_url(m, "aoi") == _tile_url(ss.LIGHT_THEME["primary"])
 
     theme_state.set_mode("dark")
-    assert layer.url == _tile_url(ss.DARK_THEME["primary"])
+    assert _drawn_url(m, "aoi") == _tile_url(ss.DARK_THEME["primary"])
 
     theme_state.set_mode("light")
-    assert layer.url == _tile_url(ss.LIGHT_THEME["primary"])
+    assert _drawn_url(m, "aoi") == _tile_url(ss.LIGHT_THEME["primary"])
 
 
 @pytest.mark.gee
@@ -840,7 +1310,8 @@ async def test_an_ee_vector_with_its_own_colour_is_rendered_once(sync: bool) -> 
     await _add_ee_layer(m, sync, fc, {"color": "#ff0000"}, "aoi")
 
     theme_state.set_mode("dark")
-    assert m.find_layer("aoi").url == _tile_url("#ff0000")
+    # the layer spec hands Earth Engine its colours as bare hex
+    assert _drawn_url(m, "aoi") == _tile_url("ff0000")
     assert _map_id_calls(m, sync) == 1
 
 
@@ -855,5 +1326,33 @@ async def test_an_ee_image_is_rendered_once_without_a_colour(sync: bool) -> None
     await _add_ee_layer(m, sync, ee.Image(1), {"min": 0, "max": 1}, "image")
 
     theme_state.set_mode("dark")
-    assert m.find_layer("image").url == _tile_url(None)
+    assert _drawn_url(m, "image") == _tile_url(None)
     assert _map_id_calls(m, sync) == 1
+
+
+@pytest.mark.gee
+@pytest.mark.skipif(not ee.data.is_initialized(), reason="GEE is not set")
+def test_an_ee_overlay_draws_above_the_data_layers(byte) -> None:
+    m = SepalMap()
+    fc = ee.FeatureCollection([ee.Feature(ee.Geometry.Point([0, 0]).buffer(1000))])
+    m.add_ee_layer(fc, {}, "aoi", overlay=True)
+    m.add_raster(byte, key="data")
+
+    assert m.layer_store.ids == ["data", "aoi"]
+    assert ids_of(m) == ["aoi", "data"]
+    assert layer_of(m, "aoi")["zone"] == "overlay"
+
+
+def test_compare_property() -> None:
+    m = SepalMap(gee=False)
+    assert m.compare is False
+    m.compare = True
+    assert m.compare is True
+    assert m.state["compare"] is True
+    with pytest.raises(TypeError):
+        m.compare = "yes"
+
+
+def test_half_built_map_reads_compare() -> None:
+    m = SepalMap.__new__(SepalMap)
+    assert m.compare is False

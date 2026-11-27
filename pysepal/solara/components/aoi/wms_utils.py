@@ -5,9 +5,9 @@ Helper functions for creating and managing WMS preview layers on maps.
 
 from typing import Any
 
-from ipyleaflet import WMSLayer
-
+from pysepal.layers import LayerSpec, TileSource
 from pysepal.solara.components.aoi.constants import (
+    AOI_PREVIEW_LAYER_ID,
     FAO_GAUL_LAYERS,
     FAO_WMS_BASE_URL,
     WMS_PREVIEW_LAYER_NAME,
@@ -19,54 +19,47 @@ def create_wms_preview_layer(
     admin_code: str,
     name: str = WMS_PREVIEW_LAYER_NAME,
     attribution: str = "",
-) -> WMSLayer:
-    """Create an ipyleaflet WMSLayer for previewing an admin boundary.
+    layer_id: str = AOI_PREVIEW_LAYER_ID,
+) -> LayerSpec:
+    """Create the overlay layer that previews an admin boundary.
 
-    This creates a lightweight WMS layer that displays the admin boundary
-    on the map without fetching the full geometry. Uses FAO's default styling.
+    It draws FAO's WMS tiles of the boundary, filtered on its code, without
+    fetching the full geometry, in FAO's default styling. Tiles have no bounds:
+    fetch them with ``fetch_admin_bounds_async`` to zoom on the boundary.
 
     Args:
         level: Administrative level (0, 1, or 2)
         admin_code: The admin code to highlight
-        name: Layer name for identification (default: "aoi_wms_preview")
+        name: Layer name (default: "aoi_wms_preview")
         attribution: Attribution shown in the map corner while the layer is visible
+        layer_id: Layer id in the map's layer store (default: "aoi_preview")
 
     Returns:
-        ipyleaflet.WMSLayer configured to display the admin boundary
+        a spec in the overlay zone, for ``SepalMap.layer_store``
 
     Example:
         ```python
         from pysepal.solara.components.aoi import create_wms_preview_layer
 
         # Create preview layer for Colombia
-        layer = create_wms_preview_layer(level=0, admin_code="62")
-        map_.add_layer(layer)
+        map_.layer_store.add(create_wms_preview_layer(level=0, admin_code="62"))
         ```
     """
-    # Use the appropriate layer for the level
-    wms_layer = FAO_GAUL_LAYERS[level]
-    cql_filter = f"gaul{level}_code={admin_code}"
-
-    # Build URL with CQL_FILTER
-    url = f"{FAO_WMS_BASE_URL}?CQL_FILTER={cql_filter}"
-
-    return WMSLayer(
-        url=url,
-        layers=wms_layer,
-        format="image/png",
-        transparent=True,
+    url = f"{FAO_WMS_BASE_URL}?CQL_FILTER=gaul{level}_code={admin_code}"
+    return LayerSpec.from_tiles(
+        TileSource.wms(url, FAO_GAUL_LAYERS[level], format="image/png", transparent=True),
+        id=layer_id,
         name=name,
+        zone="overlay",
         attribution=attribution,
     )
 
 
-def remove_wms_preview_layer(map_: Any, name: str = WMS_PREVIEW_LAYER_NAME) -> None:
-    """Remove WMS preview layer from map if it exists.
+def remove_wms_preview_layer(map_: Any, layer_id: str = AOI_PREVIEW_LAYER_ID) -> None:
+    """Remove the WMS preview layer from a map's layer store, if it is there.
 
     Args:
-        map_: The ipyleaflet Map or SepalMap instance
-        name: The layer name to remove (default: "aoi_wms_preview")
+        map_: The SepalMap instance
+        layer_id: The layer id to remove (default: "aoi_preview")
     """
-    for layer in list(map_.layers):
-        if hasattr(layer, "name") and layer.name == name:
-            map_.remove_layer(layer)
+    map_.layer_store.remove(layer_id, missing_ok=True)

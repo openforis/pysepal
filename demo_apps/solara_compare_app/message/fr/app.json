@@ -1,0 +1,48 @@
+{
+  "app": {
+    "title": "Comparer et dessiner"
+  },
+  "panel": {
+    "title": "Couches",
+    "description": "Couches, côtés et zone d'intérêt"
+  },
+  "tabs": {
+    "layers": "Couches",
+    "aoi": "AOI"
+  },
+  "compare": {
+    "switch": "Comparer 2020 | 2024"
+  },
+  "draw": {
+    "start": "Commencer à dessiner",
+    "end": "Terminer le dessin",
+    "count": {
+      "one": "{count} forme envoyée à Python",
+      "many": "{count} formes envoyées à Python",
+      "other": "{count} formes envoyées à Python"
+    }
+  },
+  "layers": {
+    "forest_2020": "Forêt 2020",
+    "forest_2024": "Forêt 2024",
+    "alerts": "Alertes 2024",
+    "plots": "Parcelles de terrain",
+    "concession": "Concession"
+  },
+  "alerts": {
+    "confirmed": "Confirmée",
+    "pending": "En attente de revue",
+    "rejected": "Rejetée",
+    "name": "Alerte",
+    "status": "Statut",
+    "year": "Année",
+    "radius": "Rayon (px)"
+  },
+  "plots": {
+    "forest": "Forêt",
+    "shrub": "Arbustes",
+    "bare": "Sol nu",
+    "plot": "Parcelle",
+    "class": "Classe"
+  }
+}

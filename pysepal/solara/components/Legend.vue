@@ -1,25 +1,23 @@
 <template>
-  <div
-    v-if="visible && hasContent"
-    class="sepal-legend"
-    :class="{
-      'sepal-legend--collapsed': isCollapsed,
-      'sepal-legend--dark': isDark,
-      'sepal-legend--light': !isDark,
-    }"
-  >
+  <div v-if="visible && hasContent" class="sepal-legend" :class="rootClasses">
     <!-- Expanded body -->
     <div v-if="!isCollapsed" class="sepal-legend__body">
-      <!-- Layer selector (only with 2+ options) -->
+      <!-- Layer selector (only with 2+ options). The native select lies,
+           transparent, over the row that shows its choice: the name can then
+           end in an ellipsis, while the keyboard, the popup and screen readers
+           still get a plain select. -->
       <div v-if="showSelector" class="sepal-legend__selector">
+        <span class="sepal-legend__selector-text" aria-hidden="true">{{
+          displayTitle
+        }}</span>
         <select
           class="sepal-legend__select"
           :value="selected"
           @change="onSelect($event)"
-          aria-label="Choose which layer legend to show"
+          :aria-label="strings.choose"
         >
           <option
-            v-for="(opt, oi) in selector_options"
+            v-for="(opt, oi) in options"
             :key="'o-' + oi"
             :value="opt.value"
           >
@@ -30,56 +28,66 @@
              Vuetify's `.v-icon.v-icon` sets position:relative at specificity
              (0,2,0), which drags an absolutely-positioned icon back into flow. -->
       </div>
-
-      <!-- Gradient sections -->
       <div
-        v-for="(grad, gi) in parsedGradients"
-        :key="'g-' + gi"
-        class="sepal-legend__gradient-section"
+        v-else-if="showTitle"
+        class="sepal-legend__title"
+        :title="displayTitle"
       >
-        <div v-if="grad.title" class="sepal-legend__gradient-title">
-          {{ grad.title }}
-        </div>
-        <div
-          class="sepal-legend__gradient-bar"
-          :style="{ background: grad.cssGradient }"
-        ></div>
-        <div class="sepal-legend__gradient-labels">
-          <span v-for="(lbl, li) in grad.labels" :key="'gl-' + li">{{
-            lbl
-          }}</span>
-        </div>
+        {{ displayTitle }}
       </div>
 
-      <!-- Discrete items -->
-      <div
-        v-if="parsedItems.length > 0"
-        class="sepal-legend__items"
-        :class="{ 'sepal-legend__items--detailed': hasDetail }"
-      >
+      <!-- The title row stays put; only this part scrolls when the card is capped. -->
+      <div class="sepal-legend__content">
+        <!-- Gradient sections -->
         <div
-          v-for="(item, ii) in parsedItems"
-          :key="'i-' + ii"
-          class="sepal-legend__item"
+          v-for="(grad, gi) in parsedGradients"
+          :key="'g-' + gi"
+          class="sepal-legend__gradient-section"
         >
-          <span
-            v-if="item.color"
-            class="sepal-legend__chip"
-            :style="{ backgroundColor: item.color }"
-          ></span>
-          <!-- Colorless entries (a totals row) keep the chip's footprint so
-               every label still starts on the same column. -->
-          <span
-            v-else
-            class="sepal-legend__chip sepal-legend__chip--empty"
-          ></span>
-          <span class="sepal-legend__label">{{ item.label }}</span>
-          <!-- Rendered for every row once any row has a detail: the detailed
-               layout is a grid whose columns would shift if a row emitted
-               fewer cells than its neighbours. -->
-          <span v-if="hasDetail" class="sepal-legend__detail">{{
-            item.detail
-          }}</span>
+          <div v-if="grad.title" class="sepal-legend__gradient-title">
+            {{ grad.title }}
+          </div>
+          <div
+            class="sepal-legend__gradient-bar"
+            :style="{ background: grad.cssGradient }"
+          ></div>
+          <div class="sepal-legend__gradient-labels">
+            <span v-for="(lbl, li) in grad.labels" :key="'gl-' + li">{{
+              lbl
+            }}</span>
+          </div>
+        </div>
+
+        <!-- Discrete items -->
+        <div
+          v-if="parsedItems.length > 0"
+          class="sepal-legend__items"
+          :class="{ 'sepal-legend__items--detailed': hasDetail }"
+        >
+          <div
+            v-for="(item, ii) in parsedItems"
+            :key="'i-' + ii"
+            class="sepal-legend__item"
+          >
+            <span
+              v-if="item.color"
+              class="sepal-legend__chip"
+              :style="{ backgroundColor: item.color }"
+            ></span>
+            <!-- Colorless entries (a totals row) keep the chip's footprint so
+                 every label still starts on the same column. -->
+            <span
+              v-else
+              class="sepal-legend__chip sepal-legend__chip--empty"
+            ></span>
+            <span class="sepal-legend__label">{{ item.label }}</span>
+            <!-- Rendered for every row once any row has a detail: the detailed
+                 layout is a grid whose columns would shift if a row emitted
+                 fewer cells than its neighbours. -->
+            <span v-if="hasDetail" class="sepal-legend__detail">{{
+              item.detail
+            }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -94,25 +102,26 @@
       @click="toggleCollapse"
       @keydown.enter="toggleCollapse"
       @keydown.space.prevent="toggleCollapse"
-      :title="isCollapsed ? 'Show legend' : 'Hide legend'"
-      :aria-label="isCollapsed ? 'Show legend' : 'Hide legend'"
+      :title="barLabel"
+      :aria-label="barLabel"
       :aria-expanded="String(!isCollapsed)"
     >
-      <!-- px: the named icon sizes scale with the font; the icons take the
+      <!-- px: the named icon sizes scale with the font; the icon takes the
            bar's themed text colour -->
-      <v-icon :size="16">mdi-map-legend</v-icon>
-      <v-icon :size="12">{{
-        isCollapsed ? "mdi-chevron-up" : "mdi-chevron-down"
-      }}</v-icon>
+      <v-icon :size="16">mdi-menu</v-icon>
+      <!-- Hidden: a host shows it where the card has no room to open. -->
+      <span v-if="displayTitle" class="sepal-legend__bar-title">{{
+        displayTitle
+      }}</span>
     </div>
   </div>
 </template>
 
 <script>
 module.exports = {
-  // legend_data, visible, collapsed, selector_options and selected are traits:
-  // ipyvue adds them as data, and declaring them as props too makes Vue warn
-  // about the duplicate.
+  // legend_data, visible, collapsed, selector_options, selected, placement,
+  // title and labels are traits: ipyvue adds them as data, and declaring them
+  // as props too makes Vue warn about the duplicate.
   data() {
     return {
       internalCollapsed: false,
@@ -136,6 +145,18 @@ module.exports = {
     isCollapsed() {
       return this.internalCollapsed;
     },
+    rootClasses() {
+      return {
+        "sepal-legend--collapsed": this.isCollapsed,
+        "sepal-legend--dark": this.isDark,
+        "sepal-legend--light": !this.isDark,
+        "sepal-legend--inline": this.placement === "inline",
+        "sepal-legend--map": this.placement === "map",
+      };
+    },
+    strings() {
+      return this.labels || {};
+    },
     hasContent() {
       if (!this.legend_data) return false;
       var g = this.legend_data.gradients || [];
@@ -146,6 +167,9 @@ module.exports = {
     },
     parsedGradients() {
       if (!this.legend_data || !this.legend_data.gradients) return [];
+      // A legend derived from a style titles its gradient with the layer's
+      // name, which the title row already shows.
+      var shown = this.displayTitle;
       return this.legend_data.gradients.map(function (g) {
         var stops = g.colors
           .map(function (c, i) {
@@ -155,7 +179,7 @@ module.exports = {
           })
           .join(", ");
         return {
-          title: g.title || "",
+          title: g.title && g.title !== shown ? g.title : "",
           labels: g.labels || [],
           cssGradient: "linear-gradient(to right, " + stops + ")",
         };
@@ -170,10 +194,33 @@ module.exports = {
         return it.detail;
       });
     },
+    options() {
+      return Array.isArray(this.selector_options) ? this.selector_options : [];
+    },
     showSelector() {
-      return (
-        Array.isArray(this.selector_options) && this.selector_options.length > 1
-      );
+      return this.options.length > 1;
+    },
+    selectedIndex() {
+      // The select reports its value as a string, whatever the option held.
+      var selected = String(this.selected);
+      return this.options.findIndex(function (opt) {
+        return String(opt.value) === selected;
+      });
+    },
+    // The shown layer's name: the chosen option's text, else the title, else a
+    // lone option's text.
+    displayTitle() {
+      var chosen = this.showSelector ? this.options[this.selectedIndex] : null;
+      if (chosen) return chosen.text || "";
+      if (this.title) return this.title;
+      return this.options.length === 1 ? this.options[0].text || "" : "";
+    },
+    showTitle() {
+      return !this.showSelector && !!this.displayTitle;
+    },
+    barLabel() {
+      var action = this.isCollapsed ? this.strings.show : this.strings.hide;
+      return this.displayTitle ? action + ": " + this.displayTitle : action;
     },
   },
   watch: {
@@ -225,6 +272,30 @@ module.exports = {
   gap: 4px;
 }
 
+/* A modifier on the root, not a descendant selector: ipyvue's scoped styles are
+   global. Doubled class so it outranks .sepal-legend whatever the order. */
+.sepal-legend.sepal-legend--inline {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  width: 100%;
+}
+
+/* In a map slot, which places it: in flow, never wider or taller than the slot.
+   min-height lets the card shrink into a slot whose height is capped, and the
+   body then scrolls. */
+.sepal-legend.sepal-legend--map {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+
 .sepal-legend__body,
 .sepal-legend__bar {
   backdrop-filter: blur(4px);
@@ -239,15 +310,62 @@ module.exports = {
   align-items: center;
   gap: 6px;
   max-width: min(380px, 92vw);
+  max-height: 40vh;
+  min-height: 0;
+}
+
+/* An app's panel scrolls itself; the map slot caps the card instead. */
+.sepal-legend.sepal-legend--inline > .sepal-legend__body {
+  max-height: none;
+}
+.sepal-legend.sepal-legend--map > .sepal-legend__body {
+  box-sizing: border-box;
+  max-width: min(380px, 100%);
+  max-height: none;
+}
+
+.sepal-legend__content {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .sepal-legend__bar {
   border-radius: 16px;
-  padding: 2px 10px;
+  padding: 3px 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.sepal-legend__bar-title {
+  display: none;
+  font-size: 12px;
+  max-width: 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sepal-legend__title {
+  align-self: stretch;
+  flex-shrink: 0;
+  font-weight: 500;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- Dark theme --- */
@@ -279,10 +397,14 @@ module.exports = {
   text-align: center;
 }
 
+/* 200px is what the bar asks for; min- and max-width then fit it to the
+   section, so it still spans a wider card and yields in a narrow slot. */
 .sepal-legend__gradient-bar {
   height: 12px;
   border-radius: 3px;
-  min-width: 200px;
+  width: 200px;
+  min-width: 100%;
+  max-width: 100%;
 }
 
 .sepal-legend__gradient-labels {
@@ -340,7 +462,30 @@ module.exports = {
 }
 .sepal-legend__selector {
   align-self: stretch;
+  flex-shrink: 0;
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: normal;
+  /* Right padding reserves room for our own arrow. */
+  padding: 3px 22px 3px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.sepal-legend__selector-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The select is invisible, so its keyboard focus shows on the row. */
+.sepal-legend__selector:has(> .sepal-legend__select:focus-visible) {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 /* The "this is a dropdown" affordance, replacing the UA arrow we turned off.
    A borders triangle on our own element rather than a <v-icon>, so no Vuetify
@@ -360,39 +505,43 @@ module.exports = {
   /* The arrow is decoration; the click belongs to the select underneath. */
   pointer-events: none;
 }
+/* Covers the whole row, so a click anywhere on it opens the popup. */
 .sepal-legend__select {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
   font-family: inherit;
   font-size: 12px;
-  /* Right padding reserves room for our own arrow. */
-  padding: 3px 22px 3px 6px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
   cursor: pointer;
-  /* Drop the UA arrow: it differs per browser and OS, and half of them ignore
-     the surrounding theme. `.sepal-legend__selector-icon` replaces it. */
   -webkit-appearance: none;
   appearance: none;
 }
-/* The dropdown popup does not inherit the legend's surface, and the select's
-   own translucent background composites to white behind it -- so the options
-   need opaque colors of their own or dark mode renders white on white.
+/* The dropdown popup does not inherit the legend's surface, and a select
+   without a background of its own composites to white behind it -- so the
+   options need opaque colors of their own or dark mode renders white on white.
    `color-scheme` covers the platforms where the popup is an OS-drawn menu that
    ignores CSS (macOS) rather than a browser-painted list. */
-.sepal-legend--dark .sepal-legend__select {
+.sepal-legend--dark .sepal-legend__selector {
   border-color: rgba(255, 255, 255, 0.25);
   background: rgba(255, 255, 255, 0.06);
+}
+.sepal-legend--dark .sepal-legend__select {
   color-scheme: dark;
 }
 .sepal-legend--dark .sepal-legend__select option {
   background-color: #212121;
   color: #fff;
 }
-.sepal-legend--light .sepal-legend__select {
+.sepal-legend--light .sepal-legend__selector {
   border-color: rgba(0, 0, 0, 0.2);
   background: rgba(0, 0, 0, 0.03);
+}
+.sepal-legend--light .sepal-legend__select {
   color-scheme: light;
 }
 .sepal-legend--light .sepal-legend__select option {

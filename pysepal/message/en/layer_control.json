@@ -2,16 +2,5 @@
   "layer_state": {
     "loading": "loading {loading} layer(s) out of {total}",
     "complete": "{count} layer(s) loaded"
-  },
-  "layer_control": {
-    "layer": {
-      "header": "Layers"
-    },
-    "basemap": {
-      "header": "Basemaps"
-    },
-    "vector": {
-      "header": "Vectors"
-    }
   }
 }

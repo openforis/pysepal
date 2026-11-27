@@ -71,7 +71,7 @@ You can contribute to the translation effort on our `crowdin project <https://cr
 
 --------------------------------------------------------------------------------
 
-:code:`pysepal` is a UI toolkit for building `ipyvuetify <https://ipyvuetify.readthedocs.io/en/latest/introduction.html>`_ and `Solara <https://solara.dev/>`_ dashboards, with first-class integration for the `SEPAL platform <https://sepal.io/>`__. It ships components for mapping (`ipyleaflet <https://ipyleaflet.readthedocs.io/>`_), AOI selection, Google Earth Engine session handling, notifications, exports, theming, and i18n — usable in any Jupyter or Solara context, and tightly wired into SEPAL when you run there.
+:code:`pysepal` is a UI toolkit for building `ipyvuetify <https://ipyvuetify.readthedocs.io/en/latest/introduction.html>`_ and `Solara <https://solara.dev/>`_ dashboards, with first-class integration for the `SEPAL platform <https://sepal.io/>`__. It ships components for mapping (a `MapLibre <https://maplibre.org/>`_ map), AOI selection, Google Earth Engine session handling, notifications, exports, theming, and i18n — usable in any Jupyter or Solara context, and tightly wired into SEPAL when you run there.
 
 The full documentation is available `here <https://pysepal.readthedocs.io/en/latest/>`__. Working demo apps live in `demo_apps/ <demo_apps>`__ and run under both Solara and Voila:
 

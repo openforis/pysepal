@@ -24,7 +24,6 @@ APP_LAYER_CEILING = 200
 # Selector -> the file whose rule sets its z-index. Each must stay under the
 # ceiling so a modal covers it instead of it punching through.
 APP_LAYERS = {
-    ".full-screen-map > .leaflet-container": BASE_CSS,
     "header.v-app-bar": BASE_CSS,
     ".sepal-legend": LEGEND_VUE,
     ".pill-wrapper": NOTIFICATION_VUE,
@@ -88,3 +87,9 @@ def test_no_stylesheet_pins_the_vuetify_modal_z_index():
                 f"{path.name} pins a z-index on '{selector}'. Vuetify stacks "
                 f"its overlays at runtime; overriding one breaks that order."
             )
+
+
+def test_base_css_has_no_leaflet_selector():
+    """The map is MapLibre: a `.leaflet-` rule styles nothing and misleads."""
+    assert ".leaflet-" not in BASE_CSS.read_text()
+    assert "geoman" not in BASE_CSS.read_text().lower()

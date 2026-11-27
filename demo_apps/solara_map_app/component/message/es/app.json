@@ -17,9 +17,9 @@
       "title": "Procesar",
       "description": "Deriva dos capas del AOI y publica una leyenda para cada una."
     },
-    "layers": {
-      "title": "Capas",
-      "description": "Añada una capa de demostración independiente, una composición radar Sentinel-1 o una capa vectorial PMTiles, o limpie el mapa y sus leyendas. Todas aparecen en el control de capas, arriba a la derecha."
+    "add_layers": {
+      "title": "Añadir capas",
+      "description": "Añada una capa de demostración independiente, una composición radar Sentinel-1 o una capa vectorial PMTiles, o limpie el mapa y sus leyendas. Cada una aparece en el panel de capas, más arriba."
     },
     "export": {
       "title": "Exportar",
@@ -28,11 +28,12 @@
   },
   "layers": {
     "ndvi": "NDVI Sentinel-2",
-    "ndvi_short": "NDVI",
     "radar": "Radar Sentinel-1",
     "pixel_area": "Área del píxel (m²)",
     "elevation": "Clases de altitud",
-    "pmtiles": "Edificios de Nueva Zelanda"
+    "pmtiles": "Edificios de Nueva Zelanda",
+    "sample_raster": "Gradiente de ejemplo",
+    "sample_vector": "Parcelas de ejemplo"
   },
   "elevation": {
     "lowland": "Tierras bajas (< 500 m)",

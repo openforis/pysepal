@@ -18,6 +18,8 @@ def ndvi_composite() -> ee.Image:
         .filterDate("2024-01-01", "2024-12-31")
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 10))
         .median()
+        # a composite has no footprint, so the layer would have no bounds to zoom to
+        .clip(polygons.geometry())
     )
 
     return s2.normalizedDifference(["B8", "B4"]).rename("NDVI")
@@ -35,6 +37,7 @@ def radar_composite() -> ee.Image:
         .filter(ee.Filter.listContains("transmitterReceiverPolarisation", "VH"))
         .select(["VV", "VH"])
         .median()
+        .clip(region)
     )
 
     # Bands are in dB, so the polarisation ratio is a difference.

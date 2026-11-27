@@ -41,8 +41,10 @@ def ItemList(
   (or `foo(...)` in the markup).
 - The `.vue` path is relative to the Python file.
 
-pysepal examples: `LegendComponent` (`pysepal/solara/components/legend.py`) and
-the `MapApp` bridges (`pysepal/solara/components/map_app/bridges.py`).
+pysepal examples: the template behind `LegendComponent`
+(`pysepal/solara/components/legend.py`), wrapped in a `@solara.component` that
+fills in its translated labels, and the `MapApp` bridges
+(`pysepal/solara/components/map_app/bridges.py`).
 
 ## `v.VuetifyTemplate` subclass
 
