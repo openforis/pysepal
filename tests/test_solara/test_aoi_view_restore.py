@@ -497,3 +497,188 @@ def test_a_restore_from_inside_a_run_does_not_break_that_run(monkeypatch):
             rc.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "method,leaf,chain",
+    [
+        ("ADMIN1", "1001", ("101", "1001")),
+        ("ADMIN2", "100001", ("101", "1001", "100001")),
+    ],
+)
+def test_admin_leaf_restores_the_cascade_without_processing(monkeypatch, method, leaf, chain):
+    held = solara.reactive(None)
+    spec = AoiSpec.from_dict({"method": method, "admin_codes": [leaf]})
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, spec=spec, gee=False, autoselect=False, countries=["101"])
+
+    async def run():
+        root, rc = reacton.render(_Harness(), handle_error=False)
+        try:
+            for level, code in enumerate(chain):
+                assert find_by_label(root, msg(f"aoi_sel.adm.{level}")).v_model == code
+            assert held.value is None
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "method,code",
+    [("ADMIN1", ""), ("ADMIN1", "  "), ("ADMIN1", "not-a-code"),
+     ("ADMIN1", "100001"), ("ADMIN2", "1001")],
+)
+def test_invalid_admin_leaf_is_rejected_without_processing(method, code):
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, spec=AoiSpec(method=method, admin_codes=(code,)), gee=False)
+
+    async def run():
+        root, rc = reacton.render(_Harness(), handle_error=False)
+        try:
+            await asyncio.sleep(0.1)
+            assert _method_select(root).v_model == ""
+            assert held.value is None
+            assert any("Cannot restore" in str(getattr(w, "children", "")) for w in of_type(root, "Alert"))
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("method,leaf,chain", [
+    ("ADMIN1", "1001", ("101", "1001")),
+    ("ADMIN2", "100001", ("101", "1001", "100001")),
+])
+def test_autoselect_publishes_the_normalized_admin_spec(monkeypatch, method, leaf, chain):
+    from pysepal.solara.components.aoi.aoi_result import AoiResult
+
+    calls = []
+    published = []
+    held = solara.reactive(None)
+
+    async def process(method, admin_code, gee=True, gee_interface=None, admin_codes=()):
+        calls.append((method, admin_code, tuple(admin_codes)))
+        return AoiResult(method=method, name="area", admin=admin_code, gee=False,
+                         spec=AoiSpec(method=method, admin_codes=tuple(admin_codes)))
+
+    monkeypatch.setattr(aoi_view_mod, "process_admin", process)
+
+    @solara.component
+    def _Harness():
+        AoiView(value=held, on_spec=published.append, spec=AoiSpec(method=method, admin_codes=(leaf,)),
+                gee=False, countries=["101"])
+
+    render_and_drain(_Harness, lambda *_: held.value is not None)
+    assert calls == [(method, leaf, chain)]
+    assert held.value.spec.admin_codes == chain
+    assert published[-1].admin_codes == chain
+
+
+def test_leaf_in_an_unavailable_country_is_not_restored():
+    @solara.component
+    def _Harness():
+        AoiView(spec=AoiSpec(method="ADMIN1", admin_codes=("1001",)),
+                countries=["206"], gee=False, autoselect=False)
+
+    root = _render(_Harness)
+    assert _method_select(root).v_model == ""
+
+
+def test_only_leaf_specs_are_derived_and_not_again_on_rerender(monkeypatch):
+    calls = []
+    derive = aoi_view_mod._derive_admin_chain
+
+    def spy(level, code):
+        calls.append((level, code))
+        return derive(level, code)
+
+    monkeypatch.setattr(aoi_view_mod, "_derive_admin_chain", spy)
+    spec = solara.reactive(AoiSpec(method="ADMIN1", admin_codes=("1001",)))
+
+    @solara.component
+    def _Harness():
+        AoiView(spec=spec, gee=False, autoselect=False)
+
+    async def run():
+        root, rc = reacton.render(_Harness(), handle_error=False)
+        try:
+            rc.force_update()
+            assert calls == [(1, "1001")]
+            spec.set(AoiSpec(method="ADMIN2", admin_codes=("100001",)))
+            assert calls == [(1, "1001"), (2, "100001")]
+            assert find_by_label(root, msg("aoi_sel.adm.2")).v_model == "100001"
+            for incoming in [AoiSpec(method="ADMIN0", admin_codes=("101",)),
+                             AoiSpec(method="ADMIN1", admin_codes=("101", "1001")),
+                             AoiSpec(method="ADMIN2", admin_codes=("101", "1001", "100001")),
+                             AoiSpec(method="ADMIN2", admin_codes=("101", "1001"))]:
+                spec.set(incoming)
+            assert calls == [(1, "1001"), (2, "100001")]
+        finally:
+            rc.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_invalid_leaf_warns_once_and_a_new_spec_can_restore(monkeypatch):
+    from unittest.mock import MagicMock
+
+    notifier = MagicMock()
+    monkeypatch.setattr(aoi_view_mod, "use_notifications", lambda **_: notifier)
+    spec = solara.reactive(AoiSpec(method="ADMIN1", admin_codes=("100001",)))
+
+    @solara.component
+    def _Harness():
+        AoiView(spec=spec, gee=False, autoselect=False)
+
+    async def run():
+        root, rc = reacton.render(_Harness(), handle_error=False)
+        try:
+            rc.force_update()
+            assert notifier.warning.call_count == 1
+            spec.set(AoiSpec(method="ADMIN1", admin_codes=("1001",)))
+            assert find_by_label(root, msg("aoi_sel.adm.1")).v_model == "1001"
+            spec.set(AoiSpec(method="ADMIN1", admin_codes=("100001",)))
+            assert notifier.warning.call_count == 2
+        finally:
+            rc.close()
+
+    await run()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("replacement", [
+    AoiSpec(method="ADMIN1", admin_codes=("101", "1001")),
+    AoiSpec(method="ADMIN2", admin_codes=("101", "1001", "100001")),
+])
+async def test_invalid_spec_keeps_previous_selection_and_warning_clears(replacement):
+    original = AoiSpec(method="ADMIN1", admin_codes=("101", "1001"))
+    spec = solara.reactive(original)
+    held = solara.reactive(None)
+
+    @solara.component
+    def _Harness():
+        AoiView(spec=spec, value=held, gee=False, autoselect=False)
+
+    root, rc = reacton.render(_Harness(), handle_error=False)
+    try:
+        assert find_by_label(root, msg("aoi_sel.adm.1")).v_model == "1001"
+        spec.set(AoiSpec(method="ADMIN1", admin_codes=("100001",)))
+        assert _method_select(root).v_model == "ADMIN1"
+        assert find_by_label(root, msg("aoi_sel.adm.1")).v_model == "1001"
+        alerts = [str(getattr(w, "children", "")) for w in of_type(root, "Alert")]
+        assert any("previous selection" in alert for alert in alerts)
+        assert held.value is None
+
+        spec.set(replacement)
+        assert _method_select(root).v_model == replacement.method
+        assert not any("Cannot restore" in str(getattr(w, "children", ""))
+                       for w in of_type(root, "Alert"))
+    finally:
+        rc.close()

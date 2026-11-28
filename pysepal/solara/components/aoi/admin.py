@@ -205,11 +205,20 @@ def _derive_admin_chain(level: int, admin_code: str) -> Tuple[str, ...]:
         The codes for levels 0..``level``.
 
     Raises:
-        ValueError: If ``admin_code`` is not a GAUL 2024 code. ``pygaul`` raises this
-            itself, which is the validation we want — a bad code must fail loudly.
+        ValueError: If the code is empty, missing from GAUL 2024, belongs to a
+            different level, or is missing an ancestor.
     """
-    row = pygaul.Names(admin=str(admin_code), complete=True).iloc[0]
-    return tuple(str(row[f"gaul{lvl}_code"]) for lvl in range(level + 1))
+    code = str(admin_code)
+    if not code.strip():
+        raise ValueError("An administrative code is required")
+    try:
+        row = pygaul.Names(admin=code, complete=True).iloc[0]
+    except IndexError as exc:
+        raise ValueError(f"Administrative code {code!r} was not found") from exc
+    codes = tuple(row[f"gaul{lvl}_code"] for lvl in range(level + 1))
+    if any(pd.isna(value) or not str(value).strip() for value in codes) or str(codes[-1]) != code:
+        raise ValueError(f"Administrative code {code!r} is not a valid ADMIN{level} code")
+    return tuple(str(value) for value in codes)
 
 
 async def process_admin(
