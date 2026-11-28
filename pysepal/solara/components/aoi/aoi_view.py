@@ -29,6 +29,7 @@ from pysepal.mapping import get_ipygeojson
 from pysepal.message import msg
 from pysepal.scripts import utils as su
 from pysepal.solara.components.aoi.admin import (
+    _derive_admin_chain,
     fetch_admin_bounds_async,
     process_admin,
 )
@@ -333,6 +334,8 @@ def AoiView(
 
     # Restore and unmount bookkeeping; see Note in the docstring.
     applied_spec = solara.use_ref(None)
+    # An invalid spec may be re-evaluated while cancelling a previous task.
+    rejected_spec = solara.use_ref(None)
     last_method = solara.use_ref("")
     alive = solara.use_ref(True)
 
@@ -610,14 +613,14 @@ def AoiView(
             # The TaskTracker already published an error toast if a
             # NotificationProvider is mounted. If it is not, surface the
             # error inline so consumers without a provider still see it.
-            if not has_notifications:
+            if not has_notifications and fallback_level.value != "warning":
                 fallback_message.set(str(task.exception))
                 fallback_level.set("error")
         elif task.cancelled:
             reactive_loading.set(False)
             if has_notifications:
                 notifications.cancel("Process cancelled")
-            else:
+            elif fallback_level.value != "warning":
                 fallback_message.set("Process cancelled")
                 fallback_level.set("info")
 
@@ -644,7 +647,16 @@ def AoiView(
 
     def _apply_spec():
         incoming = reactive_spec.value
-        if incoming is None or incoming == applied_spec.current:
+        if incoming is None:
+            rejected_spec.current = None
+            return
+        if incoming == applied_spec.current:
+            if rejected_spec.current is not None:
+                rejected_spec.current = None
+                fallback_level.set("info")
+                fallback_message.set("")
+            return
+        if incoming == rejected_spec.current:
             return
         if incoming.method not in enabled_methods:
             notifications.warning(
@@ -652,11 +664,28 @@ def AoiView(
                 f"offer that method."
             )
             return
+        codes = incoming.admin_codes
+        if incoming.method in ("ADMIN1", "ADMIN2") and len(codes) == 1:
+            try:
+                codes = _derive_admin_chain(int(incoming.method[-1]), codes[0])
+            except ValueError as exc:
+                rejected_spec.current = incoming
+                _cancel_pending_run()
+                message = (
+                    f"Cannot restore {incoming.method} AOI: {exc}. "
+                    "The previous selection, if any, was kept."
+                )
+                if has_notifications:
+                    notifications.warning(message)
+                else:
+                    fallback_level.set("warning")
+                    fallback_message.set(message)
+                return
         if (
             allowed_countries is not None
             and incoming.method in ADMIN_METHODS
-            and incoming.admin_codes
-            and incoming.admin_codes[0] not in allowed_countries
+            and codes
+            and codes[0] not in allowed_countries
         ):
             notifications.warning(
                 f"Cannot restore {incoming.name or 'this AOI'} here: this picker does not "
@@ -664,7 +693,10 @@ def AoiView(
             )
             return
         applied_spec.current = incoming
+        rejected_spec.current = None
         last_method.current = incoming.method
+        fallback_level.set("info")
+        fallback_message.set("")
 
         _cancel_pending_run()
         if incoming.method != selected_method.value:
@@ -672,12 +704,12 @@ def AoiView(
 
         selected_method.set(incoming.method)
         if incoming.method in ADMIN_METHODS:
-            admin_codes.set(incoming.admin_codes)
+            admin_codes.set(codes)
             # Also set the leaf directly. The selector derives admin_code from the
             # cascade in an effect, and with autoselect on the task starts in this
             # same pass — waiting on that effect would make the run depend on
             # scheduling order rather than on anything guaranteed.
-            admin_code.set(incoming.admin_codes[-1] if incoming.admin_codes else None)
+            admin_code.set(codes[-1] if codes else None)
         elif incoming.method == "SHAPE":
             shape_data.set(incoming.shape_data())
         elif incoming.method == "POINTS":

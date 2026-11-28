@@ -64,3 +64,18 @@ def test_process_admin_keeps_provided_interface_open(monkeypatch):
     assert result.admin == "62"
     assert interface.closed is False
     assert interface.calls == [{"iso3_code": "COL", "gaul0_name": "Colombia"}]
+
+
+def test_derive_admin_chain_rejects_missing_ancestors_and_empty_lookup(monkeypatch):
+    import pandas as pd
+    import pytest
+
+    monkeypatch.setattr(admin.pygaul, "Names", lambda **_: pd.DataFrame([{
+        "gaul0_code": None, "gaul1_code": "1001"
+    }]))
+    with pytest.raises(ValueError):
+        admin._derive_admin_chain(1, "1001")
+
+    monkeypatch.setattr(admin.pygaul, "Names", lambda **_: pd.DataFrame())
+    with pytest.raises(ValueError):
+        admin._derive_admin_chain(1, "1001")
